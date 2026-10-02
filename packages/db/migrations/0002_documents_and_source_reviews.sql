@@ -1,0 +1,4 @@
+ALTER TABLE "job_snapshots" ADD CONSTRAINT "job_snapshots_workspace_id_uq" UNIQUE("workspace_id","id");--> statement-breakpoint
+ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_workspace_profile_revision_fk" FOREIGN KEY ("workspace_id","profile_revision_id") REFERENCES "public"."profile_versions"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_workspace_job_snapshot_fk" FOREIGN KEY ("workspace_id","job_snapshot_id") REFERENCES "public"."job_snapshots"("workspace_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "document_versions_workspace_name_revision_uq" ON "document_versions" USING btree ("workspace_id","name","revision");--> statement-breakpoint

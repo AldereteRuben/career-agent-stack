@@ -1,0 +1,15 @@
+'use client';
+
+import { LanguageToggle, localizedError, useLocale } from '@/lib/i18n';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button, Icon, Notice } from '@/components/ui';
+
+export default function LoginPage() {
+  const { t, locale } = useLocale();
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setReady(true); }, []);
+  const [token, setToken] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const router = useRouter();
+  const submit = async (event: FormEvent) => { event.preventDefault(); setBusy(true); setError(''); try { const response = await fetch('/api/v1/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ setupToken: token.trim() }) }); const result = await response.json() as { error?: string; detail?: string }; if (!response.ok) throw new Error(localizedError(result.error ?? 'UNKNOWN', locale)); router.replace('/'); } catch (err) { setError(err instanceof Error ? err.message : t('Ha ocurrido un error. Inténtalo de nuevo.')); } finally { setBusy(false); } };
+  return <main className="login-screen"><div className="login-decoration login-decoration-one"/><div className="login-decoration login-decoration-two"/><section className="login-card"><div className="login-language"><LanguageToggle/></div><a href="/" className="brand login-brand"><span className="brand-mark">{t("c")}</span><span>{t("career")}<span className="brand-light">{t("stack")}</span><small>{t("tu espacio de carrera")}</small></span></a><div className="login-icon"><Icon name="shield" size={21}/></div><div className="eyebrow"><span className="eyebrow-mark"/> {t("UN ESPACIO SOLO TUYO")}</div><h1>{t("Empieza por aquí.")}</h1><p>{t("Career Stack guarda tu búsqueda de empleo en este equipo. Para continuar, utiliza el token de configuración local.")}</p>{error && <Notice tone="error">{error}</Notice>}<form onSubmit={submit} className="login-form"><label className="field"><span>{t("Token de configuración")}</span><input disabled={!ready || busy} value={token} onChange={(e) => setToken(e.target.value)} autoComplete="one-time-code" spellCheck={false} required placeholder={t("Pégalo desde data/setup-token")}/></label><Button type="submit" disabled={busy || !token.trim()}>{t(busy ? 'Comprobando…' : 'Entrar en mi espacio')} <Icon name="arrow" size={15}/></Button></form><div className="login-hint"><Icon name="shield" size={14}/><span>{t("El token se guarda fuera de la URL y se consume una sola vez. La sesión dura 14 días.")}</span></div><div className="login-help">{t("¿Se consumió el token? Desde la carpeta del proyecto, ejecuta")} <code>{t("pnpm run reset:session")}</code> {t("y lee el token nuevo en")} <code>{t("data/setup-token")}</code>{t(".")}</div><div className="login-footer"><span><span className="local-pulse"/> {t("Local y privado")}</span><span>{t("v0.1")}</span></div></section></main>;
+}

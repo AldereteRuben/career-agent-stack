@@ -1,0 +1,25 @@
+'use client';
+
+import { useLocale } from '@/lib/i18n';
+import { useEffect, useState } from 'react';
+import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
+import { Card, Icon, Notice, Tag } from '@/components/ui';
+import { api, errorMessage } from '@/lib/api';
+
+type Capabilities = { release: string; available: string[]; unavailable: string[]; externalWrites: boolean; automaticSubmission: boolean };
+const labels: Record<string, string> = { 'manual-profile': 'Perfil y hechos aprobados', 'fact-approval': 'Aprobación manual', 'answer-bank': 'Banco de respuestas', 'manual-job-import': 'Importación manual', 'approved-board-discovery': 'Descubrimiento por tableros aprobados', 'rule-based-matching': 'Encaje explicable', 'application-ledger': 'Seguimiento de candidaturas', 'reviewed-pdf-drafts': 'Borradores PDF revisables', 'json-export': 'Exportación JSON', 'ai-processing': 'Procesamiento con IA', 'browser-autofill': 'Autorrelleno en navegador', 'external-submission': 'Envío a empresas', 'email-oauth': 'Acceso al correo', 'interview-coach': 'Preparación de entrevistas', 'hosted-multi-tenancy': 'Alojamiento multiusuario' };
+export default function SettingsPage() {
+  const { t } = useLocale();
+  const [caps, setCaps] = useState<Capabilities | null>(null); const [error, setError] = useState('');
+  useEffect(() => { api<Capabilities>('/capabilities').then(setCaps).catch((err) => setError(errorMessage(err))); }, []);
+  return <WorkspaceGate><AppShell>
+    <PageHeader eyebrow={t("CONTROL Y TRANSPARENCIA")} title={t("La privacidad se puede ver.")} description={t("Conoce qué está disponible, qué permanece en tu equipo y qué aún no hace esta versión.")}/>
+    {error && <Notice tone="error">{error}</Notice>}
+    <div className="settings-grid"><div className="settings-main">
+      <Card className="settings-hero"><span className="card-icon mint"><Icon name="shield" size={19}/></span><div><Tag tone="green">{t("INSTALACIÓN LOCAL")}</Tag><h2>{t("Tu búsqueda vive aquí.")}</h2><p>{t("La web y la API escuchan en 127.0.0.1. Tus credenciales de esta sesión se guardan en una cookie HttpOnly; el token inicial se consume al iniciar sesión.")}</p></div><div className="settings-hero-foot"><span>{t("RELEASE")}</span><strong>{caps?.release ?? 'v0.1'}</strong><span>{t("·")}</span><span>{t("ENVÍOS EXTERNOS")}</span><strong>{t(caps?.externalWrites ? 'ACTIVOS' : 'DESACTIVADOS')}</strong></div></Card>
+      <Card className="capability-card"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {t("ESTADO REAL DEL PRODUCTO")}</div><h2>{t("Lo que puedes hacer")}</h2></div></div><div className="capability-columns"><div><div className="capability-label"><span className="status-dot status-ready"/> {t("DISPONIBLE")}</div>{caps?.available.map((item) => <div className="capability-row" key={item}><Icon name="check" size={15}/><span>{t(labels[item] ?? item)}</span></div>)}</div><div><div className="capability-label"><span className="status-dot status-paused"/> {t("AÚN NO DISPONIBLE")}</div>{caps?.unavailable.map((item) => <div className="capability-row capability-unavailable" key={item}><span className="capability-dash">{t("—")}</span><span>{t(labels[item] ?? item)}</span><Tag tone="neutral">{t("DESACTIVADO")}</Tag></div>)}</div></div></Card>
+      <Card className="settings-export"><div className="export-art"><Icon name="download" size={20}/></div><div><h3>{t("Tu copia de trabajo")}</h3><p>{t("Exporta perfil, hechos, respuestas, vacantes, fuentes y candidaturas. Las fuentes quedan desactivadas al exportar. Los PDF generados se adjuntan al archivo JSON.")}</p><small>{t("Incluye datos personales. Guarda la copia en una ubicación privada.")}</small></div><a className="button button-secondary" href="/api/v1/export">{t("Descargar exportación")} <Icon name="download" size={15}/></a></Card>
+    </div><aside className="settings-side"><Card className="settings-side-card"><span className="aside-number">{t("01")}</span><h3>{t("Una instalación, un espacio.")}</h3><p>{t("Esta versión no implementa usuarios remotos ni sincronización en nube. No compartas el puerto local con tu red.")}</p></Card><Card className="settings-side-card"><span className="aside-number">{t("02")}</span><h3>{t("El historial también es dato personal.")}</h3><p>{t("Los registros de eventos y las exportaciones pueden contener notas sensibles. Elimina las copias antiguas cuando ya no las necesites.")}</p></Card><Card className="settings-side-card settings-side-warning"><div className="card-icon peach"><Icon name="shield" size={17}/></div><h3>{t("Recuperación pendiente")}</h3><p>{t("La copia de seguridad operativa y restauración aislada aún no están implementadas. No guardes aquí tu única copia de datos importantes.")}</p></Card></aside></div>
+    <div className="settings-disclosure"><strong>{t("Sin sorpresas.")}</strong> {t("No hay IA, correo, navegador automatizado ni envío externo en v0.1. El acceso a fuentes públicas es de solo lectura y cada tablero requiere tu revisión.")}</div>
+  </AppShell></WorkspaceGate>;
+}

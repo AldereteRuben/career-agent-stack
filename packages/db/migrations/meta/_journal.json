@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790973466116,
+      "tag": "0000_initial_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790973520481,
+      "tag": "0001_job_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790973766777,
+      "tag": "0002_documents_and_source_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790982312891,
+      "tag": "0003_answer_question_text",
+      "breakpoints": true
+    }
+  ]
+}

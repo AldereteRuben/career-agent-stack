@@ -1,0 +1,37 @@
+{
+  "name": "career-agent-stack",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node scripts/launch.mjs",
+    "stop": "node scripts/stop.mjs",
+    "status": "node scripts/launch.mjs --check",
+    "dev": "pnpm run build:shared && pnpm --parallel --filter @career/api --filter @career/dashboard dev",
+    "build:shared": "pnpm --filter @career/domain build && pnpm --filter @career/db build",
+    "build": "pnpm --recursive build",
+    "typecheck": "pnpm --recursive typecheck",
+    "lint": "eslint apps packages scripts --max-warnings=0",
+    "db:generate": "pnpm --filter @career/db db:generate",
+    "db:migrate": "pnpm --filter @career/db db:migrate",
+    "doctor": "node scripts/doctor.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "runner": "node scripts/unsupported.mjs 'Visible browser runner'",
+    "test:unit": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/*.test.ts",
+    "test:integration": "node scripts/unsupported.mjs 'Integration tests'",
+    "test:e2e": "pnpm --filter @career/api e2e",
+    "test:evals": "node scripts/unsupported.mjs 'AI and ranking evaluations'",
+    "reset:session": "node scripts/reset-session.mjs",
+    "seed:demo": "pnpm --filter @career/api seed:demo",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "typescript-eslint": "^8.71.0"
+  }
+}

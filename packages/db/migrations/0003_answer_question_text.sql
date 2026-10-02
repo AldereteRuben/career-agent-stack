@@ -1,0 +1,1 @@
+ALTER TABLE "answer_versions" ADD COLUMN "question_text" varchar(500);

@@ -1,0 +1,1 @@
+ALTER TABLE "deletion_jobs" ADD CONSTRAINT "deletion_jobs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;

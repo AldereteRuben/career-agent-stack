@@ -1,0 +1,175 @@
+'use client';
+
+import { useLocale } from '@/lib/i18n';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
+import { Button, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
+import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
+import { copy, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
+import type { Locale } from '@/lib/locale';
+
+type Application = { id: string; jobId: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; updatedAt: string; version?: number };
+type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null };
+type Patch = { state?: string; recruitmentStage?: string; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
+
+/** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.1. */
+const transitions: Record<string, string[]> = {
+  DRAFT: ['PREPARING', 'CONFIRMED', 'CANCELLED'], PREPARING: ['REVIEW_REQUIRED', 'CONFIRMED', 'CANCELLED'], REVIEW_REQUIRED: ['PREPARING', 'CONFIRMED', 'CANCELLED'],
+  READY: ['REVIEW_REQUIRED', 'CONFIRMED', 'CANCELLED'], IN_PROGRESS: ['CONFIRMED', 'CANCELLED'], UNKNOWN: ['CONFIRMED', 'REVIEW_REQUIRED'], CONFIRMED: ['REVIEW_REQUIRED'], CANCELLED: [],
+};
+const stateTone = (state: string) => state === 'CONFIRMED' ? 'green' : state === 'UNKNOWN' ? 'red' : state === 'CANCELLED' ? 'neutral' : 'blue';
+
+function eventDetail(event: AppEvent, locale: Locale) {
+  const c = copy(locale);
+  if (event.eventType === 'RECRUITMENT_STAGE_CHANGED' || event.eventType === 'RECRUITMENT_STAGE_CORRECTED') {
+    const arrow = `${labelFor.recruitmentStage(event.priorState, locale)} → ${labelFor.recruitmentStage(event.newState, locale)}`;
+    return event.reason && /correct/i.test(event.reason) ? `${arrow} · ${c('corrección', 'correction')}` : arrow;
+  }
+  if (event.eventType === 'APPLICATION_STATE_CHANGED') return `${labelFor.applicationState(event.priorState, locale)} → ${labelFor.applicationState(event.newState, locale)}`;
+  if (event.reason === 'Manual user record') return c('Registro manual', 'Added manually');
+  if (event.reason === 'User-attested confirmation') return c('Confirmación declarada por ti', 'Confirmation reported by you');
+  return event.reason ?? c('Cambio guardado', 'Change saved');
+}
+
+function ApplicationsView() {
+  const { locale } = useLocale(); const c = copy(locale);
+  const router = useRouter(); const pathname = usePathname(); const searchParams = useSearchParams(); const urlId = searchParams.get('id');
+  const [rows, setRows] = useState<Application[]>([]); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [selectedId, setSelectedId] = useState<string | null>(urlId);
+  const [events, setEvents] = useState<AppEvent[]>([]); const [eventsState, setEventsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [open, setOpen] = useState(false); const [company, setCompany] = useState(''); const [role, setRole] = useState(''); const [url, setUrl] = useState(''); const [location, setLocation] = useState(''); const [alreadyApplied, setAlreadyApplied] = useState(false);
+  const [note, setNote] = useState(''); const [pendingStage, setPendingStage] = useState<string | null>(null); const [confirmApplied, setConfirmApplied] = useState(false);
+  const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
+  const eventsRequest = useRef(0);
+  // The selection as of now, not as of the render that started a request: async handlers compare against it after every await.
+  const selectedRef = useRef<string | null>(urlId);
+  const selected = rows.find((row) => row.id === selectedId) ?? null;
+
+  const loadRows = useCallback(async () => {
+    try { const list = await api<Application[]>('/applications'); setRows(list); setLoadState('ready'); return list; }
+    catch (err) { setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); return null; }
+  }, []);
+  /** Only the most recent request may write events, so a slow response for a previous selection never shows under the current one. */
+  const loadEvents = useCallback(async (id: string) => {
+    const ticket = ++eventsRequest.current; setEventsState('loading');
+    try { const list = await api<AppEvent[]>(`/applications/${id}/events`); if (ticket === eventsRequest.current) { setEvents(list); setEventsState('ready'); } }
+    catch (err) { if (ticket === eventsRequest.current) { setEventsState('error'); setError(errorMessage(err)); } }
+  }, []);
+
+  useEffect(() => { void loadRows(); }, [loadRows]);
+  // Follow the URL (deep links from job pages, back/forward navigation).
+  useEffect(() => { setSelectedId(urlId); }, [urlId]);
+  useEffect(() => {
+    selectedRef.current = selectedId;
+    setEvents([]); setNote(''); setPendingStage(null); setConfirmApplied(false);
+    if (selectedId) void loadEvents(selectedId); else { eventsRequest.current++; setEventsState('idle'); }
+  }, [selectedId, loadEvents]);
+
+  const select = (id: string | null, keepNotices = false) => {
+    selectedRef.current = id; setSelectedId(id); if (!keepNotices) { setMessage(''); setError(''); }
+    // Read the live URL: after an await, the searchParams captured by this render may already be outdated.
+    const params = new URLSearchParams(window.location.search); if (id) params.set('id', id); else params.delete('id');
+    router.replace(`${pathname}${params.size ? `?${params}` : ''}`, { scroll: false });
+  };
+
+  const create = async (event: FormEvent) => {
+    event.preventDefault(); setBusy('create'); setError(''); setMessage('');
+    const selectionAtStart = selectedRef.current;
+    try {
+      const created = await api<Application>('/applications', { method: 'POST', body: JSON.stringify({ company: company.trim(), role: role.trim(), location: location.trim() || null, canonicalUrl: url.trim() || null, state: alreadyApplied ? 'CONFIRMED' : 'DRAFT', ...(alreadyApplied ? { confirmationEvidence: 'USER_ATTESTATION' } : {}), recruitmentStage: 'NO_RESPONSE', notes: '' }) });
+      setMessage(alreadyApplied ? c('Candidatura registrada como enviada por ti.', 'Application recorded as sent by you.') : c('Candidatura añadida al seguimiento.', 'Application added to your tracker.'));
+      setOpen(false); setCompany(''); setRole(''); setLocation(''); setUrl(''); setAlreadyApplied(false);
+      await loadRows();
+      // Jump to the new record unless the person picked another one (or navigated) while it was saving.
+      if (selectedRef.current === selectionAtStart) select(created.id, true);
+    } catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  };
+
+  const update = async (patch: Patch, success: string) => {
+    if (!selected) return false;
+    const id = selected.id; setBusy('update'); setError(''); setMessage('');
+    try {
+      const updated = await api<Application>(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+      setRows((current) => current.map((row) => row.id === updated.id ? updated : row)); setMessage(success);
+      if (selectedRef.current === id) void loadEvents(id);
+      return true;
+    } catch (err) {
+      setError(errorMessage(err));
+      if (err instanceof ApiError && err.code === 'STALE_APPLICATION_VERSION') { await loadRows(); if (selectedRef.current === id) void loadEvents(id); }
+      return false;
+    } finally { setBusy(null); }
+  };
+
+  const chooseStage = (stage: string) => {
+    if (!selected || stage === selected.recruitmentStage) return;
+    if (recruitmentStageOrder.indexOf(stage) < recruitmentStageOrder.indexOf(selected.recruitmentStage)) { setPendingStage(stage); return; }
+    setPendingStage(null); void update({ recruitmentStage: stage }, c('Etapa actualizada.', 'Stage updated.'));
+  };
+  const confirmCorrection = async () => { if (!pendingStage) return; if (await update({ recruitmentStage: pendingStage, correction: true }, c('Etapa corregida. El historial conserva el cambio.', 'Stage corrected. The history keeps a record of the change.'))) setPendingStage(null); };
+  const chooseState = (state: string) => {
+    if (!selected || state === selected.state) return;
+    if (state === 'CONFIRMED') { setConfirmApplied(true); return; }
+    setConfirmApplied(false); void update({ state }, c('Estado actualizado.', 'Status updated.'));
+  };
+  const confirmSent = async () => { if (await update({ state: 'CONFIRMED', confirmationEvidence: 'USER_ATTESTATION' }, c('Marcada como enviada por ti.', 'Marked as sent by you.'))) setConfirmApplied(false); };
+
+  const addNote = async (event: FormEvent) => {
+    event.preventDefault(); if (!selected || !note.trim()) return;
+    const id = selected.id; const submitted = note; setBusy('note'); setError(''); setMessage('');
+    try {
+      await api(`/applications/${id}/events`, { method: 'POST', body: JSON.stringify({ eventType: 'USER_NOTE', note: submitted.trim() }) });
+      setMessage(c('Nota añadida al historial.', 'Note added to the history.'));
+      // Only clear the text that was saved; switching rows already resets the draft for the new selection.
+      if (selectedRef.current === id) { setNote((current) => current === submitted ? '' : current); void loadEvents(id); }
+    }
+    catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  };
+
+  const stateChoices = selected ? [selected.state, ...(transitions[selected.state] ?? []).filter((state) => (selectableApplicationStates as readonly string[]).includes(state))] : [];
+
+  return <>
+    <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Cada paso queda anotado.', 'Keep track of every step.')} description={c('Un registro claro de lo que ya hiciste y lo que viene después.', 'A clear record of what you have done and what comes next.')} action={<Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir candidatura', 'Add application')}</Button>}/>
+    {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    {open && <Card className="import-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2>{c('Registrar una candidatura', 'Add an application')}</h2><p>{c('Solo guardamos lo que tú escribes; nada se envía a la empresa.', 'We only save what you type; nothing is sent to the employer.')}</p></div></div></div>
+      <form className="form-grid" onSubmit={(event) => void create(event)} aria-busy={busy === 'create'}>
+        <Field label={c('Empresa', 'Company')} disabled={busy === 'create'} value={company} onChange={(e) => setCompany(e.target.value)} required/><Field label={c('Puesto', 'Role')} disabled={busy === 'create'} value={role} onChange={(e) => setRole(e.target.value)} required/>
+        <Field label={c('Ubicación', 'Location')} disabled={busy === 'create'} value={location} onChange={(e) => setLocation(e.target.value)}/><Field label={c('Enlace a la oferta', 'Link to the job post')} type="url" disabled={busy === 'create'} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"/>
+        <label className="checkbox-line"><input type="checkbox" disabled={busy === 'create'} checked={alreadyApplied} onChange={(e) => setAlreadyApplied(e.target.checked)}/><span>{c('Ya envié esta candidatura.', 'I have already sent this application.')}<small>{c('Se guarda como una declaración tuya, no como una verificación con la empresa.', 'It is saved as your own statement, not as a check with the employer.')}</small></span></label>
+        <div className="form-submit"><Button type="submit" disabled={busy !== null || !company.trim() || !role.trim()}>{busy === 'create' ? c('Guardando…', 'Saving…') : c('Guardar candidatura', 'Save application')}</Button></div>
+      </form></Card>}
+    {loadState === 'loading' ? <Notice>{c('Cargando candidaturas…', 'Loading applications…')}</Notice>
+      : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty title={c('No pudimos cargar tus candidaturas', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
+      : rows.length ? <div className="tracker-layout">
+        <Card className="tracker-list"><div className="tracker-list-head"><span>{rows.length} {rows.length === 1 ? c('REGISTRO', 'RECORD') : c('REGISTROS', 'RECORDS')}</span><span>{c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
+          {rows.map((row) => <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {labelFor.recruitmentStage(row.recruitmentStage, locale)}</small></span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>)}
+        </Card>
+        <Card className="tracker-detail">{selected ? <>
+          <div className="tracker-detail-head"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('TU HISTORIAL', 'YOUR HISTORY')}</div><h2>{selected.role}</h2><p>{selected.company}{selected.location ? ` · ${selected.location}` : ''}</p>
+            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={`/jobs/${selected.jobId}`}>{c('Ver vacante', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}</div>
+          </div><Tag tone={stateTone(selected.state)}>{labelFor.applicationState(selected.state, locale)}</Tag></div>
+          <div className="tracker-controls">
+            <SelectField label={c('Etapa del proceso', 'Hiring stage')} value={pendingStage ?? selected.recruitmentStage} disabled={busy !== null} onChange={(e) => chooseStage(e.target.value)}>{recruitmentStageOrder.map((stage) => <option key={stage} value={stage}>{labelFor.recruitmentStage(stage, locale)}</option>)}</SelectField>
+            <SelectField label={c('Estado de la candidatura', 'Application status')} value={confirmApplied ? 'CONFIRMED' : selected.state} disabled={busy !== null || stateChoices.length < 2} onChange={(e) => chooseState(e.target.value)}>{stateChoices.map((state) => <option key={state} value={state}>{labelFor.applicationState(state, locale)}</option>)}</SelectField>
+            <div className="notice notice-info tracker-boundary">{c('Esta versión no envía candidaturas: los estados de envío automático están desactivados.', 'This version does not submit applications: automatic submission statuses are turned off.')}</div>
+          </div>
+          {pendingStage && <div className="notice notice-warning" role="alert"><p>{c(`¿Corregir la etapa de «${labelFor.recruitmentStage(selected.recruitmentStage, locale)}» a «${labelFor.recruitmentStage(pendingStage, locale)}»? Úsalo si te equivocaste; el historial guardará la corrección.`, `Correct the stage from “${labelFor.recruitmentStage(selected.recruitmentStage, 'en')}” to “${labelFor.recruitmentStage(pendingStage, 'en')}”? Use this if you made a mistake; the history keeps the correction.`)}</p><div className="detail-actions"><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmCorrection()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, corregir etapa', 'Yes, correct stage')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setPendingStage(null)}>{c('Cancelar', 'Cancel')}</Button></div></div>}
+          {confirmApplied && <div className="notice notice-warning" role="alert"><p>{c('Confirma que enviaste esta candidatura tú mismo. Se guardará como tu declaración; no lo comprobamos con la empresa.', 'Confirm that you sent this application yourself. It is saved as your statement; we do not check it with the employer.')}</p><div className="detail-actions"><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmSent()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, la envié', 'Yes, I sent it')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setConfirmApplied(false)}>{c('Cancelar', 'Cancel')}</Button></div></div>}
+          {selected.state === 'CONFIRMED' && <div className="notice notice-success">{c('Confirmación basada en tu declaración. No se verificó con la empresa.', 'This confirmation is based on your statement. It was not verified with the employer.')}</div>}
+          <form className="note-form" onSubmit={(event) => void addNote(event)}><TextareaField label={c('Añadir nota al historial', 'Add a note to the history')} rows={3} value={note} disabled={busy === 'note'} onChange={(e) => setNote(e.target.value)} placeholder={c('Próximo paso, preguntas o contexto…', 'Next step, questions, or context…')} maxLength={10000}/><Button type="submit" variant="secondary" disabled={busy !== null || !note.trim()}>{busy === 'note' ? c('Guardando…', 'Saving…') : c('Añadir nota', 'Add note')}</Button></form>
+          <div className="timeline"><h3>{c('Actividad', 'Activity')}</h3>
+            {eventsState === 'loading' && !events.length && <p className="muted-label">{c('Cargando actividad…', 'Loading activity…')}</p>}
+            {eventsState === 'error' && <p className="muted-label">{c('No se pudo cargar la actividad.', 'The activity could not be loaded.')} <Button variant="quiet" onClick={() => void loadEvents(selected.id)}>{c('Reintentar', 'Try again')}</Button></p>}
+            {events.map((event) => <div className="timeline-item" key={event.id}><span className="timeline-dot"/><div><strong>{labelFor.applicationEvent(event.eventType, locale)}</strong><p>{eventDetail(event, locale)}</p><small>{formatDate(event.createdAt)}</small></div></div>)}
+          </div>
+        </> : selectedId && loadState === 'ready' ? <Empty title={c('No encontramos esa candidatura', 'We could not find that application')} detail={c('Puede que se haya eliminado o que el enlace sea antiguo. Elige otra de la lista.', 'It may have been removed or the link is outdated. Choose another one from the list.')} action={<Button variant="secondary" onClick={() => select(null)}>{c('Quitar selección', 'Clear selection')}</Button>}/>
+          : <Empty title={c('Elige una candidatura', 'Choose an application')} detail={c('Selecciona un registro para ver su actividad y actualizar el siguiente paso.', 'Choose an application to see its activity and update the next step.')}/>}</Card>
+      </div>
+      : <Card className="jobs-empty"><Empty title={c('Todavía no hay candidaturas', 'No applications yet')} detail={c('Crea un registro al empezar una solicitud o anota una candidatura que ya enviaste.', 'Create a record when you start an application, or log one you already sent.')} action={<Button variant="secondary" onClick={() => setOpen(true)}><Icon name="plus" size={15}/> {c('Crear primer registro', 'Create your first record')}</Button>}/></Card>}
+  </>;
+}
+
+export default function ApplicationsPage() {
+  return <WorkspaceGate><AppShell><Suspense fallback={null}><ApplicationsView/></Suspense></AppShell></WorkspaceGate>;
+}
