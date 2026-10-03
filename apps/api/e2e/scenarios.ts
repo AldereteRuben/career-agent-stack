@@ -1,3 +1,4 @@
+import { v051First, v051Last } from './v051.js';
 import { v050Scenarios } from './v050.js';
 import { v041Scenarios } from './v041.js';
 import { uxReviewScenarios } from './ux-review.js';
@@ -303,6 +304,7 @@ export const scenarios: Scenario[] = [
     name: 'export-download-and-error-recovery',
     async run({ page, allowConsole }) {
       await goTo(page, '/settings');
+      await page.getByText(/^(Exportar a otra herramienta · avanzado|Export to another tool · advanced)$/).click();
       const downloadButton = page.getByRole('button', { name: any('Descargar mis datos', 'Download my data') });
       allowConsole(/409|Conflict/);
       const failExport = async (route: import('playwright').Route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'DOCUMENT_FILE_UNAVAILABLE' }) });
@@ -414,3 +416,6 @@ scenarios.push(...v041Scenarios);
 
 scenarios.splice(1, 0, v050Scenarios[0]!);
 scenarios.push(v050Scenarios[1]!);
+
+scenarios.splice(1, 0, v051First);
+scenarios.push(v051Last);

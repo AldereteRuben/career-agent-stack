@@ -480,7 +480,7 @@ app.post('/api/v1/documents', async (request, reply) => {
       await lockKey(tx, `document:${id}:${name}`);
       const latestRevision = await tx.select({ revision: sql<number>`coalesce(max(${documentVersions.revision}), 0)::int` }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.name, name)));
       const revision = (latestRevision[0]?.revision ?? 0) + 1;
-      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
+      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
     });
   } catch (error) { await removeFile(); throw error; }
   return reply.code(201).send({ ...documentView(row), sizeBytes: rendered.size });

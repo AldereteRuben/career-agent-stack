@@ -3149,3 +3149,11 @@ main:focus {
   .onboarding-progress li { padding: 8px 12px; }
   .onboarding-progress small { display: inline; margin-left: 8px; }
 }
+
+/* v0.5.1: compact optional controls and explicit session action. */
+.profile-chip { cursor: default; }
+.profile-chip .signout { color: inherit; background: transparent; border: 1px solid var(--sidebar-muted, #8c9dab); border-radius: 6px; padding: 8px; cursor: pointer; font: inherit; }
+.profile-preferences > summary { font-weight: 600; cursor: pointer; }
+.profile-preferences[open] > summary { margin-bottom: 16px; }
+.profile-aside details > summary { cursor: pointer; }
+.document-actions { min-width: 0; }

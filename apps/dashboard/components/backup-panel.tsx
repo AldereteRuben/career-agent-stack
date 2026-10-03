@@ -37,6 +37,7 @@ export function BackupPanel() {
       {job.state === 'ready' && <p>{c('Copia verificada. Descarga estos dos archivos:', 'Backup verified. Download these two files:')}</p>}
     </div>
     {job.state === 'ready' && <>
+      {job.createdAt && <p className="muted-label">{c('Copia creada:', 'Backup created:')} <time dateTime={job.createdAt}>{new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(job.createdAt))}</time></p>}
       <ol className="help-steps backup-downloads">
         <li><a className="button button-secondary" href={`/api/v1/backups/${job.id}/archive`} download>{c('Descargar copia', 'Download backup')}</a></li>
         <li><a className="button button-secondary" href={`/api/v1/backups/${job.id}/key`} download>{c('Descargar clave de recuperación', 'Download recovery key')}</a></li>

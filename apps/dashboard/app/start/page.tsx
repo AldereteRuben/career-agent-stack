@@ -15,7 +15,7 @@ type Profile = {
   profile: { identity?: { fullName?: string; email?: string; [key: string]: unknown }; [key: string]: unknown };
   facts: Array<{ approvalStatus: string }>;
 };
-type Resume = { approvalStatus: string; assistReady: boolean };
+type Resume = { id: string; approvalStatus: string; assistReady: boolean; reviewReady: boolean };
 const emptyDraft = { name: '', email: '', edited: '' };
 
 export default function StartPage() {
@@ -39,6 +39,7 @@ export default function StartPage() {
   const identityReady = Boolean(profile?.profile.identity?.fullName?.trim() && profile.profile.identity.email?.trim());
   const experienceReady = Boolean(profile?.facts.some((fact) => fact.approvalStatus === 'USER_APPROVED'));
   const resumeReady = resumes.some((resume) => resume.approvalStatus === 'USER_APPROVED' && resume.assistReady);
+  const pendingResume = resumes.find((resume) => resume.reviewReady);
   const pending = profile?.facts.filter((fact) => fact.approvalStatus === 'SUGGESTED').length ?? 0;
   const step = draft.value.edited === 'yes' || !identityReady ? 0 : !experienceReady ? 1 : !resumeReady ? 2 : 3;
   const value = draft.value.edited ? draft.value : { name: profile?.profile.identity?.fullName ?? '', email: profile?.profile.identity?.email ?? '', edited: '' };
@@ -67,7 +68,7 @@ export default function StartPage() {
       </ol>
       {error && <Notice tone="error">{error}<Button variant="quiet" disabled={busy || loading} onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button></Notice>}
       {loading ? <Notice>{c('Preparando tu guía…', 'Preparing your guide…')}</Notice> : profile && <Card className="form-card onboarding-card">
-        <h2 ref={stepHeading} tabIndex={-1} className="focus-heading">{step === 0 ? c('¿Cómo quieres aparecer en tu CV?', 'How should you appear on your resume?') : step === 1 ? c('Cuéntanos una experiencia', 'Tell us about one experience') : step === 2 ? c('Ya puedes preparar tu PDF', 'You are ready to prepare your PDF') : c('Tu primer CV está listo', 'Your first resume is ready')}</h2>
+        <h2 ref={stepHeading} tabIndex={-1} className="focus-heading">{step === 0 ? c('¿Cómo quieres aparecer en tu CV?', 'How should you appear on your resume?') : step === 1 ? c('Cuéntanos una experiencia', 'Tell us about one experience') : step === 2 ? pendingResume ? c('Tu CV está pendiente de revisión', 'Your resume is waiting for review') : c('Ya puedes preparar tu PDF', 'You are ready to prepare your PDF') : c('Tu primer CV está listo', 'Your first resume is ready')}</h2>
         {step === 0 ? <>
           <p>{c('Solo necesitamos tu nombre y correo. Podrás añadir tus preferencias de empleo después.', 'We only need your name and email. You can add job preferences later.')}</p>
           <form className="form-stack" onSubmit={(event) => void save(event)} aria-busy={busy}>
@@ -81,8 +82,8 @@ export default function StartPage() {
           <p>{pending ? c('Ya tienes contenido por revisar. Confirma que es correcto para poder usarlo en tu CV.', 'You already have content to review. Confirm it is accurate so you can use it on your resume.') : c('Puede ser un empleo, unos estudios, un proyecto o un logro. Añade uno y confirma que sus datos son correctos.', 'It can be a job, education, a project, or an achievement. Add one and confirm that its details are accurate.')}</p>
           <Link className="button button-primary" href={pending ? '/profile#saved-experience-heading' : '/profile#experience'}>{pending ? c('Revisar mi experiencia', 'Review my experience') : c('Añadir mi primera experiencia', 'Add my first experience')}</Link>
         </> : step === 2 ? <>
-          <p>{c('Elige qué experiencia incluir, genera el PDF y léelo antes de confirmar que está listo.', 'Choose the experience to include, generate the PDF, and read it before confirming it is ready.')}</p>
-          <Link className="button button-primary" href="/documents">{c('Preparar mi CV', 'Prepare my resume')}</Link>
+          <p>{pendingResume ? c('Ya tienes una versión guardada. Léela y confirma que está correcta para terminar.', 'You already have a saved version. Read it and confirm it is accurate to finish.') : c('Elige qué experiencia incluir, genera el PDF y léelo antes de confirmar que está listo.', 'Choose the experience to include, generate the PDF, and read it before confirming it is ready.')}</p>
+          <Link className="button button-primary" href={pendingResume ? `/documents?view=review&document=${pendingResume.id}&from=saved` : '/documents'}>{pendingResume ? c('Continuar revisando mi CV', 'Continue reviewing my resume') : c('Preparar mi CV', 'Prepare my resume')}</Link>
         </> : <>
           <p>{c('Puedes descargarlo o elegir una oferta para preparar una solicitud. Tú decides cuándo enviarla.', 'You can download it or choose a job to prepare an application. You decide when to submit it.')}</p>
           <div className="detail-actions"><Link className="button button-primary" href="/documents?view=saved">{c('Ver mis CV', 'View my resumes')}</Link><Link className="button button-secondary" href="/jobs">{c('Elegir una oferta', 'Choose a job')}</Link></div>

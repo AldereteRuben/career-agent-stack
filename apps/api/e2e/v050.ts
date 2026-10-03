@@ -19,7 +19,7 @@ export const v050Scenarios: Scenario[] = [{
     const previous = await api.get<Profile>('/profile');
     await api.put('/profile', { expectedRevision: previous.revision, profile: { ...previous.profile, identity: { fullName: 'Other tab', email: 'other@example.com' }, preferences: { country: 'ES' } } });
     await page.getByRole('button', { name: 'Guardar y continuar', exact: true }).click();
-    await page.getByRole('alert').waitFor();
+    await page.locator('.notice[role=alert]').first().waitFor();
     assert.equal(await name.inputValue(), `Guide ${marker}`);
     await page.getByRole('button', { name: 'Guardar y continuar', exact: true }).click();
     await page.getByRole('heading', { name: 'Cuéntanos una experiencia' }).waitFor();

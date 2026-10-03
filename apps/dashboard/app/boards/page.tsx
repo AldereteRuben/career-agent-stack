@@ -1,5 +1,7 @@
 'use client';
 
+import { useDisclosureFocus } from '@/lib/disclosure-focus';
+
 import Link from 'next/link';
 import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
@@ -38,7 +40,8 @@ export default function BoardsPage() {
   const [checks, setChecks] = useState<Record<string, ReviewChecks>>({});
   const [busy, setBusy] = useState(''); const [error, setError] = useState(''); const [message, setMessage] = useState('');
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
-  const [open, setOpen] = useState(false); const [now, setNow] = useState(() => Date.now());
+  const [open, setOpen] = useState(false);
+  const formHeading = useDisclosureFocus(open); const [now, setNow] = useState(() => Date.now());
   const source = parseJobBoardUrl(boardUrl); const careersDomain = getOfficialDomain(careersUrl); const provider = source ? providers[source.provider] : null;
 
   const load = useCallback(async () => {
@@ -146,7 +149,7 @@ export default function BoardsPage() {
       <div className="refresh-policy">{c('Pulsa Buscar ofertas nuevas para consultar una empresa. No se actualiza automáticamente. Puedes hacerlo una vez cada seis horas.', 'Choose Find new jobs to check a company. Updates are not automatic. You can check once every six hours.')}</div>
     </div>
     <aside className="add-board-aside">
-      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2>{c('Seguir una empresa', 'Follow a company')}</h2><p>{c('Necesitas dos enlaces: la página de empleo de la empresa y una oferta publicada desde ella.', 'You need two links: the company careers page and a job listed on it.')}</p></div></div></div>
+      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 ref={formHeading} tabIndex={-1}>{c('Seguir una empresa', 'Follow a company')}</h2><p>{c('Necesitas dos enlaces: la página de empleo de la empresa y una oferta publicada desde ella.', 'You need two links: the company careers page and a job listed on it.')}</p></div></div></div>
         {!open && <p className="muted-label">{companyName || careersUrl || boardUrl ? c('Tienes una empresa por terminar de añadir.', 'You have an unfinished company form.') : c('Compatible con Greenhouse, Lever y Ashby.', 'Supports Greenhouse, Lever, and Ashby.')}</p>}
         {!open ? <Button onClick={() => setOpen(true)}><Icon name="plus" size={15}/>{c('Añadir empresa', 'Add company')}</Button> : <form onSubmit={(event) => void add(event)} className="form-stack" aria-busy={busy === 'add'}><fieldset className="entry-fields" disabled={!draft.ready || busy !== ''}>
           <Field label={c('Nombre de la empresa', 'Company name')} value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder={c('Ejemplo: Northwind', 'Example: Northwind')} required/>

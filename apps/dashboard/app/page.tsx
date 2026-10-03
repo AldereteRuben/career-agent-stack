@@ -95,7 +95,7 @@ export default function HomePage() {
       <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
       <h2>{primaryStep?.title ?? c('Elige una oferta que te interese', 'Choose a job you are interested in')}</h2>
       <p>{primaryStep?.detail ?? c('Abre una oferta guardada para preparar tu CV o empezar a seguir tu solicitud.', 'Open a saved job to prepare your resume or start tracking your application.')}</p>
-      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
+      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
       <p className="muted-label">{c('Puedes guardar ofertas desde el principio. Conectar páginas de empresas y guardar respuestas es opcional.', 'You can save jobs right away. Connecting company careers pages and saving answers are optional.')}</p>
     </Card>}
     <section className="search-guide" aria-labelledby="search-guide-heading">

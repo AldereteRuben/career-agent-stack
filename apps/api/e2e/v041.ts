@@ -10,6 +10,7 @@ export const v041Scenarios: Scenario[] = [{
       await setLocale(page, locale);
       await page.setViewportSize({ width: 1096, height: 684 });
       await goTo(page, '/profile');
+      await page.getByText(locale === 'es' ? 'Preferencias de empleo · opcional' : 'Job preferences · optional', { exact: true }).click();
       const country = page.getByLabel(locale === 'es' ? 'País de trabajo' : 'Work country', { exact: true });
       const roles = page.getByLabel(locale === 'es' ? 'Puestos que buscas' : 'Roles you are looking for', { exact: true });
       await eventually(() => country.isEnabled(), Boolean, 'Profile is loaded');
@@ -28,9 +29,9 @@ export const v041Scenarios: Scenario[] = [{
       const review = page.locator('.document-card').getByRole('button', { name: /^(Revisar y aprobar|Review and approve|Ver|View)$/ }).first();
       await review.click();
       await eventually(() => page.locator('.focus-heading:focus').count(), (n) => n === 1, 'PDF heading receives focus');
-      await page.getByRole('button', { name: /^(Cambiar contenido del CV|Change resume content|Cerrar vista previa|Close preview)$/ }).click();
-      assert.equal(await page.locator('#resume-history').isVisible(), true);
-      assert.equal(await review.evaluate((button) => button === document.activeElement), true);
+      await page.getByRole('button', { name: /^(Cerrar vista previa|Close preview)$/ }).click();
+      await page.locator('#resume-history:visible').waitFor();
+      await eventually(() => review.evaluate((button) => button === document.activeElement), Boolean, 'Closing preview restores focus');
       await page.screenshot({ animations: 'disabled', path: join(artifacts, `v041-library-${locale}.png`) });
       await goTo(page, '/boards');
       await page.screenshot({ animations: 'disabled', path: join(artifacts, `v041-companies-${locale}.png`) });
