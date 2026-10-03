@@ -80,7 +80,9 @@ export function apiClient(context: BrowserContext, uiUrl: string, pace: () => Pr
   const request: APIRequestContext = context.request;
   const call = async <T>(method: string, path: string, data?: unknown): Promise<T> => {
     await pace();
-    const response = await request.fetch(`${uiUrl}/api/v1${path}`, { method, headers: { Origin: uiUrl, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(data === undefined ? {} : { data: JSON.stringify(data) }) });
+    // Fixture GETs may reuse a connection closed by the dev proxy. Playwright retries only ECONNRESET, not HTTP errors.
+    // Writes are never retried: repeating a successful mutation after a lost response could duplicate side effects.
+    const response = await request.fetch(`${uiUrl}/api/v1${path}`, { method, maxRetries: method === 'GET' ? 1 : 0, headers: { Origin: uiUrl, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(data === undefined ? {} : { data: JSON.stringify(data) }) });
     const body = await response.text();
     assert.ok(response.ok(), `${method} ${path} → ${response.status()} ${body.slice(0, 300)}`);
     return (body ? JSON.parse(body) : null) as T;
