@@ -19,6 +19,12 @@ Commercial forks, paid hosting and commercial reuse are not generally licensed. 
 
 The license applies to accompanying project-authored material. Historical v0.2.0 and earlier archives were published without a license; they have not been retagged. Publish a new tagged revision containing the community/license files before directing public users to a release archive. Do not imply a new tag means the runtime has been revalidated on new operating systems.
 
+## Dependency alerts to resolve before publication
+
+Enabling GitHub dependency alerts on 2026-10-03 exposed four open alerts: three high-severity entries for `drizzle-orm` (SQL identifier escaping; GitHub lists 0.45.2 as the first patched version) and one medium-severity entry for a transitive `esbuild` development-server issue (first patched version 0.25.0). Repeated Drizzle entries reflect dependency locations, not three distinct advisories.
+
+See the private [Dependabot alert queue](https://github.com/AldereteRuben/career-agent-stack/security/dependabot). This repository-configuration change does not update runtime dependencies or determine exploitability. Resolve or document these findings with an appropriate dependency upgrade and regression verification before making a public release. CI passing is not a vulnerability assessment.
+
 ## Controls pending publication
 
 GitHub rejected branch protection for this private repository on the current plan (HTTP 403). Fork contributor approval is public-only here (HTTP 422); private vulnerability reporting was unavailable (HTTP 404). These controls are **not active** yet. `CODEOWNERS` alone does not enforce review.
