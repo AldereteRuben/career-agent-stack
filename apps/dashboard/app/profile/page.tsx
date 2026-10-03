@@ -1,6 +1,10 @@
 'use client';
 
+import { useErrorFocus } from '@/lib/disclosure-focus';
+
 import Link from 'next/link';
+import { ApplicationPreparationAction } from '@/components/application-preparation';
+import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { useSearchParams } from 'next/navigation';
 import { ApplicationJourney } from '@/components/application-journey';
 import { ProfileEntryForm, type EntryInput, type ProfileEntry } from '@/components/profile-entry-form';
@@ -47,12 +51,17 @@ function CountryOptions({ current }: { current: string }) {
 function ProfileView() {
   const { locale } = useLocale(); const c = copy(locale);
   const params = useSearchParams(); const jobId = params.get('jobId'); const applicationId = params.get('applicationId');
+  const returnTo = searchOrigin(params.get('returnTo'));
   const journeyParams = new URLSearchParams(); if (jobId) journeyParams.set('jobId', jobId); if (applicationId) journeyParams.set('applicationId', applicationId);
-  const resumeHref = `/documents${journeyParams.size ? `?${journeyParams}` : ''}`;
+  const resumeHref = withSearchOrigin(`/documents${journeyParams.size ? `?${journeyParams}` : ''}`, returnTo);
   const [data, setData] = useState<Profile | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [busy, setBusy] = useState<string | null>(null); const [message, setMessage] = useState(''); const [error, setError] = useState('');
+  const errorFocus = useErrorFocus(error);
   const [form, setFormState] = useState<ProfileForm>(emptyForm); const formRef = useRef<ProfileForm>(emptyForm); const [dirty, setDirty] = useState(false); const dirtyRef = useRef(false);
   const [conflict, setConflict] = useState(false);
+  const [savedEntry, setSavedEntry] = useState<Fact | null>(null);
+  const savedEntryHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (savedEntry) savedEntryHeading.current?.focus(); }, [savedEntry]);
   const reviewList = useRef<HTMLDivElement>(null);
   const editHeading = useRef<HTMLHeadingElement>(null);
   const [editing, setEditing] = useState<(Fact & { revision: number }) | null>(null);
@@ -126,12 +135,20 @@ function ProfileView() {
     const snapshot = formRef.current; const base = data;
     // Keep the profile's region (en-GB, es-MX…) when it already matches the interface language.
     const profileLocale = base.locale?.toLowerCase().startsWith(locale) ? base.locale : locale;
-    await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Tus datos se han guardado.', 'Your details have been saved.'), { savedSnapshot: snapshot });
+    const saved = await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Tus datos se han guardado.', 'Your details have been saved.'), { savedSnapshot: snapshot });
+    if (saved) setSavedEntry(null);
   };
   const addFact = async (input: EntryInput) => {
-    const ok = await run('fact', () => api('/profile/facts', { method: 'POST', body: JSON.stringify({ ...input, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }) }), c('Dato guardado. Revísalo en la lista y pulsa Confirmar si es correcto.', 'Detail saved. Review it in the list and select Confirm if it is accurate.'));
-    if (ok) reviewList.current?.focus();
+    let saved: Fact | null = null;
+    const ok = await run('fact', async () => { saved = await api<Fact>('/profile/facts', { method: 'POST', body: JSON.stringify({ ...input, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }) }); }, c('Experiencia guardada. Revisa el texto a continuación.', 'Experience saved. Review the text below.'));
+    if (ok && saved) setSavedEntry(saved);
     return ok;
+  };
+  const confirmSavedEntry = async () => {
+    if (!savedEntry) return;
+    const entry = savedEntry;
+    const ok = await run(`fact:${entry.id}`, () => api(`/profile/facts/${entry.id}/approve`, { method: 'POST' }), c('Experiencia confirmada. Ya puedes usarla en tu CV.', 'Experience confirmed. You can now use it in your resume.'));
+    if (ok) setSavedEntry({ ...entry, approvalStatus: 'USER_APPROVED' });
   };
   const addAnswer = async (event: FormEvent) => {
     event.preventDefault();
@@ -139,12 +156,16 @@ function ProfileView() {
     const ok = await run('answer', () => api('/answers', { method: 'POST', body: JSON.stringify({ semanticKey, questionText: question.trim().slice(0, 500), jurisdiction, questionScope: 'job_application', value: answerValue.trim(), strategy: 'ASK_USER', approvalStatus: 'UNANSWERED' }) }), c('Respuesta guardada. Apruébala cuando hayas comprobado que es correcta.', 'Answer saved. Approve it once you have checked it is correct.'));
     if (ok) { setQuestion(''); setAnswerValue(''); }
   };
-  const reviewFact = (id: string, action: 'approve' | 'reject') => void run(`fact:${id}`, () => api(`/profile/facts/${id}/${action}`, { method: 'POST' }), action === 'approve' ? c('Dato confirmado. Ya puedes usarlo en tu CV.', 'Detail confirmed. You can now use it in your resume.') : c('Dato descartado.', 'Detail discarded.'));
+  const reviewFact = (id: string, action: 'approve' | 'reject') => {
+    void run(`fact:${id}`, () => api(`/profile/facts/${id}/${action}`, { method: 'POST' }), action === 'approve' ? c('Dato confirmado. Ya puedes usarlo en tu CV.', 'Detail confirmed. You can now use it in your resume.') : c('Dato descartado.', 'Detail discarded.')).then((ok) => { if (ok && savedEntry?.id === id) setSavedEntry(null); });
+  };
   const saveFactEdit = async (input: EntryInput) => {
     if (!editing) return false;
     const draft = editing;
-    const ok = await run(`edit:${draft.id}`, () => api(`/profile/facts/${draft.id}`, { method: 'PUT', body: JSON.stringify({ expectedRevision: draft.revision, fact: { ...input, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' } }) }), c('Corrección guardada. Revisa el texto y confírmalo para usarlo en nuevos CV. Los PDF anteriores se conservan.', 'Correction saved. Review and confirm it for use in new resumes. Earlier PDFs are preserved.'));
-    if (ok) { setEditing(null); reviewList.current?.focus(); }
+    let saved: Fact | null = null;
+    const ok = await run(`edit:${draft.id}`, async () => { saved = await api<Fact>(`/profile/facts/${draft.id}`, { method: 'PUT', body: JSON.stringify({ expectedRevision: draft.revision, fact: { ...input, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' } }) }); }, c('Corrección guardada. Confirma el texto a continuación.', 'Correction saved. Confirm the text below.'));
+    if (ok) { setEditing(null); if (saved) setSavedEntry(saved); }
+
     return ok;
   };
   const archiveFact = async (id: string) => {
@@ -168,14 +189,15 @@ function ProfileView() {
 
   return <WorkspaceGate><AppShell>
     <PageHeader eyebrow={c('PREPARA TU INFORMACIÓN', 'PREPARE YOUR DETAILS')} title={c('Mi perfil', 'My profile')} description={c('Empieza por tu nombre y correo. Después añade una experiencia que quieras incluir en tu CV.', 'Start with your name and email. Then add an experience you want to include in your resume.')}/>
-    <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile"/>
+    <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile" returnTo={returnTo}/>
     {loadState === 'ready' && <nav className="profile-shortcuts" aria-label={c('Secciones de tu perfil', 'Profile sections')}>
       <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a>
-      {canPrepareCv && <Link className="button button-primary" href={resumeHref}>{c('Continuar con mi CV', 'Continue to my resume')}</Link>}
+      {canPrepareCv && !jobId && <Link className="button button-primary" href={resumeHref}>{c('Continuar con mi CV', 'Continue to my resume')}</Link>}
     </nav>}
-    {error && <Notice tone="error" actions={conflict && <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button>}>{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error" actions={conflict && <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button>}>{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando tu perfil…', 'Loading your profile…')}</Notice>}
     {loadState === 'error' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load({ replaceForm: true }); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar tu perfil.', 'We could not load your profile.')}</Notice>}
+    {jobId && canPrepareCv && !savedEntry && <ApplicationPreparationAction disabled={hasDrafts || locked} jobId={jobId} applicationId={applicationId ?? undefined} returnTo={returnTo}/>}
     <div className="profile-layout"><div className="profile-main">
       <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2 id="profile-details" tabIndex={-1}>{c('Tus datos para el CV', 'Your resume details')}</h2><p>{c('El nombre y el correo aparecerán en los nuevos CV que generes.', 'Your name and email will appear on new resumes you generate.')}</p></div></div><Tag tone={dirty ? 'amber' : 'neutral'}>{dirty ? c('Cambios sin guardar', 'Unsaved changes') : c('Sin cambios pendientes', 'No unsaved changes')}</Tag></div>
         <form onSubmit={(event) => void saveProfile(event)} className="form-stack" aria-busy={saving('profile')}>
@@ -206,7 +228,13 @@ function ProfileView() {
       </Card>
 
       <Card className="form-card"><div id="experience" tabIndex={-1} className="form-heading"><div><span className="step-badge">02</span><div><h2>{c('Qué quieres contar en tu CV', 'What you want on your resume')}</h2><p>{c('Añade un empleo, un logro o un estudio cada vez. El texto que escribas se usará tal cual en tu CV.', 'Add one job, achievement, or qualification at a time. Your resume will use the text exactly as you write it.')}</p></div></div>{pendingFacts > 0 && <Tag tone="amber">{pendingFacts} {c('por confirmar', 'to confirm')}</Tag>}</div>
-        {!editing && <ProfileEntryForm busy={locked} onSave={addFact} onDirtyChange={setEntryDirty}/>}
+        {savedEntry && !editing && <section className="entry-review" aria-labelledby="entry-review-heading">
+          <h3 id="entry-review-heading" ref={savedEntryHeading} tabIndex={-1}>{savedEntry.approvalStatus === 'USER_APPROVED' ? c('Tu experiencia está lista', 'Your experience is ready') : c('Revisa cómo aparecerá en tu CV', 'Review how it will appear on your resume')}</h3>
+          <p className="entry-review-text">{savedEntry.statement}</p>
+          {savedEntry.approvalStatus !== 'USER_APPROVED' ? <><p>{c('Comprueba el puesto, las fechas y el texto. Confírmalo si es correcto.', 'Check the role, dates, and text. Confirm it if it is accurate.')}</p><div className="detail-actions"><Button disabled={locked || conflict} onClick={() => void confirmSavedEntry()}>{c('Confirmar experiencia', 'Confirm experience')}</Button><Button variant="secondary" disabled={locked || !data} onClick={() => { if (data) { setEditing({ ...savedEntry, revision: data.revision }); setSavedEntry(null); } }}>{c('Corregir texto', 'Edit entry')}</Button><Button variant="quiet" disabled={locked} onClick={() => setSavedEntry(null)}>{c('Revisar después', 'Review later')}</Button></div></> : <><p>{c('Usaremos esta información cuando prepares tu CV.', 'This information can now be used when preparing your resume.')}</p><div className="detail-actions">{canPrepareCv && !jobId && <Link className="button button-primary" href={resumeHref}>{c('Preparar mi CV', 'Prepare my resume')}</Link>}<Button variant="secondary" onClick={() => setSavedEntry(null)}>{c('Añadir otra experiencia', 'Add another experience')}</Button></div></>}
+          {savedEntry.approvalStatus === 'USER_APPROVED' && jobId && canPrepareCv && <ApplicationPreparationAction disabled={hasDrafts || locked} jobId={jobId} applicationId={applicationId ?? undefined} returnTo={returnTo}/>}
+        </section>}
+        {!editing && !savedEntry && <ProfileEntryForm busy={locked} onSave={addFact} onDirtyChange={setEntryDirty}/>}
         {editing && <div className="fact-edit"><h3 ref={editHeading} tabIndex={-1}>{c('Editar dato del CV', 'Edit resume detail')}</h3>
           {data?.revision !== editing.revision && <Notice tone="warning">{c('El perfil cambió mientras editabas. Conserva tu corrección y vuelve a abrir la entrada actual antes de guardar.', 'Your profile changed while editing. Keep your correction and reopen the current entry before saving.')}</Notice>}
           <ProfileEntryForm key={editing.id} initial={editing} busy={locked} blocked={data?.revision !== editing.revision} onSave={saveFactEdit} onCancel={() => { if (window.confirm(c('¿Descartar esta corrección?', 'Discard this correction?'))) { setEditing(null); reviewList.current?.focus(); } }}/>
@@ -214,7 +242,7 @@ function ProfileView() {
         <div className="fact-list" ref={reviewList} tabIndex={-1} aria-labelledby="saved-experience-heading"><h3 id="saved-experience-heading" tabIndex={-1}>{c('Lo que has guardado', 'What you have saved')}</h3><p className="muted-label">{c('Solo los textos confirmados estarán disponibles al preparar tu CV.', 'Only confirmed entries will be available when preparing your resume.')}</p>{data?.facts.length ? data.facts.map((item) => <div className="fact-row" key={item.id}>
           <div className="fact-marker">{item.approvalStatus === 'USER_APPROVED' ? '✓' : '·'}</div>
           <div className="fact-content"><div className="fact-meta"><span>{labelFor.factKind(item.kind, locale)}</span><Tag tone={item.approvalStatus === 'USER_APPROVED' ? 'green' : item.approvalStatus === 'REJECTED' ? 'red' : 'amber'}>{item.approvalStatus === 'REJECTED' ? c('ARCHIVADO', 'ARCHIVED') : labelFor.factApproval(item.approvalStatus, locale).toUpperCase()}</Tag></div><p style={{ whiteSpace: 'pre-wrap' }}>{item.statement}</p>{item.tags.length > 0 && <div className="tag-row">{item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</div>}</div>
-          <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked || editing !== null} onClick={() => { if (entryDirty && !window.confirm(c('Hay una entrada sin guardar. ¿Descartarla para editar esta?', 'There is an unsaved entry. Discard it to edit this one?'))) return; setEntryDirty(false); setEditing({ ...item, revision: data.revision }); setArchiving(null); }}>{c('Editar', 'Edit')}</Button>{item.approvalStatus === 'USER_APPROVED' && <Button variant="quiet" disabled={locked || editing !== null} onClick={() => setArchiving(item.id)}>{c('Archivar', 'Archive')}</Button>}
+          <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked || editing !== null} onClick={() => { if (entryDirty && !window.confirm(c('Hay una entrada sin guardar. ¿Descartarla para editar esta?', 'There is an unsaved entry. Discard it to edit this one?'))) return; setEntryDirty(false); setSavedEntry(null); setEditing({ ...item, revision: data.revision }); setArchiving(null); }}>{c('Editar', 'Edit')}</Button>{item.approvalStatus === 'USER_APPROVED' && <Button variant="quiet" disabled={locked || editing !== null} onClick={() => setArchiving(item.id)}>{c('Archivar', 'Archive')}</Button>}
           {item.approvalStatus === 'REJECTED' && <Button variant="secondary" disabled={locked || editing !== null} onClick={() => reviewFact(item.id, 'approve')}>{c('Restaurar y confirmar', 'Restore and confirm')}</Button>}</div>
           {archiving === item.id && <div className="fact-edit"><p>{c('¿Archivar este texto? Se conservará aquí y en los PDF anteriores, pero no estará disponible para nuevos CV.', 'Archive this entry? It will remain here and in earlier PDFs, but will not be available for new resumes.')}</p><Button variant="secondary" disabled={locked} onClick={() => void archiveFact(item.id)}>{c('Confirmar archivo', 'Confirm archive')}</Button> <Button variant="quiet" disabled={locked} onClick={() => setArchiving(null)}>{c('Cancelar', 'Cancel')}</Button></div>}
           {item.approvalStatus === 'SUGGESTED' && <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked} onClick={() => reviewFact(item.id, 'reject')}>{c('Descartar', 'Discard')}</Button><Button variant="secondary" disabled={locked} onClick={() => reviewFact(item.id, 'approve')}>{saving(`fact:${item.id}`) ? c('Guardando…', 'Saving…') : c('Confirmar', 'Confirm')}</Button></div>}
@@ -241,10 +269,10 @@ function ProfileView() {
       </Card></details>
     </div><aside className="profile-aside">
       <Card className="aside-card"><h3>{c('Tu progreso', 'Your progress')}</h3><details><summary>{c('Pasos para preparar tu CV', 'Steps to prepare your resume')}</summary><ol className="profile-checklist"><li>{c('Guarda tu nombre y correo.', 'Save your name and email.')}</li><li>{c('Añade al menos una experiencia y confirma que es correcta.', 'Add at least one experience and confirm it is accurate.')}</li><li>{c('Ve a Mis CV para elegir el contenido y generar el PDF.', 'Go to My resumes to choose the content and generate your PDF.')}</li></ol></details>
-        <p>{c(`${approvedFacts} textos listos para usar · ${pendingFacts} por confirmar`, `${approvedFacts} ${approvedFacts === 1 ? 'entry' : 'entries'} ready to use · ${pendingFacts} to confirm`)}</p>
+        <p>{c(`${approvedFacts} ${approvedFacts === 1 ? 'texto listo' : 'textos listos'} para usar · ${pendingFacts} por confirmar`, `${approvedFacts} ${approvedFacts === 1 ? 'entry' : 'entries'} ready to use · ${pendingFacts} to confirm`)}</p>
         {loadState === 'ready' && !canPrepareCv && <p className="muted-label">{c('Para continuar: guarda tu nombre y correo y confirma una experiencia.', 'To continue: save your name and email and confirm one experience.')}</p>}
       </Card>
-      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Tú autorizas el uso de tus datos de contacto al preparar un formulario.', 'Your profile is saved on this device. You authorize using your contact details when preparing a form.')}</p><small>{c('Tú revisas y envías cada solicitud desde la página de la empresa.', 'You review and submit each application on the employer website.')}</small></Card>
+      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Tú autorizas el uso de tus datos de contacto al preparar un formulario.', 'Your profile is saved on this device. You authorize using your contact details when preparing a form.')}</p><small>{c('Revisa tu candidatura y autoriza cada envío desde Mis solicitudes.', 'Review your application and authorize each submission from My applications.')}</small></Card>
     </aside></div>
   </AppShell></WorkspaceGate>;
 }

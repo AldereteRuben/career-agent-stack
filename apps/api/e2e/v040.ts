@@ -28,7 +28,10 @@ export const v040Scenarios: Scenario[] = [
       await page.getByLabel('Actualmente trabajo aquí', { exact: true }).check();
       await page.getByLabel('Describe tu experiencia o logro', { exact: true }).fill(`Texto original ${marker}`);
       await page.getByRole('button', { name: 'Añadir para revisar', exact: true }).click();
-      await page.locator('.fact-row').filter({ hasText: `Studio ${marker}` }).getByRole('button', { name: 'Confirmar', exact: true }).click();
+      await page.getByRole('heading', { name: 'Revisa cómo aparecerá en tu CV', exact: true }).waitFor();
+      assert.equal((await api.get<Profile>('/profile')).facts.find((fact) => fact.details?.organization === `Studio ${marker}`)?.approvalStatus, 'SUGGESTED', 'Saving experience does not confirm it automatically');
+      await page.getByRole('button', { name: 'Confirmar experiencia', exact: true }).click();
+      await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.details?.organization === `Studio ${marker}` && fact.approvalStatus === 'USER_APPROVED'), 'Immediate experience review confirms the saved entry');
       await page.locator('.fact-row').filter({ hasText: `Studio ${marker}` }).getByRole('button', { name: 'Editar', exact: true }).click();
       assert.equal(await page.getByLabel('Fecha de inicio', { exact: true }).inputValue(), '2020-01');
       assert.equal(await page.getByLabel('Empresa', { exact: true }).inputValue(), `Studio ${marker}`);

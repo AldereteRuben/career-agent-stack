@@ -4,5 +4,9 @@
 .card h2 { margin: 4px 0 0; }
 .card h3 { margin: 0 0 8px; font-size: 1rem; }
 .card ul { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
-.reason { display: block; color: var(--ink-muted); margin-top: 3px; }
+.reason { display: block; color: var(--muted); margin-top: 3px; }
 @media (max-width: 600px) { .actions > * { width: 100%; } }
+
+.card { min-width: 0; overflow-wrap: anywhere; }
+.actions > * { max-width: 100%; white-space: normal; }
+.card summary { cursor: pointer; font-weight: 600; padding-block: 10px; }

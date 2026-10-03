@@ -2,8 +2,9 @@
 
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
+import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage, formatDate } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
@@ -46,7 +47,9 @@ export default function HomePage() {
   const { t, locale } = useLocale();
   const c = copy(locale);
   const [summary, setSummary] = useState<Summary | null>(null); const [error, setError] = useState('');
-  useEffect(() => { api<Summary>('/summary').then(setSummary).catch((err) => setError(errorMessage(err))); }, []);
+  const load = useCallback(async () => { try { setSummary(await api<Summary>('/summary')); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  useLocalRefresh(load);
 
   const counts = summary?.applicationCounts ?? {};
   const totalApplications = Object.values(counts).reduce((sum, count) => sum + count, 0);
@@ -61,7 +64,7 @@ export default function HomePage() {
     const identityMissing = profileChecks.filter((check) => ['fullName', 'email'].includes(check.key) && missing.has(check.key));
     const preferencesMissing = profileChecks.filter((check) => ['targetTitles', 'workModes'].includes(check.key) && missing.has(check.key));
     const list = (checks: typeof profileChecks) => checks.map((check) => c(check.es, check.en).toLowerCase()).join(', ');
-    if (identityMissing.length) steps.push({ key: 'identity', href: '/start', icon: 'user', title: c('Completa tus datos básicos', 'Complete your basic details'), detail: c(`Falta: ${list(identityMissing)}.`, `Missing: ${list(identityMissing)}.`) });
+    if (identityMissing.length) steps.push({ key: 'identity', href: '/profile', icon: 'user', title: c('Completa tus datos básicos', 'Complete your basic details'), detail: c(`Falta: ${list(identityMissing)}.`, `Missing: ${list(identityMissing)}.`) });
     if (preferencesMissing.length) steps.push({ key: 'preferences', href: '/profile', icon: 'search', title: c('Indica qué buscas', 'Say what you are looking for'), detail: c(`Falta: ${list(preferencesMissing)}. Así podemos valorar el encaje de cada oferta.`, `Missing: ${list(preferencesMissing)}. This is how job fit is assessed.`) });
     if (missing.has('approvedFact')) steps.push(summary.pendingFacts > 0
       ? { key: 'first-fact', href: '/profile#saved-experience-heading', icon: 'check', title: c('Confirma tu primera experiencia', 'Confirm your first experience'), detail: summary.pendingFacts === 1 ? c('Tienes 1 dato por confirmar esperando tu revisión.', 'You have 1 detail to confirm waiting for review.') : c(`Tienes ${summary.pendingFacts} datos por confirmar esperando tu revisión.`, `You have ${summary.pendingFacts} details to confirm waiting for review.`) }
@@ -70,6 +73,8 @@ export default function HomePage() {
     if (summary.unansweredItems > 0) steps.push({ key: 'answers', href: '/profile', icon: 'file', title: summary.unansweredItems === 1 ? c('Responde 1 pregunta pendiente', 'Answer 1 open question') : c(`Responde ${summary.unansweredItems} preguntas pendientes`, `Answer ${summary.unansweredItems} open questions`), detail: c('Son datos que solo tú puedes confirmar.', 'Only you can confirm these details.') });
     if (needsReview > 0) steps.push({ key: 'applications', href: '/applications', icon: 'briefcase', title: needsReview === 1 ? c('1 solicitud necesita revisión', '1 application needs review') : c(`${needsReview} solicitudes necesitan revisión`, `${needsReview} applications need review`), detail: c('Confirma su estado para mantener el seguimiento al día.', 'Confirm their status to keep your tracker accurate.') });
     if (summary.savedSearchCount === 0) steps.unshift({ key: 'first-job', href: '/searches', icon: 'search', title: c('Encuentra ofertas automáticamente', 'Find jobs automatically'), detail: c('Indica un puesto o una empresa. Guardaremos las coincidencias y repetiremos tu búsqueda con la frecuencia que elijas.', 'Enter a role or company. We will save matches and repeat your search at your chosen interval.') });
+    if (summary.savedSearchCount > 0 && summary.totalJobs === 0) steps.unshift({ key: 'adjust-search', href: '/searches', icon: 'search', title: summary.activeSearchCount === 0 ? c('Reanuda una búsqueda para encontrar ofertas', 'Resume a search to find jobs') : c('Revisa tu búsqueda para encontrar coincidencias', 'Review your search to find matches'), detail: c('Todavía no hay ofertas guardadas. Revisa el estado de la consulta y prueba palabras más amplias si no hay coincidencias.', 'There are no saved jobs yet. Check the search status and try broader keywords if there are no matches.') });
+    if (summary.savedSearchCount > 0 && summary.totalJobs > 0 && summary.activeApplications === 0) steps.unshift({ key: 'choose-job', href: '/searches', icon: 'search', title: c('Elige una oferta para preparar tu solicitud', 'Choose a job to prepare your application'), detail: c('Abre una oferta que te interese. Te pediremos solo los datos que falten para preparar tu CV.', 'Open a job that interests you. We will only ask for the details needed to prepare your resume.') });
     if (summary.approvedSourceCount === 0) steps.push(summary.boardCount
       ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Confirma la página de una empresa', 'Confirm a company careers page'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar ofertas.', 'You have sources added, but none approved for job discovery yet.') }
       : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir ofertas de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
@@ -97,19 +102,17 @@ export default function HomePage() {
       <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
       <h2>{primaryStep?.title ?? c('Elige una oferta que te interese', 'Choose a job you are interested in')}</h2>
       <p>{primaryStep?.detail ?? c('Abre una oferta guardada para preparar tu CV o empezar a seguir tu solicitud.', 'Open a saved job to prepare your resume or start tracking your application.')}</p>
-      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href === '/searches' ? c('Crear mi búsqueda', 'Create my search') : primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
+      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.key === 'choose-job' ? c('Ver mis ofertas encontradas', 'View my matching jobs') : primaryStep?.key === 'adjust-search' ? c('Revisar mi búsqueda', 'Review my search') : primaryStep?.href === '/searches' ? c('Crear mi búsqueda', 'Create my search') : primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
       <p className="muted-label">{c('Puedes buscar empleo sin completar tu perfil. Tus datos confirmados se necesitan para preparar candidaturas.', 'You can search for jobs before completing your profile. Confirmed details are needed to prepare applications.')}</p>
     </Card>}
-    <div className="home-automation-actions"><ButtonLink href="/searches" variant="secondary">{c('Mis búsquedas automáticas', 'My automatic searches')}</ButtonLink><ButtonLink href="/preparations" variant="secondary">{c('Candidaturas preparadas', 'Prepared applications')}</ButtonLink></div>
     <section className="search-guide" aria-labelledby="search-guide-heading">
       <h2 id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</h2>
       <ol className="journey-grid">
         {[
-          { href: '/profile', title: c('Cuenta tu experiencia', 'Add your experience'), detail: c('Guarda tus datos y los logros que quieres incluir en tu CV.', 'Save your details and the achievements you want on your resume.') },
-          { href: '/searches', title: c('Activa tu búsqueda', 'Start your search'), detail: c('Indica qué buscas y cada cuánto quieres recibir nuevas coincidencias.', 'Choose what you are looking for and how often to find new matches.') },
-          { href: '/preparations', title: c('Revisa lo preparado', 'Review prepared applications'), detail: c('La preparación automática usa tus datos confirmados. Revisa el CV antes de autorizar su envío.', 'Automatic preparation uses your confirmed details. Review the resume before authorizing submission.') },
-          { href: '/applications', title: c('Solicita el puesto y anótalo', 'Apply and track it'), detail: c('Autoriza una postulación compatible o continúa en la página de la empresa. Consulta el resultado aquí.', 'Authorize a supported application or continue on the company website. Track the result here.') },
-        ].map((step, index) => <li key={step.href}><Link href={step.href}><span className="step-badge" aria-hidden="true">{index + 1}</span><strong>{step.title}</strong><span>{step.detail}</span></Link></li>)}
+          { href: '/searches', title: c('Busca empleo', 'Find jobs'), detail: c('Indica un puesto o empresa. La app guardará ofertas y repetirá la búsqueda por ti.', 'Enter a role or company. The app saves jobs and repeats the search for you.') },
+          { href: '/searches', title: c('Prepara tu solicitud', 'Prepare your application'), detail: c('Abre una oferta que te interese. Completa lo que falte y deja que la app prepare un CV.', 'Open a job that interests you. Add any missing details and let the app prepare a resume.') },
+          { href: '/applications?view=review', title: c('Revisa y envía', 'Review and submit'), detail: c('Revisa el CV y autoriza el envío cuando esté disponible, o continúa en la página de la empresa.', 'Review the resume and authorize submission where supported, or continue on the employer’s website.') },
+        ].map((step, index) => <li key={step.title}><Link href={step.href}><span className="step-badge" aria-hidden="true">{index + 1}</span><strong>{step.title}</strong><span>{step.detail}</span></Link></li>)}
       </ol>
     </section>
 
@@ -169,7 +172,7 @@ export default function HomePage() {
         {summary?.recentJobs.length ? <ul className="row-list">{summary.recentJobs.map((job) => <li key={job.id}><Link href={`/jobs/${job.id}`} className="list-row">
           <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
           <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
-          {job.fitScore !== null && <span className="row-score">{job.provisional ? c(`Encaje provisional ${job.fitScore}`, `Provisional fit ${job.fitScore}`) : c(`Encaje ${job.fitScore}`, `Fit ${job.fitScore}`)}</span>}
+          {job.fitScore !== null && <span className="row-score">{job.provisional ? c('Encaje por valorar', 'Fit not yet assessed') : c(`Encaje ${job.fitScore}`, `Fit ${job.fitScore}`)}</span>}
           <Tag tone={job.eligibility === 'PASS' ? 'green' : job.eligibility === 'FAIL' ? 'red' : 'amber'}>{labelFor.eligibility(job.eligibility, locale)}</Tag>
         </Link>{job.searchSources?.map((source) => <small key={source.url}>{c('Fuente: ', 'Source: ')}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}</a></small>)}</li>)}</ul>
           : !loading && <Empty title={t('Tu lista aún está en blanco')} detail={c('Guarda una búsqueda para encontrar ofertas de las fuentes integradas.', 'Save a search to find jobs from the integrated sources.')} action={<Link href="/searches" className="text-link">{c('Ir a buscar empleo', 'Find jobs')} <Icon name="arrow" size={16}/></Link>}/>}

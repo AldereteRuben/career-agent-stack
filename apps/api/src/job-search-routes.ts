@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, desc, eq } from 'drizzle-orm';
-import { db, jobs, jobSearchSources, savedJobSearches, savedJobSearchMatches } from '@career/db';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { db, jobs, jobSearchProviderCache, jobSearchSources, savedJobSearches, savedJobSearchMatches } from '@career/db';
 import { type JobSearchInput, type OnPrepare, JobSearchError, matchesSearch, processPendingJobPreparations, refreshSavedJobSearch } from './job-search.js';
 import { MAX_ARBEITNOW_PAGES, PROVIDERS, type PublicJob, type SearchWorkMode } from './job-search-sources.js';
 
@@ -47,8 +47,11 @@ function error(reply: { code: (status: number) => { send: (body: unknown) => unk
 export function registerJobSearchRoutes(app: FastifyInstance, workspace: (request: FastifyRequest) => string, onPrepare?: OnPrepare) {
   app.get('/api/v1/job-searches', async (request) => {
     const workspaceId = workspace(request);
-    const rows = await db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, workspaceId)).orderBy(asc(savedJobSearches.createdAt));
-    return { searches: rows, coverage: { providers: PROVIDERS, maxRefreshesPerProviderPerDay: 4, remotiveMaxRequestsPerDay: 4, arbeitnowMaxPagesPerRefresh: MAX_ARBEITNOW_PAGES, cacheHours: 6, sources: 'Public listings from Remotive and Arbeitnow; no employer links or API keys are required.' } };
+    const [rows, feeds] = await Promise.all([
+      db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, workspaceId)).orderBy(asc(savedJobSearches.createdAt)),
+      db.select({ provider: jobSearchProviderCache.provider, listings: sql<number>`jsonb_array_length(${jobSearchProviderCache.payload})`, coverage: jobSearchProviderCache.coverage, fetchedAt: jobSearchProviderCache.fetchedAt, lastError: jobSearchProviderCache.lastError }).from(jobSearchProviderCache),
+    ]);
+    return { searches: rows, coverage: { providers: PROVIDERS, feeds, maxRefreshesPerProviderPerDay: 4, remotiveMaxRequestsPerDay: 4, arbeitnowMaxPagesPerRefresh: MAX_ARBEITNOW_PAGES, cacheHours: 6, sources: 'Public listings from Remotive and Arbeitnow; no employer links or API keys are required.' } };
   });
 
   app.post('/api/v1/job-searches', async (request, reply) => {

@@ -41,7 +41,17 @@ export const recruitmentStages: LabelMap = {
 };
 export const recruitmentStageOrder = Object.keys(recruitmentStages);
 
+export function applicationStage(stage: string | undefined, state: string, locale: Locale) {
+  if (stage === 'NO_RESPONSE' && state !== 'CONFIRMED') return pick(locale, { es: 'Aún sin contacto', en: 'No contact yet' });
+  return label(recruitmentStages, stage, locale);
+}
+
 export const applicationEvents: LabelMap = {
+  PREPARATION_CREATED: { es: 'Preparación de la candidatura revisada', en: 'Application preparation checked' },
+  APPLICATION_RESUME_SELECTED: { es: 'CV elegido para la solicitud', en: 'Application resume selected' },
+  ASSIST_SUBMISSION_AUTHORIZED: { es: 'Envío autorizado', en: 'Submission authorized' },
+  ASSIST_SUBMISSION_CONFIRMED: { es: 'Envío confirmado', en: 'Submission confirmed' },
+  ASSIST_SUBMISSION_UNKNOWN: { es: 'Resultado del envío por comprobar', en: 'Submission outcome needs checking' },
   ASSIST_BROWSER_LOST: { es: 'Ventana cerrada: resultado por comprobar', en: 'Window closed: outcome needs checking' },
   ASSIST_PREPARED: { es: 'Solicitud preparada', en: 'Assisted application prepared' },
   ASSIST_CONSENT_GRANTED: { es: 'Autocompletado autorizado', en: 'Autofill authorized' },

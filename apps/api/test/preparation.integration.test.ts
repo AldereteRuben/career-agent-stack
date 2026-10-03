@@ -55,6 +55,8 @@ describe('evidence-based application preparation with a disposable database', { 
       const post = (locale = 'en') => app.inject({ method: 'POST', url: '/api/v1/preparations', headers: { 'x-workspace': workspace }, payload: { jobId, locale } });
       const missingProfile = await post(); assert.equal(missingProfile.statusCode, 200); assert.equal(missingProfile.json().status, 'NEEDS_REVIEW'); assert.ok(missingProfile.json().gaps.includes('PROFILE_REQUIRED'));
       const applicationId = missingProfile.json().applicationId as string;
+      const queueItem = async () => (await app.inject({ url: '/api/v1/preparations', headers: { 'x-workspace': workspace } })).json()[0];
+      assert.equal((await queueItem()).queueState, 'NEEDS_DETAILS');
       await client.query("insert into profile_versions(id,workspace_id,revision,locale,profile) values($1,$2,1,'en-GB',$3)", [randomUUID(), workspace, { identity: { fullName: 'Fictional Candidate', email: 'candidate@example.test' } }]);
       const profileId = (await client.query('select id from profile_versions where workspace_id = $1', [workspace])).rows[0].id as string;
       await client.query("insert into answer_versions(workspace_id,semantic_key,jurisdiction,question_scope,question_text,value,strategy,approval_status,revision) values($1,'java_experience','ES','java.api_testing','Have you tested Java APIs?',$2,'stored','USER_APPROVED',1)", [workspace, JSON.stringify('yes')]);
@@ -64,6 +66,7 @@ describe('evidence-based application preparation with a disposable database', { 
       await client.query("update profile_facts set approval_status = 'USER_APPROVED', approved_at = now() where id = $1", [factId]);
       const preparedResponse = await post(); const prepared = preparedResponse.json(); assert.equal(prepared.status, 'PREPARED'); assert.equal(prepared.applicationId, applicationId); assert.ok(prepared.documentId);
       const firstDocument = prepared.documentId as string;
+      assert.equal((await queueItem()).queueState, 'REVIEW_DOCUMENT');
       assert.equal(prepared.answerSuggestions[0].provenance.startsWith('Approved stored answer'), true);
       const repeated = (await post()).json(); assert.equal(repeated.documentId, firstDocument); assert.equal(repeated.applicationId, applicationId);
       assert.equal((await client.query('select count(*)::int as n from applications where workspace_id = $1 and job_id = $2', [workspace, jobId])).rows[0].n, 1);
@@ -88,10 +91,14 @@ describe('evidence-based application preparation with a disposable database', { 
 
       for (const state of ['CONFIRMED', 'UNKNOWN', 'CANCELLED']) {
         await client.query('update applications set state = $1 where id = $2', [state, applicationId]);
+        const current = await queueItem();
+        assert.equal(current.queueState, state === 'CONFIRMED' ? 'SUBMITTED' : state === 'UNKNOWN' ? 'UNCERTAIN' : 'CLOSED');
+        assert.equal(current.needsAttention, state === 'UNKNOWN'); assert.equal(current.canPrepare, false);
         const protectedResult = (await post('es')).json(); assert.equal(protectedResult.status, 'BLOCKED'); assert.equal(protectedResult.reason, 'APPLICATION_CLOSED_OR_UNCERTAIN');
       }
       await client.query("update applications set state = 'REVIEW_REQUIRED' where id = $1", [applicationId]);
       await client.query("update document_versions set approval_status = 'USER_APPROVED' where id = $1", [spanish.documentId]);
+      assert.equal((await queueItem()).queueState, 'READY');
       const preserved = (await post('en')).json(); assert.equal(preserved.status, 'BLOCKED'); assert.equal(preserved.reason, 'USER_SELECTED_DOCUMENT_PRESERVED'); assert.equal(preserved.applicationId, applicationId);
     } finally { await app.close(); }
   });

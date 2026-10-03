@@ -174,7 +174,7 @@ export default function BoardsPage() {
         </Card>;
       })}
       {loadState === 'ready' && !boards.length && <Card className="jobs-empty"><Empty title={c('Aún no sigues empresas', 'No followed companies yet')} detail={c('Añade una empresa para consultar sus ofertas cuando quieras. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Add a company to check its jobs when you choose. You can also add a job directly in Saved jobs.')}/></Card>}
-      <div className="refresh-policy">{c('Puedes consultar manualmente cada empresa o activar la búsqueda automática arriba. Dejamos al menos seis horas entre consultas; los reintentos pueden tardar más.', 'Check each company manually or turn on automatic search above. Checks are at least six hours apart; retries may take longer.')}</div>
+      <div className="refresh-policy">{c('Puedes consultar manualmente cada empresa o activar las consultas de empresas arriba. Dejamos al menos seis horas entre consultas; los reintentos pueden tardar más.', 'Check each company manually or turn on company checks above. Checks are at least six hours apart; retries may take longer.')}</div>
     </div>
     <aside className="add-board-aside">
       <Card className="form-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 id="follow-company-heading" ref={formHeading} tabIndex={-1}>{c('Seguir una empresa', 'Follow a company')}</h2><p>{c('Necesitas dos enlaces: la página de empleo de la empresa y una oferta publicada desde ella.', 'You need two links: the company careers page and a job listed on it.')}</p></div></div></div>

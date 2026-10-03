@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, unlink } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { applications, applicationEvents, db, documentVersions, jobSnapshots, jobs, profileFacts, profileVersions } from '@career/db';
 import { documentLanguage, printedResumeIdentity, printedStatement, readIdentity } from '@career/domain';
 import { config } from './config.js';
+import { documentReadiness } from './document-reuse.js';
 import { renderResume } from './document-renderer.js';
 import { applicationPreparationBlockReason, findPriorPreparationResult, preparationGaps, preparationKey, selectRelevantPreparationFacts } from './preparation-domain.js';
 import { latestAnswers, lockKey, profileLockKey } from './workspace-data.js';
@@ -134,12 +135,60 @@ export function registerPreparationRoutes(app: FastifyInstance, workspace: (requ
   });
   app.get('/api/v1/preparations', async (request) => {
     const id = workspace(request);
-    const rows = await db.select({ event: applicationEvents, application: applications, job: jobs }).from(applicationEvents)
+    // Select the latest event per application before projecting current state. Repeated
+    // preparation attempts must not crowd other applications out of the review queue.
+    const rows = await db.selectDistinctOn([applicationEvents.applicationId], { event: applicationEvents, application: applications, job: jobs }).from(applicationEvents)
       .innerJoin(applications, and(eq(applications.id, applicationEvents.applicationId), eq(applications.workspaceId, id)))
       .leftJoin(jobs, and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, id)))
-      .where(and(eq(applicationEvents.workspaceId, id), eq(applicationEvents.eventType, 'PREPARATION_CREATED'))).orderBy(desc(applicationEvents.createdAt)).limit(200);
-    const latest = new Map<string, PreparationResult>();
-    for (const row of rows) if (row.event.evidence?.result && !latest.has(row.application.id)) latest.set(row.application.id, row.event.evidence.result as PreparationResult);
-    return [...latest.values()].map((result) => ({ ...result, company: rows.find((row) => row.application.id === result.applicationId)?.job?.company ?? '', title: rows.find((row) => row.application.id === result.applicationId)?.job?.title ?? '' }));
+      .where(and(eq(applicationEvents.workspaceId, id), eq(applicationEvents.eventType, 'PREPARATION_CREATED')))
+      .orderBy(applicationEvents.applicationId, desc(applicationEvents.createdAt), desc(applicationEvents.id));
+    const documentIds = [...new Set(rows.flatMap(({ application }) => application.documentId ? [application.documentId] : []))];
+    const [documents, profile] = await Promise.all([
+      documentIds.length ? db.select().from(documentVersions).where(and(eq(documentVersions.workspaceId, id), inArray(documentVersions.id, documentIds))) : Promise.resolve([]),
+      db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)).orderBy(desc(profileVersions.revision)).limit(1),
+    ]);
+    const ready = new Map((await documentReadiness(db, id, documents)).map((doc) => [doc.id, doc]));
+    const jobIds = [...new Set(rows.flatMap(({ application }) => application.jobId ? [application.jobId] : []))];
+    const [facts, snapshots, answers] = await Promise.all([
+      profile[0] ? db.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, id), eq(profileFacts.profileVersionId, profile[0].id))) : Promise.resolve([]),
+      jobIds.length ? db.selectDistinctOn([jobSnapshots.jobId]).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), inArray(jobSnapshots.jobId, jobIds))).orderBy(jobSnapshots.jobId, desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)) : Promise.resolve([]),
+      latestAnswers(db, id),
+    ]);
+    const snapshotByJob = new Map(snapshots.map((snapshot) => [snapshot.jobId, snapshot]));
+    const identity = readIdentity(profile[0]?.profile ?? {});
+
+    return rows.sort((a, b) => b.event.createdAt.getTime() - a.event.createdAt.getTime()).flatMap(({ event, application, job }) => {
+      const result = event.evidence?.result as PreparationResult | undefined;
+      if (!result) return [];
+      const doc = application.documentId ? ready.get(application.documentId) : undefined;
+      const sameDocument = doc?.id === result.documentId;
+      const currentProfile = result.profileRevisionId === profile[0]?.id;
+      const snapshot = application.jobId ? snapshotByJob.get(application.jobId) : undefined;
+      const jobText = `${snapshot?.title ?? job?.title ?? application.role}\n${snapshot?.descriptionText ?? ''}`;
+      const selected = selectRelevantPreparationFacts(facts, jobText, asLocale(profile[0]?.locale));
+      const currentGaps = preparationGaps({ profileExists: Boolean(profile[0]), fullName: identity.fullName, email: identity.email, factCount: selected.length, jobTextAvailable: Boolean(snapshot?.title || job?.title || application.role) });
+      const queueState = application.state === 'CONFIRMED' ? 'SUBMITTED'
+        : application.state === 'UNKNOWN' ? 'UNCERTAIN'
+        : application.state === 'IN_PROGRESS' ? 'IN_PROGRESS'
+        : application.state === 'CANCELLED' || closedStages.includes(application.recruitmentStage) ? 'CLOSED'
+        : job?.availability === 'CLOSED' ? 'JOB_CLOSED'
+        : doc?.assistReady ? 'READY'
+        : doc?.reviewReady ? 'REVIEW_DOCUMENT'
+        : doc ? 'STALE_DOCUMENT'
+        : currentGaps.length ? 'NEEDS_DETAILS' : 'NEEDS_PREPARATION';
+      const needsAttention = !['SUBMITTED', 'CLOSED', 'IN_PROGRESS', 'JOB_CLOSED'].includes(queueState);
+      const canPrepare = !['CONFIRMED', 'UNKNOWN', 'IN_PROGRESS', 'CANCELLED'].includes(application.state)
+        && !closedStages.includes(application.recruitmentStage) && job?.availability !== 'CLOSED'
+        && (!application.documentId || Boolean(sameDocument && doc?.approvalStatus === 'PENDING_REVIEW'));
+      return [{ ...result, status: ['SUBMITTED', 'CLOSED', 'IN_PROGRESS', 'UNCERTAIN', 'JOB_CLOSED'].includes(queueState) ? 'BLOCKED' : doc?.assistReady || doc?.reviewReady ? 'PREPARED' : 'NEEDS_REVIEW', applicationId: application.id, jobId: application.jobId ?? result.jobId,
+        documentId: application.documentId, company: job?.company ?? application.company, title: job?.title ?? application.role,
+        queueState, needsAttention, canPrepare, applicationState: application.state,
+        // Stored facts explain the old generation; they must not describe a different linked PDF.
+        selectedFacts: !doc || !sameDocument ? [] : result.selectedFacts,
+        answerSuggestions: currentProfile && sameDocument ? result.answerSuggestions.filter((suggestion) => answers.some((answer) => answer.id === suggestion.answerId && answer.approvalStatus === 'USER_APPROVED' && JSON.stringify(answer.value) === JSON.stringify(suggestion.value))) : [],
+        gaps: doc || !needsAttention ? [] : currentGaps,
+        reason: undefined,
+      }];
+    });
   });
 }

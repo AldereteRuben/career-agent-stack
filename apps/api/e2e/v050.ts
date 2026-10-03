@@ -9,7 +9,7 @@ export const v050Scenarios: Scenario[] = [{
   name: 'v050-first-resume-guide-and-conflict-recovery',
   async run({ page, api, marker, artifacts, allowConsole }) {
     allowConsole(/409|500|Failed to load resource|Internal Server Error|Conflict/i);
-    await goTo(page, '/start'); await setLocale(page, 'es');
+    await goTo(page, '/profile/setup'); await setLocale(page, 'es');
     const name = page.getByLabel('Nombre', { exact: true }); const email = page.getByLabel('Correo', { exact: true });
     await name.fill(`Guide ${marker}`); await email.fill('guide@example.com');
     await page.reload(); await name.waitFor();
@@ -28,7 +28,7 @@ export const v050Scenarios: Scenario[] = [{
     await page.getByRole('link', { name: 'Añadir mi primera experiencia' }).click();
     await page.waitForURL(/\/profile#experience$/);
     const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Guide achievement ${marker}`, tags: [] });
-    await goTo(page, '/start');
+    await goTo(page, '/profile/setup');
     await page.getByRole('link', { name: 'Revisar mi experiencia' }).waitFor();
     await api.post(`/profile/facts/${fact.id}/approve`);
     await page.reload(); await page.getByRole('heading', { name: 'Ya puedes preparar tu PDF' }).waitFor();

@@ -81,3 +81,13 @@ test('parses retry-after seconds and dates with a 48 hour cap', () => {
   assert.equal(parseRetryAfter('2026-10-03T02:00:00Z', now), now + 7_200_000);
   assert.equal(parseRetryAfter('999999', now), now + 48 * 60 * 60 * 1000);
 });
+
+
+test('escaped feed HTML becomes readable paragraphs and lists without executable content', () => {
+  const html = '<p>Design &amp; quality</p><ul><li>First requirement</li><li>Second requirement</li></ul><script>secret()</script>';
+  const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  for (const description of [html, escape(html), escape(escape(html))]) {
+    const [job] = normalizePublicJobs('remotive', { jobs: [{ ...remotiveFixture.jobs[0], description }] });
+    assert.equal(job?.description, 'Design & quality\n\n• First requirement\n• Second requirement');
+  }
+});
