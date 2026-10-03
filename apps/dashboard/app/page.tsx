@@ -2,6 +2,7 @@
 
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
+import { DiscoveryPanel } from '@/components/discovery-panel';
 import { useEffect, useState } from 'react';
 import { api, errorMessage, formatDate } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
@@ -122,6 +123,7 @@ export default function HomePage() {
       </ul>
     </section>
 
+    <DiscoveryPanel compact/>
     <div className="home-grid">
       <Card className="home-panel">
         <div className="panel-heading"><h2>{c('Otros pendientes y opciones', 'Other tasks and options')}</h2></div>

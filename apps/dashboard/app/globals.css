@@ -3189,3 +3189,26 @@ main:focus {
 
 /* v0.5.3: the resume linked to the application in context. */
 .linked-resume-label { display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--green); font-weight: 600; font-size: var(--text-sm); }
+
+/* Automatic discovery uses the same controls at desktop and narrow widths. */
+.discovery-panel { margin-block: 1.25rem; padding: 24px; min-width: 0; overflow-wrap: anywhere; }
+.discovery-panel a:not(.button) { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+.discovery-panel .panel-heading { flex-wrap: wrap; gap: .75rem; }
+.discovery-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-block: 1rem; }
+.discovery-actions > * { max-width: 100%; white-space: normal; }
+.discovery-details { margin-top: 1rem; }
+.discovery-details ul { list-style: none; padding: 0; }
+.discovery-details li { border-top: 1px solid var(--border, #dfe4df); padding-block: .8rem; overflow-wrap: anywhere; }
+.discovery-details p { margin-block: .35rem; }
+.board-collection { grid-template-columns: minmax(0, 1fr); }
+.board-collection > * { min-width: 0; }
+.board-card-head { flex-wrap: wrap; }
+.board-brand { flex: none; }
+.board-company { flex: 1 1 140px; overflow-wrap: anywhere; }
+.board-actions { flex-wrap: wrap; }
+.board-actions .button { max-width: 100%; white-space: normal; padding-block: 10px; }
+@media (max-width: 480px) {
+  .discovery-panel { padding: 18px; }
+  .discovery-actions { align-items: stretch; }
+  .discovery-actions .button { width: 100%; padding-block: 10px; }
+}

@@ -4,7 +4,7 @@ Your private workspace to organize a job search: keep your career profile, save 
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.5.3** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#053)
+**Current release: v0.6.0** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#060)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -22,6 +22,15 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
 No AI subscription or API key is required. The app offers **experimental Lever contact-field autofill** in a visible browser with explicit consent. You attach files, complete questions and submit manually. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
+
+## Automatic job search
+
+1. In **Companies I follow**, add and confirm the companies you want to check.
+2. Select **Turn on automatic search**. The default is paused, including when upgrading from before v0.6 or restoring a backup.
+3. Keep the local service running. You can close the browser tab; stopping the service or putting the computer to sleep stops checks until it resumes.
+4. Open **Review new jobs** on Home. Jobs are ordered by profile fit; open one and choose **Mark as reviewed** when finished. It remains in Active jobs.
+
+Checks run about every six hours per company. The activity panel shows results, failures and the next check. Pause any time; an in-progress check may finish. Restarts catch up once rather than replaying every missed interval. Failed checks back off and respect the source's retry window. Only confirmed company boards are queried; your CV is not transmitted. See [operation and limits](docs/operations/automatic-discovery.md).
 
 ## Assisted applications
 

@@ -3,6 +3,7 @@
 import { useDisclosureFocus } from '@/lib/disclosure-focus';
 
 import Link from 'next/link';
+import { DiscoveryPanel } from '@/components/discovery-panel';
 import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
@@ -12,7 +13,7 @@ import { getOfficialDomain, parseJobBoardUrl } from '@/lib/board-url';
 import { useLocale } from '@/lib/i18n';
 import { copy, labelFor, timeUntil } from '@/lib/labels';
 
-type Board = { id: string; provider: string; tenant: string; region: string; companyName: string; companyDomain: string; careersUrl: string; associationStatus: string; permissionStatus: string; enabled: boolean; reviewedAt: string | null; reviewDueAt: string | null; lastSuccessfulRefreshAt: string | null };
+type Board = { id: string; provider: string; tenant: string; region: string; companyName: string; companyDomain: string; careersUrl: string; associationStatus: string; permissionStatus: string; enabled: boolean; reviewedAt: string | null; reviewDueAt: string | null; lastSuccessfulRefreshAt: string | null; nextRunAt: string | null };
 type BoardStatus = 'active' | 'needs-confirmation' | 'expired' | 'off';
 const providers: Record<string, { label: string; reference: string }> = {
   greenhouse: { label: 'Greenhouse', reference: 'https://docs.greenhouse.io/job-board.html' },
@@ -49,8 +50,8 @@ export default function BoardsPage() {
     catch (err) { setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  // Keeps the cooldown countdown honest without polling the API.
-  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(timer); }, []);
+  // Automatic runs can finish while this page is open; refresh their persisted cooldown too.
+  useEffect(() => { const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 30_000); return () => window.clearInterval(timer); }, [load]);
 
   const begin = (key: string) => { setBusy(key); setError(''); setMessage(''); setCardErrors((current) => { const next = { ...current }; delete next[key]; return next; }); };
   const cardFail = (id: string, err: unknown) => setCardErrors((current) => ({ ...current, [id]: errorMessage(err) }));
@@ -113,15 +114,15 @@ export default function BoardsPage() {
     <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in Saved jobs.')}/>
     {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar este formulario. Añade la empresa antes de salir para no perderlo.', 'We could not preserve this form. Add the company before leaving to keep it.')}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message} {activeCount > 0 && <Link href="/jobs">{c('Ver ofertas', 'See jobs')}</Link>}</Notice>}
-    <div className="source-policy-banner"><span className="source-policy-icon"><Icon name="shield" size={19}/></span><div><strong>{c('Solo lectura', 'Read-only')}</strong><p>{c('Seguir una empresa nunca permite a esta app rellenar o enviar formularios.', 'Adding a source never lets this app fill in or submit forms.')}</p></div><Tag tone="green">{c('SIN ENVÍOS', 'NO SUBMISSIONS')}</Tag></div>
+    <DiscoveryPanel revision={JSON.stringify(boards)}/><div className="source-policy-banner"><span className="source-policy-icon"><Icon name="shield" size={19}/></span><div><strong>{c('Solo lectura', 'Read-only')}</strong><p>{c('Seguir una empresa nunca permite a esta app rellenar o enviar formularios.', 'Adding a source never lets this app fill in or submit forms.')}</p></div><Tag tone="green">{c('SIN ENVÍOS', 'NO SUBMISSIONS')}</Tag></div>
     <div className="boards-layout"><div className="boards-list board-collection card">
-      <div className="section-heading compact"><div><h2>{c('Empresas guardadas', 'Saved companies')}</h2></div><span className="muted-label">{c(`${activeCount} de ${boards.length} listas para consultar`, `${activeCount} of ${boards.length} ready to check`)}</span></div>
+      <div className="section-heading compact"><div><h2 id="saved-companies" tabIndex={-1}>{c('Empresas guardadas', 'Saved companies')}</h2></div><span className="muted-label">{c(`${activeCount} de ${boards.length} listas para consultar`, `${activeCount} of ${boards.length} ready to check`)}</span></div>
       {loadState === 'loading' && <Notice>{c('Cargando empresas…', 'Loading companies…')}</Notice>}
       {loadState === 'error' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar tus empresas.', 'We could not load your companies.')}</Notice>}
       {boards.map((board) => {
         const status = boardStatus(board, now); const confirmed = checks[board.id] ?? noChecks; const boardProvider = providers[board.provider];
         const canReview = confirmed.officialLink && confirmed.readOnlyAccess; const working = busy === board.id;
-        const nextRefresh = board.lastSuccessfulRefreshAt ? new Date(board.lastSuccessfulRefreshAt).getTime() + COOLDOWN_MS : 0; const coolingDown = nextRefresh > now;
+        const nextRefresh = Math.max(board.nextRunAt ? new Date(board.nextRunAt).getTime() : 0, board.lastSuccessfulRefreshAt ? new Date(board.lastSuccessfulRefreshAt).getTime() + COOLDOWN_MS : 0); const coolingDown = nextRefresh > now;
         return <Card className="board-card" key={board.id}>
           <div className="board-card-head"><div className="board-brand">{boardProvider?.label.slice(0, 1) ?? '?'}</div><div className="board-company"><strong>{board.companyName}</strong><small>{boardProvider?.label ?? board.provider}{board.region === 'eu' ? ` · ${labelFor.region(board.region, locale)}` : ''} · {board.companyDomain}</small></div><Tag tone={statusTag[status].tone}>{statusTag[status].text}</Tag></div>
           <div className="board-details">
@@ -146,10 +147,10 @@ export default function BoardsPage() {
         </Card>;
       })}
       {loadState === 'ready' && !boards.length && <Card className="jobs-empty"><Empty title={c('Aún no sigues empresas', 'No followed companies yet')} detail={c('Añade una empresa para consultar sus ofertas cuando quieras. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Add a company to check its jobs when you choose. You can also add a job directly in Saved jobs.')}/></Card>}
-      <div className="refresh-policy">{c('Pulsa Buscar ofertas nuevas para consultar una empresa. No se actualiza automáticamente. Puedes hacerlo una vez cada seis horas.', 'Choose Find new jobs to check a company. Updates are not automatic. You can check once every six hours.')}</div>
+      <div className="refresh-policy">{c('Puedes consultar manualmente cada empresa o activar la búsqueda automática arriba. Dejamos al menos seis horas entre consultas; los reintentos pueden tardar más.', 'Check each company manually or turn on automatic search above. Checks are at least six hours apart; retries may take longer.')}</div>
     </div>
     <aside className="add-board-aside">
-      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 ref={formHeading} tabIndex={-1}>{c('Seguir una empresa', 'Follow a company')}</h2><p>{c('Necesitas dos enlaces: la página de empleo de la empresa y una oferta publicada desde ella.', 'You need two links: the company careers page and a job listed on it.')}</p></div></div></div>
+      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 id="follow-company-heading" ref={formHeading} tabIndex={-1}>{c('Seguir una empresa', 'Follow a company')}</h2><p>{c('Necesitas dos enlaces: la página de empleo de la empresa y una oferta publicada desde ella.', 'You need two links: the company careers page and a job listed on it.')}</p></div></div></div>
         {!open && <p className="muted-label">{companyName || careersUrl || boardUrl ? c('Tienes una empresa por terminar de añadir.', 'You have an unfinished company form.') : c('Compatible con Greenhouse, Lever y Ashby.', 'Supports Greenhouse, Lever, and Ashby.')}</p>}
         {!open ? <Button onClick={() => setOpen(true)}><Icon name="plus" size={15}/>{c('Añadir empresa', 'Add company')}</Button> : <form onSubmit={(event) => void add(event)} className="form-stack" aria-busy={busy === 'add'}><fieldset className="entry-fields" disabled={!draft.ready || busy !== ''}>
           <Field label={c('Nombre de la empresa', 'Company name')} value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder={c('Ejemplo: Northwind', 'Example: Northwind')} required/>

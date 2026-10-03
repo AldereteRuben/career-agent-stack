@@ -1,6 +1,7 @@
 import { RELEASE_VERSION } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
+import { DiscoveryError, refreshBoard, registerDiscoveryRoutes, startDiscoveryWorker } from './discovery.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile, chmod, unlink } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -10,12 +11,12 @@ import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
-import { normalizeJobUrl, readBoardWithReport } from './sources.js';
+import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
 import { documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
-import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, occurrencesForBoard, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
+import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
@@ -257,58 +258,12 @@ app.post('/api/v1/boards/:id/disable', async (request, reply) => {
 });
 
 app.post('/api/v1/boards/:id/refresh', async (request, reply) => {
-  const id = workspace(request); const { id: boardId } = request.params as { id: string };
-  const board = (await db.select().from(boards).where(and(eq(boards.id, boardId), eq(boards.workspaceId, id))).limit(1))[0];
-  if (!board) return fail(reply, 404, 'NOT_FOUND');
-  if (!board.enabled || board.permissionStatus !== 'APPROVED_FOR_SCOPE' || board.associationStatus !== 'VERIFIED' || (board.reviewDueAt && board.reviewDueAt < new Date())) return fail(reply, 403, 'BOARD_NOT_APPROVED_FOR_DISCOVERY');
-  const lastRun = board.lastSuccessfulRefreshAt; if (lastRun && Date.now() - lastRun.getTime() < 6 * 60 * 60 * 1000) return fail(reply, 429, 'BOARD_REFRESH_COOLDOWN', 'Wait at least six hours between refreshes.');
-  const refreshLock = await pool.connect();
-  const lock = await refreshLock.query<{ acquired: boolean }>('select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired', [boardId]);
-  if (!lock.rows[0]?.acquired) { refreshLock.release(); return fail(reply, 409, 'BOARD_REFRESH_ALREADY_RUNNING'); }
-  try {
-    const sourceReport = await readBoardWithReport({ provider: board.provider, tenant: board.tenant, region: board.region });
-    const discovered = sourceReport.jobs;
-    const result = await db.transaction(async (tx) => {
-      // Context and existing identities are loaded once per refresh instead of once per discovered job.
-      const context = await loadMatchingContext(tx, id);
-      const existingByExternalId = await occurrencesForBoard(tx, id, board);
-      const candidates = await tx.select().from(jobs).where(and(eq(jobs.workspaceId, id), sql`lower(${jobs.company}) = lower(${board.companyName})`));
-      const candidateByKey = new Map(candidates.map((job) => [`${job.title}\n${job.canonicalUrl}`, job]));
-      const knownJobIds = [...new Set([...existingByExternalId.values()].map((occurrence) => occurrence.jobId))];
-      const latestHashes = knownJobIds.length ? await tx.selectDistinctOn([jobSnapshots.jobId], { jobId: jobSnapshots.jobId, snapshotHash: jobSnapshots.snapshotHash }).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), inArray(jobSnapshots.jobId, knownJobIds))).orderBy(jobSnapshots.jobId, desc(jobSnapshots.fetchedAt)) : [];
-      const hashByJob = new Map(latestHashes.map((row) => [row.jobId, row.snapshotHash]));
-      const now = new Date();
-      let added = 0; let updated = 0;
-      for (const item of discovered) {
-        if (!item.externalId || !item.title || !item.jobUrl) continue;
-        const existing = existingByExternalId.get(item.externalId);
-        let jobId = existing?.jobId ?? candidateByKey.get(`${item.title}\n${item.jobUrl}`)?.id;
-        const snapshotHash = createHash('sha256').update(`${item.title}\n${item.description ?? ''}`).digest('hex');
-        const scored = applyMatch({ id: jobId ?? '', workspaceId: id, company: board.companyName, title: item.title, location: item.location, canonicalUrl: item.jobUrl, availability: 'OPEN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: [], createdAt: now, updatedAt: now }, item.description, context);
-        const scores = { fitScore: scored.fitScore, evidenceCoverage: scored.evidenceCoverage, eligibility: scored.eligibility, reasons: scored.reasons };
-        if (!jobId) {
-          jobId = (await tx.insert(jobs).values({ workspaceId: id, company: board.companyName, title: item.title, location: item.location, canonicalUrl: item.jobUrl, availability: 'OPEN', ...scores }).returning({ id: jobs.id }))[0]!.id; added++;
-        } else {
-          await tx.update(jobs).set({ title: item.title, location: item.location, availability: 'OPEN', ...scores, updatedAt: now }).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))); updated++;
-        }
-        let occurrenceId = existing?.id;
-        if (existing) {
-          await tx.update(jobOccurrences).set({ lastSeenAt: now, sourceUpdatedAt: item.updatedAt ? new Date(item.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: item.raw, jobUrl: item.jobUrl, applyUrl: item.applyUrl }).where(eq(jobOccurrences.id, existing.id));
-        } else {
-          occurrenceId = (await tx.insert(jobOccurrences).values({ workspaceId: id, jobId, provider: board.provider, region: board.region, tenant: board.tenant, externalJobId: item.externalId, jobUrl: item.jobUrl, applyUrl: item.applyUrl, sourcePostedAt: item.postedAt ? new Date(item.postedAt) : null, sourceUpdatedAt: item.updatedAt ? new Date(item.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: item.raw }).returning({ id: jobOccurrences.id }))[0]!.id;
-        }
-        // Store a new snapshot only when the posting text changed, so documents keep pointing at what was actually read.
-        if (hashByJob.get(jobId) !== snapshotHash) {
-          await tx.insert(jobSnapshots).values({ workspaceId: id, jobId, occurrenceId: occurrenceId ?? null, title: item.title, descriptionText: item.description, snapshotHash });
-          hashByJob.set(jobId, snapshotHash);
-        }
-      }
-      await tx.update(boards).set({ lastSuccessfulRefreshAt: now, updatedAt: now }).where(and(eq(boards.id, boardId), eq(boards.workspaceId, id)));
-      return { added, updated, total: added + updated, coverage: sourceReport.skipped ? 'PARTIAL' : 'COMPLETE', skipped: sourceReport.skipped, fetchedAt: now.toISOString() };
-    });
-    return result;
-  } catch (error) { app.log.error({ err: error, boardId }, 'Board refresh failed'); return fail(reply, 502, 'BOARD_REFRESH_FAILED', error instanceof Error ? error.message : 'Unknown source error'); }
-  finally { await refreshLock.query('select pg_advisory_unlock(hashtextextended($1, 0))', [boardId]); refreshLock.release(); }
+  try { return await refreshBoard(workspace(request), (request.params as { id: string }).id); }
+  catch (error) {
+    if (error instanceof DiscoveryError) return fail(reply, error.status, error.message);
+    app.log.error({ err: error }, 'Board refresh failed');
+    return fail(reply, 502, 'BOARD_REFRESH_FAILED');
+  }
 });
 
 app.get('/api/v1/jobs', async (request) => {
@@ -317,11 +272,12 @@ app.get('/api/v1/jobs', async (request) => {
   if (query.q) { const pattern = `%${query.q.slice(0, 80).replace(/[\\%_]/g, (char) => `\\${char}`)}%`; filters.push(or(ilike(jobs.title, pattern), ilike(jobs.company, pattern))!); }
   if (query.scope === 'favorites') filters.push(eq(jobs.shortlistDecision, 'SHORTLISTED'));
   else if (query.scope === 'archived') filters.push(eq(jobs.shortlistDecision, 'ARCHIVED'));
+  else if (query.scope === 'new') filters.push(sql`${jobs.discoveredAt} is not null`, isNull(jobs.seenAt), ne(jobs.shortlistDecision, 'ARCHIVED'));
   else if (query.scope === 'active') filters.push(ne(jobs.shortlistDecision, 'ARCHIVED'));
   if (['OPEN', 'POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN'].includes(query.availability ?? '')) filters.push(eq(jobs.availability, query.availability as 'OPEN' | 'POSSIBLY_CLOSED' | 'CLOSED' | 'UNKNOWN'));
   const paged = query.paged === 'true'; const page = Math.max(1, Math.min(100000, Number.parseInt(query.page ?? '1', 10) || 1));
   const [rows, count] = await Promise.all([
-    db.select().from(jobs).where(and(...filters)).orderBy(desc(jobs.updatedAt), desc(jobs.id)).limit(paged ? 24 : 200).offset(paged ? (page - 1) * 24 : 0),
+    db.select().from(jobs).where(and(...filters)).orderBy(...(query.scope === 'new' ? [sql`${jobs.fitScore} desc nulls last`, desc(jobs.createdAt), desc(jobs.id)] : [desc(jobs.updatedAt), desc(jobs.id)])).limit(paged ? 24 : 200).offset(paged ? (page - 1) * 24 : 0),
     paged ? db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...filters)) : Promise.resolve([]),
   ]);
   const items = await scoreJobs(db, id, rows);
@@ -339,14 +295,19 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const [scored] = await scoreJobs(db, id, [job]);
   return { job: scored ?? job, snapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), applications: applicationsForJob };
 });
+app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
+  const updated = await db.update(jobs).set({ seenAt: new Date() }).where(and(eq(jobs.id, (request.params as { id: string }).id), eq(jobs.workspaceId, workspace(request)))).returning({ id: jobs.id });
+  return updated[0] ?? fail(reply, 404, 'NOT_FOUND');
+});
 app.post('/api/v1/jobs/import', async (request, reply) => {
   const parsed = parseBody(jobImportSchema, request.body, reply); if (!parsed) return;
   if (/linkedin\.com$/i.test(new URL(parsed.jobUrl).hostname) || new URL(parsed.jobUrl).hostname.toLowerCase().endsWith('.linkedin.com')) return fail(reply, 400, 'LINKEDIN_URL_MANUAL_ONLY', 'Add the description or the employer career URL; no request was made.');
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
   const now = new Date();
-  const scored = applyMatch({ id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
+  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
+    await lockKey(tx, `discovery:${id}`);
     await lockKey(tx, `job-url:${id}:${jobUrl}`);
     const duplicate = (await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.workspaceId, id), eq(jobs.canonicalUrl, jobUrl))).limit(1))[0];
     if (duplicate) return { duplicateId: duplicate.id };
@@ -549,7 +510,7 @@ app.get('/api/v1/export', async (request, reply) => {
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
 
-app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
+app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'scheduled-discovery', 'new-jobs-inbox', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
 
 app.setErrorHandler((error, _request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');
@@ -559,6 +520,10 @@ app.setErrorHandler((error, _request, reply) => {
   if ((error as { code?: string }).code === '23505') return fail(reply, 409, 'DUPLICATE_RECORD');
   return fail(reply, 500, 'INTERNAL_ERROR');
 });
+
+registerDiscoveryRoutes(app, workspace);
+const stopDiscovery = startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
+app.addHook('onClose', stopDiscovery);
 
 const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;

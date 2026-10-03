@@ -46,7 +46,7 @@ async function runScenarios(stack: IsolatedStack, artifacts: string): Promise<Re
       const notes: string[] = [];
       allowed = []; browserErrors = [];
       const ctx: ScenarioContext = {
-        page, context, api: apiClient(context, stack.uiUrl, pace), uiUrl: stack.uiUrl, marker: stack.marker, token: stack.readToken, artifacts,
+        page, context, db: stack.db, api: apiClient(context, stack.uiUrl, pace), uiUrl: stack.uiUrl, marker: stack.marker, token: stack.readToken, artifacts,
         allowConsole: (pattern) => { allowed.push(pattern); }, note: (message) => { notes.push(message); },
       };
       const started = Date.now();

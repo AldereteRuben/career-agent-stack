@@ -15,6 +15,7 @@ const changed = () => timestamp('updated_at', { withTimezone: true }).notNull().
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').defaultRandom().primaryKey(),
+  discoveryEnabled: boolean('discovery_enabled').notNull().default(false),
   name: varchar('name', { length: 160 }).notNull().default('My career workspace'),
   timezone: varchar('timezone', { length: 100 }).notNull().default('Europe/Madrid'),
   createdAt: created(), updatedAt: changed(),
@@ -35,10 +36,18 @@ export const answerVersions = pgTable('answer_versions', {
 }, (t) => [uniqueIndex('answer_versions_workspace_key_jurisdiction_scope_revision_uq').on(t.workspaceId, t.semanticKey, t.jurisdiction, t.questionScope, t.revision)]);
 
 export const boards = pgTable('boards', {
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastRunStatus: varchar('last_run_status', { length: 30 }),
+  lastNewCount: integer('last_new_count').notNull().default(0),
+  lastError: varchar('last_error', { length: 80 }),
+  failureCount: integer('failure_count').notNull().default(0),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), provider: providerEnum('provider').notNull(), tenant: varchar('tenant', { length: 200 }).notNull(), region: varchar('region', { length: 40 }).notNull(), companyName: varchar('company_name', { length: 200 }).notNull(), companyDomain: varchar('company_domain', { length: 253 }).notNull(), careersUrl: text('careers_url').notNull(), associationStatus: associationEnum('association_status').notNull().default('UNVERIFIED'), permissionStatus: permissionEnum('permission_status').notNull().default('UNKNOWN'), allowedApplicationOrigins: jsonb('allowed_application_origins').$type<string[]>().notNull().default([]), enabled: boolean('enabled').notNull().default(false), reviewedAt: timestamp('reviewed_at', { withTimezone: true }), reviewDueAt: timestamp('review_due_at', { withTimezone: true }), lastSuccessfulRefreshAt: timestamp('last_successful_refresh_at', { withTimezone: true }), createdAt: created(), updatedAt: changed(),
 }, (t) => [unique('boards_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('boards_workspace_provider_region_tenant_uq').on(t.workspaceId, t.provider, t.region, t.tenant), index('boards_workspace_enabled_idx').on(t.workspaceId, t.enabled)]);
 
 export const jobs = pgTable('jobs', {
+  discoveredAt: timestamp('discovered_at', { withTimezone: true }),
+  seenAt: timestamp('seen_at', { withTimezone: true }),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), company: varchar('company', { length: 200 }).notNull(), title: varchar('title', { length: 300 }).notNull(), location: varchar('location', { length: 300 }), canonicalUrl: text('canonical_url'), availability: availabilityEnum('availability').notNull().default('UNKNOWN'), shortlistDecision: shortlistEnum('shortlist_decision').notNull().default('UNREVIEWED'), fitScore: integer('fit_score'), evidenceCoverage: integer('evidence_coverage'), eligibility: varchar('eligibility', { length: 20 }).notNull().default('NEEDS_REVIEW'), reasons: jsonb('reasons').$type<string[]>().notNull().default([]), createdAt: created(), updatedAt: changed(),
 }, (t) => [unique('jobs_workspace_id_uq').on(t.workspaceId, t.id), index('jobs_workspace_availability_idx').on(t.workspaceId, t.availability)]);
 

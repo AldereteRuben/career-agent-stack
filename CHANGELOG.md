@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- Opt-in automatic discovery of confirmed Greenhouse, Lever and Ashby company boards, integrated into the local API lifecycle. Schedules survive restarts and catch up once when overdue; the browser tab can be closed.
+- Shared manual/automatic refresh service with PostgreSQL locking, six-hour intervals with jitter, bounded exponential backoff and Retry-After support. Failed and partial reads preserve saved jobs and never infer closures.
+- Home and Companies I follow show search status, activation/pause, last results and the next check. New companies must still be confirmed; expired and disabled companies are excluded. All controls and explanations are available in ES/EN.
+- New to review inbox ordered by profile fit, scoped to this workspace, with explicit Mark as reviewed. Reviewed jobs remain available under Active; repeat discovery preserves favorites, archives and review state.
+- Additive migration keeps existing jobs, documents and settings. Automation starts paused; restoring a backup explicitly pauses automation, including compatibility with older backup schemas.
+- Automated coverage includes fictional source execution, persistence, cooldown/concurrency, retries, review scope, backup restoration, and isolated browser flows in ES/EN at mobile sizes.
+
+Local-only: checks require the service and computer to be running. No system startup service, whole-web search, AI tailoring, email access or automatic application submission is added. Source execution is tested with fictional feeds; no new real-employer submission validation is claimed.
+
 ## 0.5.3
 
 - Notices with actions (unsaved job and application drafts, note drafts, stage and “sent” confirmations, retry and reload prompts, stale-resume prompts) keep their text at full width and place the buttons below it, wrapping within the screen. At 320 px and 390 px there is no horizontal overflow in Spanish or English. Reading and keyboard order is message first, then actions; roles are unchanged.

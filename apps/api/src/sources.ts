@@ -67,6 +67,17 @@ function networkError(error: unknown): Error {
   return new Error('SOURCE_NETWORK_ERROR');
 }
 
+/** Retry-After is preserved for the durable discovery schedule (seconds or HTTP date). */
+export class SourceHttpError extends Error {
+  readonly retryAfter: number;
+  constructor(status: number, header: string | null, now = Date.now()) {
+    super(`SOURCE_HTTP_${status}`);
+    const value = header?.trim() ?? '';
+    const timestamp = /^\d+$/.test(value) ? now + Number(value) * 1000 : Date.parse(value);
+    this.retryAfter = Number.isFinite(timestamp) && timestamp > now && timestamp < 8_640_000_000_000_000 ? timestamp : 0;
+  }
+}
+
 async function readJson(url: URL, allowedHost: string, options: SourceReadOptions) {
   if (url.protocol !== 'https:' || url.hostname !== allowedHost || url.port || url.username || url.password) throw new Error('SOURCE_URL_REJECTED');
   const maxBytes = options.maxBytes ?? defaultMaxBytes;
@@ -75,7 +86,7 @@ async function readJson(url: URL, allowedHost: string, options: SourceReadOption
     const response = await (options.fetch ?? fetch)(url, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(options.timeoutMs ?? defaultTimeoutMs), headers: { Accept: 'application/json', 'User-Agent': userAgent } });
     if (response.status >= 300 && response.status < 400) throw new Error('SOURCE_REDIRECT_REJECTED');
     if (response.redirected || (response.url && new URL(response.url).hostname !== allowedHost)) throw new Error('SOURCE_REDIRECT_REJECTED');
-    if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new Error(`SOURCE_HTTP_${response.status}`); }
+    if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw new SourceHttpError(response.status, response.headers.get('retry-after')); }
     const type = response.headers.get('content-type');
     if (type && !/\bjson\b/i.test(type)) { await response.body?.cancel().catch(() => undefined); throw new Error('SOURCE_CONTENT_TYPE_INVALID'); }
     const declared = Number(response.headers.get('content-length') ?? '0');

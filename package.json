@@ -1,6 +1,6 @@
 {
   "name": "career-agent-stack",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.10.0",
@@ -34,7 +34,8 @@
     "test:backup": "node --test scripts/test/backup-archive.test.mjs",
     "test:backup-api": "pnpm --filter @career/api exec tsx --test test/backup-routes.test.ts",
     "test:setup": "node scripts/test/setup-smoke.mjs",
-    "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts"
+    "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
+    "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

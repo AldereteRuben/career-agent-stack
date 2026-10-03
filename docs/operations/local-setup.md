@@ -109,7 +109,7 @@ Never delete `.env` to "reset" the installation: it holds the key that protects 
 
 ## No-AI operation
 
-The default is `AI_PROVIDER=none`. Profile editing, answer management, job discovery, ranking, application tracking, and export do not depend on an AI service. AI provider support is not enabled by this v0.1 implementation.
+The default is `AI_PROVIDER=none`. Profile editing, answer management, job discovery, ranking, application tracking, and export do not depend on an AI service. AI provider support is not implemented in v0.6.0.
 
 ## Export
 
@@ -132,7 +132,7 @@ Backups and isolated restores are described in [backup-restore.md](backup-restor
 
 ## Feature boundaries
 
-Browser autofill, employer-site writes, submission, mailbox access, and interview coaching are unavailable. Setting a configuration level does not enable them. Application records entered manually are user-attested; an uncertain result must be reconciled before any independent repeat action.
+Automatic read-only discovery is available after opt-in in Companies I follow; it runs while the API is running. See [automatic discovery](automatic-discovery.md). Experimental Lever contact autofill requires explicit consent in a visible browser. File upload, custom questions and submission remain manual. AI processing, mailbox access and interview coaching are unavailable. Application records entered manually are user-attested; an uncertain result must be reconciled before any independent repeat action.
 
 ## Inicio rápido (español)
 
