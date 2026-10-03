@@ -7,6 +7,7 @@
 - Home and Companies I follow show search status, activation/pause, last results and the next check. New companies must still be confirmed; expired and disabled companies are excluded. All controls and explanations are available in ES/EN.
 - New to review inbox ordered by profile fit, scoped to this workspace, with explicit Mark as reviewed. Reviewed jobs remain available under Active; repeat discovery preserves favorites, archives and review state.
 - Additive migration keeps existing jobs, documents and settings. Automation starts paused; restoring a backup explicitly pauses automation, including compatibility with older backup schemas.
+- Company-entry fields, help text and actions stay within their card at desktop and mobile widths. Add a company from the search panel or Home opens the form and focuses its name field when ready.
 - Automated coverage includes fictional source execution, persistence, cooldown/concurrency, retries, review scope, backup restoration, and isolated browser flows in ES/EN at mobile sizes.
 
 Local-only: checks require the service and computer to be running. No system startup service, whole-web search, AI tailoring, email access or automatic application submission is added. Source execution is tested with fictional feeds; no new real-employer submission validation is claimed.

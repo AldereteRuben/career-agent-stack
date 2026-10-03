@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { Scenario } from './scenarios.js';
+import type { Scenario, ScenarioContext } from './scenarios.js';
 import { eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
 
 export const v060Scenario: Scenario = {
   name: 'v060-automatic-search-and-new-jobs',
   async run({ page, api, db, marker, artifacts, note }) {
+    await checkCompanyEntry({ page, artifacts });
     // db is created by the isolation harness; production sources are never called by this scenario.
     const workspace = (await db.query<{ id: string }>('select id from workspaces limit 1')).rows[0]!.id;
     const board = randomUUID(); const other = randomUUID();
@@ -58,3 +59,35 @@ export const v060Scenario: Scenario = {
   },
 };
 const jobTitle = (marker: string) => `Designer ${marker}`;
+
+/** First-use UI, including the narrow desktop sidebar reported by the user. No employer requests. */
+async function checkCompanyEntry({ page, artifacts }: Pick<ScenarioContext, 'page' | 'artifacts'>) {
+  await page.route('**/api/v1/discovery', (route) => route.fulfill({ json: { enabled: false, unreadCount: 0, boards: [] } }));
+  await page.route('**/api/v1/boards', (route) => route.fulfill({ json: [] }));
+  try {
+    for (const locale of ['es', 'en'] as const) {
+      await setLocale(page, locale);
+      for (const width of [1096, 320, 390]) {
+        await page.setViewportSize({ width, height: width === 1096 ? 684 : 844 }); await goTo(page, '/boards');
+        const add = page.getByRole('button', { name: locale === 'es' ? 'Añadir una empresa' : 'Add a company', exact: true });
+        await add.click();
+        const name = page.getByLabel(locale === 'es' ? 'Nombre de la empresa' : 'Company name', { exact: true });
+        await eventually(() => name.evaluate((node) => node === document.activeElement), Boolean, 'Add company opens the form and focuses its first input');
+        await page.locator('.source-help summary').click();
+        assert.equal(await hasHorizontalOverflow(page), false, `Company form fits at ${width}px in ${locale}`);
+        const dimensions = await page.locator('.add-board-aside .form-card').evaluate((card) => {
+          const bounds = card.getBoundingClientRect();
+          return [...card.querySelectorAll('input, .form-submit button')].map((control) => { const rect = control.getBoundingClientRect(); return { left: rect.left, right: rect.right, cardLeft: bounds.left, cardRight: bounds.right, scrollX: window.scrollX }; });
+        });
+        for (const rect of dimensions) { assert.ok(rect.left >= rect.cardLeft && rect.right <= rect.cardRight + 1, JSON.stringify(rect)); assert.equal(rect.scrollX, 0); }
+        if (width === 1096) await page.screenshot({ path: join(artifacts, `v060-company-form-${locale}-1096.png`) });
+        // Clicking the entry point again while already open must focus the field again.
+        await add.click(); await eventually(() => name.evaluate((node) => node === document.activeElement), Boolean, 'Existing company form focuses its first input');
+        await page.getByRole('button', { name: locale === 'es' ? 'Cerrar y continuar después' : 'Close and continue later', exact: true }).click();
+        await eventually(() => add.evaluate((node) => node === document.activeElement), Boolean, 'Closing restores focus to the entry point');
+      }
+      await page.goto(new URL('/boards?add=1', page.url()).toString());
+      await eventually(() => page.locator('#company-name').evaluate((node) => node === document.activeElement), Boolean, 'Home shortcut opens and focuses company form');
+    }
+  } finally { await page.unroute('**/api/v1/discovery'); await page.unroute('**/api/v1/boards'); }
+}
