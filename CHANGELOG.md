@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1
+
+- Company confirmation and disabling use company-specific labels, distinct from global automatic discovery.
+- New-to-review jobs check for background changes while visible and when returning to the tab. An explicit Update results action preserves filters; cards and focus stay in place until the update is requested. Background errors preserve existing results and offer retry.
+- Lists recover to a valid page after the last item on a page is reviewed, retaining query, availability and scope.
+- Mark as reviewed shows a success notice with keyboard continuation. Failed attempts remain retryable and a successful retry clears the error; reviewed archived jobs retain accurate archive copy.
+- Initial discovery errors replace loading feedback. Refresh failures label cached state Out of date, hide unverified schedules and block setting changes until recovery. Status polling and action errors are separate; stale reads cannot overwrite a toggle.
+- Failed and interrupted checks do not promise retries while paused. Company refresh failures reload cooldowns immediately, and recovered company-list reads clear their own prior loading error.
+- Isolated browser regression covers ES/EN, narrow layouts, failure/recovery, review focus, pagination and asynchronous arrivals without real employer requests. No data migration or automation preference change.
+
 ## 0.6.0
 
 - Opt-in automatic discovery of confirmed Greenhouse, Lever and Ashby company boards, integrated into the local API lifecycle. Schedules survive restarts and catch up once when overdue; the browser tab can be closed.

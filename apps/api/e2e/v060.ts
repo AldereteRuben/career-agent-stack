@@ -40,7 +40,7 @@ export const v060Scenario: Scenario = {
         await page.getByRole('link', { name: jobTitle(marker), exact: true }).click();
         const reviewed = page.getByRole('button', { name: locale === 'es' ? 'Marcar como revisada' : 'Mark as reviewed', exact: true }); await reviewed.waitFor();
         await page.setViewportSize({ width: 320, height: 844 }); assert.equal(await hasHorizontalOverflow(page), false);
-        await reviewed.click(); await reviewed.waitFor({ state: 'detached' });
+        await reviewed.click(); await page.getByRole('link', { name: locale === 'es' ? 'Volver a la lista de ofertas' : 'Back to the job list', exact: true }).waitFor();
         await goTo(page, '/jobs?scope=new');
         await eventually(async () => (await api.get<{ items: Array<{ id: string }> }>('/jobs?scope=new&paged=true')).items.every((item) => item.id !== job.id), Boolean, 'Reviewed job leaves the new inbox');
         await goTo(page, `/jobs/${job.id}`); await page.getByRole('heading', { name: jobTitle(marker), exact: true }).waitFor();
