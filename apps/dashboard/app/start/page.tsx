@@ -66,7 +66,7 @@ export default function StartPage() {
       <ol className="onboarding-progress" aria-label={c('Tu progreso', 'Your progress')}>
         {titles.map((title, index) => <li key={index} aria-current={index === step ? 'step' : undefined}><span className="step-badge" aria-hidden="true">{index < step ? '✓' : index + 1}</span><span>{title}<small>{index < step ? c('Listo', 'Done') : index === step ? c('Ahora', 'Now') : c('Después', 'Next')}</small></span></li>)}
       </ol>
-      {error && <Notice tone="error">{error}<Button variant="quiet" disabled={busy || loading} onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button></Notice>}
+      {error && <Notice tone="error" actions={<Button variant="quiet" disabled={busy || loading} onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{error}</Notice>}
       {loading ? <Notice>{c('Preparando tu guía…', 'Preparing your guide…')}</Notice> : profile && <Card className="form-card onboarding-card">
         <h2 ref={stepHeading} tabIndex={-1} className="focus-heading">{step === 0 ? c('¿Cómo quieres aparecer en tu CV?', 'How should you appear on your resume?') : step === 1 ? c('Cuéntanos una experiencia', 'Tell us about one experience') : step === 2 ? pendingResume ? c('Tu CV está pendiente de revisión', 'Your resume is waiting for review') : c('Ya puedes preparar tu PDF', 'You are ready to prepare your PDF') : c('Tu primer CV está listo', 'Your first resume is ready')}</h2>
         {step === 0 ? <>

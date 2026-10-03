@@ -8,7 +8,12 @@ export const assistedConsentSchema = z.object({ consent: z.literal(true), expect
 export const assistedHandoffSchema = z.object({ confirmReviewed: z.literal(true) }).strict();
 export const assistedResolutionSchema = z.object({ outcome: z.enum(['CONFIRMED', 'NOT_SUBMITTED', 'UNKNOWN']), confirmReviewed: z.literal(true), reason: z.string().trim().min(1).max(2000) }).strict();
 export type AssistedFields = { name: string; email: string; phone: string; org: string };
-export type AssistedPlan = { adapter: 'lever-hosted-v1'; url: string; profileRevisionId: string; documentId: string; documentSha256: string; documentName: string; applicationVersion: number; fields: AssistedFields };
+/**
+ * What one consent covers: destination, application version, the displayed fields and the exact PDF. Plans stored before
+ * 0.5.3 also carried the profile revision id; new plans omit it so a preference-only save does not void consent, while any
+ * change to the printed identity or facts still fails validation through the fields and the document readiness check.
+ */
+export type AssistedPlan = { adapter: 'lever-hosted-v1'; url: string; profileRevisionId?: string; documentId: string; documentSha256: string; documentName: string; applicationVersion: number; fields: AssistedFields };
 
 /** Only canonical hosted Lever applications. Never accept redirects, arbitrary URLs or employer API keys. */
 export function leverApplicationUrl(input: unknown): string | null {

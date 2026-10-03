@@ -20,3 +20,11 @@ export function legacyEmployment(kind: string, statement: string): StructuredEnt
   if (endMonth && endMonth < startMonth) return null;
   return { type: 'employment', title: match[1]!, organization: match[2]!, startMonth, ...(endMonth ? { endMonth } : {}), current: Boolean(match[7]), description: match[8]!, locale: match[7] === 'Present' ? 'en' : 'es' };
 }
+
+export type PrintableFact = { kind: string; statement: string; details?: StructuredEntry | null };
+
+/** The exact text the resume renderer prints for a fact in a PDF language: structured entries are formatted, plain text is kept verbatim. */
+export function printedStatement(fact: PrintableFact, language: 'es' | 'en'): string {
+  const entry = fact.details ?? legacyEmployment(fact.kind, fact.statement);
+  return entry ? entryStatement(entry, language) : fact.statement;
+}

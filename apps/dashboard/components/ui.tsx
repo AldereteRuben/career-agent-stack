@@ -39,7 +39,15 @@ export function TextareaField({ label, hint, id, className = '', 'aria-described
 
 export function Tag({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'green' | 'amber' | 'red' | 'blue' }) { return <span className={`tag tag-${tone}`}>{children}</span>; }
 
-export function Notice({ children, tone = 'info' }: { children: ReactNode; tone?: 'info' | 'success' | 'warning' | 'error' }) { return <div className={`notice notice-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>{children}</div>; }
+/**
+ * Message box with an optional row of actions. The message and actions share one content column next to the icon, so
+ * buttons wrap below the text on narrow screens instead of becoming side-by-side flex columns. Reading and tab order
+ * stay message first, then actions. `role` defaults to alert for errors and status otherwise; pass null for static text.
+ */
+export function Notice({ children, tone = 'info', actions, role }: { children: ReactNode; tone?: 'info' | 'success' | 'warning' | 'error'; actions?: ReactNode; role?: 'alert' | 'status' | null }) {
+  const liveRole = role === undefined ? (tone === 'error' ? 'alert' : 'status') : role ?? undefined;
+  return <div className={`notice notice-${tone}`} role={liveRole}><div className="notice-content"><div className="notice-message">{children}</div>{actions && <div className="notice-actions">{actions}</div>}</div></div>;
+}
 
 export function Empty({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) { return <div className="empty"><div className="empty-orbit" aria-hidden="true"><Icon name="sparkle" size={18}/></div><h3>{title}</h3><p>{detail}</p>{action}</div>; }
 

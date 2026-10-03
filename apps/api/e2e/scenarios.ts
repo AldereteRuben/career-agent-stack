@@ -5,6 +5,7 @@ import { v041Scenarios } from './v041.js';
 import { uxReviewScenarios } from './ux-review.js';
 import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
+import { v053Scenarios } from './v053.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -419,5 +420,7 @@ scenarios.splice(1, 0, v050Scenarios[0]!);
 scenarios.push(v050Scenarios[1]!);
 
 scenarios.splice(1, 0, v051First);
+// v053 leaves current approved PDFs behind; v052's printed-name change then restores the guide state v051Last expects.
+scenarios.push(...v053Scenarios);
 scenarios.push(v052Scenario);
 scenarios.push(v051Last);

@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react';
 import type { StructuredEntry } from '@career/domain';
 import { useLocale } from '@/lib/i18n';
 import { copy, labelFor, selectableFactKinds } from '@/lib/labels';
-import { Button, Field, SelectField, TextareaField } from './ui';
+import { Button, Field, Notice, SelectField, TextareaField } from './ui';
 
 export type ProfileEntry = { id: string; kind: string; statement: string; tags: string[]; details?: StructuredEntry | null };
 export type EntryInput = { kind: string; statement: string; tags: string[]; employment?: { role: string; company: string; startMonth: string; endMonth?: string; current: boolean; locale: 'es' | 'en' }; education?: { qualification: string; institution: string; startMonth: string; endMonth?: string; current: boolean; locale: 'es' | 'en' } };
@@ -27,7 +27,7 @@ export function ProfileEntryForm({ initial, busy, blocked = false, onSave, onCan
   return <form className="form-stack entry-form" onSubmit={(event) => void save(event)} aria-busy={busy}>
     <fieldset disabled={busy || blocked} className="entry-fields">
       {!initial && <SelectField label={c('Qué quieres añadir', 'What would you like to add')} value={draft.kind} onChange={(event) => update({ kind: event.target.value })}>{selectableFactKinds.map((kind) => <option key={kind} value={kind}>{labelFor.factKind(kind, locale)}</option>)}</SelectField>}
-      {plain && ['experience', 'education'].includes(draft.kind) && <div className="notice notice-info"><p>{c('Esta entrada se guardó como texto. Puedes conservarla así o completar sus campos sin perder el contenido.', 'This entry was saved as text. Keep it as it is, or complete its fields without losing the content.')}</p><Button type="button" variant="secondary" onClick={() => { setPlain(false); onDirtyChange?.(true); }}>{c('Completar campos y fechas', 'Complete fields and dates')}</Button></div>}
+      {plain && ['experience', 'education'].includes(draft.kind) && <Notice role={null} actions={<Button type="button" variant="secondary" onClick={() => { setPlain(false); onDirtyChange?.(true); }}>{c('Completar campos y fechas', 'Complete fields and dates')}</Button>}>{c('Esta entrada se guardó como texto. Puedes conservarla así o completar sus campos sin perder el contenido.', 'This entry was saved as text. Keep it as it is, or complete its fields without losing the content.')}</Notice>}
       {structured && <fieldset className="profile-fieldset"><legend>{study ? c('Datos de tus estudios', 'Education details') : c('Datos del empleo', 'Employment details')}</legend><div className="form-grid">
         <Field name="entry-title" label={study ? c('Titulación o curso', 'Qualification or course') : c('Puesto que ocupaste', 'Job title')} value={draft.title} onChange={(event) => update({ title: event.target.value })} required maxLength={200} autoComplete="off"/>
         <Field name="entry-organization" label={study ? c('Centro o institución', 'School or institution') : c('Empresa', 'Company')} value={draft.organization} onChange={(event) => update({ organization: event.target.value })} required maxLength={200} autoComplete="off"/>

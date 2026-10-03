@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.3
+
+- Notices with actions (unsaved job and application drafts, note drafts, stage and “sent” confirmations, retry and reload prompts, stale-resume prompts) keep their text at full width and place the buttons below it, wrapping within the screen. At 320 px and 390 px there is no horizontal overflow in Spanish or English. Reading and keyboard order is message first, then actions; roles are unchanged.
+- Applications → Review or change resume opens the linked PDF first, marked as linked to this application. From there you can choose another approved resume or use it as a starting point, keeping the application and job context; reload, Back and closing the preview keep the right document. Previews of approved resumes and the library offer the same actions, and the linked resume is not offered for linking again.
+- Home links for pending profile details open the list of saved details instead of the add form. The profile lands on the requested section and moves focus to it once the profile has finished loading; later reloads after saves do not move scroll position or focus. Adding and reviewing remain separate links.
+- An existing PDF stays approvable, linkable and usable for assisted preparation while everything it prints is unchanged: the name and email of the profile revision it was generated from, and each source fact (the same entry or an exact copy carried into a newer profile revision, still confirmed, printing the same text). Saving only job preferences, work country or other unprinted fields no longer asks you to regenerate it. A different printed name or email, edited, rejected or archived facts, claims without evidence, or a different job context still block it. Approval, application linking, assisted preparation and consent, and the guide use the same check. Stored PDFs are never rewritten; their hashes are unchanged.
+- Assisted consent now covers the destination, application version, displayed fields and exact PDF, without the profile revision id, so a preference-only save does not void a prepared consent. Printed-identity or fact changes still invalidate it.
+- The isolated E2E harness prepares the PDF.js assets inside its private dashboard copy, so it also works on a fresh checkout or worktree.
+- Regression coverage: domain tests for printed identity, printed statements and stale/current decisions; disposable-database tests for preference-only revisions, name/email changes and restoration, edited/rejected/changed-detail/evidence-free sources, linking and consent; E2E scenarios for notices at 320/390 px, linked-resume review and change, landing on saved details, and preference changes made through the profile form. v0.3.1, v0.5.1 and v0.5.2 scenarios that treated any profile save as stale now use real printed-identity changes and also assert that unprinted changes keep PDFs current.
+
+Limits: PDFs generated before the PDF language was recorded are compared against both Spanish and English renderings of the same unchanged fact. A PDF without a recorded profile revision is treated as stale after any profile save. Existing backup-restoration, platform and dependency-alert limitations still apply.
+
 ## 0.5.2
 
 - PDF previews pass independent byte buffers to PDF.js, removing the temporary URL lifetime race during navigation and retries. Existing PDFs remain unchanged.

@@ -8,7 +8,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces } from '@career/db';
-import { entryStatement, legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, profileCompletion } from '@career/domain';
+import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl, readBoardWithReport } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
@@ -452,7 +452,7 @@ app.post('/api/v1/documents', async (request, reply) => {
   const facts = await db.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, id), eq(profileFacts.profileVersionId, profile.id), eq(profileFacts.approvalStatus, 'USER_APPROVED')));
   const selected = facts.filter((fact) => factIds.includes(fact.id));
   if (selected.length !== factIds.length) return fail(reply, 400, 'FACTS_MUST_BE_APPROVED_IN_CURRENT_PROFILE');
-  const identity = profile.profile.identity as { fullName?: unknown; email?: unknown } | undefined;
+  const identity = printedResumeIdentity(profile.profile);
   let snapshotId: string | null = null; let role = '';
   if (body.jobId !== undefined && body.jobId !== null) {
     if (typeof body.jobId !== 'string') return fail(reply, 400, 'JOB_NOT_FOUND');
@@ -468,9 +468,9 @@ app.post('/api/v1/documents', async (request, reply) => {
   if (computedRelativePath.startsWith(`..${sep}`) || computedRelativePath === '..' || isAbsolute(computedRelativePath)) return fail(reply, 400, 'DOCUMENT_PATH_INVALID');
   const removeFile = () => unlink(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') app.log.warn({ err: error, documentId: docId }, 'Could not remove orphaned document file'); });
   const pdfLocale = documentLanguage(body.locale, profile.locale);
-  const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: (fact.details ?? legacyEmployment(fact.kind, fact.statement)) ? entryStatement((fact.details ?? legacyEmployment(fact.kind, fact.statement))!, pdfLocale) : fact.statement, tags: fact.tags }));
+  const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: printedStatement(fact, pdfLocale), tags: fact.tags }));
   let rendered: { sha256: string; size: number };
-  try { rendered = await renderResume({ path: filePath, fullName: typeof identity?.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: typeof identity?.email === 'string' ? identity.email.slice(0, 320) : '', role, locale: pdfLocale, facts: renderedFacts }); }
+  try { rendered = await renderResume({ path: filePath, fullName: identity.fullName, email: identity.email, role, locale: pdfLocale, facts: renderedFacts }); }
   catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
   const claims = selected.map((fact, index) => ({ text: renderedFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
@@ -494,12 +494,8 @@ app.post('/api/v1/documents/:id/approve', async (request, reply) => {
     const document = (await tx.select().from(documentVersions).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, id))).limit(1).for('update'))[0];
     if (!document) return 'NOT_FOUND' as const;
     if (document.approvalStatus !== 'PENDING_REVIEW') return 'DOCUMENT_ALREADY_REVIEWED' as const;
-    const profile = await latestProfile(tx, id);
-    if (!profile || profile.id !== document.profileRevisionId) return 'PROFILE_CHANGED_REGENERATE_DOCUMENT' as const;
-    const sourceIds = [...new Set(document.claims.flatMap((claim) => claim.sourceFactIds))];
-    const approved = sourceIds.length ? await tx.select({ id: profileFacts.id }).from(profileFacts).where(and(eq(profileFacts.workspaceId, id), eq(profileFacts.profileVersionId, profile.id), eq(profileFacts.approvalStatus, 'USER_APPROVED'), inArray(profileFacts.id, sourceIds))) : [];
-    const approvedIds = new Set(approved.map((fact) => fact.id));
-    if (!document.claims.length || document.claims.some((claim) => !claim.sourceFactIds.length || claim.sourceFactIds.some((factId) => !approvedIds.has(factId)))) return 'PROFILE_CHANGED_REGENERATE_DOCUMENT' as const;
+    // The PDF must still print exactly the current identity and approved facts; preference-only saves do not change it.
+    if (!(await documentReadiness(tx, id, [document]))[0]?.reviewReady) return 'PROFILE_CHANGED_REGENERATE_DOCUMENT' as const;
     const reviewedClaims = document.claims.map((claim) => ({ ...claim, approvalStatus: 'USER_REVIEWED' }));
     return (await tx.update(documentVersions).set({ approvalStatus: 'USER_APPROVED', claims: reviewedClaims }).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, id), eq(documentVersions.approvalStatus, 'PENDING_REVIEW'))).returning())[0] ?? 'DOCUMENT_ALREADY_REVIEWED' as const;
   });

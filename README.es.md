@@ -4,7 +4,7 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.5.2** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#052)
+**Versión actual: v0.5.3** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#053)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 

@@ -117,7 +117,7 @@ export default function BoardsPage() {
     <div className="boards-layout"><div className="boards-list board-collection card">
       <div className="section-heading compact"><div><h2>{c('Empresas guardadas', 'Saved companies')}</h2></div><span className="muted-label">{c(`${activeCount} de ${boards.length} listas para consultar`, `${activeCount} of ${boards.length} ready to check`)}</span></div>
       {loadState === 'loading' && <Notice>{c('Cargando empresas…', 'Loading companies…')}</Notice>}
-      {loadState === 'error' && <Notice tone="warning">{c('No pudimos cargar tus empresas.', 'We could not load your companies.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
+      {loadState === 'error' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar tus empresas.', 'We could not load your companies.')}</Notice>}
       {boards.map((board) => {
         const status = boardStatus(board, now); const confirmed = checks[board.id] ?? noChecks; const boardProvider = providers[board.provider];
         const canReview = confirmed.officialLink && confirmed.readOnlyAccess; const working = busy === board.id;

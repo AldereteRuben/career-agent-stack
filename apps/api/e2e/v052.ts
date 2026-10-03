@@ -61,7 +61,8 @@ export const v052Scenario: Scenario = {
     assert.deepEqual(blobRequests, [], 'PDF rendering never fetches a revocable blob URL');
 
     const latest = await api.get<Profile>('/profile');
-    await api.put('/profile', { expectedRevision: latest.revision, profile: latest.profile });
+    // A printed name change (not a preference) is what makes this PDF stale.
+    await api.put('/profile', { expectedRevision: latest.revision, profile: { ...latest.profile, identity: { fullName: 'Preview Example Renamed', email: 'preview@example.com' } } });
     for (const locale of ['es', 'en'] as const) {
       await setLocale(page, locale); await goto(`/documents?view=review&document=${doc.id}&from=saved`);
       const update = page.getByRole('button', { name: locale === 'es' ? 'Preparar versión actualizada' : 'Prepare updated version', exact: true });
