@@ -58,5 +58,11 @@ export function useSessionDraft<T extends Record<string, string>>(key: string, i
     window.addEventListener('beforeunload', warn); document.addEventListener('click', guard, true);
     return () => { window.removeEventListener('beforeunload', warn); document.removeEventListener('click', guard, true); };
   }, [storageFailed, value, leaveMessage]);
-  return { value: ready ? value : initialRef.current, update, ready, storageFailed };
+  // Move a prepared value to another context before navigation loads that context's draft.
+  const copyTo = (targetKey: string, next: T) => {
+    if (targetKey === key) { update(next); return true; }
+    try { sessionStorage.setItem(prefix + targetKey, JSON.stringify(next)); return true; }
+    catch { return false; }
+  };
+  return { value: ready ? value : initialRef.current, update, copyTo, ready, storageFailed };
 }

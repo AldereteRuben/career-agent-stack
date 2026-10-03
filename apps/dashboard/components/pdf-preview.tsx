@@ -7,7 +7,7 @@ import { copy } from '@/lib/labels';
 import { Button, Notice } from './ui';
 
 /** Renders the actual PDF without relying on a browser PDF plugin. All assets stay local. */
-export function PdfPreview({ url }: { url: string }) {
+export function PdfPreview({ data }: { data: ArrayBuffer }) {
   const { locale } = useLocale(); const c = copy(locale);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNumber, setPageNumber] = useState(1); const [zoom, setZoom] = useState(1);
@@ -24,15 +24,15 @@ export function PdfPreview({ url }: { url: string }) {
         const library = await import('pdfjs-dist');
         if (cancelled) return;
         library.GlobalWorkerOptions.workerSrc = `/pdf-assets/${library.version}/pdf.worker.min.mjs`;
-        task = library.getDocument({ url, standardFontDataUrl: `/pdf-assets/${library.version}/standard_fonts/` });
+        task = library.getDocument({ data: new Uint8Array(data.slice(0)), standardFontDataUrl: `/pdf-assets/${library.version}/standard_fonts/` });
         const document = await task.promise;
         if (!cancelled) setPdf(document);
       } catch {
         if (!cancelled) { setFailed(true); setLoading(false); }
       }
     })();
-    return () => { cancelled = true; void task?.destroy(); };
-  }, [url, retry]);
+    return () => { cancelled = true; void task?.destroy().catch(() => undefined); };
+  }, [data, retry]);
 
   useEffect(() => {
     if (!pdf || !canvas.current) return;

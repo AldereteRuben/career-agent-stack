@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.2
+
+- PDF previews pass independent byte buffers to PDF.js, removing the temporary URL lifetime race during navigation and retries. Existing PDFs remain unchanged.
+- Pending resumes whose source profile changed explain why a fresh version is needed before offering approval. Creation returns the same readiness and job metadata as the library; the library refreshes when opening a preview or returning to the window.
+- Reusing a resume restores its job, language and selected facts across navigation/reload, while preserving an explicitly selected application or job. Unavailable source jobs and draft-storage failures have actionable feedback.
+- Resume headings distinguish preparation, review and saved documents. Prepare resume always opens the builder. Profile has one primary continuation action. The stale-resume notice keeps its text and action within mobile widths.
+- Regression coverage exercises repeated PDF opening, reload and Back navigation, stale-profile recovery, original-job and explicit-application context, unavailable jobs, and mobile layouts in Spanish and English.
+- Includes the validated dependency maintenance merged after v0.5.1: Drizzle, rate-limit, dotenv, Node 24/React declarations, supported TypeScript lint peer and pinned GitHub Actions.
+
+Existing backup-restoration, platform and dependency-alert limitations still apply.
+
 ## 0.5.1
 
 - Home's main action now names its actual destination. The first-resume guide resumes a current PDF awaiting review instead of asking for another copy.

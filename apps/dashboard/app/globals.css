@@ -3157,3 +3157,7 @@ main:focus {
 .profile-preferences[open] > summary { margin-bottom: 16px; }
 .profile-aside details > summary { cursor: pointer; }
 .document-actions { min-width: 0; }
+
+.resume-stale-notice { min-width: 0; }
+.resume-stale-notice p { margin: 0 0 12px; }
+.resume-stale-notice .button { white-space: normal; max-width: 100%; }

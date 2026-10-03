@@ -1,3 +1,4 @@
+import { v052Scenario } from './v052.js';
 import { v051First, v051Last } from './v051.js';
 import { v050Scenarios } from './v050.js';
 import { v041Scenarios } from './v041.js';
@@ -418,4 +419,5 @@ scenarios.splice(1, 0, v050Scenarios[0]!);
 scenarios.push(v050Scenarios[1]!);
 
 scenarios.splice(1, 0, v051First);
+scenarios.push(v052Scenario);
 scenarios.push(v051Last);

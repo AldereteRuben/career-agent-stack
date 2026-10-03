@@ -4,7 +4,7 @@ Your private workspace to organize a job search: keep your career profile, save 
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.5.1** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#051)
+**Current release: v0.5.2** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#052)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 

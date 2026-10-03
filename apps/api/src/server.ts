@@ -483,7 +483,7 @@ app.post('/api/v1/documents', async (request, reply) => {
       return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
     });
   } catch (error) { await removeFile(); throw error; }
-  return reply.code(201).send({ ...documentView(row), sizeBytes: rendered.size });
+  return reply.code(201).send({ ...documentView((await documentReadiness(db, id, [row]))[0]!), sizeBytes: rendered.size });
 });
 app.post('/api/v1/documents/:id/approve', async (request, reply) => {
   const body = request.body as { confirmReviewed?: unknown } | null; if (body?.confirmReviewed !== true) return fail(reply, 400, 'EXPLICIT_REVIEW_REQUIRED');
