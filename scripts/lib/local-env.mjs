@@ -1,16 +1,36 @@
 // Shared helpers for the local launcher scripts. Nothing here prints secret values:
 // connection strings are reduced to host/port/database before they reach the terminal.
 import { spawnSync } from 'node:child_process';
-import { readFile, readdir, readlink, stat } from 'node:fs/promises';
-import { connect } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { access, chmod, link, mkdir, open, readFile, readdir, readlink, rename, stat, unlink } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { connect, createServer } from 'node:net';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-export const runDir = resolve(projectRoot, 'data/run');
-export const logDir = resolve(projectRoot, 'data/logs');
+const checkoutEnvPath = resolve(projectRoot, '.env');
+
+// CAREER_ENV_FILE selects another installation's configuration (for example a restored workspace) to run with
+// this checkout's code: its database, keys, ports and data folder, with run records and logs in that data folder.
+// The checkout's own .env is then never read for values, and nothing of the live installation is used.
+export const alternateEnv = Boolean(process.env.CAREER_ENV_FILE);
+export const envPath = alternateEnv ? resolve(process.env.CAREER_ENV_FILE) : checkoutEnvPath;
+
+function readEnvSync(path) {
+  try { return parseEnv(readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+/** Data folder of the selected installation: DATA_LOCAL_PATH resolved like the API does (relative to the checkout). */
+export const dataRoot = resolve(projectRoot, (alternateEnv && readEnvSync(envPath)?.DATA_LOCAL_PATH) || './data');
+export const runDir = resolve(dataRoot, 'run');
+export const logDir = resolve(dataRoot, 'logs');
+// Configuration of an installation whose bootstrap has not finished yet. It becomes .env (atomically) only
+// once the database answers with its credentials and the migrations are applied, so a failed first run
+// never leaves a .env that points at nothing. Re-running bootstrap resumes from it with the same keys.
+export const pendingEnvPath = resolve(projectRoot, '.env.pending');
 export const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 const spanishFirst = /^es/i.test(process.env.CAREER_LANG || process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || '');
@@ -59,11 +79,7 @@ export function maskSecrets(text) {
     .replace(/((?:SECRET|KEY|TOKEN|PASSWORD)[A-Z_]*\s*[=:]\s*)\S+/gi, '$1***');
 }
 
-/** Parses .env without loading it into process.env and without echoing values. */
-export async function readLocalEnv() {
-  let text;
-  try { text = await readFile(resolve(projectRoot, '.env'), 'utf8'); }
-  catch { return null; }
+export function parseEnv(text) {
   const values = {};
   for (const line of text.split(/\r?\n/)) {
     const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
@@ -72,9 +88,87 @@ export async function readLocalEnv() {
   return values;
 }
 
+/** Parses .env (or another env file of this checkout) without loading it into process.env and without echoing values. */
+export async function readLocalEnv(path = envPath) {
+  let text;
+  try { text = await readFile(path, 'utf8'); }
+  catch { return null; }
+  return parseEnv(text);
+}
+
 /** Directory holding the sign-in token (DATA_LOCAL_PATH, default ./data), resolved like the API does. */
 export function localDataPath(env) {
-  return resolve(projectRoot, process.env.DATA_LOCAL_PATH || env?.DATA_LOCAL_PATH || './data');
+  return resolve(projectRoot, env?.DATA_LOCAL_PATH || process.env.DATA_LOCAL_PATH || './data');
+}
+
+// Variables that select a database, keys, ports or data paths. They are never inherited from the shell by the
+// processes of an installation: its own .env decides, so a DATABASE_URL exported for another project (or another
+// checkout) can never point this installation at someone else's data.
+const installScoped = /^(DATABASE_URL|APP_[A-Z_]+|API_[A-Z_]+|WEB_[A-Z_]+|DATA_LOCAL_PATH|FILES_[A-Z_]+|PG[A-Z]+)$/;
+
+/**
+ * Environment for child processes of this installation: the shell minus install-scoped variables, plus its env file.
+ * The API and drizzle also read the checkout's .env for variables that are not set; with CAREER_ENV_FILE every
+ * key of that .env missing from the selected file is set to its .env.example default (or empty), so no live value
+ * (a key, a path) can leak into the other installation.
+ */
+export function installEnv(values, extra = {}) {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) if (!installScoped.test(key)) env[key] = value;
+  const shield = {};
+  if (alternateEnv && values) {
+    const defaults = readEnvSync(resolve(projectRoot, '.env.example')) ?? {};
+    for (const key of Object.keys(readEnvSync(checkoutEnvPath) ?? {})) if (!(key in values)) shield[key] = defaults[key] ?? '';
+  }
+  return { ...env, ...shield, ...values, ...extra };
+}
+
+/**
+ * With CAREER_ENV_FILE, the selected installation must keep its data outside this checkout's data folder:
+ * returns the problem (bilingual) or null.
+ */
+export function alternateEnvProblem(values) {
+  if (!alternateEnv) return null;
+  for (const key of ['DATA_LOCAL_PATH', 'FILES_LOCAL_PATH']) {
+    const value = values?.[key];
+    if (!value || !isAbsolute(value)) return { es: `${key} debe ser una ruta absoluta en ${envPath}.`, en: `${key} must be an absolute path in ${envPath}.` };
+    const inside = resolve(value) === resolve(projectRoot, 'data') || resolve(value).startsWith(`${resolve(projectRoot, 'data')}/`);
+    if (inside) return { es: `${key} apunta a la carpeta data/ de esta copia; usa la carpeta propia de esa instalación.`, en: `${key} points into this checkout's data/ folder; use that installation's own folder.` };
+  }
+  return null;
+}
+
+/** Writes a private (0600) file through a temporary sibling and a rename, so readers never see half a file. */
+export async function writePrivateFileAtomic(path, content) {
+  const temporary = join(dirname(path), `.${basename(path)}.tmp-${process.pid}`);
+  const handle = await open(temporary, 'w', 0o600);
+  try { await handle.writeFile(content); await handle.sync(); }
+  finally { await handle.close(); }
+  await chmod(temporary, 0o600);
+  await rename(temporary, path);
+}
+
+/** Moves `from` to `to` atomically without ever replacing an existing `to`. Returns false if `to` already exists. */
+export async function promoteWithoutOverwrite(from, to) {
+  try { await link(from, to); }
+  catch (error) { if (error.code === 'EEXIST') return false; throw error; }
+  await unlink(from);
+  return true;
+}
+
+/** True when nothing listens on 127.0.0.1:port and it can be bound. */
+export function portIsFree(port) {
+  return new Promise((resolvePromise) => {
+    const server = createServer();
+    server.once('error', () => resolvePromise(false));
+    server.listen({ host: '127.0.0.1', port, exclusive: true }, () => server.close(() => resolvePromise(true)));
+  });
+}
+
+/** The `pg` driver installed for packages/db (available after pnpm install). */
+export function loadPg() {
+  try { return createRequire(resolve(projectRoot, 'packages/db/package.json'))('pg'); }
+  catch { return null; }
 }
 
 /** Host, port and database name only: never the user name or password. */
@@ -169,4 +263,36 @@ export function parentArgs(pid) {
   const ppid = Number(spawnSync('ps', ['-o', 'ppid=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim());
   if (!Number.isInteger(ppid) || ppid <= 1) return '';
   return spawnSync('ps', ['-o', 'args=', '-p', String(ppid)], { encoding: 'utf8' }).stdout.trim();
+}
+
+/** Records a service started by the local scripts in data/run/, so `pnpm run stop` can find it. */
+export async function recordStarted(name, details) {
+  await mkdir(runDir, { recursive: true, mode: 0o700 });
+  await writePrivateFileAtomic(resolve(runDir, `${name}.json`), JSON.stringify({ name, startedAt: new Date().toISOString(), ...details }, null, 2));
+}
+
+const exists = async (path) => { try { await access(path); return true; } catch { return false; } };
+
+/**
+ * Starts the local PostgreSQL this machine already has: the Homebrew postgresql@17 cluster with pg_ctl, or,
+ * failing that, Docker Compose (compose.yaml). Installs nothing and creates no cluster. Returns the method used, or null.
+ */
+export async function startLocalPostgres() {
+  const brewPrefix = spawnSync('brew', ['--prefix'], { encoding: 'utf8' });
+  const brewData = brewPrefix.status === 0 ? resolve(brewPrefix.stdout.trim(), 'var/postgresql@17') : null;
+  const pgCtl = brewPrefix.status === 0 ? resolve(brewPrefix.stdout.trim(), 'opt/postgresql@17/bin/pg_ctl') : null;
+  if (brewData && pgCtl && await exists(resolve(brewData, 'PG_VERSION')) && await exists(pgCtl)) {
+    await mkdir(dataRoot, { recursive: true, mode: 0o700 });
+    const started = spawnSync(pgCtl, ['-D', brewData, '-l', resolve(dataRoot, 'postgres.log'), '-w', '-t', '30', 'start'], { stdio: 'ignore' });
+    if (started.status === 0) {
+      await recordStarted('postgres', { method: 'homebrew-pg_ctl', dataDir: brewData, pgCtl });
+      return 'homebrew-pg_ctl';
+    }
+  }
+  if (spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0
+    && spawnSync('docker', ['compose', 'up', '-d', '--wait', 'postgres'], { cwd: projectRoot, stdio: 'inherit' }).status === 0) {
+    await recordStarted('postgres', { method: 'docker-compose' });
+    return 'docker-compose';
+  }
+  return null;
 }

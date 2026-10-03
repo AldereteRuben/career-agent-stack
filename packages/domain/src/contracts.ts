@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { applicationState, boardPermission, factApproval, recruitmentStage, shortlistDecision } from './states.js';
 
 export const boardSchema = z.object({
-  id: z.string().uuid().optional(), provider: z.enum(['greenhouse', 'lever', 'ashby']), tenant: z.string().min(1).max(200), region: z.string().min(1).max(40), companyName: z.string().min(1).max(200), companyDomain: z.string().min(1).max(253), careersUrl: z.string().url(), associationStatus: z.enum(['VERIFIED', 'UNVERIFIED']), permissionStatus: z.enum(boardPermission), enabled: z.boolean().default(false),
-}).strict();
+  id: z.string().uuid().optional(), provider: z.enum(['greenhouse', 'lever', 'ashby']), tenant: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/), region: z.enum(['global', 'eu']), companyName: z.string().min(1).max(200), companyDomain: z.string().min(1).max(253), careersUrl: z.string().url(), associationStatus: z.enum(['VERIFIED', 'UNVERIFIED']), permissionStatus: z.enum(boardPermission), enabled: z.boolean().default(false),
+}).strict().refine((board) => board.provider === 'lever' || board.region === 'global', { path: ['region'], message: 'This provider supports the global region only.' });
 
 export const factSchema = z.object({ kind: z.string().min(1).max(64), statement: z.string().min(1).max(4000), tags: z.array(z.string().min(1).max(80)).max(40).default([]), source: z.enum(['USER_ENTERED', 'IMPORTED_SUGGESTION']).default('USER_ENTERED'), approvalStatus: z.enum(factApproval).default('SUGGESTED') }).strict();
 export const answerSchema = z.object({ semanticKey: z.string().min(1).max(100), jurisdiction: z.string().length(2), questionScope: z.string().min(1).max(160), value: z.unknown().nullable(), strategy: z.enum(['EXACT_APPROVED', 'DERIVED_RULE', 'DRAFT_FOR_REVIEW', 'ASK_USER', 'LEAVE_OPTIONAL_BLANK']), approvalStatus: z.enum(['UNANSWERED', 'USER_APPROVED']).default('UNANSWERED'), reviewAfter: z.string().datetime().nullable().default(null), questionText: z.string().trim().max(500).nullable().default(null) }).strict();

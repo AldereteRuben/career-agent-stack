@@ -8,7 +8,7 @@ import { and, desc, eq, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db, pool, applications, applicationEvents, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces } from '@career/db';
 import { applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, profileCompletion } from '@career/domain';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
-import { normalizeJobUrl, readBoard } from './sources.js';
+import { normalizeJobUrl, readBoardWithReport } from './sources.js';
 import { renderResume } from './document-renderer.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, occurrencesForBoard, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
@@ -55,7 +55,7 @@ const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]): Omit
 };
 
 app.get('/healthz', async (_request, reply) => {
-  try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: false, version: '0.1.0' }; }
+  try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: false, version: '0.2.0' }; }
   catch { return fail(reply, 503, 'DATABASE_UNAVAILABLE'); }
 });
 
@@ -217,7 +217,7 @@ app.post('/api/v1/boards/:id/review', async (request, reply) => {
   const { id: boardId } = request.params as { id: string }; const id = workspace(request);
   const board = (await db.select().from(boards).where(and(eq(boards.id, boardId), eq(boards.workspaceId, id))).limit(1))[0]; if (!board) return fail(reply, 404, 'NOT_FOUND');
   const reviewedAt = new Date(); const due = new Date(reviewedAt.getTime() + 90 * 86_400_000);
-  await db.insert(sourcePolicyReviews).values({ workspaceId: id, boardId, capability: 'PUBLIC_JOB_READ', accessClass: 'DOCUMENTED_PUBLIC_READ', permissionStatus: 'APPROVED_FOR_SCOPE', apiHost: board.provider === 'greenhouse' ? 'boards-api.greenhouse.io' : board.provider === 'lever' ? (board.region.toLowerCase() === 'eu' ? 'api.eu.lever.co' : 'api.lever.co') : 'api.ashbyhq.com', referenceUrl: body.referenceUrl, notes: body.notes, adapterVersion: '0.1.0', fixtureCoverage: 0, reviewedAt, reviewDueAt: due });
+  await db.insert(sourcePolicyReviews).values({ workspaceId: id, boardId, capability: 'PUBLIC_JOB_READ', accessClass: 'DOCUMENTED_PUBLIC_READ', permissionStatus: 'APPROVED_FOR_SCOPE', apiHost: board.provider === 'greenhouse' ? 'boards-api.greenhouse.io' : board.provider === 'lever' ? (board.region.toLowerCase() === 'eu' ? 'api.eu.lever.co' : 'api.lever.co') : 'api.ashbyhq.com', referenceUrl: body.referenceUrl, notes: body.notes, adapterVersion: '0.2.0', fixtureCoverage: 0, reviewedAt, reviewDueAt: due });
   const updated = await db.update(boards).set({ associationStatus: 'VERIFIED', permissionStatus: 'APPROVED_FOR_SCOPE', enabled: true, reviewedAt, reviewDueAt: due, updatedAt: reviewedAt }).where(eq(boards.id, boardId)).returning();
   return updated[0];
 });
@@ -237,7 +237,8 @@ app.post('/api/v1/boards/:id/refresh', async (request, reply) => {
   const lock = await refreshLock.query<{ acquired: boolean }>('select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired', [boardId]);
   if (!lock.rows[0]?.acquired) { refreshLock.release(); return fail(reply, 409, 'BOARD_REFRESH_ALREADY_RUNNING'); }
   try {
-    const discovered = await readBoard({ provider: board.provider, tenant: board.tenant, region: board.region });
+    const sourceReport = await readBoardWithReport({ provider: board.provider, tenant: board.tenant, region: board.region });
+    const discovered = sourceReport.jobs;
     const result = await db.transaction(async (tx) => {
       // Context and existing identities are loaded once per refresh instead of once per discovered job.
       const context = await loadMatchingContext(tx, id);
@@ -274,7 +275,7 @@ app.post('/api/v1/boards/:id/refresh', async (request, reply) => {
         }
       }
       await tx.update(boards).set({ lastSuccessfulRefreshAt: now, updatedAt: now }).where(and(eq(boards.id, boardId), eq(boards.workspaceId, id)));
-      return { added, updated, total: added + updated, coverage: 'COMPLETE', fetchedAt: now.toISOString() };
+      return { added, updated, total: added + updated, coverage: sourceReport.skipped ? 'PARTIAL' : 'COMPLETE', skipped: sourceReport.skipped, fetchedAt: now.toISOString() };
     });
     return result;
   } catch (error) { app.log.error({ err: error, boardId }, 'Board refresh failed'); return fail(reply, 502, 'BOARD_REFRESH_FAILED', error instanceof Error ? error.message : 'Unknown source error'); }
@@ -497,7 +498,7 @@ app.get('/api/v1/export', async (request, reply) => {
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
 
-app.get('/api/v1/capabilities', async () => ({ release: 'v0.1', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export'], unavailable: ['ai-processing', 'browser-autofill', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: false, automaticSubmission: false }));
+app.get('/api/v1/capabilities', async () => ({ release: 'v0.2', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore'], unavailable: ['ai-processing', 'browser-autofill', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: false, automaticSubmission: false }));
 
 app.setErrorHandler((error, _request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');
@@ -509,5 +510,5 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
-app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: false, setupTokenPath }, 'Career Agent Stack API v0.1 started');
+app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: false, setupTokenPath }, 'Career Agent Stack API v0.2 started');
 for (const unavailable of ['browser autofill', 'external submission', 'email OAuth', 'interview coaching']) app.log.info({ capability: unavailable, status: 'UNAVAILABLE_IN_V0_1' });

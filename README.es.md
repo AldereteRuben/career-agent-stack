@@ -4,6 +4,8 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
+**Versión actual: v0.2.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.2.0.md)
+
 La interfaz está disponible en **español e inglés**. Cada persona utiliza una instalación independiente, con su propia base de datos y claves. No es un servicio compartido en la nube.
 
 ## Qué puedes hacer
@@ -14,9 +16,9 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
 - Generar, visualizar, revisar y descargar distintas versiones de un PDF.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
-- Exportar tu espacio en JSON.
+- Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
-No necesitas una suscripción de IA ni una clave de API. La versión 0.1 **no envía candidaturas**, no rellena sitios de empresas, no conecta con tu correo ni prepara entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+No necesitas una suscripción de IA ni una clave de API. La versión 0.2 **no envía candidaturas**, no rellena sitios de empresas, no conecta con tu correo ni prepara entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
 
 ## Empieza aquí
 
@@ -25,9 +27,9 @@ No necesitas una suscripción de IA ni una clave de API. La versión 0.1 **no en
 - **Git**, para descargar el repositorio.
 - **Node.js 24**; se desarrolló con 24.18.x y la versión está indicada en `.node-version`.
 - **pnpm 11.10.0**: después de instalar Node, ejecuta `npm install -g pnpm@11.10.0`.
-- **Docker con Compose**, abierto antes de preparar la app. En macOS, abre Docker Desktop. La configuración incluida prepara PostgreSQL 17.
+- **PostgreSQL 17**, instalado mediante Homebrew en macOS (`brew install postgresql@17 && brew services start postgresql@17`) o mediante Docker con Compose. Si utilizas Docker, abre Docker Desktop antes de preparar la app. La instalación limpia se verificó con PostgreSQL de Homebrew; la ruta Docker aún no se ha validado de extremo a extremo.
 
-Si ya tienes PostgreSQL 17, puedes utilizarlo sin Docker, pero debes crear el usuario y la base de datos y configurar `DATABASE_URL`. Consulta la [guía de configuración y recuperación](docs/operations/local-setup.md). Si el puerto 5432 ya está ocupado por otra base de datos, configura esa conexión antes de continuar.
+Si ya tienes PostgreSQL 17, puedes utilizarlo sin Docker, la preparación puede crear una base y un usuario propios mediante una conexión de administrador local. Para otro servidor, indica `CAREER_ADMIN_DATABASE_URL`; para una base que ya preparaste, indica `CAREER_DATABASE_URL`. Consulta la [guía de configuración y recuperación](docs/operations/local-setup.md). Si el puerto 5432 ya está ocupado por otra base de datos, configura esa conexión antes de continuar.
 
 ### 2. Descarga y prepara el proyecto
 
@@ -40,7 +42,7 @@ pnpm run bootstrap
 
 Si el repositorio es privado, tu cuenta necesita acceso y Git debe estar autenticado. También puedes usar `gh repo clone AldereteRuben/career-agent-stack` después de `gh auth login`.
 
-La preparación crea un `.env` privado con claves nuevas, prepara PostgreSQL, aplica las migraciones e instala Chromium para generar PDF. Conserva un `.env` existente y no añade datos de ejemplo. La instalación inicial necesita conexión a internet.
+La preparación crea un `.env` privado con claves nuevas, crea una base de datos y credenciales propias para esta instalación, aplica las migraciones e instala Chromium para generar PDF. Conserva un `.env` existente y no añade datos de ejemplo. Si se interrumpe, retoma las claves de `.env.pending`; `.env` se finaliza cuando la preparación termina correctamente. La instalación inicial necesita conexión a internet.
 
 ### 3. Abre tu espacio
 
@@ -73,6 +75,8 @@ Ejecuta los comandos desde la carpeta del proyecto:
 | `pnpm run status` | Comprueba servicios y si hace falta reiniciar. |
 | `pnpm run stop` | Detiene la API y la web iniciadas por el lanzador; conserva datos. |
 | `pnpm run reset:session` | Genera otro token; no revoca sesiones ya abiertas. |
+| `pnpm run backup` | Crea y verifica una copia de la base de datos y documentos. |
+| `pnpm run restore --help` | Explica cómo verificar o restaurar una copia en un espacio nuevo. |
 | `pnpm run doctor` | Revisa la configuración local. |
 
 ### Actualizar
@@ -103,8 +107,12 @@ Al iniciar una API detenida se aplican las migraciones pendientes y se recompila
 - `.env`, `data/`, exportaciones y copias deben permanecer privados y están excluidos de Git. **No borres `.env` para reiniciar la app**: contiene la clave de cifrado.
 - PostgreSQL almacena los registros; `data/files/` contiene los documentos. Docker utiliza el volumen persistente `career-postgres`: no lo elimines para resolver un problema de arranque.
 - Las fuentes externas necesitan una revisión explícita de la empresa y del permiso de lectura pública. Solo se consultan las fuentes configuradas, no todo el mercado laboral.
-- Existe exportación JSON. La copia y restauración coordinadas de base de datos y archivos aún no están implementadas; `pnpm run backup` y `pnpm run restore` informan de esta limitación.
+- Las copias incluyen la base de datos y los PDF, con huellas y un manifiesto firmado. La restauración necesita el archivo de clave separado y crea una base y carpeta nuevas; nunca sobrescribe un espacio existente. El archivo **no está cifrado**. Consulta la [guía de recuperación](docs/operations/backup-restore.md).
 - La verificación local se realizó en macOS. Otros sistemas aún no tienen la misma validación de extremo a extremo.
+
+## Guarda una copia de tu trabajo
+
+En macOS, abre **Backup Career Agent Stack.command** con doble clic, o ejecuta `pnpm run backup`. Espera a que termine la verificación y guarda el archivo y su clave separada en ubicaciones privadas. Se necesitan las herramientas PostgreSQL `pg_dump` y `pg_restore`, versión 17 o compatible con tu servidor. La [guía de recuperación](docs/operations/backup-restore.md) explica su instalación y cómo restaurar.
 
 ## Desarrollo y pruebas
 
@@ -117,11 +125,12 @@ pnpm run lint
 pnpm run typecheck
 pnpm run test:unit
 pnpm run test:e2e
+pnpm run test:sources # pruebas de adaptadores, sin red
 ```
 
-Las pruebas E2E usan servicios privados, datos ficticios y una base desechable. Necesitan un usuario local que pueda crear bases de datos o `E2E_ADMIN_DATABASE_URL`. Consulta la [guía E2E](docs/operations/e2e-testing.md). Se realizan comprobaciones de solo lectura para verificar que el espacio real no cambió. `test:integration`, `test:evals` y `runner` son comandos pendientes que informan de su indisponibilidad.
+Las pruebas E2E usan servicios privados, datos ficticios y una base desechable. Necesitan un usuario local que pueda crear bases de datos o `E2E_ADMIN_DATABASE_URL`. Consulta la [guía E2E](docs/operations/e2e-testing.md). Se realizan comprobaciones de solo lectura para verificar que el espacio real no cambió. `pnpm run test:backup` comprueba archivos de copia sin base de datos. `pnpm run test:integration` comprueba copia y restauración con bases desechables si defines `CAREER_BACKUP_TEST_ADMIN_URL`; sin esa variable, la suite se omite. `pnpm run test:setup` recorre una instalación limpia con un administrador local. `test:evals` y `runner` siguen pendientes.
 
-Última verificación local (2026-10-03): **8/8 escenarios E2E y 16/16 pruebas unitarias**, además de lint, tipos y compilación. En esa ejecución no se comprobó la consulta de fuentes externas reales.
+Consulta los proveedores y las fuentes públicas reales comprobadas en la [validación de fuentes](docs/operations/source-validation.md). `pnpm run verify:sources --live` habilita explícitamente una nueva comprobación de solo lectura; no activa fuentes en tu espacio.
 
 ## Estructura
 

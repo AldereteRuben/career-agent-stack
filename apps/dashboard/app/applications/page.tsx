@@ -14,7 +14,7 @@ type Application = { id: string; jobId: string | null; company: string; role: st
 type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null };
 type Patch = { state?: string; recruitmentStage?: string; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
 
-/** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.1. */
+/** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.2. */
 const transitions: Record<string, string[]> = {
   DRAFT: ['PREPARING', 'CONFIRMED', 'CANCELLED'], PREPARING: ['REVIEW_REQUIRED', 'CONFIRMED', 'CANCELLED'], REVIEW_REQUIRED: ['PREPARING', 'CONFIRMED', 'CANCELLED'],
   READY: ['REVIEW_REQUIRED', 'CONFIRMED', 'CANCELLED'], IN_PROGRESS: ['CONFIRMED', 'CANCELLED'], UNKNOWN: ['CONFIRMED', 'REVIEW_REQUIRED'], CONFIRMED: ['REVIEW_REQUIRED'], CANCELLED: [],

@@ -190,7 +190,7 @@ export default function ProfilePage() {
       </Card>
     </div><aside className="profile-aside">
       <Card className="aside-card"><span className="aside-number">01</span><h3>{c('Lo que apruebas, cuenta.', 'What you approve is what counts.')}</h3><p>{c('Los documentos solo usan hechos aprobados en la revisión actual de tu perfil.', 'Documents only use facts approved in the current revision of your profile.')}</p></Card>
-      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('El perfil vive en esta instalación local. No se comparte con empresas.', 'Your profile lives in this local installation. It is not shared with employers.')}</p><small>{c('El envío de candidaturas no está disponible en v0.1.', 'Submitting applications is not available in v0.1.')}</small></Card>
+      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('El perfil vive en esta instalación local. No se comparte con empresas.', 'Your profile lives in this local installation. It is not shared with employers.')}</p><small>{c('El envío de candidaturas no está disponible en v0.2.', 'Submitting applications is not available in v0.2.')}</small></Card>
     </aside></div>
   </AppShell></WorkspaceGate>;
 }

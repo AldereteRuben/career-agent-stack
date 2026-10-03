@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{t("Local y privado")}</span></span><LanguageSwitch/></div>
       </header>
       <main id="main-content" className="page-wrap" tabIndex={-1}>{children}</main>
-      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{t("v0.1")}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
+      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{t("v0.2")}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
     </div>
   </div>;
 }

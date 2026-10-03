@@ -2,7 +2,8 @@
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import type { BrowserContext, Page } from 'playwright';
 import { any, errorFeedback, eventually, goTo, hasHorizontalOverflow, mainNavigation, routes, setLocale, signIn, type ApiClient } from './ui.js';
@@ -262,6 +263,61 @@ export const scenarios: Scenario[] = [
         await page.getByRole('heading', { name: first.role }).first().waitFor();
         await page.waitForURL((url) => url.searchParams.get('id') === first.id);
       }
+    },
+  },
+  {
+    name: 'source-review-and-partial-results',
+    async run({ page, api, marker }) {
+      const board = await api.post<{ id: string }>('/boards', { provider: 'greenhouse', tenant: marker, region: 'global', companyName: `Source ${marker}`, companyDomain: 'example.com', careersUrl: 'https://example.com/careers', permissionStatus: 'UNKNOWN', associationStatus: 'UNVERIFIED', enabled: false });
+      await goTo(page, '/boards');
+      const card = page.locator('.board-card').filter({ hasText: `Source ${marker}` });
+      const confirm = card.getByRole('button', { name: any('Confirmar y activar búsqueda', 'Confirm and turn on search') });
+      await confirm.waitFor();
+      assert.equal(await confirm.isDisabled(), true, 'New sources require both confirmations');
+      await card.getByRole('checkbox').nth(0).check();
+      assert.equal(await confirm.isDisabled(), true, 'One confirmation is insufficient');
+      await card.getByRole('checkbox').nth(1).check();
+      await confirm.click();
+      const search = card.getByRole('button', { name: any('Buscar vacantes nuevas', 'Find new jobs') });
+      await search.waitFor();
+      // Only the refresh result is mocked: creation, review and disabling use the isolated API.
+      // This prevents test fixtures from making outbound requests or importing real jobs.
+      const routePattern = `**/api/v1/boards/${board.id}/refresh`;
+      await page.route(routePattern, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ added: 0, updated: 0, coverage: 'PARTIAL', skipped: 2 }) }));
+      try { await search.click(); await page.getByText(any('No pudimos leer 2 registros', 'We could not read 2 records')).waitFor(); }
+      finally { await page.unroute(routePattern); }
+      await card.getByRole('button', { name: any('Desactivar', 'Turn off') }).click();
+      await card.getByRole('button', { name: any('Confirmar y reactivar', 'Confirm and turn back on') }).waitFor();
+      const row = (await api.get<Array<{ id: string; enabled: boolean }>>('/boards')).find((item) => item.id === board.id);
+      assert.equal(row?.enabled, false, 'Source remains disabled in the database');
+    },
+  },
+  {
+    name: 'export-download-and-error-recovery',
+    async run({ page, allowConsole }) {
+      await goTo(page, '/settings');
+      const downloadButton = page.getByRole('button', { name: any('Descargar exportación', 'Download export') });
+      allowConsole(/409|Conflict/);
+      const failExport = async (route: import('playwright').Route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'DOCUMENT_FILE_UNAVAILABLE' }) });
+      await page.route('**/api/v1/export', failExport);
+      try {
+        await downloadButton.click();
+        await errorFeedback(page).waitFor();
+        await page.getByText(any('El archivo PDF ya no está disponible', 'The PDF file is no longer available')).waitFor();
+        assert.equal(await downloadButton.isEnabled(), true, 'Export can be retried after a failed request');
+      } finally { await page.unroute('**/api/v1/export', failExport); }
+      const downloaded = page.waitForEvent('download');
+      await downloadButton.click();
+      const download = await downloaded;
+      const path = await download.path();
+      assert.ok(path, 'An export must be downloaded');
+      const payload = JSON.parse(await readFile(path, 'utf8'));
+      assert.equal(payload.format, 'career-agent-stack-export');
+      assert.equal(payload.sha256, createHash('sha256').update(JSON.stringify(payload.data)).digest('hex'), 'Export checksum must match its contents');
+      assert.ok(payload.data.workspace?.id, 'Export contains the workspace');
+      assert.ok(payload.data.boards.every((board: { enabled: boolean; permissionStatus: string }) => !board.enabled && board.permissionStatus === 'UNKNOWN'), 'Exported board permissions are disabled');
+      assert.ok(!JSON.stringify(payload).includes('APP_SESSION_SECRET'), 'Export must not contain configuration credentials');
+      await eventually(() => downloadButton.isEnabled(), Boolean, 'Export button becomes available again');
     },
   },
   {

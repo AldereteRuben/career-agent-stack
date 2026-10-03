@@ -9,12 +9,13 @@
 // It never seeds demo data, never resets or deletes data, and never prints secrets.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, chmod, mkdir, open, readFile, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, open, readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import process from 'node:process';
 import {
-  RecoveryError, describeDatabase, httpStatus, listeningPid, localDataPath, logDir, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
-  portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, runDir, say, step, waitFor, warn,
+  RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
+  pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
+  waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 
 const args = new Set(process.argv.slice(2));
@@ -64,12 +65,17 @@ async function checkDependencies() {
 
 async function loadEnvironment() {
   let env = await readLocalEnv();
+  if (!env && alternateEnv) throw new RecoveryError({
+    es: `No existe el archivo de configuración indicado en CAREER_ENV_FILE (${envPath}).`, en: `The configuration file given in CAREER_ENV_FILE does not exist (${envPath}).`,
+    fixes: [fix('Comprueba la ruta (por ejemplo, el .env de la carpeta restaurada). Con CAREER_ENV_FILE no se prepara nada nuevo.', 'Check the path (for example the .env of the restored folder). With CAREER_ENV_FILE nothing new is set up.')],
+  });
   if (!env) {
     if (checkOnly) throw new RecoveryError({
       es: 'Falta el archivo privado .env: este equipo aún no está preparado.', en: 'The private .env file is missing: this machine is not set up yet.',
       fixes: [fix('Ejecuta: pnpm run bootstrap (o pnpm start, que lo hace por ti)', 'Run: pnpm run bootstrap (or pnpm start, which does it for you)')],
     });
-    step('Primera ejecución: preparando la configuración privada…', 'First run: preparing the private configuration…');
+    if (await exists(pendingEnvPath)) step('La preparación inicial no terminó la última vez; se retoma donde se quedó…', 'Initial setup did not finish last time; resuming where it stopped…');
+    else step('Primera ejecución: preparando la configuración privada…', 'First run: preparing the private configuration…');
     if (run(process.execPath, ['scripts/bootstrap.mjs']).status !== 0) throw new RecoveryError({
       es: 'La preparación inicial no terminó.', en: 'Initial setup did not finish.',
       fixes: [fix('Lee el mensaje anterior y vuelve a ejecutar: pnpm run bootstrap', 'Read the message above and run again: pnpm run bootstrap')],
@@ -90,8 +96,29 @@ async function loadEnvironment() {
   const apiBase = env.API_BASE_URL || `http://127.0.0.1:${apiPort}`;
   const webOrigin = env.WEB_ORIGIN || `http://127.0.0.1:${webPort}`;
   if (new URL(webOrigin).port !== String(webPort)) warn(`WEB_ORIGIN (${webOrigin}) no usa WEB_PORT=${webPort}; las escrituras serán rechazadas.`, `WEB_ORIGIN (${webOrigin}) does not use WEB_PORT=${webPort}; writes will be rejected.`);
-  ok('Configuración privada presente (no se muestra)', 'Private configuration present (not shown)');
-  return { database, apiPort, webPort, apiBase, webOrigin };
+  const outside = alternateEnvProblem(env);
+  if (outside) throw new RecoveryError({ ...outside, fixes: [fix('Corrige ese archivo; los datos de esta copia no se usan para otra instalación.', 'Fix that file; this checkout\'s data is never used for another installation.')] });
+  if (alternateEnv) ok(`Configuración seleccionada con CAREER_ENV_FILE: ${envPath} (datos, registros y procesos en su carpeta de datos)`, `Configuration selected with CAREER_ENV_FILE: ${envPath} (data, logs and process records in its data folder)`);
+  else ok('Configuración privada presente (no se muestra)', 'Private configuration present (not shown)');
+  // Child processes get this installation's .env values, never DATABASE_URL, keys or ports exported in the shell.
+  return { database, apiPort, webPort, apiBase, webOrigin, childEnv: installEnv(env) };
+}
+
+/**
+ * The web app build bakes API_BASE_URL into its /api rewrite. A checkout that has its own installation (.env) must
+ * never have its build replaced for another installation selected with CAREER_ENV_FILE: that would silently point
+ * the live web app at the other API. Checked before anything is started.
+ */
+async function guardSharedBuild({ apiBase }) {
+  if (!alternateEnv || !(await exists(at('.env'))) || checkOnly || !(await dashboardNeedsBuild(apiBase, { strict: true }))) return;
+  throw new RecoveryError({
+    es: 'Esta copia del proyecto tiene su propia instalación (.env) y su compilación web es para otra API; no se recompila para la configuración de CAREER_ENV_FILE.',
+    en: 'This checkout has its own installation (.env) and its web build targets another API; it is not rebuilt for the CAREER_ENV_FILE configuration.',
+    fixes: [
+      fix('Usa otra copia del código de la misma versión: git worktree add ../career-restored && cd ../career-restored && pnpm install --frozen-lockfile', 'Use another checkout of the same version: git worktree add ../career-restored && cd ../career-restored && pnpm install --frozen-lockfile'),
+      fix(`Y allí: CAREER_ENV_FILE="${envPath}" pnpm start`, `Then there: CAREER_ENV_FILE="${envPath}" pnpm start`),
+    ],
+  });
 }
 
 async function ensureDatabase({ database }) {
@@ -106,27 +133,15 @@ async function ensureDatabase({ database }) {
   if (checkOnly) return problem(`PostgreSQL no responde en ${label}`, `PostgreSQL does not answer on ${label}`);
 
   step('Iniciando PostgreSQL local…', 'Starting local PostgreSQL…');
-  const brewPrefix = spawnSync('brew', ['--prefix'], { encoding: 'utf8' });
-  const brewData = brewPrefix.status === 0 ? resolve(brewPrefix.stdout.trim(), 'var/postgresql@17') : null;
-  const pgCtl = brewPrefix.status === 0 ? resolve(brewPrefix.stdout.trim(), 'opt/postgresql@17/bin/pg_ctl') : null;
-  let method = null;
-  if (brewData && pgCtl && await exists(resolve(brewData, 'PG_VERSION')) && await exists(pgCtl)) {
-    await mkdir(at('data'), { recursive: true, mode: 0o700 });
-    const started = run(pgCtl, ['-D', brewData, '-l', at('data/postgres.log'), '-w', '-t', '30', 'start'], { stdio: 'ignore' });
-    if (started.status === 0) method = 'homebrew-pg_ctl';
-  }
-  if (!method && spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0) {
-    if (run('docker', ['compose', 'up', '-d', '--wait', 'postgres']).status === 0) method = 'docker-compose';
-  }
+  const method = await startLocalPostgres();
   if (!method || !(await waitFor(() => portIsOpen(database.host, database.port), { timeoutMs: 30_000 }))) {
     throw new RecoveryError({ es: `No se pudo iniciar PostgreSQL en ${label}.`, en: `PostgreSQL could not be started on ${label}.`, fixes });
   }
-  await recordStarted('postgres', method === 'homebrew-pg_ctl' ? { method, dataDir: brewData, pgCtl } : { method });
   ok(`PostgreSQL iniciado (${method})`, `PostgreSQL started (${method})`);
 }
 
 function runQuiet(command, commandArgs, env) {
-  const result = spawnSync(command, commandArgs, { cwd: projectRoot, encoding: 'utf8', env: { ...process.env, ...env } });
+  const result = spawnSync(command, commandArgs, { cwd: projectRoot, encoding: 'utf8', env });
   if (result.status !== 0) process.stderr.write(maskSecrets(`${result.stdout ?? ''}\n${result.stderr ?? ''}`).split('\n').slice(-25).join('\n') + '\n');
   return result.status === 0;
 }
@@ -138,15 +153,16 @@ async function apiNeedsBuild() {
   return !built || !shared || sources > Math.min(built, shared);
 }
 
-async function dashboardNeedsBuild() {
+// The dashboard's /api rewrite to API_BASE_URL is fixed at build time, so a build made for another API port is stale.
+const dashboardStamp = at('apps/dashboard/.next/career-api-base');
+
+async function dashboardNeedsBuild(apiBase, { strict = false } = {}) {
   const built = await mtimeOf(at('apps/dashboard/.next/BUILD_ID'));
   const sources = await newestMtime(['app', 'components', 'lib', 'next.config.ts', 'package.json'].map((part) => at('apps/dashboard', part)));
-  return !built || sources > built;
-}
-
-async function recordStarted(name, details) {
-  await mkdir(runDir, { recursive: true, mode: 0o700 });
-  await writeFile(resolve(runDir, `${name}.json`), JSON.stringify({ name, startedAt: new Date().toISOString(), ...details }, null, 2), { mode: 0o600 });
+  let builtFor = null;
+  try { builtFor = (await readFile(dashboardStamp, 'utf8')).trim(); } catch { /* builds from older launchers carry no stamp */ }
+  // strict: a build without a stamp counts as made for another API (used before building for CAREER_ENV_FILE).
+  return !built || sources > built || (builtFor !== null && builtFor !== apiBase) || (strict && builtFor === null);
 }
 
 /**
@@ -158,7 +174,7 @@ async function startDetached(name, command, commandArgs, { cwd, env, entry, titl
   const logPath = resolve(logDir, `${name}.log`);
   const log = await open(logPath, 'a', 0o600);
   await chmod(logPath, 0o600);
-  const child = spawn(command, commandArgs, { cwd, env: { ...process.env, ...env }, detached: true, stdio: ['ignore', log.fd, log.fd] });
+  const child = spawn(command, commandArgs, { cwd, env, detached: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref();
   await log.close();
   let identity = null;
@@ -210,7 +226,7 @@ const apiHealthy = async (apiBase) => {
   return health.status === 200 && health.body?.database === 'ready';
 };
 
-async function ensureApi({ apiBase, apiPort }) {
+async function ensureApi({ apiBase, apiPort, childEnv }) {
   if (await apiHealthy(apiBase)) {
     ok(`API en marcha y sana (${apiBase})${checkOnly ? '' : '; se reutiliza'}`, `API running and healthy (${apiBase})${checkOnly ? '' : '; reusing it'}`);
     return reportFreshness('api', { es: 'API', en: 'API' }, {
@@ -230,19 +246,19 @@ async function ensureApi({ apiBase, apiPort }) {
   if (checkOnly) return problem(`API detenida${needsBuild ? ' (necesita compilarse)' : ''}`, `API stopped${needsBuild ? ' (needs a build)' : ''}`);
 
   step('Aplicando migraciones pendientes de la base de datos (no borra datos existentes)…', 'Applying pending database migrations (existing data is kept)…');
-  if (!runQuiet('pnpm', ['run', '--silent', 'db:migrate'])) throw new RecoveryError({
+  if (!runQuiet('pnpm', ['run', '--silent', 'db:migrate'], childEnv)) throw new RecoveryError({
     es: 'No se pudieron aplicar las migraciones.', en: 'Database migrations could not be applied.',
     fixes: [fix('Comprueba que PostgreSQL acepta las credenciales de .env: pnpm run doctor', 'Check that PostgreSQL accepts the .env credentials: pnpm run doctor')],
   });
   if (needsBuild) {
     step('Compilando la API…', 'Building the API…');
-    if (run('pnpm', ['run', 'build:shared']).status !== 0 || run('pnpm', ['--filter', '@career/api', 'build']).status !== 0) throw new RecoveryError({
+    if (run('pnpm', ['run', 'build:shared'], { env: childEnv }).status !== 0 || run('pnpm', ['--filter', '@career/api', 'build'], { env: childEnv }).status !== 0) throw new RecoveryError({
       es: 'La API no compila.', en: 'The API does not build.', fixes: [fix('Revisa el error anterior o ejecuta: pnpm run typecheck', 'Review the error above or run: pnpm run typecheck')],
     });
   }
   step('Iniciando la API…', 'Starting the API…');
   const entry = at('apps/api/dist/server.js');
-  const logPath = await startDetached('api', process.execPath, [entry], { cwd: at('apps/api'), env: {}, entry });
+  const logPath = await startDetached('api', process.execPath, [entry], { cwd: at('apps/api'), env: childEnv, entry });
   if (!(await waitFor(() => apiHealthy(apiBase), { timeoutMs: 60_000 }))) {
     process.stderr.write(`${await tail(logPath)}\n`);
     throw new RecoveryError({
@@ -258,7 +274,7 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
   if (login.status >= 200 && login.status < 400) {
     ok(`Aplicación web en marcha (${webOrigin})${checkOnly ? '' : '; se reutiliza'}`, `Web app running (${webOrigin})${checkOnly ? '' : '; reusing it'}`);
     return reportFreshness('dashboard', { es: 'Aplicación web', en: 'Web app' }, {
-      port: webPort, buildMtime: await mtimeOf(at('apps/dashboard/.next/BUILD_ID')), needsBuild: await dashboardNeedsBuild(),
+      port: webPort, buildMtime: await mtimeOf(at('apps/dashboard/.next/BUILD_ID')), needsBuild: await dashboardNeedsBuild(apiBase),
       isDev: (identity) => /\bnext\b.*\bdev\b/.test(identity.args) || /\bnext\b.*\bdev\b|\bnext dev\b/.test(parentArgs(identity.pid)),
     });
   }
@@ -269,14 +285,16 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
       fix(`Para ver quién lo usa: lsof -nP -iTCP:${webPort} -sTCP:LISTEN`, `To see what uses it: lsof -nP -iTCP:${webPort} -sTCP:LISTEN`),
     ],
   });
-  const needsBuild = await dashboardNeedsBuild();
+  const needsBuild = await dashboardNeedsBuild(apiBase);
   if (checkOnly) return problem(`Aplicación web detenida${needsBuild ? ' (necesita compilarse)' : ''}`, `Web app stopped${needsBuild ? ' (needs a build)' : ''}`);
-  const env = { API_BASE_URL: apiBase, NEXT_TELEMETRY_DISABLED: '1' };
+  // Only what the web app needs: the .env values (NODE_ENV=development among them) would break `next build`.
+  const env = installEnv({}, { API_BASE_URL: apiBase, NEXT_TELEMETRY_DISABLED: '1' });
   if (needsBuild) {
     step('Compilando la aplicación web (la primera vez tarda unos minutos)…', 'Building the web app (the first time takes a few minutes)…');
-    if (run('pnpm', ['--filter', '@career/dashboard', 'build'], { env: { ...process.env, ...env } }).status !== 0) throw new RecoveryError({
+    if (run('pnpm', ['--filter', '@career/dashboard', 'build'], { env }).status !== 0) throw new RecoveryError({
       es: 'La aplicación web no compila.', en: 'The web app does not build.', fixes: [fix('Revisa el error anterior o ejecuta: pnpm run typecheck', 'Review the error above or run: pnpm run typecheck')],
     });
+    await writePrivateFileAtomic(dashboardStamp, `${apiBase}\n`);
   }
   step('Iniciando la aplicación web…', 'Starting the web app…');
   const nextBin = at('apps/dashboard/node_modules/next/dist/bin/next');
@@ -342,6 +360,7 @@ async function main() {
   checkNode();
   await checkDependencies();
   const settings = await loadEnvironment();
+  await guardSharedBuild(settings);
   await ensureDatabase(settings);
   await ensureApi(settings);
   await ensureDashboard(settings);

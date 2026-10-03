@@ -71,8 +71,10 @@ export default function BoardsPage() {
   const refresh = async (board: Board) => {
     begin(board.id);
     try {
-      const result = await api<{ added: number; updated: number; coverage: string }>(`/boards/${board.id}/refresh`, { method: 'POST', body: '{}' });
-      setMessage(result.added + result.updated === 0
+      const result = await api<{ added: number; updated: number; coverage: string; skipped?: number }>(`/boards/${board.id}/refresh`, { method: 'POST', body: '{}' });
+      setMessage(result.coverage === 'PARTIAL'
+        ? c(`${board.companyName}: ${result.added} nuevas y ${result.updated} actualizadas. No pudimos leer ${result.skipped ?? 0} registros; consulta la web de la empresa para ver la lista completa.`, `${board.companyName}: ${result.added} new and ${result.updated} updated. We could not read ${result.skipped ?? 0} records; check the company website for the complete list.`)
+        : result.added + result.updated === 0
         ? c(`${board.companyName} no tiene vacantes públicas ahora mismo.`, `${board.companyName} has no public jobs right now.`)
         : c(`${board.companyName}: ${result.added} nuevas y ${result.updated} actualizadas.`, `${board.companyName}: ${result.added} new and ${result.updated} updated.`));
       await load();

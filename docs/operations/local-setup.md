@@ -1,29 +1,79 @@
 # Local setup and recovery
 
+## Quick start (macOS)
+
+```bash
+brew install fnm postgresql@17 && fnm install 24 && corepack enable   # Node 24 + pnpm 11 (Homebrew node@24 is keg-only)
+brew services start postgresql@17
+node scripts/bootstrap.mjs                 # dependencies, private .env, own database, migrations
+pnpm start                                 # or double-click "Start Career Agent Stack.command"
+```
+
+With Docker instead of Homebrew PostgreSQL, open Docker Desktop and skip the first two PostgreSQL steps: bootstrap starts the bundled `compose.yaml` database when nothing answers on port 5432 and then uses its administrator automatically.
+
 ## First run
 
-1. Use Node.js 24.18.x and pnpm 11.10.0 (`.node-version` is read by fnm and nvm).
-2. Run `pnpm install --frozen-lockfile`.
-3. Run `pnpm run bootstrap`. It is safe to repeat. It:
-   - creates `.env` from `.env.example` with new random `APP_ENCRYPTION_KEY` and `APP_SESSION_SECRET` **only if `.env` does not exist**. An existing `.env` is never overwritten. The keys are not printed.
-   - creates `data/files` and `backups` with private permissions.
-   - reuses PostgreSQL if it already answers on `DATABASE_URL`. Otherwise, for a loopback URL, it tries `docker compose up -d --wait postgres`. It does not create a Homebrew database cluster or role for you.
-   - applies pending migrations (`pnpm run db:migrate`) and installs the pinned Chromium used for local PDF rendering.
-   - does not seed demo data and does not enable any board.
-4. Run `pnpm start` (or double-click `Start Career Agent Stack.command`). On first sign-in, use the token in `data/setup-token`. The token is consumed once.
-5. Create a user-approved career profile and add a board. Verify the company association and the provider's public read API before enabling it.
+The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postgresql@17 && brew services start postgresql@17`). Docker Compose is a fallback that bootstrap uses only when nothing answers on the database port and Docker is running; it was not available on the machine where v0.2 was verified. Linux works with the same commands but has not been verified; Windows is not supported.
+
+1. Use Node.js 24.x and pnpm 11 (`.node-version` is read by fnm; the `.command` launcher also asks nvm for it).
+2. Run `node scripts/bootstrap.mjs` (or `pnpm run bootstrap`, or just double-click `Start Career Agent Stack.command`, which runs it when `.env` is missing). It is safe to repeat and resumes after a failure:
+   1. checks Node 24 and pnpm 11 and runs `pnpm install --frozen-lockfile` when dependencies are missing or older than the lockfile;
+   2. writes the private configuration to `.env.pending` (mode 0600): new random `APP_ENCRYPTION_KEY` and `APP_SESSION_SECRET`, a database and role **of its own** named `career_<install id>` with a random password, and free ports (3000/3001 when free, otherwise the next free pair from 3100). Nothing is printed;
+   3. creates that role and database through an administrator connection (default `postgresql://<your macOS user>@127.0.0.1:5432/postgres`, which is how Homebrew sets PostgreSQL up). Both carry a `career-agent-stack install <id>` comment, the database is owned by the role, and other local roles cannot connect to it. Nothing else on the server is touched: an existing `career` database of another checkout is never reused;
+   4. checks the new credentials, applies the migrations, creates `data/`, `data/files/` and `backups/` (0700) and installs the pinned Chromium for PDF rendering (a failed Chromium download is a warning: the app works, PDF export does not until it is installed);
+   5. only then turns `.env.pending` into `.env` with an atomic, no-overwrite rename.
+
+   If any step fails, there is no `.env`, so nothing points at a half-prepared database. The message says what to fix in Spanish and English; re-running continues from `.env.pending` with the same keys, database name and ports. Roles and databases the run already created carry its mark and are reused; a role or database with the same name that it did **not** create is refused, never reused.
+3. Run `pnpm start` (or double-click `Start Career Agent Stack.command`). On first sign-in, use the token in `data/setup-token` (the `.command` file copies it to the clipboard). The token is consumed once.
+4. Create a user-approved career profile and add a board. Verify the company association and the provider's public read API before enabling it.
 
 No board is enabled by bootstrap or demo seeding. An empty board registry means discovery is not configured, not that no relevant jobs exist.
+
+### Bootstrap options
+
+| Variable | Use |
+| --- | --- |
+| `CAREER_ADMIN_DATABASE_URL` | Administrator used once to create the role and database (needs `CREATEROLE` and `CREATEDB`, or superuser). It always takes priority. Without it, bootstrap uses the `compose.yaml` administrator only when this checkout's own Compose `postgres` container is running and publishes the port, and otherwise your macOS user (the Homebrew default). |
+| `CAREER_DATABASE_URL` | Use this existing, empty database instead; nothing is created. |
+| `CAREER_WEB_PORT`, `CAREER_API_PORT` | Ports for this installation. Bootstrap stops if they are busy. |
+| `CAREER_INSTALL_ID` | Suffix for the database and role names (`a-z`, `0-9`, `_`). Default: random. |
+| `CAREER_SKIP_BROWSER_INSTALL=1` | Skip the Chromium download. |
+
+They are read only while `.env.pending` is being created; a resumed run keeps what it wrote. To start over before `.env` exists, delete `.env.pending` (and, if you wish, the `career_<id>` database and role it named).
+
+### Existing installations
+
+An existing `.env` is never modified. Bootstrap only checks it (it warns if it is readable by others), makes sure its database answers and accepts its credentials, applies pending migrations and finishes the folders and Chromium. Installations from before v0.2 keep using their `career` database; `pnpm run doctor` reports this. If PostgreSQL answers but refuses the `.env` credentials, the usual cause is a different server on the same port: the message says so, and nothing is changed.
+
+### Per-installation isolation
+
+Each checkout is a separate installation: its own `.env`, database and role, ports, `data/` (sign-in token, files, logs, run records) and `.next` build. The launcher passes the values of the checkout's `.env` to the API, migrations and builds, and drops `DATABASE_URL`, `APP_*`, `API_*`, `WEB_*`, `DATA_LOCAL_PATH`, `FILES_*` and `PG*` inherited from the shell, so a variable exported for another project cannot point this installation at other data. The web app build records the API address it was built for and is rebuilt when that changes.
+
+### Running another installation's configuration: `CAREER_ENV_FILE`
+
+`CAREER_ENV_FILE=/path/to/.env` makes `pnpm start`, `pnpm run status`, `pnpm run stop`, `pnpm run doctor`, `pnpm run reset:session` and `pnpm run bootstrap` use that file instead of the checkout's `.env`. This is how a restored workspace (see the backup and restore guide) is opened without copying anything over the live `.env`:
+
+```bash
+git worktree add ../career-restored            # another checkout of the same version, with no .env of its own
+cd ../career-restored && pnpm install --frozen-lockfile
+CAREER_ENV_FILE=/path/to/restored/.env pnpm start --copy-token
+CAREER_ENV_FILE=/path/to/restored/.env pnpm run stop
+```
+
+- The selected file must set `DATA_LOCAL_PATH` and `FILES_LOCAL_PATH` to absolute paths outside the checkout's `data/` (the restore output does). Run records and logs go to `<DATA_LOCAL_PATH>/run` and `<DATA_LOCAL_PATH>/logs`, and the sign-in token to `<DATA_LOCAL_PATH>/setup-token`, so the other installation is started and stopped on its own.
+- Every value comes from that file. Keys of the checkout's `.env` that the file lacks are set to their `.env.example` defaults for the API and migrations, so no live key, path or port can fill a gap.
+- Use a **separate checkout**. The web build bakes in the API address, so a checkout with its own `.env` refuses (before starting anything) to rebuild its `.next` for another configuration: that would silently point the live web app at the other API. A checkout without `.env` builds freely.
+- With `CAREER_ENV_FILE`, nothing new is ever set up: a missing file is an error, not a first run.
 
 ## Daily start: `pnpm start` / `Start Career Agent Stack.command`
 
 | Step | What happens |
 | --- | --- |
 | Node and dependencies | Checks Node 24 and pnpm. Runs `pnpm install --frozen-lockfile` when `pnpm-lock.yaml` is newer than the install. |
-| Configuration | Runs bootstrap when `.env` is missing. Stops with guidance when `DATABASE_URL` or the local keys are missing. It never edits an existing `.env`. |
+| Configuration | Runs bootstrap when `.env` is missing (it resumes an unfinished `.env.pending`). Stops with guidance when `DATABASE_URL` or the local keys are missing. It never edits an existing `.env`. Child processes get the `.env` values, not install-scoped variables from the shell. |
 | PostgreSQL | Reuses a server that answers on `DATABASE_URL`. If a loopback server is down, it starts Homebrew `postgresql@17` with `pg_ctl` (log: `data/postgres.log`) or, failing that, Docker Compose. |
 | API | Reuses a healthy API (`/healthz` reports the database ready). For a reused API, it reports **restart required** when the sources are newer than `dist/` or the process started before the current build. It never restarts it silently. If the API is not running, it applies pending migrations, builds when sources are newer than `dist/`, starts `apps/api/dist/server.js` in the background, and waits up to 60 s. |
-| Web app | Reuses a running app on `WEB_PORT`. A stale build or process is reported the same way. Dev servers (`next dev`, `tsx watch`) are treated as current. If the app is not running, it builds when sources are newer than `.next/BUILD_ID`, starts `next start`, and waits up to 90 s. |
+| Web app | Reuses a running app on `WEB_PORT`. A stale build or process is reported the same way. Dev servers (`next dev`, `tsx watch`) are treated as current. If the app is not running, it builds when sources are newer than `.next/BUILD_ID` or the build was made for another `API_BASE_URL`, starts `next start`, and waits up to 90 s. |
 | Browser | Opens `WEB_ORIGIN` (no token or secret in the URL). `--no-open` skips this. |
 | Sign-in token | With `--copy-token` (the `.command` file always passes it), a pending single-use token is copied to the clipboard. It is not printed, logged or put in a URL, and it is cleared from the clipboard after 2 minutes if it is still there. A clipboard manager with history may keep a copy. |
 
@@ -35,10 +85,10 @@ Messages are printed in Spanish and English. Spanish comes first when the system
 
 ### Known limits
 
-- The `.command` file is macOS-only. On Linux or Windows, run `pnpm start`.
+- The `.command` file is macOS-only (zsh). From Finder it loads fnm or nvm, refuses a Node other than 24 with a clear message (Homebrew's `node` may be a newer major), and on failure waits for Enter so the message stays readable. On Linux or Windows, run `pnpm start`.
 - Rebuild detection compares modification times. After an unusual checkout, if the app looks outdated, run `pnpm run stop`, then `pnpm run build`, then `pnpm start`.
 - A port taken by another program is reported, not freed. Use `lsof -nP -iTCP:<port> -sTCP:LISTEN` to see what is using it.
-- The launcher does not install PostgreSQL. It also does not create the role or database named in `DATABASE_URL` on a Homebrew install.
+- Neither bootstrap nor the launcher installs PostgreSQL or creates a cluster. Bootstrap creates only this installation's own role and database, and only through an administrator that can connect.
 
 ## Recovery
 
@@ -46,6 +96,8 @@ Messages are printed in Spanish and English. Spanish comes first when the system
 | --- | --- |
 | Signed out and `data/setup-token` is gone (used) | `pnpm run reset:session` writes a new single-use token, and `pnpm start --copy-token` copies it. It does not change data or restart the API (the API reads the file at sign-in time). |
 | You suspect an unknown browser has a session | `reset:session` does **not** revoke existing sessions. They stay valid until they expire (14 days). To revoke all sessions, replace `APP_SESSION_SECRET` in `.env` with a new random value and restart the API (`pnpm run stop`, then `pnpm start`). Leave `APP_ENCRYPTION_KEY` unchanged. |
+| Bootstrap stopped: "A PostgreSQL server answers … but the administrator cannot connect" | Another server (or one without your macOS user as administrator) owns the port. Pass an administrator: `CAREER_ADMIN_DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/postgres pnpm run bootstrap`, or create an empty database yourself, delete `.env.pending` and run with `CAREER_DATABASE_URL`. |
+| Bootstrap stopped half-way | Fix what the message says and run `pnpm run bootstrap` again. It resumes from `.env.pending` with the same keys. `pnpm run doctor` shows "Initial setup did not finish" until then. |
 | "Node.js 24 is required" | `fnm install 24 && fnm use 24` or `nvm install 24 && nvm use 24`. |
 | PostgreSQL does not answer | `brew services start postgresql@17`, or open Docker Desktop and run `docker compose up -d --wait postgres`. Then run `pnpm start` again. |
 | Port 3000/3001 busy but unhealthy | If the launcher started it, run `pnpm run stop`. Otherwise, find the owner with `lsof` (see above). |
@@ -63,9 +115,20 @@ The default is `AI_PROVIDER=none`. Profile editing, answer management, job disco
 
 Use the workspace export action to download versioned JSON. It includes career facts, jobs, board records, application history, and a hash manifest. Board permissions are reset to unknown and disabled in the portable copy. The export excludes authentication material. Treat the file as sensitive personal data.
 
+## Clean-install smoke test
+
+`node scripts/test/setup-smoke.mjs` repeats a first installation from scratch without touching your installation:
+
+- copies the tracked and new (not ignored) files of the checkout, as a fresh clone has them, into a private temporary directory (no `.env`, `data/`, `node_modules` or builds);
+- runs `pnpm install --frozen-lockfile`, then bootstrap three times: with an administrator that cannot connect (expects the ES/EN explanation, no `.env`, a private `.env.pending`), against a same-name database it did not create (expects a refusal and that database untouched), and resuming the first attempt (expects the same keys, its own marked database closed to other roles, every migration, `.env` 0600 and private folders), then once more to check that nothing changes;
+- starts the copy with the launcher on two free ephemeral ports (never 3000/3001) while `DATABASE_URL` in the shell points elsewhere, signs in through the web origin with the copy's own single-use token, runs `status`, `doctor` and the `.command` file in a Finder-like minimal shell and in a pseudo-terminal (exit codes, Enter pause, no zsh `status` error), and stops it;
+- drops the `career_smoke_<hex>` databases and roles it created and removes the copy, then fails if the live `.env`, the live sign-in token, the processes on 3000/3001 or the server's list of databases and roles changed. It never connects to an existing workspace database.
+
+It needs a loopback PostgreSQL administrator (`SETUP_SMOKE_ADMIN_DATABASE_URL`, default `postgresql://<user>@127.0.0.1:5432/postgres`) and Node 24. `SETUP_SMOKE_KEEP=1` keeps the copy and database for debugging and prints how to remove them; `SETUP_SMOKE_REPORT=<file>` writes the evidence as JSON. Dependencies come from the pnpm store, so a warm store makes `pnpm install` take seconds; a cold, network install is not part of the test.
+
 ## Restore and operational backups
 
-Operational database/artifact backup restore is not yet implemented. `pnpm run backup` and `pnpm run restore` fail explicitly rather than report false success. Keep an independent encrypted system backup until a coordinated, isolated restore flow is available. Never re-enable discovery automatically after restoring data.
+Backups and isolated restores are described in [backup-restore.md](backup-restore.md). A restore creates a new database and a new folder with its own `.env`; open it with a separate checkout and `CAREER_ENV_FILE` as shown above, never by replacing the live `.env`. Never re-enable discovery automatically after restoring data.
 
 ## Feature boundaries
 
@@ -73,8 +136,11 @@ Browser autofill, employer-site writes, submission, mailbox access, and intervie
 
 ## Inicio rápido (español)
 
-- Primera vez: `pnpm install --frozen-lockfile` y `pnpm run bootstrap`. Puedes repetirlo sin riesgo: no sobrescribe `.env` ni borra datos.
-- Cada día: doble clic en `Start Career Agent Stack.command` o `pnpm start`. Reutiliza lo que ya funciona, inicia lo que falta, espera a que responda y abre el navegador.
-- Estado sin cambiar nada: `pnpm run status`. Termina con error si falta algo o si un servicio necesita reiniciarse para usar la última versión. Detener lo que inició el lanzador: `pnpm run stop`.
+- Primera vez (macOS): `brew install fnm postgresql@17 && fnm install 24 && corepack enable`, `brew services start postgresql@17`, `node scripts/bootstrap.mjs` y `pnpm start`. Con Docker Desktop abierto no hace falta PostgreSQL de Homebrew.
+- Qué hace la preparación: `node scripts/bootstrap.mjs` (o doble clic en `Start Career Agent Stack.command`). Instala dependencias, crea una base de datos propia para esta copia (`career_<id>`) en tu PostgreSQL 17 de Homebrew, aplica migraciones y solo al final crea `.env`. Si algo falla, te dice qué hacer en español e inglés y al repetirlo continúa donde se quedó, con las mismas claves. Nunca reutiliza la base de otra instalación ni sobrescribe un `.env` existente.
+- ¿Ya hay otro PostgreSQL en el puerto 5432 que no acepta tu usuario? Indica un administrador con `CAREER_ADMIN_DATABASE_URL=postgresql://USUARIO:CLAVE@127.0.0.1:5432/postgres pnpm run bootstrap`.
+- Cada día: doble clic en `Start Career Agent Stack.command` o `pnpm start`. Reutiliza lo que ya funciona, inicia lo que falta, espera a que responda y abre el navegador. Si falla, la ventana espera a que pulses Enter para que puedas leer el mensaje.
+- Estado sin cambiar nada: `pnpm run status`. Termina con error si falta algo o si un servicio necesita reiniciarse para usar la última versión. Diagnóstico: `pnpm run doctor`. Detener lo que inició el lanzador: `pnpm run stop`.
 - ¿Te pide un token? `pnpm start --copy-token` lo copia al portapapeles sin mostrarlo y lo borra de ahí a los 2 minutos; el archivo `.command` lo hace siempre. Si ya no tienes token, ejecuta antes `pnpm run reset:session`. Tus datos no cambian. Las sesiones ya abiertas siguen válidas hasta que caducan.
-- Si algo falla, el mensaje explica el siguiente paso en español e inglés. Los registros están en `data/logs/`.
+- ¿Abrir una instalación restaurada? En otra copia del código (`git worktree add ../career-restored`): `CAREER_ENV_FILE=/ruta/restaurada/.env pnpm start --copy-token`. Nunca copies nada sobre el `.env` activo.
+- Los registros están en `data/logs/` (o en la carpeta de datos de `CAREER_ENV_FILE`).

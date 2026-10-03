@@ -26,3 +26,8 @@ backups/
 .DS_Store
 output/e2e-runs/
 output/playwright/
+
+# Operational recovery artifacts (also when saved outside backups/)
+*.tar
+*.tar.sha256
+career-key-*.json

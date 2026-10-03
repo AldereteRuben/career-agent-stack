@@ -42,6 +42,8 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `same-name-pdf-creates-distinct-versions` | Generating two PDFs with the same name gives distinct records, files and revision numbers, and two working downloads that contain the fact. |
 | `manual-job-and-application-tracking` | Manual job import, job detail, creating an application and adding a note. |
 | `application-deep-link-and-stage-correction` | `/applications?id=…` opens that application, including after a reload. A mistaken stage can be corrected back, with history, without affecting other records, and `?id` is kept. |
+| `source-review-and-partial-results` | Both confirmations required, partial results explained, source can be disabled; refresh response is mocked, all other requests use the isolated API. |
+| `export-download-and-error-recovery` | Failed export shows actionable feedback; retry downloads JSON with a matching checksum and disabled source permissions. |
 | `mobile-drawer-keyboard-and-focus` | At 390 px: the drawer opens with the keyboard and focus moves into it, Tab stays inside, Escape closes it and returns focus, navigating closes it, and there is no horizontal overflow. |
 
 Locators prefer roles, `href`s and form structure, and they match Spanish or English copy so that wording changes do not break them. Outcomes are checked against the isolated API.
@@ -67,4 +69,4 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 ## Last local verification
 
-2026-10-03: all 8 scenarios passed in run `d0463e626ffb`, against a disposable database. The domain suite also passed all 16 tests. Lint and TypeScript checks passed. This covers the local workflows above; live external board discovery was not exercised.
+2026-10-03: all 10 scenarios passed in run `efafe351a5fa`, against a disposable database. The domain suite also passed all 18 tests. Lint and TypeScript checks passed. This covers the local workflows above; real public feeds were validated separately; see [source validation](source-validation.md).

@@ -1,9 +1,7 @@
 #!/bin/zsh
-# Double-click in Finder to start Career Agent Stack locally (macOS).
-# Doble clic en Finder para iniciar Career Agent Stack en este equipo (macOS).
-# It reuses services that are already running, starts what is missing, waits until it answers and
-# opens the browser. It never deletes data, seeds demo data or prints secrets.
-# Stop what it started with: pnpm run stop
+# Double-click in Finder to create a verified local backup (macOS).
+# Doble clic en Finder para crear una copia de seguridad verificada (macOS).
+# The backup command checks integrity before reporting success. It never stops the app.
 
 cd "${0:A:h}" || exit 1
 
@@ -31,14 +29,10 @@ if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.spl
   echo "  Node.js 24 is required (found: $(node -v 2>/dev/null || echo none)). Install it with fnm (fnm install 24) or from https://nodejs.org and open this file again."
   exit_code=1
 else
-  # First run: launch.mjs runs the bootstrap (dependencies, private .env, own database, migrations) by itself.
-  # --copy-token puts the pending single-use sign-in token on the clipboard (never shown, cleared after 2 min).
-  node scripts/launch.mjs --copy-token "$@"
+  node scripts/backup.mjs "$@"
   exit_code=$?
 fi
 
-if [[ $exit_code -ne 0 ]]; then
-  echo
-  read -r "?Pulsa Enter para cerrar · Press Enter to close " || true
-fi
+echo
+read -r "?Pulsa Enter para cerrar · Press Enter to close " || true
 exit $exit_code

@@ -2,7 +2,7 @@
 
 ## Supported deployment
 
-Version 0.1 is designed for one private workspace on one local computer. The API binds to loopback and checks Host and Origin on state-changing requests. The session cookie is HttpOnly and SameSite=Strict. Do not expose the API, PostgreSQL, Ollama, or a browser debugging port to a LAN or the internet.
+Version 0.2 is designed for one private workspace on one local computer. The API binds to loopback and checks Host and Origin on state-changing requests. The session cookie is HttpOnly and SameSite=Strict. Do not expose the API, PostgreSQL, Ollama, or a browser debugging port to a LAN or the internet.
 
 The first-run token is stored under `data/setup-token` with private permissions and is consumed after sign-in. The API signs a 14-day session with `APP_SESSION_SECRET`. Losing or changing the secret invalidates sessions; a session reset is handled locally. A full-disk encryption layer is recommended for stored CVs and other personal information.
 
@@ -16,6 +16,10 @@ No application form is opened, filled, uploaded to, or submitted by this release
 
 Do not commit `.env`, `data/`, `storage/`, `backups/`, exports, resumes, application receipts, or session material. Logs redact cookie and authorization headers; keep logs private. Diagnostics and browser traces are disabled because the browser runner is not implemented. Exports are personal data and should be encrypted at rest by the user.
 
+## Recovery artifacts
+
+Operational backups include a database dump and generated documents. The archive is **not encrypted**; keep it on an encrypted drive or in a private location. A separate key file authenticates the manifest and preserves the installation encryption key. Restoring requires that key, creates a new database and data folder, resets source permissions, and generates fresh sign-in credentials. See [backup and restore](docs/operations/backup-restore.md).
+
 ## Reporting
 
-This repository is not yet published with a security contact or supported disclosure process. For private development, report issues directly to the project owner and include sanitized reproduction steps only.
+This private repository does not have a public security disclosure process. For private development, report issues directly to the project owner and include sanitized reproduction steps only.
