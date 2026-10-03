@@ -7,5 +7,5 @@
   "exports": { ".": { "types": "./src/index.ts", "import": "./dist/index.js" }, "./schema": { "types": "./src/schema.ts", "import": "./dist/schema.js" } },
   "scripts": { "db:generate": "drizzle-kit generate", "db:migrate": "drizzle-kit migrate", "build": "tsc -p tsconfig.json", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "eslint src" },
   "dependencies": { "@career/domain": "workspace:*", "drizzle-orm": "^0.45.3", "pg": "^8.16.3" },
-  "devDependencies": { "@types/node": "^24.19.1", "@types/pg": "^8.15.6", "dotenv": "^16.6.1", "drizzle-kit": "^0.31.5", "typescript": "^5.9.3" }
+  "devDependencies": { "@types/node": "^24.19.1", "@types/pg": "^8.15.6", "dotenv": "^18.0.4", "drizzle-kit": "^0.31.5", "typescript": "^5.9.3" }
 }
