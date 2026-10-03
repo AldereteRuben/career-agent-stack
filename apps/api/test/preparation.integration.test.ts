@@ -17,6 +17,7 @@ describe('evidence-based application preparation with a disposable database', { 
   let module: typeof import('../src/application-preparation.js'); let pool: { end(): Promise<void> };
   let workspace: string; let otherWorkspace: string; let jobId: string; let filesPath: string;
   const originalDatabase = process.env.DATABASE_URL; const originalFilesPath = process.env.FILES_LOCAL_PATH;
+  const originalEncryption = process.env.APP_ENCRYPTION_KEY; const originalSession = process.env.APP_SESSION_SECRET;
 
   before(async () => {
     const url = new URL(adminUrl!);
@@ -25,6 +26,8 @@ describe('evidence-based application preparation with a disposable database', { 
     admin = new Client({ connectionString: url.toString() }); await admin.connect();
     await admin.query(`create database "${dbName}"`); url.pathname = `/${dbName}`;
     process.env.DATABASE_URL = url.toString();
+    process.env.APP_ENCRYPTION_KEY = 'fictional-preparation-encryption-key-for-tests-only';
+    process.env.APP_SESSION_SECRET = 'fictional-preparation-session-secret-for-tests-only';
     filesPath = await mkdtemp(join(tmpdir(), 'career-preparation-files-')); process.env.FILES_LOCAL_PATH = filesPath;
     client = new Client({ connectionString: url.toString() }); await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((entry) => entry.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
@@ -36,6 +39,8 @@ describe('evidence-based application preparation with a disposable database', { 
     if (filesPath) await rm(filesPath, { recursive: true, force: true });
     if (originalDatabase === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabase;
     if (originalFilesPath === undefined) delete process.env.FILES_LOCAL_PATH; else process.env.FILES_LOCAL_PATH = originalFilesPath;
+    if (originalEncryption === undefined) delete process.env.APP_ENCRYPTION_KEY; else process.env.APP_ENCRYPTION_KEY = originalEncryption;
+    if (originalSession === undefined) delete process.env.APP_SESSION_SECRET; else process.env.APP_SESSION_SECRET = originalSession;
   });
   beforeEach(async () => {
     await client.query('delete from workspaces'); workspace = randomUUID(); otherWorkspace = randomUUID(); jobId = randomUUID();
