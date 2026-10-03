@@ -11,23 +11,26 @@ export const v071Scenarios: Scenario[] = [
       const fixture = { externalId: `ux-${marker}`, title: `Usability designer ${marker}`, company: `UX ${marker}`, location: 'Spain', workMode: 'remote', url: `https://remotive.com/remote-jobs/design/ux-${marker}`, description: 'Design accessible forms and test automation.', postedAt: null, raw: {} };
       for (const provider of ['remotive', 'arbeitnow']) await db.query("insert into job_search_provider_cache(provider,payload,fetched_at,next_fetch_at) values($1,$2::jsonb,now(),now()+interval '24 hours') on conflict(provider) do update set payload=excluded.payload,fetched_at=excluded.fetched_at,next_fetch_at=excluded.next_fetch_at,last_error=null", [provider, JSON.stringify(provider === 'remotive' ? [fixture] : [])]);
       const { search } = await api.post<{ search: { id: string } }>('/job-searches', { role: 'Usability designer', company: fixture.company, location: null, enabled: true, frequencyHours: 24, autoPrepare: false, workMode: 'any', language: 'es' });
+      const resultSnapshot = await api.get<{ items: Array<Record<string, unknown>>; total: number }>(`/job-searches/${search.id}/results?offset=0`);
+      const searchSnapshot = await api.get<{ searches: Array<{ id: string; lastRunStatus: string; lastRunAt: string | null }> }>('/job-searches');
+      assert.ok(resultSnapshot.items.length, 'The fictional feed produces a real persisted result');
       const arrival = `New arrival ${marker}`;
       let addArrival = false; let failSave = false; let failSource = false;
       const resultsRoute = `**/api/v1/job-searches/${search.id}/results?*`;
       await page.route(resultsRoute, async (route) => {
-        const response = await route.fetch(); const body = await response.json();
+        const body = structuredClone(resultSnapshot);
         if (failSource) { body.items = []; body.total = 0; }
         else if (addArrival && body.items.length) { body.items.push({ ...body.items[0], id: `arrival-${marker}`, title: arrival }); body.total++; }
-        await route.fulfill({ response, json: body });
+        await route.fulfill({ json: body });
       });
       await page.route('**/api/v1/job-searches', async (route) => {
         if (route.request().method() !== 'GET') {
           if (failSave) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'SERVICE_UNAVAILABLE' }) });
           return route.fallback();
         }
-        const response = await route.fetch(); const body = await response.json();
+        const body = structuredClone(searchSnapshot);
         if (failSource) for (const item of body.searches) if (item.id === search.id) { item.lastRunStatus = 'FAILED'; item.lastRunAt = new Date().toISOString(); }
-        await route.fulfill({ response, json: body });
+        await route.fulfill({ json: body });
       });
       try {
         await setLocale(page, 'es');
@@ -56,7 +59,8 @@ export const v071Scenarios: Scenario[] = [
         assert.equal(await page.getByText(/Revisa la escritura del puesto/).count(), 0, 'Provider errors do not ask the user to rewrite valid filters');
         note('Fictional cached feed and intercepted local responses; idle polling, persistent validation, failed save and failed source recovery.');
       } finally {
-        await page.unroute(resultsRoute); await page.unroute('**/api/v1/job-searches');
+        // Wait for any final poll response before leaving the scenario.
+        await page.unrouteAll({ behavior: 'wait' });
         await api.patch(`/job-searches/${search.id}`, { enabled: false });
         await page.evaluate(() => sessionStorage.removeItem('career:draft:v1:saved-search-form'));
       }
