@@ -4,7 +4,7 @@ Your private workspace to organize a job search: keep your career profile, save 
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.4.1** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#041)
+**Current release: v0.5.0** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#050)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -64,8 +64,8 @@ After initial setup, macOS users can double-click **Start Career Agent Stack.com
 ### 4. Take your first steps
 
 1. Choose **English** or **Español** using the language button.
-2. Open **My profile**, add your details and job preferences, and save.
-3. Add work experience and education with dates, then confirm the details you have checked.
+2. From **Home**, open **Getting started**. Save your name and email; job preferences can wait.
+3. Follow the guide to add and confirm one experience, then prepare and review your first PDF. You can return to the guide at any time; it uses your saved progress.
 4. Open **Saved jobs** and add a job manually. Configuring external sources is optional.
 5. Open the job and choose **Prepare a resume for this job**. Follow the steps to complete your profile, choose PDF content and language, and review the preview.
 6. Approve the resume, then choose **Continue with this application**. The reviewed version stays linked to it. Record progress and notes in **My applications**; submission remains manual on the employer’s website.
@@ -121,7 +121,9 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 
 ## Back up your work
 
-On macOS, double-click **Backup Career Agent Stack.command**, or run `pnpm run backup`. Wait for successful verification, then keep the archive and its separate key file in private storage. PostgreSQL client tools (`pg_dump` and `pg_restore`, version 17 or compatible with your server) are required; see the [recovery guide](docs/operations/backup-restore.md) for installation and restore instructions.
+In **Settings and privacy**, choose **Create backup**, then download both the verified archive and its recovery key. Download them before restarting the app or creating another copy; local originals remain in `data/backups/<id>/` (keys in its `keys/` folder). This screen does not restore backups or automatically delete old copies.
+
+Alternatively, on macOS double-click **Backup Career Agent Stack.command**, or run `pnpm run backup`. Wait for successful verification, then keep the archive and its separate key file in private storage. PostgreSQL client tools (`pg_dump` and `pg_restore`, version 17 or compatible with your server) are required; see the [recovery guide](docs/operations/backup-restore.md) for installation and restore instructions.
 
 ## Development and verification
 

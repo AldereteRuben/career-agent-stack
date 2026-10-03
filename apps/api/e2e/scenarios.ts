@@ -1,3 +1,4 @@
+import { v050Scenarios } from './v050.js';
 import { v041Scenarios } from './v041.js';
 import { uxReviewScenarios } from './ux-review.js';
 import { v040Scenarios } from './v040.js';
@@ -410,3 +411,6 @@ scenarios.push(...v040Scenarios);
 scenarios.push(...uxReviewScenarios);
 
 scenarios.push(...v041Scenarios);
+
+scenarios.splice(1, 0, v050Scenarios[0]!);
+scenarios.push(v050Scenarios[1]!);

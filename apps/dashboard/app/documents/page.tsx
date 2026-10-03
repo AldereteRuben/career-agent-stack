@@ -30,7 +30,7 @@ function DocumentsView() {
   const pdfLocale = draft.value.language === 'en' || draft.value.language === 'es' ? draft.value.language : locale;
   const setPdfLanguage = (language: string) => draft.update((value) => ({ ...value, language }));
   const [approvedNext, setApprovedNext] = useState('');
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(searchParams.get('view') === 'saved');
   const previewFromHistory = useRef(false);
   const [identityReady, setIdentityReady] = useState(false);
   const previewHeading = useRef<HTMLHeadingElement>(null);

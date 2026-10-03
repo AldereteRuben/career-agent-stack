@@ -109,7 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
 
-  const current = links.find((link) => isActive(link.href, pathname)) ?? links[0]!;
+  const current = pathname === '/start' ? { label: locale === 'es' ? 'Primeros pasos' : 'Getting started' } : links.find((link) => isActive(link.href, pathname)) ?? links[0]!;
   const drawerLabel = locale === 'en' ? 'Main menu' : 'Menú principal';
 
   return <div className="app-layout">

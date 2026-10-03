@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- Bilingual getting-started guide: name/email, confirmed experience, and a reviewed first resume. Progress comes from saved data; drafts survive reloads and concurrent profile changes are handled without discarding them.
+- Home keeps job preferences optional and links back to the guide. Completed guides open the saved resume library directly.
+- Shorter sign-in screen with expandable, operating-system-neutral instructions.
+- Settings creates a verified database/PDF backup without a terminal, with progress, retry, and separate archive/key downloads. It uses the running API configuration, authenticated downloads, private temporary files, and the existing verified archive writer.
+- Release procedure recorded in AGENTS.md: validation, main push, annotated tag, published GitHub release, and remote verification for every completed version.
+- E2E actions now have bounded timeouts; screenshots disable transitions to avoid capturing a sidebar mid-animation.
+
+Limits: restoration still requires a terminal. UI backup links are available until another backup or API restart; completed copies remain under `data/backups`. Backups are not encrypted and old copies are not removed automatically. Native Windows startup/shutdown and full Linux/WSL installation remain unverified/unsupported as documented. Existing dependency alerts remain pending.
+
 ## 0.4.1
 
 Usability improvements in Spanish and English.

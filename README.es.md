@@ -4,7 +4,7 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.4.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#041)
+**Versión actual: v0.5.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#050)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -70,13 +70,15 @@ Después de la preparación inicial, en macOS puedes abrir **Start Career Agent 
 ### 4. Primer recorrido
 
 1. Elige **Español** o **English** con el botón de idioma.
-2. En **Mi perfil**, completa tus datos y preferencias de empleo y guarda.
-3. Añade experiencia y formación con sus fechas; confirma los datos que hayas revisado.
+2. Desde **Inicio**, abre **Guía para empezar**. Guarda tu nombre y correo; las preferencias de empleo pueden esperar.
+3. Sigue la guía para añadir y confirmar una experiencia y preparar y revisar tu primer PDF. Puedes volver cuando quieras: el progreso se calcula con lo que has guardado.
 4. En **Ofertas guardadas**, añade una oferta manualmente. Configurar fuentes externas es opcional.
 5. Abre la oferta y elige **Preparar CV para esta vacante**. Completa tu perfil, selecciona el contenido y el idioma del PDF y revisa la vista previa.
 6. Aprueba el CV y pulsa **Continuar con esta solicitud**. El CV queda vinculado a ella. En **Mis solicitudes**, registra avances y notas; el envío se realiza manualmente en la web de la empresa.
 
 La preparación del CV conserva nombre, idioma y selección por oferta en esta pestaña, para que puedas volver después de editar tu perfil. Es temporal: se borra al cerrar sesión y puede perderse al cerrar la pestaña; genera el PDF para guardar una versión. Si cambian los datos seleccionados, la app te pide revisarlos. Al volver de una oferta a la lista, se conservan la búsqueda y los filtros.
+
+Para guardar una copia, abre **Ajustes y privacidad → Crear copia de seguridad** y descarga tanto la copia verificada como su clave. Descárgalas antes de reiniciar la app o crear otra copia. Los originales quedan en `data/backups/<id>/` (la clave en `keys/`). Restaurar todavía requiere la terminal; las copias antiguas no se eliminan automáticamente.
 
 ## Uso diario
 

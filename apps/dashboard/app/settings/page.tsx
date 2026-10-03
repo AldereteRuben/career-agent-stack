@@ -1,5 +1,6 @@
 'use client';
 
+import { BackupPanel } from '@/components/backup-panel';
 import { RELEASE_VERSION } from '@career/domain';
 
 
@@ -43,12 +44,7 @@ export default function SettingsPage() {
     {exportMessage && <Notice tone="success">{exportMessage}</Notice>}
     <div className="settings-grid"><div className="settings-main">
       <Card className="form-card"><h2>{c('Copia de seguridad para recuperar tu espacio', 'Back up your workspace for recovery')}</h2>
-        <p>{c('Conserva tus datos, documentos y configuración para recuperar esta instalación.', 'Keep your data, documents, and settings so you can recover this installation.')}</p>
-        <ol className="help-steps">
-          <li>{c('Abre una terminal en la carpeta donde instalaste Career Stack.', 'Open a terminal in the folder where you installed Career Stack.')}</li>
-          <li>{c('Ejecuta', 'Run')} <code>pnpm run backup</code>.</li>
-          <li>{c('Espera el mensaje de éxito. Guarda la copia y su archivo de clave en ubicaciones privadas separadas; necesitas ambos para recuperar los datos.', 'Wait for the success message. Keep the backup and its key file in separate private locations; you need both to recover your data.')}</li>
-        </ol>
+        <BackupPanel/>
         <details><summary>{c('Recuperar una copia y otras opciones', 'Restore a backup and other options')}</summary>
           <p><strong>macOS:</strong> {c('también puedes crear la copia abriendo Backup Career Agent Stack.command desde la carpeta de instalación.', 'you can also create a backup by opening Backup Career Agent Stack.command in the installation folder.')}</p>
           <p>{c('Desde la carpeta del proyecto, ejecuta pnpm run backup para crear una copia. Para restaurar, sigue docs/operations/backup-restore.md. La recuperación crea un espacio independiente que puedes revisar antes de usar.', 'From the project folder, run pnpm run backup to create a backup. To restore it, follow docs/operations/backup-restore.md. Recovery creates a separate workspace you can review before using.')}</p>
