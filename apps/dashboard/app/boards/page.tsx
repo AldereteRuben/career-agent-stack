@@ -32,6 +32,7 @@ function boardStatus(board: Board, now: number): BoardStatus {
 
 export default function BoardsPage() {
   const { locale } = useLocale(); const c = copy(locale);
+  const [loadError, setLoadError] = useState('');
   const [boards, setBoards] = useState<Board[]>([]); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const draft = useSessionDraft('company', { companyName: '', careersUrl: '', boardUrl: '' }, (value): value is { companyName: string; careersUrl: string; boardUrl: string } => stringDraft(value) && ['companyName', 'careersUrl', 'boardUrl'].every((key) => typeof value[key] === 'string'));
   const { companyName, careersUrl, boardUrl } = draft.value;
@@ -71,8 +72,8 @@ export default function BoardsPage() {
   const source = parseJobBoardUrl(boardUrl); const careersDomain = getOfficialDomain(careersUrl); const provider = source ? providers[source.provider] : null;
 
   const load = useCallback(async () => {
-    try { setBoards(await api<Board[]>('/boards')); setLoadState('ready'); setNow(Date.now()); }
-    catch (err) { setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); }
+    try { setBoards(await api<Board[]>('/boards')); setLoadState('ready'); setLoadError(''); setNow(Date.now()); }
+    catch (err) { setLoadError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); }
   }, []);
   useEffect(() => { void load(); }, [load]);
   // Automatic runs can finish while this page is open; refresh their persisted cooldown too.
@@ -98,7 +99,7 @@ export default function BoardsPage() {
     try {
       await api(`/boards/${board.id}/review`, { method: 'POST', body: JSON.stringify({ officialAssociationConfirmed: true, publicReadReviewed: true, referenceUrl: providers[board.provider]?.reference, notes: 'Owner confirmed the official company link and reviewed the provider read-only access.' }) });
       setChecks((current) => ({ ...current, [board.id]: noChecks }));
-      setMessage(c(`${board.companyName}: búsqueda activada. Ya puedes buscar ofertas.`, `${board.companyName}: job search turned on. You can now look for jobs.`)); await load();
+      setMessage(c(`${board.companyName}: empresa confirmada y lista para consultar. El panel superior indica si la búsqueda automática está activa.`, `${board.companyName}: company confirmed and ready to check. The panel above shows whether automatic search is on.`)); await load();
     } catch (err) { cardFail(board.id, err); } finally { setBusy(''); }
   };
 
@@ -115,13 +116,13 @@ export default function BoardsPage() {
     } catch (err) {
       cardFail(board.id, err);
       // The server is the source of truth for cooldowns and approvals; re-read so the card shows the real state.
-      if (err instanceof ApiError && ['BOARD_REFRESH_COOLDOWN', 'BOARD_NOT_APPROVED_FOR_DISCOVERY', 'NOT_FOUND'].includes(err.code)) await load();
+      if (err instanceof ApiError) await load();
     } finally { setBusy(''); }
   };
 
   const disable = async (board: Board) => {
     begin(board.id);
-    try { await api(`/boards/${board.id}/disable`, { method: 'POST', body: '{}' }); setMessage(c(`${board.companyName}: búsqueda desactivada. Las ofertas guardadas se mantienen.`, `${board.companyName}: job search turned off. Saved jobs are kept.`)); await load(); }
+    try { await api(`/boards/${board.id}/disable`, { method: 'POST', body: '{}' }); setMessage(c(`${board.companyName}: empresa desactivada. Sus ofertas guardadas se mantienen.`, `${board.companyName}: company turned off. Its saved jobs are kept.`)); await load(); }
     catch (err) { cardFail(board.id, err); } finally { setBusy(''); }
   };
 
@@ -139,6 +140,7 @@ export default function BoardsPage() {
     <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in Saved jobs.')}/>
     {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar este formulario. Añade la empresa antes de salir para no perderlo.', 'We could not preserve this form. Add the company before leaving to keep it.')}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message} {activeCount > 0 && <Link href="/jobs">{c('Ver ofertas', 'See jobs')}</Link>}</Notice>}
+    {loadError && loadState === 'ready' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{loadError} {c('La lista muestra la última información disponible.', 'The list shows the last available information.')}</Notice>}
     <DiscoveryPanel revision={JSON.stringify(boards)} onAddCompany={startCompany}/><div className="source-policy-banner"><span className="source-policy-icon"><Icon name="shield" size={19}/></span><div><strong>{c('Solo lectura', 'Read-only')}</strong><p>{c('Seguir una empresa nunca permite a esta app rellenar o enviar formularios.', 'Adding a source never lets this app fill in or submit forms.')}</p></div><Tag tone="green">{c('SIN ENVÍOS', 'NO SUBMISSIONS')}</Tag></div>
     <div className="boards-layout"><div className="boards-list board-collection card">
       <div className="section-heading compact"><div><h2 id="saved-companies" tabIndex={-1}>{c('Empresas guardadas', 'Saved companies')}</h2></div><span className="muted-label">{c(`${activeCount} de ${boards.length} listas para consultar`, `${activeCount} of ${boards.length} ready to check`)}</span></div>
@@ -158,7 +160,7 @@ export default function BoardsPage() {
           {cardErrors[board.id] && <Notice tone="error">{cardErrors[board.id]}</Notice>}
           {status === 'active' ? <div className="board-actions">
             <Button variant="secondary" onClick={() => void refresh(board)} disabled={working || busy !== '' || coolingDown}><Icon name="search" size={15}/>{working ? c('Buscando…', 'Searching…') : coolingDown ? c(`Disponible en ${timeUntil(new Date(nextRefresh))}`, `Available in ${timeUntil(new Date(nextRefresh))}`) : c('Buscar ofertas nuevas', 'Find new jobs')}</Button>
-            <Button variant="quiet" onClick={() => void disable(board)} disabled={busy !== ''}>{c('Desactivar', 'Turn off')}</Button>
+            <Button variant="quiet" onClick={() => void disable(board)} disabled={busy !== ''}>{c('Desactivar empresa', 'Turn off company')}</Button>
           </div> : <div className="board-review-box">
             <p>{status === 'expired' ? c('Las confirmaciones caducan a los 90 días. Vuelve a comprobar que el enlace sigue siendo de la empresa.', 'Confirmations expire after 90 days. Check again that the link still belongs to the company.')
               : status === 'off' ? c('Desactivaste esta fuente. Confirma de nuevo para reanudar la búsqueda.', 'You turned this source off. Confirm again to resume searching.')
@@ -167,7 +169,7 @@ export default function BoardsPage() {
             <label className="checkbox-line"><input type="checkbox" checked={confirmed.officialLink} onChange={(event) => changeCheck(board.id, 'officialLink', event.target.checked)}/><span>{c('La página de empleo de la empresa enlaza a este tablero.', 'The company careers page links to this job board.')}</span></label>
             <label className="checkbox-line"><input type="checkbox" checked={confirmed.readOnlyAccess} onChange={(event) => changeCheck(board.id, 'readOnlyAccess', event.target.checked)}/><span>{c('Entiendo que la app solo lee ofertas públicas y no enviará solicitudes.', 'I understand the app only reads public jobs and will not submit applications.')}</span></label>
             {boardProvider && <a className="documentation-link" href={boardProvider.reference} target="_blank" rel="noopener noreferrer">{c(`Cómo funciona el tablero público de ${boardProvider.label}`, `How the ${boardProvider.label} public job board works`)} <Icon name="arrow" size={13}/></a>}
-            <Button onClick={() => void review(board)} disabled={busy !== '' || !canReview}>{working ? c('Guardando…', 'Saving…') : status === 'needs-confirmation' ? c('Confirmar y activar búsqueda', 'Confirm and turn on search') : c('Confirmar y reactivar', 'Confirm and turn back on')}</Button>
+            <Button onClick={() => void review(board)} disabled={busy !== '' || !canReview}>{working ? c('Guardando…', 'Saving…') : status === 'needs-confirmation' ? c('Confirmar empresa', 'Confirm company') : c('Confirmar y reactivar', 'Confirm and turn back on')}</Button>
           </div>}
         </Card>;
       })}

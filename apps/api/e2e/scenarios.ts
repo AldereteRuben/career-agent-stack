@@ -1,3 +1,4 @@
+import { v061Scenario } from './v061.js';
 import { v060Scenario } from './v060.js';
 import type { PgClient } from './isolation.js';
 import { v052Scenario } from './v052.js';
@@ -284,7 +285,7 @@ export const scenarios: Scenario[] = [
       const board = await api.post<{ id: string }>('/boards', { provider: 'greenhouse', tenant: marker, region: 'global', companyName: `Source ${marker}`, companyDomain: 'example.com', careersUrl: 'https://example.com/careers', permissionStatus: 'UNKNOWN', associationStatus: 'UNVERIFIED', enabled: false });
       await goTo(page, '/boards');
       const card = page.locator('.board-card').filter({ hasText: `Source ${marker}` });
-      const confirm = card.getByRole('button', { name: any('Confirmar y activar búsqueda', 'Confirm and turn on search') });
+      const confirm = card.getByRole('button', { name: any('Confirmar empresa', 'Confirm company') });
       await confirm.waitFor();
       assert.equal(await confirm.isDisabled(), true, 'New sources require both confirmations');
       await card.getByRole('checkbox').nth(0).check();
@@ -428,4 +429,5 @@ scenarios.push(...v053Scenarios);
 scenarios.push(v052Scenario);
 // The final sign-out scenario must remain last.
 scenarios.push(v060Scenario);
+scenarios.push(v061Scenario);
 scenarios.push(v051Last);

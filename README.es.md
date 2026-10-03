@@ -4,7 +4,7 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.6.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#060)
+**Versión actual: v0.6.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#061)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -34,7 +34,7 @@ En las ofertas puedes buscar por puesto o empresa, filtrar favoritas y disponibi
 1. En **Empresas que sigo**, añade y confirma las empresas que quieres consultar.
 2. Pulsa **Activar búsqueda automática**. Empieza pausada, también al actualizar desde versiones anteriores a v0.6 o restaurar una copia.
 3. Mantén el servicio local encendido. Puedes cerrar la pestaña; apagar el servicio o suspender el equipo detiene las consultas hasta que vuelva a funcionar.
-4. En Inicio, abre **Revisar ofertas nuevas**. Se ordenan por encaje con tu perfil. Abre cada una y pulsa **Marcar como revisada** al terminar; seguirá disponible en Activas.
+4. En Inicio, abre **Revisar ofertas nuevas**. Se ordenan por encaje con tu perfil. Abre cada una y pulsa **Marcar como revisada** al terminar; seguirá disponible en Activas. Si llegan cambios mientras tienes la lista abierta, pulsa **Actualizar resultados** cuando quieras; se conservan tus filtros.
 
 Se consulta aproximadamente cada seis horas por empresa. El panel de actividad muestra resultados, errores y la próxima consulta. Puedes pausar cuando quieras; una consulta en curso puede terminar. Al reiniciar, se retoman las consultas vencidas una vez. Los fallos retrasan los reintentos y se respeta el plazo indicado por la fuente. Solo se consultan empresas confirmadas y no se envía tu CV. [Funcionamiento y límites](docs/operations/automatic-discovery.md).
 

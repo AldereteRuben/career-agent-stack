@@ -3,7 +3,7 @@
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Icon, Notice, Tag } from '@/components/ui';
 import { api, errorMessage, formatDate } from '@/lib/api';
@@ -22,6 +22,7 @@ export default function JobDetailPage() {
   const backHref = returnTo === '/jobs' || returnTo.startsWith('/jobs?') ? returnTo : '/jobs';
   const [data, setData] = useState<Detail | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
+  const reviewContinuation = useRef<HTMLAnchorElement>(null); const focusAfterReview = useRef(false);
   const load = useCallback(async () => {
     try { setData(await api<Detail>(`/jobs/${id}`)); setLoadState('ready'); }
     catch (err) { setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); }
@@ -29,6 +30,20 @@ export default function JobDetailPage() {
   useEffect(() => { void load(); }, [load]);
   const job = data?.job; const snapshot = data?.snapshots[0]; const source = data?.sources[0];
   const existing = data?.applications.find((application) => application.state !== 'CANCELLED') ?? data?.applications[0];
+
+  useEffect(() => {
+    if (job?.seenAt && focusAfterReview.current) { focusAfterReview.current = false; reviewContinuation.current?.focus({ preventScroll: true }); }
+  }, [job?.seenAt]);
+  const markReviewed = async (trigger: HTMLButtonElement) => {
+    if (!job || busy) return;
+    setBusy('seen'); setError(''); setMessage('');
+    try {
+      await api(`/jobs/${job.id}/seen`, { method: 'POST', body: '{}' });
+      focusAfterReview.current = document.activeElement === trigger || document.activeElement === document.body;
+      setData((current) => current?.job.id === job.id ? { ...current, job: { ...current.job, seenAt: new Date().toISOString() } } : current);
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setBusy(null); }
+  };
 
   const makeApplication = async () => {
     if (!job) return; setBusy('application'); setError('');
@@ -65,7 +80,8 @@ export default function JobDetailPage() {
           : <Button variant="secondary" onClick={() => void makeApplication()} disabled={busy !== null}>{busy === 'application' ? c('Creando…', 'Creating…') : c('Empezar seguimiento', 'Start tracking')} <Icon name="arrow" size={15}/></Button>}
         <Button variant="quiet" disabled={busy !== null} onClick={() => void archive()}>{job.shortlistDecision === 'ARCHIVED' ? c('Restaurar oferta', 'Restore job') : c('Archivar oferta', 'Archive job')}</Button>
       </div>}/>
-      {job.discoveredAt && !job.seenAt && <Notice actions={<Button variant="secondary" disabled={busy !== null} onClick={() => { setBusy('seen'); void api(`/jobs/${job.id}/seen`, { method: 'POST', body: '{}' }).then(load).catch((err) => setError(errorMessage(err))).finally(() => setBusy(null)); }}>{c('Marcar como revisada', 'Mark as reviewed')}</Button>}>{c('Oferta nueva de una empresa que sigues. Revisarla no envía ninguna solicitud.', 'New job from a company you follow. Reviewing it does not submit an application.')}</Notice>}
+      {job.discoveredAt && !job.seenAt && <Notice actions={<Button variant="secondary" disabled={busy !== null} onClick={(event) => void markReviewed(event.currentTarget)}>{busy === 'seen' ? c('Guardando…', 'Saving…') : c('Marcar como revisada', 'Mark as reviewed')}</Button>}>{c('Oferta nueva de una empresa que sigues. Revisarla no envía ninguna solicitud.', 'New job from a company you follow. Reviewing it does not submit an application.')}</Notice>}
+      {job.discoveredAt && job.seenAt && <Notice tone="success" actions={<Link ref={reviewContinuation} href={backHref} className="button button-secondary">{c('Volver a la lista de ofertas', 'Back to the job list')}</Link>}>{job.shortlistDecision === 'ARCHIVED' ? c('Oferta revisada. Sigue guardada en Archivadas.', 'Job reviewed. It is still saved under Archived.') : c('Oferta revisada. Sigue guardada en Activas.', 'Job reviewed. It is still saved under Active.')}</Notice>}
       {existing && <Notice>{c('Ya sigues esta oferta', 'You are already tracking this job')}: {labelFor.applicationState(existing.state, locale)}{existing.recruitmentStage ? ` · ${labelFor.recruitmentStage(existing.recruitmentStage, locale)}` : ''}.</Notice>}
       <div className="detail-layout"><div className="detail-main">
         <Card className="detail-score"><div><span className="eyebrow"><span className="eyebrow-mark"/> {c('LECTURA BASADA EN EVIDENCIA', 'EVIDENCE-BASED READING')}</span><h2>{job.fitScore === null ? c('Sin datos suficientes para puntuar', 'Not enough information to score') : `${job.fitScore} / 100`}</h2><p>{c('El encaje mide cuánto cubren tus datos que confirmaste; no predice una contratación ni es una puntuación ATS.', 'The match measures how well your confirmed profile details cover the job. It does not predict hiring or represent an ATS score.')}</p></div><div className="score-ring" style={{ ['--score' as string]: `${job.fitScore ?? 0}%` }}><div><strong>{job.fitScore ?? '—'}</strong><small>{c('encaje', 'match')}</small></div></div></Card>
