@@ -3,3 +3,7 @@ packages:
   - packages/*
 allowBuilds:
   esbuild: true
+
+# Drizzle's legacy loader otherwise pulls the vulnerable esbuild development server.
+overrides:
+  "@esbuild-kit/core-utils>esbuild": 0.25.12

@@ -1,6 +1,7 @@
 'use client';
 
 import type { Locale } from './locale';
+import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export type { Locale } from './locale';
@@ -268,14 +269,20 @@ export function translate(locale: Locale, value: string, values?: Record<string,
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ locale: initialLocale, children }: { locale: Locale; children: ReactNode }) {
+  const router = useRouter();
   const [locale, setLocaleState] = useState(initialLocale);
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
     document.documentElement.lang = next;
     document.cookie = `locale=${next}; Path=/; Max-Age=31536000; SameSite=Lax`;
-  }, []);
+    // Refresh server metadata with the new cookie without resetting client drafts.
+    router.refresh();
+  }, [router]);
   const value = useMemo(() => ({ locale, setLocale, t: (text: string, values?: Record<string, string | number>) => translate(locale, text, values) }), [locale]);
-  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = locale === 'en' ? 'Career Stack · Your career space' : 'Career Stack · Tu espacio de carrera';
+  }, [locale]);
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
 

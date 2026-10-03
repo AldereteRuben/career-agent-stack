@@ -2,6 +2,8 @@
 
 ## 0.7.1
 
+- Keeps browser tab metadata in the selected language and removes a vulnerable transitive esbuild version from the migration tooling.
+
 - Search-first onboarding, visible saved-search cards, simpler defaults and preserved search context through profile, resume and application screens.
 - Local results and preparation queues refresh while visible and when returning to the tab. Background arrivals preserve focus, drafts and action errors without querying providers again.
 - Inline search errors focus the missing criterion; failed source checks retain honest recovery guidance instead of suggesting filter changes. Broad locations are labelled as requiring confirmation.

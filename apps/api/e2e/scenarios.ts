@@ -64,7 +64,9 @@ export const scenarios: Scenario[] = [
       await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Ofertas guardadas/i }).waitFor();
       await setLocale(page, 'en');
       await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Jobs/i }).waitFor();
+      await page.waitForFunction(() => document.title === 'Career Stack · Your career space');
       await setLocale(page, 'es');
+      await page.waitForFunction(() => document.title === 'Career Stack · Tu espacio de carrera');
       assert.equal(await hasHorizontalOverflow(page), false, 'Overview overflows horizontally at desktop width');
     },
   },
@@ -85,6 +87,8 @@ export const scenarios: Scenario[] = [
             return `${document.body.innerText}\n${attributes.join('\n')}`;
           });
           const lang = (await page.locator('html').getAttribute('lang')) ?? '';
+          const title = await page.title();
+          if (title !== (locale === 'en' ? 'Career Stack · Your career space' : 'Career Stack · Tu espacio de carrera')) leaks.push(`${route} (${locale}): unexpected tab title`);
           if (!lang.startsWith(locale)) leaks.push(`${route} (${locale}): html lang is "${lang}"`);
           const leaked = text.match(locale === 'en' ? spanishOnly : englishOnly);
           if (leaked) leaks.push(`${route} (${locale}): "${leaked[0]}" in ${locale === 'en' ? 'English' : 'Spanish'} mode`);
