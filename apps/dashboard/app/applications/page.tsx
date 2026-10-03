@@ -1,5 +1,6 @@
 'use client';
 
+import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
@@ -41,8 +42,14 @@ function ApplicationsView() {
   const [rows, setRows] = useState<Application[]>([]); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [selectedId, setSelectedId] = useState<string | null>(urlId);
   const [events, setEvents] = useState<AppEvent[]>([]); const [eventsState, setEventsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const [open, setOpen] = useState(false); const [company, setCompany] = useState(''); const [role, setRole] = useState(''); const [url, setUrl] = useState(''); const [location, setLocation] = useState(''); const [alreadyApplied, setAlreadyApplied] = useState(false);
-  const [note, setNote] = useState(''); const [pendingStage, setPendingStage] = useState<string | null>(null); const [confirmApplied, setConfirmApplied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const formDraft = useSessionDraft('application-create', { company: '', role: '', url: '', location: '', applied: '' }, (value): value is { company: string; role: string; url: string; location: string; applied: string } => stringDraft(value) && ['company', 'role', 'url', 'location', 'applied'].every((key) => typeof value[key] === 'string'));
+  const { company, role, url, location } = formDraft.value; const alreadyApplied = formDraft.value.applied === 'yes';
+  const setCompany = (company: string) => formDraft.update((d) => ({ ...d, company })); const setRole = (role: string) => formDraft.update((d) => ({ ...d, role })); const setUrl = (url: string) => formDraft.update((d) => ({ ...d, url })); const setLocation = (location: string) => formDraft.update((d) => ({ ...d, location })); const setAlreadyApplied = (applied: boolean) => formDraft.update((d) => ({ ...d, applied: applied ? 'yes' : '' }));
+  const hasFormDraft = Object.values(formDraft.value).some(Boolean);
+  const notes = useSessionDraft<Record<string, string>>('application-notes', {}, stringDraft);
+  const note = selectedId ? notes.value[selectedId] ?? '' : '';
+  const setNote = (text: string) => { if (selectedId) notes.update((drafts) => ({ ...drafts, [selectedId]: text })); }; const [pendingStage, setPendingStage] = useState<string | null>(null); const [confirmApplied, setConfirmApplied] = useState(false);
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
   const eventsRequest = useRef(0);
   // The selection as of now, not as of the render that started a request: async handlers compare against it after every await.
@@ -65,7 +72,7 @@ function ApplicationsView() {
   useEffect(() => { setSelectedId(urlId); }, [urlId]);
   useEffect(() => {
     selectedRef.current = selectedId;
-    setEvents([]); setNote(''); setPendingStage(null); setConfirmApplied(false);
+    setEvents([]); setPendingStage(null); setConfirmApplied(false);
     if (selectedId) void loadEvents(selectedId); else { eventsRequest.current++; setEventsState('idle'); }
   }, [selectedId, loadEvents]);
 
@@ -123,8 +130,9 @@ function ApplicationsView() {
     try {
       await api(`/applications/${id}/events`, { method: 'POST', body: JSON.stringify({ eventType: 'USER_NOTE', note: submitted.trim() }) });
       setMessage(c('Nota añadida al historial.', 'Note added to the history.'));
-      // Only clear the text that was saved; switching rows already resets the draft for the new selection.
-      if (selectedRef.current === id) { setNote((current) => current === submitted ? '' : current); void loadEvents(id); }
+      // Clear only the saved snapshot for this application, even if the selection changed.
+      notes.update((drafts) => { if (drafts[id] !== submitted) return drafts; const next = { ...drafts }; delete next[id]; return next; });
+      if (selectedRef.current === id) void loadEvents(id);
     }
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
   };
@@ -132,14 +140,15 @@ function ApplicationsView() {
   const stateChoices = selected ? [selected.state, ...(transitions[selected.state] ?? []).filter((state) => (selectableApplicationStates as readonly string[]).includes(state))] : [];
 
   return <>
-    <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Cada paso queda anotado.', 'Keep track of every step.')} description={c('Un registro claro de lo que ya hiciste y lo que viene después.', 'A clear record of what you have done and what comes next.')} action={<Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir candidatura', 'Add application')}</Button>}/>
+    <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Mis solicitudes', 'My applications')} description={c('Guarda los puestos a los que quieres solicitar, prepara el formulario y anota las respuestas de las empresas. Añadir aquí una solicitud no la envía.', 'Track jobs you want to apply for, prepare the form, and record employer responses. Adding an application here does not submit it.')} action={<Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir candidatura', 'Add application')}</Button>}/>
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    {hasFormDraft && <Notice tone={formDraft.storageFailed ? 'warning' : 'info'}>{formDraft.storageFailed ? c('No se pudo conservar el borrador. Guarda o descarta la solicitud antes de salir.', 'The draft could not be preserved. Save or discard the application before leaving.') : c('Solicitud sin guardar: el borrador se conserva en esta pestaña hasta que cierres sesión.', 'Unsaved application: the draft is kept in this tab until you sign out.')} <Button variant="quiet" onClick={() => setOpen(true)}>{c('Continuar borrador', 'Continue draft')}</Button> <Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar esta solicitud sin guardar?', 'Discard this unsaved application?'))) formDraft.update({ company: '', role: '', url: '', location: '', applied: '' }); }}>{c('Descartar borrador', 'Discard draft')}</Button></Notice>}
     {open && <Card className="import-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2>{c('Registrar una candidatura', 'Add an application')}</h2><p>{c('Solo guardamos lo que tú escribes; nada se envía a la empresa.', 'We only save what you type; nothing is sent to the employer.')}</p></div></div></div>
       <form className="form-grid" onSubmit={(event) => void create(event)} aria-busy={busy === 'create'}>
-        <Field label={c('Empresa', 'Company')} disabled={busy === 'create'} value={company} onChange={(e) => setCompany(e.target.value)} required/><Field label={c('Puesto', 'Role')} disabled={busy === 'create'} value={role} onChange={(e) => setRole(e.target.value)} required/>
-        <Field label={c('Ubicación', 'Location')} disabled={busy === 'create'} value={location} onChange={(e) => setLocation(e.target.value)}/><Field label={c('Enlace a la oferta', 'Link to the job post')} type="url" disabled={busy === 'create'} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"/>
-        <label className="checkbox-line"><input type="checkbox" disabled={busy === 'create'} checked={alreadyApplied} onChange={(e) => setAlreadyApplied(e.target.checked)}/><span>{c('Ya envié esta candidatura.', 'I have already sent this application.')}<small>{c('Se guarda como una declaración tuya, no como una verificación con la empresa.', 'It is saved as your own statement, not as a check with the employer.')}</small></span></label>
-        <div className="form-submit"><Button type="submit" disabled={busy !== null || !company.trim() || !role.trim()}>{busy === 'create' ? c('Guardando…', 'Saving…') : c('Guardar candidatura', 'Save application')}</Button></div>
+        <Field label={c('Empresa', 'Company')} disabled={busy === 'create' || !formDraft.ready} value={company} onChange={(e) => setCompany(e.target.value)} required/><Field label={c('Puesto', 'Role')} disabled={busy === 'create' || !formDraft.ready} value={role} onChange={(e) => setRole(e.target.value)} required/>
+        <Field label={c('Ubicación', 'Location')} disabled={busy === 'create' || !formDraft.ready} value={location} onChange={(e) => setLocation(e.target.value)}/><Field label={c('Enlace a la oferta', 'Link to the job post')} type="url" disabled={busy === 'create' || !formDraft.ready} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"/>
+        <label className="checkbox-line"><input type="checkbox" disabled={busy === 'create' || !formDraft.ready} checked={alreadyApplied} onChange={(e) => setAlreadyApplied(e.target.checked)}/><span>{c('Ya envié esta candidatura.', 'I have already sent this application.')}<small>{c('Se guarda como una declaración tuya, no como una verificación con la empresa.', 'It is saved as your own statement, not as a check with the employer.')}</small></span></label>
+        <div className="form-submit"><Button type="submit" disabled={busy !== null || !formDraft.ready || !company.trim() || !role.trim()}>{busy === 'create' ? c('Guardando…', 'Saving…') : c('Guardar candidatura', 'Save application')}</Button></div>
       </form></Card>}
     {loadState === 'loading' ? <Notice>{c('Cargando candidaturas…', 'Loading applications…')}</Notice>
       : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty title={c('No pudimos cargar tus candidaturas', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
@@ -160,7 +169,8 @@ function ApplicationsView() {
           {confirmApplied && <div className="notice notice-warning" role="alert"><p>{c('Confirma que enviaste esta candidatura tú mismo. Se guardará como tu declaración; no lo comprobamos con la empresa.', 'Confirm that you sent this application yourself. It is saved as your statement; we do not check it with the employer.')}</p><div className="detail-actions"><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmSent()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, la envié', 'Yes, I sent it')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setConfirmApplied(false)}>{c('Cancelar', 'Cancel')}</Button></div></div>}
           {selected.state === 'CONFIRMED' && <div className="notice notice-success">{c('Confirmación basada en tu declaración. No se verificó con la empresa.', 'This confirmation is based on your statement. It was not verified with the employer.')}</div>}
           <AssistedApplication key={selected.id} applicationId={selected.id} onChanged={() => { void loadRows(); void loadEvents(selected.id); }}/>
-          <form className="note-form" onSubmit={(event) => void addNote(event)}><TextareaField label={c('Añadir nota al historial', 'Add a note to the history')} rows={3} value={note} disabled={busy === 'note'} onChange={(e) => setNote(e.target.value)} placeholder={c('Próximo paso, preguntas o contexto…', 'Next step, questions, or context…')} maxLength={10000}/><Button type="submit" variant="secondary" disabled={busy !== null || !note.trim()}>{busy === 'note' ? c('Guardando…', 'Saving…') : c('Añadir nota', 'Add note')}</Button></form>
+          <form className="note-form" onSubmit={(event) => void addNote(event)}><TextareaField label={c('Añadir nota al historial', 'Add a note to the history')} rows={3} value={note} disabled={busy === 'note' || !notes.ready} onChange={(e) => setNote(e.target.value)} placeholder={c('Próximo paso, preguntas o contexto…', 'Next step, questions, or context…')} maxLength={10000}/><Button type="submit" variant="secondary" disabled={busy !== null || !notes.ready || !note.trim()}>{busy === 'note' ? c('Guardando…', 'Saving…') : c('Añadir nota', 'Add note')}</Button></form>
+          {note && <Notice tone={notes.storageFailed ? 'warning' : 'info'}>{notes.storageFailed ? c('No se pudo conservar el borrador. Añade la nota o descártala antes de salir.', 'The draft could not be preserved. Add the note or discard it before leaving.') : c('Borrador de esta solicitud conservado en esta pestaña hasta que cierres sesión. Pulsa Añadir nota para guardarlo en el historial.', 'This application draft is kept in this tab until you sign out. Select Add note to save it to the history.')} <Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar el borrador de esta nota?', 'Discard this note draft?'))) notes.update((drafts) => { const next = { ...drafts }; delete next[selected!.id]; return next; }); }}>{c('Descartar nota', 'Discard note')}</Button></Notice>}
           <div className="timeline"><h3>{c('Actividad', 'Activity')}</h3>
             {eventsState === 'loading' && !events.length && <p className="muted-label">{c('Cargando actividad…', 'Loading activity…')}</p>}
             {eventsState === 'error' && <p className="muted-label">{c('No se pudo cargar la actividad.', 'The activity could not be loaded.')} <Button variant="quiet" onClick={() => void loadEvents(selected.id)}>{c('Reintentar', 'Try again')}</Button></p>}

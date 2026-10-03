@@ -31,3 +31,6 @@ output/playwright/
 *.tar
 *.tar.sha256
 career-key-*.json
+
+# Locally bundled PDF viewer worker and fonts
+apps/dashboard/public/pdf-assets/

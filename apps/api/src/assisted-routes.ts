@@ -1,3 +1,4 @@
+import { documentReadiness } from './document-reuse.js';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -83,10 +84,10 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     if (!application) return fail('ASSIST_NOT_FOUND');
     const [profile, documents, attempts] = await Promise.all([
       latestProfile(db, workspaceId),
-      db.select({ id: documentVersions.id, name: documentVersions.name, revision: documentVersions.revision, sha256: documentVersions.sha256, approvalStatus: documentVersions.approvalStatus }).from(documentVersions).where(and(eq(documentVersions.workspaceId, workspaceId), eq(documentVersions.approvalStatus, 'USER_APPROVED'))).orderBy(desc(documentVersions.createdAt)),
+      db.select().from(documentVersions).where(and(eq(documentVersions.workspaceId, workspaceId), eq(documentVersions.approvalStatus, 'USER_APPROVED'))).orderBy(desc(documentVersions.createdAt)),
       db.select().from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, workspaceId), eq(assistedAttempts.applicationId, id))).orderBy(desc(assistedAttempts.createdAt)).limit(30),
     ]);
-    return { supported: Boolean(leverApplicationUrl(application.canonicalUrl)), url: leverApplicationUrl(application.canonicalUrl), identity: readIdentity(profile?.profile ?? {}), application, documents, attempts };
+    return { supported: Boolean(leverApplicationUrl(application.canonicalUrl)), url: leverApplicationUrl(application.canonicalUrl), identity: readIdentity(profile?.profile ?? {}), application, documents: (await documentReadiness(db, workspaceId, documents)).map(({ id, name, revision, sha256, approvalStatus, assistReady }) => ({ id, name, revision, sha256, approvalStatus, assistReady })), attempts };
   }));
   app.post('/api/v1/applications/:id/assist/prepare', wrap(async (request) => {
     const parsed = assistedPrepareSchema.safeParse(request.body); if (!parsed.success) return fail('ASSIST_INVALID_INPUT');

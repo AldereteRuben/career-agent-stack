@@ -226,3 +226,13 @@ No top-level license/notice file was found for these installed packages. Consult
 - natural-compare
 - pg-types
 - pgpass
+
+## PDF preview dependency additions
+
+The local PDF viewer adds the following installed packages to the inventory above. PDF.js worker and font assets are served locally with their upstream license files.
+
+| Package | Installed version | Declared license |
+| --- | --- | --- |
+| `pdfjs-dist` | 6.3.289 | Apache-2.0 |
+| `@napi-rs/canvas-darwin-arm64` | 1.0.10 | MIT |
+| `@napi-rs/canvas` | 1.0.10 | MIT |

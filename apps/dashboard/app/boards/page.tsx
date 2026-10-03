@@ -102,7 +102,7 @@ export default function BoardsPage() {
   };
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={c('FUENTES DE EMPLEO', 'JOB SOURCES')} title={c('Elige dónde buscar.', 'Choose where to search.')} description={c('Añade la página de empleo de una empresa y su tablero público. Solo leemos vacantes publicadas; nunca rellenamos ni enviamos candidaturas.', 'Add a company careers page and its public job board. We only read published jobs; we never fill in or submit applications.')}/>
+    <PageHeader eyebrow={c('FUENTES DE EMPLEO', 'JOB SOURCES')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in Saved jobs.')}/>
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message} {activeCount > 0 && <Link href="/jobs">{c('Ver vacantes', 'See jobs')}</Link>}</Notice>}
     <div className="source-policy-banner"><span className="source-policy-icon"><Icon name="shield" size={19}/></span><div><strong>{c('Solo lectura', 'Read-only')}</strong><p>{c('Añadir una fuente nunca permite a esta app rellenar o enviar formularios.', 'Adding a source never lets this app fill in or submit forms.')}</p></div><Tag tone="green">{c('SIN ENVÍOS', 'NO SUBMISSIONS')}</Tag></div>
     <div className="boards-layout"><div className="boards-list">

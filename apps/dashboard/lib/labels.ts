@@ -70,7 +70,7 @@ export const factKinds: LabelMap = {
 export const selectableFactKinds = ['achievement', 'skill_evidence', 'experience', 'education', 'project'] as const;
 
 export const factApprovals: LabelMap = {
-  SUGGESTED: { es: 'Pendiente de aprobar', en: 'Waiting for approval' },
+  SUGGESTED: { es: 'Por confirmar', en: 'Needs confirmation' },
   USER_APPROVED: { es: 'Aprobado por ti', en: 'Approved by you' },
   REJECTED: { es: 'Descartado', en: 'Discarded' },
 };

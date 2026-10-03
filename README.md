@@ -4,17 +4,17 @@ Your private workspace to organize a job search: keep your career profile, save 
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.3.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.3.0.md)
+**Current release: v0.3.1** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.3.1.md)
 
 The interface supports **English and Spanish**. Each person runs a separate installation with their own database and keys. This is a local application, not a shared hosted service.
 
 ## What you can do
 
-- Build your profile and explicitly approve the facts used in documents.
+- Build your profile, correct or archive entries, and explicitly approve the facts used in documents.
 - Keep reusable answers with their question and country context.
 - Add jobs manually or discover them through individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - See explainable job matching based on your preferences and approved facts.
-- Generate, preview, review, and download versioned PDF drafts.
+- Generate, preview, review, and download versioned resumes. Reuse earlier content after profile changes without altering previous PDFs.
 - Track applications, notes, and hiring stages, including corrections with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.1
+
+Profile, resume and draft reliability fixes. See [verification and limitations](docs/releases/v0.3.1.md).
+
+### Fixed
+
+- Resume reuse resolves unchanged copies of facts across profile revisions, including existing data. Edited or archived content is excluded with actionable feedback.
+- Editing a profile entry creates a new revision requiring confirmation; earlier PDF content stays intact. Entries can be archived and restored.
+- Assisted application options expose only currently usable approved resumes, with a route to regenerate outdated versions. Server checks remain authoritative.
+- Job imports, manual application forms and per-application notes survive navigation and reloads in the same tab. Explicit sign-out clears their session drafts; failed saves retain them.
+- Job search distinguishes no matches, no saved jobs, loading and request failure, and ignores stale search responses.
+
+### Improved
+
+- Clearer EN/ES navigation, home guidance, profile sections and work-experience date inputs.
+- Local PDF preview, readable one-column resume layout and explicit review-state guidance; no draft watermark in generated PDFs.
+- Release labels, startup READMEs and third-party notices updated.
+
 ## 0.3.0
 
 Assisted applications with explicit consent and manual submission. See [verification and limitations](docs/releases/v0.3.0.md).

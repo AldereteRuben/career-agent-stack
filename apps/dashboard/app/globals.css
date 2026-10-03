@@ -2988,3 +2988,62 @@ main:focus {
 .assist-resolution { display: grid; gap: 1rem; border: 1px solid var(--border, #ddd); border-radius: .75rem; padding: 1rem; min-width: 0; }
 .assist-resolution legend { font-weight: 600; padding-inline: .35rem; }
 @media (max-width: 640px) { .assist-summary { grid-template-columns: 1fr; } .assist-summary dd { margin-bottom: .5rem; } }
+
+/* Explain the route before asking a first-time visitor to choose an action. */
+.nav-copy { display: grid; gap: 3px; min-width: 0; padding-block: 9px; }
+.nav-copy small { font-size: var(--text-xs); line-height: 1.4; color: var(--on-navy-muted); font-weight: 400; }
+.getting-started { padding: clamp(20px, 4vw, 32px); border-left: 4px solid var(--blue); margin-bottom: 24px; }
+.getting-started h2 { margin: 10px 0; text-wrap: balance; }
+.getting-started p { max-width: 70ch; line-height: 1.6; margin: 12px 0 18px; }
+.getting-started .muted-label { margin-bottom: 0; }
+.search-guide { margin-bottom: 30px; }
+.search-guide h2 { font-size: 20px; margin-bottom: 16px; }
+.journey-grid { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.journey-grid a { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; height: 100%; padding: 18px; border: 1px solid var(--line); border-radius: 12px; }
+.journey-grid a:hover { background: #edf3f7; }
+.journey-grid a > span:last-child { font-size: 13px; line-height: 1.6; color: #526171; }
+.optional-section { border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.optional-section > summary, .technical-detail > summary { cursor: pointer; font-weight: 600; padding-block: 8px; }
+.optional-section > p { line-height: 1.6; margin-block: 12px; }
+.technical-detail { margin-top: 8px; font-size: 12px; }
+.technical-detail .hash-short { overflow-wrap: anywhere; }
+#experience { scroll-margin-top: 90px; }
+@media (max-width: 1100px) { .journey-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 550px) { .journey-grid { grid-template-columns: 1fr; } }
+
+.overview-details > summary { cursor: pointer; font-weight: 600; min-height: 44px; padding-block: 12px; margin-bottom: 16px; }
+.overview-details summary:focus-visible, .optional-section summary:focus-visible, .technical-detail summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+
+.pdf-preview { min-width: 0; margin-block: 16px; }
+.pdf-preview canvas { display: block; width: 100%; height: auto; background: white; border: 1px solid var(--line); }
+.pdf-preview canvas[hidden] { display: none; }
+.pdf-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-block: 16px; }
+.pdf-text summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
+.pdf-text p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+
+.document-builder, .document-history { min-width: 0; }
+.document-builder .form-heading, .document-card-top { flex-wrap: wrap; }
+.document-builder .form-heading > div:first-child { min-width: 0; }
+.document-builder .form-heading p { overflow-wrap: anywhere; }
+.document-builder, .document-history, .document-builder .form-stack { grid-template-columns: minmax(0, 1fr); }
+.document-builder > *, .document-builder .form-stack > * { min-width: 0; }
+.document-builder .form-submit { flex-wrap: wrap; gap: 8px; }
+
+.profile-fieldset { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
+.profile-fieldset legend { font-weight: 650; font-size: var(--text-base); margin-bottom: 12px; }
+.profile-fieldset > p { color: var(--muted); line-height: 1.6; margin: 0 0 14px; }
+.profile-example { background: var(--blue-pale); padding: 14px 16px; border-radius: var(--radius-sm); }
+.profile-example p { margin: 6px 0 0; line-height: 1.6; }
+.profile-tags summary { cursor: pointer; padding-block: 12px; }
+.profile-checklist { padding-left: 20px; line-height: 1.6; }
+.profile-checklist li { margin-bottom: 12px; }
+.profile-main { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.profile-main > * { min-width: 0; }
+.profile-main .form-heading, .profile-main .form-submit { flex-wrap: wrap; gap: 12px; }
+.profile-main .fact-list:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+
+/* Editable entries keep actions and the correction form on separate rows. */
+.fact-row:has(.fact-edit) { flex-wrap: wrap; }
+.fact-edit { flex-basis: 100%; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); }
+
+.draft-fields { display: contents; }

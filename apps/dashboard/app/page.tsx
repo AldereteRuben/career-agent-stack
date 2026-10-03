@@ -32,7 +32,7 @@ const profileChecks: Array<{ key: ProfileCheck; es: string; en: string }> = [
   { key: 'country', es: 'País donde quieres trabajar', en: 'Country you want to work in' },
   { key: 'targetTitles', es: 'Puestos que buscas', en: 'Target job titles' },
   { key: 'workModes', es: 'Modalidad de trabajo', en: 'Work arrangement' },
-  { key: 'approvedFact', es: 'Al menos un hecho de carrera aprobado', en: 'At least one approved career fact' },
+  { key: 'approvedFact', es: 'Una experiencia o logro confirmado', en: 'One confirmed experience or achievement' },
 ];
 
 type NextStep = { key: string; href: string; title: string; detail: string; icon: string };
@@ -62,33 +62,55 @@ export default function HomePage() {
     if (identityMissing.length) steps.push({ key: 'identity', href: '/profile', icon: 'user', title: c('Completa tus datos básicos', 'Complete your basic details'), detail: c(`Falta: ${list(identityMissing)}.`, `Missing: ${list(identityMissing)}.`) });
     if (preferencesMissing.length) steps.push({ key: 'preferences', href: '/profile', icon: 'search', title: c('Indica qué buscas', 'Say what you are looking for'), detail: c(`Falta: ${list(preferencesMissing)}. Así podemos valorar el encaje de cada vacante.`, `Missing: ${list(preferencesMissing)}. This is how job fit is assessed.`) });
     if (missing.has('approvedFact')) steps.push(summary.pendingFacts > 0
-      ? { key: 'first-fact', href: '/profile', icon: 'check', title: c('Aprueba tu primer hecho de carrera', 'Approve your first career fact'), detail: summary.pendingFacts === 1 ? c('Tienes 1 hecho sugerido esperando tu revisión.', 'You have 1 suggested fact waiting for review.') : c(`Tienes ${summary.pendingFacts} hechos sugeridos esperando tu revisión.`, `You have ${summary.pendingFacts} suggested facts waiting for review.`) }
-      : { key: 'first-fact', href: '/profile', icon: 'plus', title: c('Añade tu primer hecho de carrera', 'Add your first career fact'), detail: c('Un logro o experiencia que puedas respaldar. Nada se usa hasta que lo apruebes.', 'An achievement or experience you can stand behind. Nothing is used until you approve it.') });
-    else if (summary.pendingFacts > 0) steps.push({ key: 'facts', href: '/profile', icon: 'user', title: summary.pendingFacts === 1 ? c('Revisa 1 hecho sugerido', 'Review 1 suggested fact') : c(`Revisa ${summary.pendingFacts} hechos sugeridos`, `Review ${summary.pendingFacts} suggested facts`), detail: c('Nada se usa en tus documentos hasta que lo apruebes.', 'Nothing is used in your documents until you approve it.') });
+      ? { key: 'first-fact', href: '/profile#experience', icon: 'check', title: c('Confirma tu primera experiencia', 'Confirm your first experience'), detail: summary.pendingFacts === 1 ? c('Tienes 1 dato por confirmar esperando tu revisión.', 'You have 1 detail to confirm waiting for review.') : c(`Tienes ${summary.pendingFacts} datos por confirmar esperando tu revisión.`, `You have ${summary.pendingFacts} details to confirm waiting for review.`) }
+      : { key: 'first-fact', href: '/profile#experience', icon: 'plus', title: c('Añade tu primera experiencia o logro', 'Add your first experience or achievement'), detail: c('Un logro o experiencia que puedas respaldar. Nada se usa hasta que lo apruebes.', 'An achievement or experience you can stand behind. Nothing is used until you approve it.') });
+    else if (summary.pendingFacts > 0) steps.push({ key: 'facts', href: '/profile#experience', icon: 'user', title: summary.pendingFacts === 1 ? c('Revisa 1 dato por confirmar', 'Review 1 detail to confirm') : c(`Revisa ${summary.pendingFacts} datos por confirmar`, `Review ${summary.pendingFacts} details to confirm`), detail: c('Nada se usa en tus documentos hasta que lo apruebes.', 'Nothing is used in your documents until you approve it.') });
     if (summary.unansweredItems > 0) steps.push({ key: 'answers', href: '/profile', icon: 'file', title: summary.unansweredItems === 1 ? c('Responde 1 pregunta pendiente', 'Answer 1 open question') : c(`Responde ${summary.unansweredItems} preguntas pendientes`, `Answer ${summary.unansweredItems} open questions`), detail: c('Son datos que solo tú puedes confirmar.', 'Only you can confirm these details.') });
     if (needsReview > 0) steps.push({ key: 'applications', href: '/applications', icon: 'briefcase', title: needsReview === 1 ? c('1 candidatura necesita revisión', '1 application needs review') : c(`${needsReview} candidaturas necesitan revisión`, `${needsReview} applications need review`), detail: c('Confirma su estado para mantener el seguimiento al día.', 'Confirm their status to keep your tracker accurate.') });
     if (summary.totalJobs === 0) steps.push({ key: 'first-job', href: '/jobs', icon: 'search', title: c('Guarda tu primera vacante', 'Save your first job'), detail: c('Añade a mano una vacante que ya tengas en mente.', 'Add a job you already have in mind by hand.') });
     if (summary.approvedSourceCount === 0) steps.push(summary.boardCount
-      ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Revisa y aprueba una fuente de empleo', 'Review and approve a job source'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar vacantes.', 'You have sources added, but none approved for job discovery yet.') }
-      : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: conecta una fuente de empleo', 'Optional: connect a job source'), detail: c('Para recibir vacantes de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
+      ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Confirma la página de una empresa', 'Confirm a company careers page'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar vacantes.', 'You have sources added, but none approved for job discovery yet.') }
+      : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir vacantes de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
   }
 
+  const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers'].includes(step.key));
+
   const metrics = [
-    { key: 'jobs', label: c('Vacantes guardadas', 'Saved jobs'), value: summary?.totalJobs, href: '/jobs' },
-    { key: 'active', label: c('Candidaturas activas', 'Active applications'), value: summary?.activeApplications, href: '/applications' },
-    { key: 'facts', label: c('Hechos aprobados', 'Approved facts'), value: completion?.approvedFactCount, href: '/profile' },
-    { key: 'sources', label: c('Fuentes aprobadas', 'Approved sources'), value: summary?.approvedSourceCount, href: '/boards' },
+    { key: 'jobs', label: c('Ofertas guardadas', 'Saved jobs'), value: summary?.totalJobs, href: '/jobs' },
+    { key: 'active', label: c('Solicitudes activas', 'Active applications'), value: summary?.activeApplications, href: '/applications' },
+    { key: 'facts', label: c('Datos confirmados', 'Confirmed profile details'), value: completion?.approvedFactCount, href: '/profile' },
+    { key: 'sources', label: c('Empresas conectadas', 'Connected companies'), value: summary?.approvedSourceCount, href: '/boards' },
   ];
 
   return <WorkspaceGate><AppShell>
     <PageHeader
       eyebrow={t('Resumen')}
       title={c('Tu búsqueda, hoy', 'Your search today')}
-      description={c('Lo que necesita tu atención y lo último que ha cambiado.', 'What needs your attention and what changed most recently.')}
-      action={<ButtonLink href="/jobs">{t('Explorar oportunidades')} <Icon name="arrow" size={18}/></ButtonLink>}
+      description={c('Organiza tu búsqueda de empleo: guarda ofertas, prepara tu CV y lleva el seguimiento de tus solicitudes.', 'Organize your job search: save jobs, prepare your resume, and track your applications.')}
     />
     {error && <Notice tone="error">{error}</Notice>}
 
+    {summary && <Card className="getting-started">
+      <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
+      <h2>{primaryStep?.title ?? c('Elige una oferta que te interese', 'Choose a job you are interested in')}</h2>
+      <p>{primaryStep?.detail ?? c('Abre una oferta guardada para preparar tu CV o empezar a seguir tu solicitud.', 'Open a saved job to prepare your resume or start tracking your application.')}</p>
+      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
+      <p className="muted-label">{c('Puedes guardar ofertas desde el principio. Conectar páginas de empresas y guardar respuestas es opcional.', 'You can save jobs right away. Connecting company careers pages and saving answers are optional.')}</p>
+    </Card>}
+    <section className="search-guide" aria-labelledby="search-guide-heading">
+      <h2 id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</h2>
+      <ol className="journey-grid">
+        {[
+          { href: '/profile', title: c('Cuenta tu experiencia', 'Add your experience'), detail: c('Guarda tus datos y los logros que quieres incluir en tu CV.', 'Save your details and the achievements you want on your resume.') },
+          { href: '/jobs', title: c('Guarda una oferta', 'Save a job'), detail: c('Copia el enlace y la descripción de un empleo que te interese.', 'Copy the link and description of a job you are interested in.') },
+          { href: '/documents', title: c('Prepara tu CV', 'Prepare your resume'), detail: c('Elige qué incluir, genera el PDF y confirma que está correcto.', 'Choose what to include, generate the PDF, and check it is accurate.') },
+          { href: '/applications', title: c('Solicita el puesto y anótalo', 'Apply and track it'), detail: c('Envía tú la solicitud a la empresa y registra lo que ocurra. Lever permite completar tus datos con ayuda.', 'Submit the application yourself and track what happens. Lever supports assisted contact entry.') },
+        ].map((step, index) => <li key={step.href}><Link href={step.href}><span className="step-badge" aria-hidden="true">{index + 1}</span><strong>{step.title}</strong><span>{step.detail}</span></Link></li>)}
+      </ol>
+    </section>
+
+    <details className="overview-details" open={Boolean(summary && (summary.totalJobs > 0 || totalApplications > 0))}>
+      <summary>{c('Ver mi resumen y otros pendientes', 'View my overview and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>
       <ul className="metric-grid">
@@ -101,14 +123,14 @@ export default function HomePage() {
 
     <div className="home-grid">
       <Card className="home-panel">
-        <div className="panel-heading"><h2>{c('Próximos pasos', 'Next steps')}</h2></div>
+        <div className="panel-heading"><h2>{c('Otros pendientes y opciones', 'Other tasks and options')}</h2></div>
         {loading ? <p className="panel-status" role="status">{c('Cargando tu resumen…', 'Loading your overview…')}</p>
-          : steps.length ? <ol className="step-list">{steps.map((step) => <li key={step.key}><Link href={step.href} className="step-item">
+          : steps.filter((step) => step.key !== primaryStep?.key).length ? <ol className="step-list">{steps.filter((step) => step.key !== primaryStep?.key).map((step) => <li key={step.key}><Link href={step.href} className="step-item">
             <span className="step-icon" aria-hidden="true"><Icon name={step.icon} size={20}/></span>
             <span className="step-copy"><strong>{step.title}</strong><span>{step.detail}</span></span>
             <Icon name="arrow" size={18}/>
           </Link></li>)}</ol>
-          : summary && <div className="step-done"><Icon name="check" size={20}/><p>{c('No hay nada pendiente. Revisa vacantes nuevas cuando quieras.', 'Nothing is waiting on you. Browse new jobs whenever you like.')}</p></div>}
+          : summary && <div className="step-done"><Icon name="check" size={20}/><p>{c('No hay otros pendientes. Puedes continuar con el siguiente paso.', 'There are no other tasks waiting. You can continue with the next step.')}</p></div>}
       </Card>
 
       <Card className="home-panel">
@@ -149,5 +171,6 @@ export default function HomePage() {
         {summary && summary.totalJobs > summary.recentJobs.length && <p className="panel-foot">{c(`Mostrando ${summary.recentJobs.length} de ${summary.totalJobs} vacantes guardadas`, `Showing ${summary.recentJobs.length} of ${summary.totalJobs} saved jobs`)}</p>}
       </Card>
     </div>
+    </details>
   </AppShell></WorkspaceGate>;
 }

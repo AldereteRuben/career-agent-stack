@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { clearSessionDrafts } from '@/lib/session-draft';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import { api } from '@/lib/api';
@@ -8,13 +9,13 @@ import { useLocale } from '@/lib/i18n';
 import { Icon } from './ui';
 
 const links = [
-  { href: '/', label: 'Resumen', icon: 'home' },
-  { href: '/jobs', label: 'Vacantes', icon: 'search' },
-  { href: '/applications', label: 'Candidaturas', icon: 'briefcase' },
-  { href: '/profile', label: 'Mi perfil', icon: 'user' },
-  { href: '/documents', label: 'Documentos', icon: 'file' },
-  { href: '/boards', label: 'Fuentes', icon: 'building' },
-  { href: '/settings', label: 'Privacidad', icon: 'settings' },
+  { href: '/', label: 'Inicio', icon: 'home', hint: 'Qué hacer ahora' },
+  { href: '/profile', label: 'Mi perfil', icon: 'user', hint: 'Tus datos y experiencia' },
+  { href: '/jobs', label: 'Ofertas guardadas', icon: 'search', hint: 'Empleos que te interesan' },
+  { href: '/documents', label: 'Mis CV', icon: 'file', hint: 'Preparar y descargar PDF' },
+  { href: '/applications', label: 'Mis solicitudes', icon: 'briefcase', hint: 'Preparar, enviar y dar seguimiento' },
+  { href: '/boards', label: 'Empresas que sigo', icon: 'building', hint: 'Consultar sus ofertas · opcional' },
+  { href: '/settings', label: 'Ajustes y privacidad', icon: 'settings', hint: 'Tus datos y configuración' },
 ];
 
 /** Keep in sync with the drawer breakpoint in globals.css. */
@@ -61,7 +62,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const wasOpen = useRef(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const signOut = async () => { await api('/session', { method: 'DELETE' }).catch(() => undefined); router.replace('/login'); };
+  const signOut = async () => { clearSessionDrafts(); await api('/session', { method: 'DELETE' }).catch(() => undefined); router.replace('/login'); };
 
   // Close the drawer on navigation and when the viewport grows past the drawer breakpoint.
   useEffect(() => { setMenuOpen(false); }, [pathname]);
@@ -124,7 +125,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav className="main-nav" aria-label={t("Navegación principal")}>
         {links.map((link) => {
           const active = isActive(link.href, pathname);
-          return <Link key={link.href} href={link.href} onClick={closeMenu} aria-current={active ? 'page' : undefined} className={`nav-link ${active ? 'nav-active' : ''}`}><Icon name={link.icon} size={20}/><span>{t(link.label)}</span></Link>;
+          return <Link key={link.href} href={link.href} onClick={closeMenu} aria-current={active ? 'page' : undefined} className={`nav-link ${active ? 'nav-active' : ''}`}><Icon name={link.icon} size={20}/><span className="nav-copy"><span>{t(link.label)}</span><small>{t(link.hint)}</small></span></Link>;
         })}
       </nav>
       <div className="sidebar-spacer"/>
@@ -139,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{t("Local y privado")}</span></span><LanguageSwitch/></div>
       </header>
       <main id="main-content" className="page-wrap" tabIndex={-1}>{children}</main>
-      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{t("v0.3")}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
+      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{"v0.3.1"}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
     </div>
   </div>;
 }

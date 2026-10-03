@@ -1,3 +1,4 @@
+import { patchScenarios } from './v031.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -47,7 +48,7 @@ export const scenarios: Scenario[] = [
     async run({ page, uiUrl, token }) {
       await signIn(page, uiUrl, await token());
       await setLocale(page, 'es');
-      await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Vacantes/i }).waitFor();
+      await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Ofertas guardadas/i }).waitFor();
       await setLocale(page, 'en');
       await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Jobs/i }).waitFor();
       await setLocale(page, 'es');
@@ -87,8 +88,9 @@ export const scenarios: Scenario[] = [
       await goTo(page, '/profile');
 
       // Fact draft: a failed save must keep the text so the user does not lose it.
+      await page.getByLabel(any('Qué quieres añadir', 'What would you like to add')).selectOption('achievement');
       const statement = `Draft kept after failure ${marker}`;
-      const factField = page.getByLabel(any('Afirmación concreta', 'Concrete statement', 'Specific statement', 'Statement')).first();
+      const factField = page.getByLabel(any('Describe tu experiencia o logro', 'Describe your experience or achievement')).first();
       await factField.fill(statement);
       let failedOnce = false;
       await page.route('**/api/v1/profile/facts', async (route) => {
@@ -163,7 +165,7 @@ export const scenarios: Scenario[] = [
       const documentsNamed = async () => (await api.get<DocumentVersion[]>('/documents')).filter((document) => document.name === name);
       await goTo(page, '/documents');
       for (const expected of [1, 2]) {
-        if (expected === 2) await page.getByRole('button', { name: any('Volver y cambiar hechos', 'Go back and change facts') }).click();
+        if (expected === 2) await page.getByRole('button', { name: any('Cambiar contenido del CV', 'Change resume content') }).click();
         await page.getByLabel(any('Nombre de la versión', 'Version name')).first().fill(name);
         const checkbox = page.getByRole('checkbox', { name: new RegExp(statement.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first();
         const fallback = page.locator('label').filter({ hasText: statement }).getByRole('checkbox').first();
@@ -232,7 +234,6 @@ export const scenarios: Scenario[] = [
       const company = `Contoso ${marker}`;
       const first = await api.post<Application>('/applications', { company, role: `Test Engineer A ${marker}` });
       const second = await api.post<Application>('/applications', { company, role: `Test Engineer B ${marker}` });
-      page.on('dialog', (dialog) => void dialog.accept());
 
       await page.goto(`${uiUrl}/applications?id=${second.id}`);
       await page.getByRole('heading', { name: second.role }).first().waitFor();
@@ -396,3 +397,5 @@ scenarios.push({
     note('Consent preview, manual PDF context, EN/ES and mobile checks use the isolated API. No external ATS page was opened; browser execution is verified separately against synthetic fixtures.');
   },
 });
+
+scenarios.push(...patchScenarios);

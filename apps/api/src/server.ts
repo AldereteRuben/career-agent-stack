@@ -11,6 +11,7 @@ import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie,
 import { normalizeJobUrl, readBoardWithReport } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
+import { documentReadiness } from './document-reuse.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, occurrencesForBoard, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
@@ -151,6 +152,29 @@ app.post('/api/v1/profile/facts', async (request, reply) => {
   if (!fact) return fail(reply, 409, 'PROFILE_NOT_CONFIGURED');
   return reply.code(201).send(fact);
 });
+// Corrections create a new profile revision. Earlier facts and PDF claims remain intact.
+app.put('/api/v1/profile/facts/:id', async (request, reply) => {
+  const body = request.body as { expectedRevision?: unknown; fact?: unknown } | null;
+  if (!Number.isSafeInteger(body?.expectedRevision) || Number(body?.expectedRevision) < 1) return fail(reply, 400, 'INVALID_PROFILE');
+  const parsed = parseBody(factSchema, body?.fact, reply); if (!parsed) return;
+  if (parsed.approvalStatus === 'USER_APPROVED') return fail(reply, 400, 'APPROVAL_REQUIRES_SEPARATE_ACTION');
+  const id = workspace(request); const { id: factId } = request.params as { id: string };
+  const result = await db.transaction(async (tx) => {
+    await lockKey(tx, profileLockKey(id));
+    const latest = await latestProfile(tx, id);
+    if (!latest || latest.revision !== body?.expectedRevision) return 'PROFILE_REVISION_CONFLICT' as const;
+    const facts = await latestFacts(tx, id, latest.id);
+    if (!facts.some((fact) => fact.id === factId)) return 'FACT_NOT_IN_CURRENT_REVISION' as const;
+    const created = (await tx.insert(profileVersions).values({ workspaceId: id, revision: latest.revision + 1, locale: latest.locale, profile: latest.profile }).returning())[0]!;
+    const unchanged = facts.filter((fact) => fact.id !== factId);
+    if (unchanged.length) await tx.insert(profileFacts).values(unchanged.map((fact) => ({ ...omit(fact, 'id'), profileVersionId: created.id })));
+    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, tags: parsed.tags, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }).returning())[0]!;
+  });
+  if (typeof result === 'string') return fail(reply, 409, result);
+  await rescoreAfterChange(id);
+  return reply.code(201).send(result);
+});
+
 app.post('/api/v1/profile/facts/:id/:action', async (request, reply) => {
   const { id: factId, action } = request.params as { id: string; action: string }; if (!['approve', 'reject'].includes(action)) return fail(reply, 404, 'NOT_FOUND');
   const id = workspace(request);
@@ -394,7 +418,11 @@ app.post('/api/v1/applications/:id/events', async (request, reply) => {
 });
 
 const documentView = <T extends { id: string; name: string; revision: number; approvalStatus: string }>(row: T) => ({ ...row, reviewRequired: row.approvalStatus === 'PENDING_REVIEW', fileName: documentFileName(row.name, row.revision), downloadUrl: `/api/v1/documents/${row.id}/file` });
-app.get('/api/v1/documents', async (request) => (await db.select().from(documentVersions).where(eq(documentVersions.workspaceId, workspace(request))).orderBy(desc(documentVersions.createdAt))).map(documentView));
+app.get('/api/v1/documents', async (request) => {
+  const id = workspace(request);
+  const documents = await db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)).orderBy(desc(documentVersions.createdAt));
+  return (await documentReadiness(db, id, documents)).map(documentView);
+});
 app.post('/api/v1/documents', async (request, reply) => {
   const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown } | null;
   if (typeof body?.name !== 'string' || !body.name.trim() || body.name.length > 200 || !Array.isArray(body.factIds) || body.factIds.length < 1 || body.factIds.length > 50 || !body.factIds.every((value) => typeof value === 'string')) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
@@ -404,7 +432,7 @@ app.post('/api/v1/documents', async (request, reply) => {
   const facts = await db.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, id), eq(profileFacts.profileVersionId, profile.id), eq(profileFacts.approvalStatus, 'USER_APPROVED')));
   const selected = facts.filter((fact) => factIds.includes(fact.id));
   if (selected.length !== factIds.length) return fail(reply, 400, 'FACTS_MUST_BE_APPROVED_IN_CURRENT_PROFILE');
-  const identity = profile.profile.identity as { fullName?: unknown } | undefined;
+  const identity = profile.profile.identity as { fullName?: unknown; email?: unknown } | undefined;
   let snapshotId: string | null = null; let role = '';
   if (body.jobId !== undefined && body.jobId !== null) {
     if (typeof body.jobId !== 'string') return fail(reply, 400, 'JOB_NOT_FOUND');
@@ -420,7 +448,7 @@ app.post('/api/v1/documents', async (request, reply) => {
   if (computedRelativePath.startsWith(`..${sep}`) || computedRelativePath === '..' || isAbsolute(computedRelativePath)) return fail(reply, 400, 'DOCUMENT_PATH_INVALID');
   const removeFile = () => unlink(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') app.log.warn({ err: error, documentId: docId }, 'Could not remove orphaned document file'); });
   let rendered: { sha256: string; size: number };
-  try { rendered = await renderResume({ path: filePath, fullName: typeof identity?.fullName === 'string' ? identity.fullName.slice(0, 200) : '', role, locale: documentLanguage(body.locale, profile.locale), facts: selected.map((fact) => ({ kind: fact.kind, statement: fact.statement, tags: fact.tags })) }); }
+  try { rendered = await renderResume({ path: filePath, fullName: typeof identity?.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: typeof identity?.email === 'string' ? identity.email.slice(0, 320) : '', role, locale: documentLanguage(body.locale, profile.locale), facts: selected.map((fact) => ({ kind: fact.kind, statement: fact.statement, tags: fact.tags })) }); }
   catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
   const claims = selected.map((fact) => ({ text: fact.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
@@ -503,7 +531,7 @@ app.get('/api/v1/export', async (request, reply) => {
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
 
-app.get('/api/v1/capabilities', async () => ({ release: 'v0.3', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
+app.get('/api/v1/capabilities', async () => ({ release: 'v0.3.1', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
 
 app.setErrorHandler((error, _request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');

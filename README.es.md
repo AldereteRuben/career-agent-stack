@@ -4,17 +4,17 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.3.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.3.0.md)
+**Versión actual: v0.3.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.3.1.md)
 
 La interfaz está disponible en **español e inglés**. Cada persona utiliza una instalación independiente, con su propia base de datos y claves. No es un servicio compartido en la nube.
 
 ## Qué puedes hacer
 
-- Guardar tu perfil, preferencias y hechos profesionales que apruebas explícitamente.
+- Guardar tu perfil y preferencias, corregir o archivar experiencias y confirmar los datos que se usan en tu CV.
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
 - Añadir vacantes manualmente o consultar fuentes de Greenhouse, Lever y Ashby revisadas individualmente.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
-- Generar, visualizar, revisar y descargar distintas versiones de un PDF.
+- Generar, visualizar, revisar y descargar versiones de tu CV. Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 

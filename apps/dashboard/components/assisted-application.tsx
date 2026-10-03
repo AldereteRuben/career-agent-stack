@@ -8,7 +8,7 @@ import { useLocale } from '@/lib/i18n';
 import { copy } from '@/lib/labels';
 
 type Attempt = { id: string; status: string; digest: string; expiresAt: string; plan: { url: string; documentId: string; documentName: string; fields: { name: string; email: string; phone: string; org: string } }; result: { reason?: string; filled?: string[] }; createdAt: string };
-type Data = { supported: boolean; url: string | null; identity: { fullName: string; email: string }; application: { state: string }; documents: Array<{ id: string; name: string; revision: number }>; attempts: Attempt[] };
+type Data = { supported: boolean; url: string | null; identity: { fullName: string; email: string }; application: { state: string }; documents: Array<{ id: string; name: string; revision: number; assistReady: boolean }>; attempts: Attempt[] };
 const activeStates = ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN'];
 
 export function AssistedApplication({ applicationId, onChanged }: { applicationId: string; onChanged: () => void }) {
@@ -42,7 +42,7 @@ export function AssistedApplication({ applicationId, onChanged }: { applicationI
       ASSIST_ACTIVE_ATTEMPT: ['Resuelve o cancela el intento abierto antes de preparar otro.', 'Resolve or cancel the open attempt before preparing another.'],
       ASSIST_PROFILE_REQUIRED: ['Guarda tu nombre y un correo válido en tu perfil.', 'Save your name and a valid email in your profile.'],
       ASSIST_DOCUMENT_REQUIRED: ['Genera y aprueba un CV con tu perfil actual.', 'Generate and approve a resume from your current profile.'],
-      ASSIST_DOCUMENT_STALE: ['El CV ya no coincide con tus datos aprobados. Genera y revisa otra versión.', 'The resume no longer matches your approved facts. Generate and review a new version.'],
+      ASSIST_DOCUMENT_STALE: ['El CV ya no coincide con tus datos aprobados. Genera y revisa otra versión.', 'The resume no longer matches your confirmed profile details. Generate and review a new version.'],
       ASSIST_INPUTS_CHANGED: ['Los datos cambiaron. Cierra este intento y prepara una autorización nueva.', 'The data changed. Close this attempt and prepare fresh authorization.'],
       ASSIST_CONSENT_EXPIRED: ['La autorización caducó. Cancela este intento y prepara otro.', 'The authorization expired. Cancel this attempt and prepare another.'],
       ASSIST_CONSENT_ALREADY_USED: ['Esta autorización ya se usó. Actualiza el estado; no repitas el envío.', 'This authorization was already used. Refresh the status; do not repeat submission.'],
@@ -63,7 +63,9 @@ export function AssistedApplication({ applicationId, onChanged }: { applicationI
   const stateLabel: Record<string, string> = {
     PREPARED: c('Datos listos para revisar', 'Data ready for review'), STARTING: c('Preparando navegador', 'Preparing browser'), REVIEW: c('Revisa la ventana', 'Review the window'), HANDOFF_REQUIRED: c('Formulario requiere revisión manual', 'Form requires manual review'), HANDED_OFF: c('Tienes el control', 'You are in control'), UNKNOWN: c('Resultado por comprobar', 'Outcome needs checking'), CONFIRMED: c('Envío declarado por ti', 'Submission attested by you'), NOT_SUBMITTED: c('Sin enviar, según tu revisión', 'Not submitted, according to your review'), CANCELLED: c('Cancelado', 'Cancelled'), INVALIDATED: c('Autorización invalidada', 'Authorization invalidated'), FAILED: c('No se pudo iniciar', 'Could not start'),
   };
-  const selectedDocument = documentId || data?.documents[0]?.id || '';
+  const availableDocuments = data?.documents.filter((doc) => doc.assistReady) ?? [];
+  const selectedDocument = availableDocuments.some((doc) => doc.id === documentId) ? documentId : availableDocuments[0]?.id ?? '';
+  const hasOutdatedDocuments = data?.documents.some((doc) => !doc.assistReady);
   return <section className="assist-panel" aria-labelledby={`assist-title-${applicationId}`} aria-busy={busy}>
     <div className="panel-heading"><div><div className="eyebrow">{c('SOLICITUD ASISTIDA · LEVER', 'ASSISTED APPLICATION · LEVER')}</div><h3 id={`assist-title-${applicationId}`}>{c('Prepara el formulario, conserva el control', 'Prepare the form, stay in control')}</h3></div><Button variant="quiet" disabled={busy} onClick={() => { setError(''); void load(); }}>{c('Actualizar', 'Refresh')}</Button></div>
     {error && <Notice tone="error">{error}</Notice>}
@@ -71,10 +73,11 @@ export function AssistedApplication({ applicationId, onChanged }: { applicationI
       <p>{c('Autocompletamos nombre, correo y los datos opcionales que indiques. Tú adjuntas el CV, respondes las preguntas, resuelves CAPTCHA y envías desde la misma ventana.', 'We fill your name, email and the optional details you provide. You attach your resume, answer questions, handle CAPTCHA and submit in the same window.')}</p>
       <ol className="assist-steps" aria-label={c('Pasos de la solicitud', 'Application steps')}><li>{c('Revisar datos', 'Review data')}</li><li>{c('Revisar navegador', 'Review browser')}</li><li>{c('Enviar tú y registrar', 'Submit yourself and record')}</li></ol>
       {!attempt && data.application.state !== 'CONFIRMED' && data.application.state !== 'CANCELLED' && <div className="form-stack">
-        {!data.identity.fullName || !data.identity.email ? <Notice><Link href="/profile">{c('Completa tu nombre y correo en el perfil para empezar.', 'Complete your name and email in your profile to begin.')}</Link></Notice> : !data.documents.length ? <Notice><Link href="/documents">{c('Prepara y aprueba un CV antes de empezar.', 'Prepare and approve a resume before you begin.')}</Link></Notice> : <>
-          <SelectField label={c('CV aprobado que adjuntarás tú', 'Approved resume you will attach')} value={selectedDocument} onChange={(e) => setDocumentId(e.target.value)} disabled={busy}>{data.documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name} · v{doc.revision}</option>)}</SelectField>
+        {!data.identity.fullName || !data.identity.email ? <Notice><Link href="/profile">{c('Completa tu nombre y correo en el perfil para empezar.', 'Complete your name and email in your profile to begin.')}</Link></Notice> : !availableDocuments.length ? <Notice><Link href="/documents">{hasOutdatedDocuments ? c('Tu perfil cambió. En Mis CV, usa una versión como base, genera y aprueba el CV actualizado para continuar.', 'Your profile changed. In My resumes, use a version as a starting point, generate and approve an updated resume to continue.') : c('Prepara y aprueba un CV antes de empezar.', 'Prepare and approve a resume before you begin.')}</Link></Notice> : <>
+          {hasOutdatedDocuments && <p>{c('Los CV anteriores a tus últimos cambios no se pueden elegir. Puedes actualizarlos en Mis CV.', 'Resumes from before your latest changes cannot be selected. You can update them in My resumes.')} <Link href="/documents">{c('Actualizar un CV', 'Update a resume')}</Link></p>}
+          <SelectField label={c('CV aprobado que adjuntarás tú', 'Approved resume you will attach')} value={selectedDocument} onChange={(e) => setDocumentId(e.target.value)} disabled={busy}>{availableDocuments.map((doc) => <option key={doc.id} value={doc.id}>{doc.name} · v{doc.revision}</option>)}</SelectField>
           <div className="form-grid"><Field label={c('Teléfono (opcional)', 'Phone (optional)')} value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={80} disabled={busy}/><Field label={c('Empresa actual (opcional)', 'Current company (optional)')} value={organization} onChange={(e) => setOrganization(e.target.value)} maxLength={200} disabled={busy}/></div>
-          <Button disabled={busy} onClick={() => void act(`/applications/${applicationId}/assist/prepare`, { documentId: selectedDocument, phone, organization })}>{c('Revisar datos y destino', 'Review data and destination')}</Button>
+          <Button disabled={busy || !selectedDocument} onClick={() => void act(`/applications/${applicationId}/assist/prepare`, { documentId: selectedDocument, phone, organization })}>{c('Revisar datos y destino', 'Review data and destination')}</Button>
         </>}
       </div>}
       {attempt && <div className="form-stack">
