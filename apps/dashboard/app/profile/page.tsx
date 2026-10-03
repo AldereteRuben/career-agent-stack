@@ -130,7 +130,7 @@ export default function ProfilePage() {
     {loadState === 'loading' && <Notice>{c('Cargando tu perfil…', 'Loading your profile…')}</Notice>}
     {loadState === 'error' && <Notice tone="warning">{c('No pudimos cargar tu perfil.', 'We could not load your profile.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load({ replaceForm: true }); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
     <div className="profile-layout"><div className="profile-main">
-      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2>{c('Datos y preferencias', 'Personal details and preferences')}</h2><p>{c('Solo para organizar este espacio y preparar borradores.', 'Only used to organise this workspace and prepare drafts.')}</p></div></div><Tag tone={dirty ? 'amber' : 'blue'}>{dirty ? c('CAMBIOS SIN GUARDAR', 'UNSAVED CHANGES') : `${c('REVISIÓN', 'REVISION')} ${data?.revision ?? '—'}`}</Tag></div>
+      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2>{c('Datos y preferencias', 'Personal details and preferences')}</h2><p>{c('Organiza tus borradores. Los datos de contacto solo se usan en Lever cuando lo autorizas.', 'Organize your drafts. Contact details are used in Lever only when you authorize it.')}</p></div></div><Tag tone={dirty ? 'amber' : 'blue'}>{dirty ? c('CAMBIOS SIN GUARDAR', 'UNSAVED CHANGES') : `${c('REVISIÓN', 'REVISION')} ${data?.revision ?? '—'}`}</Tag></div>
         <form onSubmit={(event) => void saveProfile(event)} className="form-grid" aria-busy={saving('profile')}>
           <Field disabled={locked} label={c('Nombre', 'Name')} autoComplete="name" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} placeholder={c('Cómo quieres que aparezca', 'How your name should appear')}/>
           <Field disabled={locked} label={c('Correo', 'Email')} type="email" autoComplete="email" value={form.email} onChange={(e) => updateForm({ email: e.target.value })} placeholder={c('nombre@ejemplo.com', 'name@example.com')}/>
@@ -190,7 +190,7 @@ export default function ProfilePage() {
       </Card>
     </div><aside className="profile-aside">
       <Card className="aside-card"><span className="aside-number">01</span><h3>{c('Lo que apruebas, cuenta.', 'What you approve is what counts.')}</h3><p>{c('Los documentos solo usan hechos aprobados en la revisión actual de tu perfil.', 'Documents only use facts approved in the current revision of your profile.')}</p></Card>
-      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('El perfil vive en esta instalación local. No se comparte con empresas.', 'Your profile lives in this local installation. It is not shared with employers.')}</p><small>{c('El envío de candidaturas no está disponible en v0.2.', 'Submitting applications is not available in v0.2.')}</small></Card>
+      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('El perfil vive en esta instalación local. No se comparte con empresas.', 'Your profile lives in this local installation. It is not shared with employers.')}</p><small>{c('El envío de candidaturas no está disponible en v0.3.', 'Submitting applications is not available in v0.3.')}</small></Card>
     </aside></div>
   </AppShell></WorkspaceGate>;
 }

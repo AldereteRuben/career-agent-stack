@@ -128,7 +128,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         })}
       </nav>
       <div className="sidebar-spacer"/>
-      <div className="local-card"><Icon name="shield" size={18}/><div><strong>{t("Solo en este equipo")}</strong><p>{t("Tus datos no salen de aquí.")}</p></div></div>
+      <div className="local-card"><Icon name="shield" size={18}/><div><strong>{t("Solo en este equipo")}</strong><p>{t("Tú decides cuándo compartir datos.")}</p></div></div>
       <button type="button" className="profile-chip" onClick={signOut}><span className="avatar" aria-hidden="true">{t("T")}</span><span><strong>{t("Tu espacio")}</strong><small>{t("Sesión local")}</small></span><span className="signout">{t("Salir")}</span></button>
     </aside>
     {drawerOpen && <div className="mobile-scrim" aria-hidden="true" onClick={closeMenu}/>}
@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{t("Local y privado")}</span></span><LanguageSwitch/></div>
       </header>
       <main id="main-content" className="page-wrap" tabIndex={-1}>{children}</main>
-      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{t("v0.2")}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
+      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{t("v0.3")}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
     </div>
   </div>;
 }

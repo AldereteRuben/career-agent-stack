@@ -1,0 +1,1 @@
+console.log('Solicitudes asistidas / Assisted applications: abre Candidaturas / Applications en la app local, elige una oferta de Lever y sigue Revisar datos → Revisar navegador → Envío manual. La autorización se realiza en la interfaz; este comando no abre ni envía solicitudes. / Authorize from the interface; this command does not open or submit applications.');

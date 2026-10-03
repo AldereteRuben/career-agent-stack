@@ -359,3 +359,40 @@ export const scenarios: Scenario[] = [
     },
   },
 ];
+
+scenarios.push({
+  name: 'assisted-application-preparation',
+  async run({ page, api, marker, artifacts, note }) {
+    const profile = await api.get<Profile>('/profile');
+    await api.put('/profile', { profile: { ...profile.profile, identity: { fullName: 'Fictional Candidate', email: 'fictional@example.test', country: 'ES' } }, expectedRevision: profile.revision });
+    const fact = await createApprovedFact(api, `Fictional assisted application fixture ${marker}`);
+    const doc = await api.post<DocumentVersion>('/documents', { name: `Fixture ${marker}`, factIds: [fact.id], locale: 'en' });
+    await api.post(`/documents/${doc.id}/approve`, { confirmReviewed: true });
+    const application = await api.post<Application>('/applications', { company: 'Fictional', role: `Fixture ${marker}`, canonicalUrl: 'https://jobs.lever.co/example/11111111-1111-4111-8111-111111111111', state: 'DRAFT' });
+    await setLocale(page, 'es'); await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+    const panel = page.locator('.assist-panel'); await panel.getByRole('button', { name: 'Revisar datos y destino', exact: true }).waitFor();
+    await panel.getByLabel('CV aprobado que adjuntarás tú', { exact: true }).selectOption(doc.id);
+    await panel.getByLabel('Teléfono (opcional)', { exact: true }).fill('+34000000000');
+    await panel.getByRole('button', { name: 'Revisar datos y destino', exact: true }).click();
+    const open = panel.getByRole('button', { name: 'Abrir y autocompletar', exact: true }); await open.waitFor();
+    assert.equal(await open.isDisabled(), true, 'Opening the external page requires explicit consent');
+    assert.match(await panel.innerText(), /fictional@example.test/);
+    const state = await api.get<{ attempts: Array<{ id: string; status: string; consentedAt: string | null }> }>(`/applications/${application.id}/assist`);
+    assert.equal(state.attempts[0]?.status, 'PREPARED'); assert.equal(state.attempts[0]?.consentedAt, null);
+    await panel.getByRole('checkbox').check(); assert.equal(await open.isEnabled(), true);
+    await panel.getByRole('checkbox').uncheck();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#app-sidebar').waitFor({ state: 'hidden' });
+    assert.equal(await hasHorizontalOverflow(page), false, 'Consent view overflows on mobile');
+    await panel.scrollIntoViewIfNeeded(); await page.screenshot({ path: join(artifacts, 'assisted-preparation-es-mobile.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await setLocale(page, 'en'); await panel.getByRole('button', { name: 'Open and autofill', exact: true }).waitFor();
+    assert.equal(await panel.getByRole('button', { name: 'Open and autofill', exact: true }).isDisabled(), true);
+    await panel.getByRole('button', { name: 'Cancel preparation', exact: true }).click();
+    await eventually(() => api.get<{ attempts: Array<{ status: string }> }>(`/applications/${application.id}/assist`), value => value.attempts[0]?.status === 'CANCELLED', 'Preparation can be cancelled without opening any browser');
+    await panel.getByRole('button', { name: 'Review data and destination', exact: true }).waitFor();
+    await page.screenshot({ path: join(artifacts, 'assisted-preparation-en.png'), fullPage: true });
+    await setLocale(page, 'es');
+    note('Consent preview, manual PDF context, EN/ES and mobile checks use the isolated API. No external ATS page was opened; browser execution is verified separately against synthetic fixtures.');
+  },
+});

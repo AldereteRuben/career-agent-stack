@@ -4,7 +4,7 @@ Your private workspace to organize a job search: keep your career profile, save 
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.2.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.2.0.md)
+**Current release: v0.3.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.3.0.md)
 
 The interface supports **English and Spanish**. Each person runs a separate installation with their own database and keys. This is a local application, not a shared hosted service.
 
@@ -18,7 +18,11 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 - Track applications, notes, and hiring stages, including corrections with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
-No AI subscription or API key is required. Version 0.2 does **not** submit applications, autofill employer websites, connect to email, or provide interview coaching. Matching is evidence coverage, not a hiring probability or ATS score.
+No AI subscription or API key is required. Version 0.3 offers **experimental Lever contact-field autofill** in a visible browser with explicit consent. You attach files, complete questions and submit manually. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
+
+## Assisted applications
+
+Open a Lever application in **Applications** and follow **Review data → Review browser → Submit yourself and record**. A current approved resume is required. Unknown results block another attempt until you check them. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 ## Start here
 
@@ -128,7 +132,7 @@ pnpm run test:e2e
 pnpm run test:sources # deterministic adapter tests; no network
 ```
 
-E2E tests use a disposable database, private services, and fictional data. They require a local database role that can create databases, or an `E2E_ADMIN_DATABASE_URL`; see [E2E setup and isolation](docs/operations/e2e-testing.md). Read-only checks verify that the live workspace was not modified. `pnpm run test:backup` checks the archive format without a database. `pnpm run test:integration` tests backup and restore with disposable databases when `CAREER_BACKUP_TEST_ADMIN_URL` is set; otherwise that suite is skipped. `pnpm run test:setup` exercises a clean installation using a local administrator. The `test:evals` and `runner` commands remain unavailable.
+E2E tests use a disposable database, private services, and fictional data. They require a local database role that can create databases, or an `E2E_ADMIN_DATABASE_URL`; see [E2E setup and isolation](docs/operations/e2e-testing.md). Read-only checks verify that the live workspace was not modified. `pnpm run test:backup` checks the archive format without a database. `pnpm run test:integration` tests backup and restore with disposable databases when `CAREER_BACKUP_TEST_ADMIN_URL` is set; otherwise that suite is skipped. `pnpm run test:setup` exercises a clean installation using a local administrator. `pnpm run test:assisted` covers the new workflow; its database suite requires `CAREER_ASSIST_TEST_ADMIN_URL`. The `runner` command explains where to authorize from the UI. `test:evals` remains unavailable.
 
 For provider compatibility and the real public feeds checked, see [source validation](docs/operations/source-validation.md). `pnpm run verify:sources --live` explicitly enables a fresh read-only check of those public feeds. It does not enable sources in your workspace.
 
@@ -155,6 +159,6 @@ Free for noncommercial use under [PolyForm Noncommercial 1.0.0](LICENSE), with a
 
 This is **source-available software with noncommercial restrictions**. It is not OSI-approved open source. A license provides legal terms; it cannot technically prevent copying or guarantee enforcement. Your CVs and other user-created career documents remain yours; this software license does not license your personal data.
 
-Third-party components retain their [own licenses and notices](THIRD_PARTY_NOTICES.md). These terms accompany the current licensed source tree; earlier release archives did not include them. Use the licensed revision of `main` until a new licensed release is tagged.
+Third-party components retain their [own licenses and notices](THIRD_PARTY_NOTICES.md). These terms accompany the current licensed source tree; earlier release archives did not include them. Release v0.3.0 includes the license and contribution terms.
 
 [Repository publication controls](docs/operations/public-repository.md).

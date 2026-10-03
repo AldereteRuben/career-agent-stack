@@ -5,7 +5,7 @@
 **Document revision:** 0.2 · **Reviewed:** 2026-10-02  
 **Status:** implementation specification, not a released application.  
 **Name:** working title; confirm name and trademark availability before launch.  
-**License:** not selected yet. Apache-2.0 is the recommended starting proposal, not a license grant.
+**Historical specification:** the original release numbering and Apache license proposal below have been superseded. Current terms are in the root LICENSE and LICENSE-PERSONAL-USE.md; released scope is in README and CHANGELOG. Assisted applications are implemented as the narrower v0.3 slice documented in decisions/015-assisted-applications.md.
 
 **Read this first:** this deliverable is a README and build plan. It does not include a working repository, implemented adapters, tested installation scripts, or audited third-party software. All features, commands, API contracts, and acceptance targets below describe what contributors must implement. Do not advertise them as shipped until the corresponding tests and release gates pass.
 

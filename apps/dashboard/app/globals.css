@@ -2975,3 +2975,16 @@ main:focus {
     border: 1px solid CanvasText;
   }
 }
+
+/* Assisted applications: readable consent and recovery in the tracker detail. */
+.assist-panel { border-block: 1px solid var(--border, #ddd); margin-block: 1.5rem; padding-block: 1.5rem; }
+.assist-panel .form-stack { gap: 1rem; }
+.assist-panel .checkbox-row { display: flex; align-items: flex-start; gap: .65rem; line-height: 1.55; cursor: pointer; }
+.assist-panel .checkbox-row input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .25rem; }
+.assist-summary { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(0, 3fr); gap: .5rem 1rem; font-size: .9rem; }
+.assist-summary dt { font-weight: 600; }
+.assist-summary dd { margin: 0; overflow-wrap: anywhere; }
+.assist-steps { display: flex; flex-wrap: wrap; gap: .6rem 1.8rem; padding-left: 1.2rem; font-size: .85rem; }
+.assist-resolution { display: grid; gap: 1rem; border: 1px solid var(--border, #ddd); border-radius: .75rem; padding: 1rem; min-width: 0; }
+.assist-resolution legend { font-weight: 600; padding-inline: .35rem; }
+@media (max-width: 640px) { .assist-summary { grid-template-columns: 1fr; } .assist-summary dd { margin-bottom: .5rem; } }

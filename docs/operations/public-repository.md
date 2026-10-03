@@ -17,7 +17,7 @@ The unmodified [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licens
 
 Commercial forks, paid hosting and commercial reuse are not generally licensed. Renaming a derivative does not remove the original material's license obligations. This is source-available licensing: [OSI's definition](https://opensource.org/osd) requires allowing commercial use. A license cannot block cloning, independent reimplementation, statutory exceptions or reuse of third-party dependencies under their own licenses, and enforcement depends on applicable law and the facts. Obtain legal review if enforceability in a particular jurisdiction is material.
 
-The license applies to accompanying project-authored material. Historical v0.2.0 and earlier archives were published without a license; they have not been retagged. Publish a new tagged revision containing the community/license files before directing public users to a release archive. Do not imply a new tag means the runtime has been revalidated on new operating systems.
+The license applies to accompanying project-authored material. Historical v0.2.0 and earlier archives were published without a license; they have not been retagged. v0.3.0 is the first tagged revision containing the community/license files. Do not imply a new tag means the runtime has been revalidated on new operating systems.
 
 ## Dependency alerts to resolve before publication
 

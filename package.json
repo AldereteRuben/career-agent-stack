@@ -1,6 +1,6 @@
 {
   "name": "career-agent-stack",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.10.0",
@@ -20,7 +20,7 @@
     "db:migrate": "pnpm --filter @career/db db:migrate",
     "doctor": "node scripts/doctor.mjs",
     "bootstrap": "node scripts/bootstrap.mjs",
-    "runner": "node scripts/unsupported.mjs 'Visible browser runner'",
+    "runner": "node scripts/assisted-help.mjs",
     "test:unit": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/*.test.ts",
     "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs",
     "test:e2e": "pnpm --filter @career/api e2e",
@@ -32,7 +32,8 @@
     "test:sources": "pnpm --filter @career/api exec tsx --test test/sources.test.ts",
     "verify:sources": "pnpm --filter @career/api exec tsx scripts/verify-sources.ts",
     "test:backup": "node --test scripts/test/backup-archive.test.mjs",
-    "test:setup": "node scripts/test/setup-smoke.mjs"
+    "test:setup": "node scripts/test/setup-smoke.mjs",
+    "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

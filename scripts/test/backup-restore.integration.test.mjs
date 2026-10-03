@@ -140,6 +140,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       documents.push({ id, storagePath, sha256: sha(bytes) });
     }
     await writeFile(join(filesDir, ws, 'orphan-render.pdf'), pdf('orphan, not referenced')); // must not be backed up
+    await client.query(`insert into assisted_attempts(workspace_id, application_id, status, plan, digest, expires_at, consented_at) values ($1,$2,'HANDED_OFF','{}','test-digest',now()+interval '10 minutes',now())`,[ws,application]);
     await client.end();
 
     secrets.encryptionKey = randomBytes(32).toString('base64');
@@ -192,7 +193,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal(manifest.documents.length, 3);
     assert.ok(![...entries.keys()].some((name) => name.includes('orphan')), 'unreferenced files are excluded');
     assert.equal(manifest.tables['public.boards'], 2);
-    assert.equal(manifest.migrations.length, 4);
+    assert.equal(manifest.migrations.length, 5);
     // A second backup reuses the same key file instead of writing another one.
     await delay(1100); // archive names have one-second resolution
     const second = await run('backup.mjs', ['--env-file', envFile, '--out-dir', backupDir]);
@@ -271,9 +272,11 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, `select count(*)::int as n from source_policy_reviews where permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from search_profiles where enabled')).rows[0].n, 0);
-    assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, 4);
+    assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, 5);
     assert.equal((await query(database, `select statement from profile_facts where kind = 'skill'`)).rows[0].statement, 'Builds fictional test fixtures');
 
+    assert.equal((await query(database, 'select status from assisted_attempts')).rows[0].status, 'UNKNOWN');
+    assert.equal((await query(sourceDb, 'select status from assisted_attempts')).rows[0].status, 'HANDED_OFF');
     // New installation folder.
     assert.equal(await mode(target), 0o700);
     assert.equal(await mode(join(target, '.env')), 0o600);

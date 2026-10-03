@@ -42,6 +42,13 @@ export const recruitmentStages: LabelMap = {
 export const recruitmentStageOrder = Object.keys(recruitmentStages);
 
 export const applicationEvents: LabelMap = {
+  ASSIST_BROWSER_LOST: { es: 'Ventana cerrada: resultado por comprobar', en: 'Window closed: outcome needs checking' },
+  ASSIST_PREPARED: { es: 'Solicitud preparada', en: 'Assisted application prepared' },
+  ASSIST_CONSENT_GRANTED: { es: 'Autocompletado autorizado', en: 'Autofill authorized' },
+  ASSIST_REVIEW_REQUIRED: { es: 'Navegador listo para revisión', en: 'Browser ready for review' },
+  ASSIST_MANUAL_HANDOFF: { es: 'Control manual del navegador', en: 'Manual browser handoff' },
+  ASSIST_USER_RECONCILED: { es: 'Resultado declarado por ti', en: 'Outcome reported by you' },
+
   APPLICATION_CREATED: { es: 'Candidatura creada', en: 'Application created' },
   MANUAL_APPLICATION_RECORDED: { es: 'Candidatura registrada como enviada', en: 'Application recorded as sent' },
   APPLICATION_STATE_CHANGED: { es: 'Estado actualizado', en: 'Status updated' },

@@ -4,7 +4,7 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.2.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.2.0.md)
+**Versión actual: v0.3.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.3.0.md)
 
 La interfaz está disponible en **español e inglés**. Cada persona utiliza una instalación independiente, con su propia base de datos y claves. No es un servicio compartido en la nube.
 
@@ -18,7 +18,11 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
-No necesitas una suscripción de IA ni una clave de API. La versión 0.2 **no envía candidaturas**, no rellena sitios de empresas, no conecta con tu correo ni prepara entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+No necesitas una suscripción de IA ni una clave de API. La versión 0.3 incluye **autocompletado experimental de contactos en Lever**, con navegador visible y autorización. Tú adjuntas archivos, respondes y envías manualmente. No hay envío automático, acceso al correo ni preparación de entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+
+## Solicitudes asistidas
+
+Abre una candidatura de Lever y sigue **Revisar datos → Revisar navegador → Enviar tú y registrar**. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
 
 ## Empieza aquí
 
@@ -128,7 +132,7 @@ pnpm run test:e2e
 pnpm run test:sources # pruebas de adaptadores, sin red
 ```
 
-Las pruebas E2E usan servicios privados, datos ficticios y una base desechable. Necesitan un usuario local que pueda crear bases de datos o `E2E_ADMIN_DATABASE_URL`. Consulta la [guía E2E](docs/operations/e2e-testing.md). Se realizan comprobaciones de solo lectura para verificar que el espacio real no cambió. `pnpm run test:backup` comprueba archivos de copia sin base de datos. `pnpm run test:integration` comprueba copia y restauración con bases desechables si defines `CAREER_BACKUP_TEST_ADMIN_URL`; sin esa variable, la suite se omite. `pnpm run test:setup` recorre una instalación limpia con un administrador local. `test:evals` y `runner` siguen pendientes.
+Las pruebas E2E usan servicios privados, datos ficticios y una base desechable. Necesitan un usuario local que pueda crear bases de datos o `E2E_ADMIN_DATABASE_URL`. Consulta la [guía E2E](docs/operations/e2e-testing.md). Se realizan comprobaciones de solo lectura para verificar que el espacio real no cambió. `pnpm run test:backup` comprueba archivos de copia sin base de datos. `pnpm run test:integration` comprueba copia y restauración con bases desechables si defines `CAREER_BACKUP_TEST_ADMIN_URL`; sin esa variable, la suite se omite. `pnpm run test:setup` recorre una instalación limpia con un administrador local. `pnpm run test:assisted` comprueba el nuevo flujo; su suite de base de datos requiere `CAREER_ASSIST_TEST_ADMIN_URL`. `runner` explica dónde autorizar desde la interfaz. `test:evals` sigue pendiente.
 
 Consulta los proveedores y las fuentes públicas reales comprobadas en la [validación de fuentes](docs/operations/source-validation.md). `pnpm run verify:sources --live` habilita explícitamente una nueva comprobación de solo lectura; no activa fuentes en tu espacio.
 
@@ -155,6 +159,6 @@ Uso no comercial gratuito bajo [PolyForm Noncommercial 1.0.0](LICENSE), con un [
 
 Es **código disponible con restricciones no comerciales** (*source available*). No es open source aprobado por la OSI. La licencia establece condiciones legales; no impide técnicamente las copias ni garantiza que puedan perseguirse todas las infracciones. Tus CV y demás documentos profesionales siguen siendo tuyos; esta licencia de software no concede derechos sobre tus datos personales.
 
-Los componentes de terceros conservan sus [propias licencias y avisos](THIRD_PARTY_NOTICES.md). Estos términos acompañan al código actual; los archivos de versiones anteriores no los incluían. Usa la revisión licenciada de `main` hasta que se publique otra versión con licencia.
+Los componentes de terceros conservan sus [propias licencias y avisos](THIRD_PARTY_NOTICES.md). Estos términos acompañan al código actual; los archivos de versiones anteriores no los incluían. La versión v0.3.0 incluye la licencia y los términos de contribución.
 
 [Preparación del repositorio público](docs/operations/public-repository.md).

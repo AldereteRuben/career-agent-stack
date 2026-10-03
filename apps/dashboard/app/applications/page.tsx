@@ -1,5 +1,6 @@
 'use client';
 
+import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -14,7 +15,7 @@ type Application = { id: string; jobId: string | null; company: string; role: st
 type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null };
 type Patch = { state?: string; recruitmentStage?: string; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
 
-/** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.2. */
+/** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.3. */
 const transitions: Record<string, string[]> = {
   DRAFT: ['PREPARING', 'CONFIRMED', 'CANCELLED'], PREPARING: ['REVIEW_REQUIRED', 'CONFIRMED', 'CANCELLED'], REVIEW_REQUIRED: ['PREPARING', 'CONFIRMED', 'CANCELLED'],
   READY: ['REVIEW_REQUIRED', 'CONFIRMED', 'CANCELLED'], IN_PROGRESS: ['CONFIRMED', 'CANCELLED'], UNKNOWN: ['CONFIRMED', 'REVIEW_REQUIRED'], CONFIRMED: ['REVIEW_REQUIRED'], CANCELLED: [],
@@ -28,6 +29,7 @@ function eventDetail(event: AppEvent, locale: Locale) {
     return event.reason && /correct/i.test(event.reason) ? `${arrow} · ${c('corrección', 'correction')}` : arrow;
   }
   if (event.eventType === 'APPLICATION_STATE_CHANGED') return `${labelFor.applicationState(event.priorState, locale)} → ${labelFor.applicationState(event.newState, locale)}`;
+  if (event.eventType.startsWith('ASSIST_') && event.eventType !== 'ASSIST_USER_RECONCILED') return c('Acción registrada para esta candidatura. El envío requiere intervención manual.', 'Action recorded for this application. Submission requires manual interaction.');
   if (event.reason === 'Manual user record') return c('Registro manual', 'Added manually');
   if (event.reason === 'User-attested confirmation') return c('Confirmación declarada por ti', 'Confirmation reported by you');
   return event.reason ?? c('Cambio guardado', 'Change saved');
@@ -152,11 +154,12 @@ function ApplicationsView() {
           <div className="tracker-controls">
             <SelectField label={c('Etapa del proceso', 'Hiring stage')} value={pendingStage ?? selected.recruitmentStage} disabled={busy !== null} onChange={(e) => chooseStage(e.target.value)}>{recruitmentStageOrder.map((stage) => <option key={stage} value={stage}>{labelFor.recruitmentStage(stage, locale)}</option>)}</SelectField>
             <SelectField label={c('Estado de la candidatura', 'Application status')} value={confirmApplied ? 'CONFIRMED' : selected.state} disabled={busy !== null || stateChoices.length < 2} onChange={(e) => chooseState(e.target.value)}>{stateChoices.map((state) => <option key={state} value={state}>{labelFor.applicationState(state, locale)}</option>)}</SelectField>
-            <div className="notice notice-info tracker-boundary">{c('Esta versión no envía candidaturas: los estados de envío automático están desactivados.', 'This version does not submit applications: automatic submission statuses are turned off.')}</div>
+            <div className="notice notice-info tracker-boundary">{c('Tú decides cuándo enviar. Usa el flujo asistido para registrar el resultado de la ventana de Lever.', 'You decide when to submit. Use the assisted flow to record the outcome from the Lever window.')}</div>
           </div>
           {pendingStage && <div className="notice notice-warning" role="alert"><p>{c(`¿Corregir la etapa de «${labelFor.recruitmentStage(selected.recruitmentStage, locale)}» a «${labelFor.recruitmentStage(pendingStage, locale)}»? Úsalo si te equivocaste; el historial guardará la corrección.`, `Correct the stage from “${labelFor.recruitmentStage(selected.recruitmentStage, 'en')}” to “${labelFor.recruitmentStage(pendingStage, 'en')}”? Use this if you made a mistake; the history keeps the correction.`)}</p><div className="detail-actions"><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmCorrection()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, corregir etapa', 'Yes, correct stage')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setPendingStage(null)}>{c('Cancelar', 'Cancel')}</Button></div></div>}
           {confirmApplied && <div className="notice notice-warning" role="alert"><p>{c('Confirma que enviaste esta candidatura tú mismo. Se guardará como tu declaración; no lo comprobamos con la empresa.', 'Confirm that you sent this application yourself. It is saved as your statement; we do not check it with the employer.')}</p><div className="detail-actions"><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmSent()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, la envié', 'Yes, I sent it')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setConfirmApplied(false)}>{c('Cancelar', 'Cancel')}</Button></div></div>}
           {selected.state === 'CONFIRMED' && <div className="notice notice-success">{c('Confirmación basada en tu declaración. No se verificó con la empresa.', 'This confirmation is based on your statement. It was not verified with the employer.')}</div>}
+          <AssistedApplication key={selected.id} applicationId={selected.id} onChanged={() => { void loadRows(); void loadEvents(selected.id); }}/>
           <form className="note-form" onSubmit={(event) => void addNote(event)}><TextareaField label={c('Añadir nota al historial', 'Add a note to the history')} rows={3} value={note} disabled={busy === 'note'} onChange={(e) => setNote(e.target.value)} placeholder={c('Próximo paso, preguntas o contexto…', 'Next step, questions, or context…')} maxLength={10000}/><Button type="submit" variant="secondary" disabled={busy !== null || !note.trim()}>{busy === 'note' ? c('Guardando…', 'Saving…') : c('Añadir nota', 'Add note')}</Button></form>
           <div className="timeline"><h3>{c('Actividad', 'Activity')}</h3>
             {eventsState === 'loading' && !events.length && <p className="muted-label">{c('Cargando actividad…', 'Loading activity…')}</p>}

@@ -5,10 +5,11 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
-import { db, pool, applications, applicationEvents, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces } from '@career/db';
+import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces } from '@career/db';
 import { applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, profileCompletion } from '@career/domain';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl, readBoardWithReport } from './sources.js';
+import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, occurrencesForBoard, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
@@ -55,11 +56,11 @@ const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]): Omit
 };
 
 app.get('/healthz', async (_request, reply) => {
-  try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: false, version: '0.2.0' }; }
+  try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: true, version: '0.3.0' }; }
   catch { return fail(reply, 503, 'DATABASE_UNAVAILABLE'); }
 });
 
-app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: false, externalWrites: false, email: false, ai: false } }));
+app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: true, externalWrites: true, email: false, ai: false } }));
 app.post('/api/v1/session', async (request, reply) => {
   const body = request.body as { setupToken?: unknown } | null;
   if (typeof body?.setupToken !== 'string' || !body.setupToken || body.setupToken.length > 200) return fail(reply, 400, 'SETUP_TOKEN_REQUIRED');
@@ -71,7 +72,8 @@ app.post('/api/v1/session', async (request, reply) => {
   reply.header('Set-Cookie', sessionCookie(issueSession(workspaceId)));
   return { authenticated: true, expiresInSeconds: 1_209_600 };
 });
-app.delete('/api/v1/session', async (_request, reply) => { reply.header('Set-Cookie', expiredSessionCookie()); return { authenticated: false }; });
+let stopAssistedBrowsers = async () => {};
+app.delete('/api/v1/session', async (_request, reply) => { await stopAssistedBrowsers(); reply.header('Set-Cookie', expiredSessionCookie()); return { authenticated: false }; });
 
 app.get('/api/v1/summary', async (request) => {
   const id = workspace(request);
@@ -96,7 +98,7 @@ app.get('/api/v1/summary', async (request) => {
   return {
     boards: boardRows, recentJobs: await scoreJobs(db, id, jobRows, context), recentApplications: applicationRows, pendingFacts: completion.pendingFactCount, unansweredItems: answerRows.filter((answer) => answer.approvalStatus === 'UNANSWERED').length,
     applicationCounts, activeApplications, totalJobs: jobCount[0]?.count ?? 0, boardCount: boardCounts[0]?.total ?? 0, approvedSourceCount: boardCounts[0]?.approved ?? 0, profileCompletion: completion,
-    capabilities: { externalWrites: false, email: false, browserRunner: false, hostedAI: false },
+    capabilities: { externalWrites: true, email: false, browserRunner: true, hostedAI: false },
   };
 });
 
@@ -357,11 +359,13 @@ app.get('/api/v1/applications/:id/events', async (request, reply) => {
 });
 app.patch('/api/v1/applications/:id', async (request, reply) => {
   const parsed = parseBody(applicationUpdateSchema, request.body, reply); if (!parsed) return;
-  if (parsed.state && ['READY', 'IN_PROGRESS', 'UNKNOWN'].includes(parsed.state)) return fail(reply, 409, 'CAPABILITY_NOT_AVAILABLE', 'This release does not execute or reconcile employer-site writes.');
+  if (parsed.state && ['READY', 'IN_PROGRESS', 'UNKNOWN'].includes(parsed.state)) return fail(reply, 409, 'CAPABILITY_NOT_AVAILABLE', 'Use the assisted application workflow for browser progress and reconciliation.');
   const { id: applicationId } = request.params as { id: string }; const id = workspace(request);
   const updated = await db.transaction(async (tx) => {
     const current = (await tx.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id))).limit(1).for('update'))[0];
     if (!current) return null;
+    const activeAssist = await tx.select({ id: assistedAttempts.id }).from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, id), eq(assistedAttempts.applicationId, applicationId), inArray(assistedAttempts.status, ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN']))).limit(1);
+    if (activeAssist.length && (parsed.state || parsed.recruitmentStage)) throw new Error('ASSIST_ACTIVE_ATTEMPT');
     if (parsed.state && parsed.state !== current.state && !canTransitionApplication(current.state, parsed.state, parsed.confirmationEvidence)) throw new Error('INVALID_STATE_TRANSITION');
     if (parsed.state === 'CONFIRMED' && current.state !== 'CONFIRMED' && (request.body as { confirmationEvidence?: unknown } | null)?.confirmationEvidence !== 'USER_ATTESTATION') throw new Error('CONFIRMATION_EVIDENCE_REQUIRED');
     if (parsed.expectedVersion !== undefined && parsed.expectedVersion !== current.version) throw new Error('STALE_APPLICATION_VERSION');
@@ -375,6 +379,7 @@ app.patch('/api/v1/applications/:id', async (request, reply) => {
     if (parsed.recruitmentStage && stageChange !== 'UNCHANGED') await tx.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: stageChange === 'CORRECTION' ? 'RECRUITMENT_STAGE_CORRECTED' : 'RECRUITMENT_STAGE_CHANGED', reason: parsed.reason ?? (stageChange === 'CORRECTION' ? 'User correction' : null), priorState: current.recruitmentStage, newState: parsed.recruitmentStage, evidence: stageChange === 'CORRECTION' ? { correction: true, priorStage: current.recruitmentStage, newStage: parsed.recruitmentStage } : null, aggregateVersion: row.version });
     return row;
   }).catch((error: unknown) => { if (error instanceof Error) return error.message; throw error; });
+  if (updated === 'ASSIST_ACTIVE_ATTEMPT') return fail(reply, 409, updated);
   if (updated === 'INVALID_STATE_TRANSITION' || updated === 'CONFIRMATION_EVIDENCE_REQUIRED' || updated === 'RECRUITMENT_STAGE_CANNOT_REGRESS' || updated === 'STALE_APPLICATION_VERSION') return fail(reply, 409, updated);
   if (!updated) return fail(reply, 404, 'NOT_FOUND');
   return updated;
@@ -382,7 +387,7 @@ app.patch('/api/v1/applications/:id', async (request, reply) => {
 
 app.post('/api/v1/applications/:id/events', async (request, reply) => {
   const body = request.body as { eventType?: unknown; note?: unknown; recruitmentStage?: unknown } | null;
-  if (typeof body?.eventType !== 'string' || body.eventType.length > 80 || typeof body.note !== 'string' || body.note.length > 10_000) return fail(reply, 400, 'INVALID_EVENT');
+  if (typeof body?.eventType !== 'string' || body.eventType.length > 80 || body.eventType.startsWith('ASSIST_') || typeof body.note !== 'string' || body.note.length > 10_000) return fail(reply, 400, 'INVALID_EVENT');
   const { id: applicationId } = request.params as { id: string }; const id = workspace(request);
   const application = (await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id))).limit(1))[0]; if (!application) return fail(reply, 404, 'NOT_FOUND');
   const event = (await db.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: body.eventType, reason: body.note, aggregateVersion: application.version }).returning())[0]; return reply.code(201).send(event);
@@ -478,8 +483,8 @@ function scrubExport(value: unknown): unknown {
 }
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
-  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, search] = await Promise.all([
-    db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)), db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)),
+  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, search, assistRows] = await Promise.all([
+    db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)), db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
   ]);
   const artifacts: Array<{ documentId: string; sha256: string; contentBase64: string }> = [];
   let totalArtifactBytes = 0;
@@ -493,12 +498,12 @@ app.get('/api/v1/export', async (request, reply) => {
     if (totalArtifactBytes > 30_000_000) return fail(reply, 413, 'EXPORT_ARTIFACT_LIMIT', 'Export the PDF files separately, then create a new workspace export.');
     artifacts.push({ documentId: document.id, sha256: digest, contentBase64: content.toString('base64') });
   }
-  const data = scrubExport({ workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search });
+  const data = scrubExport({ workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search, assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
 
-app.get('/api/v1/capabilities', async () => ({ release: 'v0.2', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore'], unavailable: ['ai-processing', 'browser-autofill', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: false, automaticSubmission: false }));
+app.get('/api/v1/capabilities', async () => ({ release: 'v0.3', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
 
 app.setErrorHandler((error, _request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');
@@ -509,6 +514,9 @@ app.setErrorHandler((error, _request, reply) => {
   return fail(reply, 500, 'INTERNAL_ERROR');
 });
 
+const assistedRuntime = await registerAssistedRoutes(app, workspace);
+stopAssistedBrowsers = assistedRuntime.stopAll;
+
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
-app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: false, setupTokenPath }, 'Career Agent Stack API v0.2 started');
-for (const unavailable of ['browser autofill', 'external submission', 'email OAuth', 'interview coaching']) app.log.info({ capability: unavailable, status: 'UNAVAILABLE_IN_V0_1' });
+app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, 'Career Agent Stack API v0.3 started');
+for (const unavailable of ['automatic submission', 'email OAuth', 'interview coaching']) app.log.info({ capability: unavailable, status: 'UNAVAILABLE_IN_V0_3' });

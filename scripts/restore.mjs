@@ -234,6 +234,11 @@ async function restore(options) {
     if (await hasTable(appClient, 'public.search_profiles')) {
       sanitised.searchProfilesDisabled = (await appClient.query('update search_profiles set enabled = false, updated_at = now() where enabled')).rowCount;
     }
+    if (await hasTable(appClient, 'public.assisted_attempts')) {
+      await appClient.query(`update assisted_attempts set status = case when status = 'PREPARED' then 'INVALIDATED' else 'UNKNOWN' end, updated_at = now(), result = result || '{"reason":"ASSIST_RESTORED_REQUIRES_REVIEW"}'::jsonb where status in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF')`);
+      const pending = await appClient.query(`select count(*)::int as n from assisted_attempts where status in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF')`);
+      if (pending.rows[0].n !== 0) throw new RecoveryError({ es: 'Hay autorizaciones de navegador activas tras restaurar.', en: 'Active browser grants remain after restore.' });
+    }
     await appClient.query('commit');
 
     step('Comprobando recuentos, documentos y valores seguros…', 'Checking row counts, documents and safe defaults…');

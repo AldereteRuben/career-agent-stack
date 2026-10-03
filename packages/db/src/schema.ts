@@ -72,3 +72,16 @@ export const sourcePolicyReviews = pgTable('source_policy_reviews', {
 export const searchProfiles = pgTable('search_profiles', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), name: varchar('name', { length: 160 }).notNull(), targetTitles: jsonb('target_titles').$type<string[]>().notNull().default([]), countries: jsonb('countries').$type<string[]>().notNull().default([]), workModes: jsonb('work_modes').$type<string[]>().notNull().default([]), unknownLocationPolicy: varchar('unknown_location_policy', { length: 40 }).notNull().default('NEEDS_REVIEW'), maximumPostedAgeDays: integer('maximum_posted_age_days').notNull().default(14), enabled: boolean('enabled').notNull().default(false), boardIds: jsonb('board_ids').$type<string[]>().notNull().default([]), createdAt: created(), updatedAt: changed(),
 });
+
+/** Consent snapshots are one-use records; no browser cookies or session state is persisted. */
+export const assistedAttempts = pgTable('assisted_attempts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  applicationId: uuid('application_id').notNull(), status: varchar('status', { length: 40 }).notNull().default('PREPARED'),
+  plan: jsonb('plan').$type<import('@career/domain').AssistedPlan>().notNull(), digest: varchar('digest', { length: 64 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), consentedAt: timestamp('consented_at', { withTimezone: true }),
+  result: jsonb('result').$type<{ filled?: string[]; manual?: string[]; reason?: string; outcome?: string }>().notNull().default({}),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'assisted_attempts_workspace_application_fk' }).onDelete('cascade'),
+  uniqueIndex('assisted_attempts_one_active_uq').on(t.workspaceId, t.applicationId).where(sql`${t.status} in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN')`),
+  check('assisted_attempts_status_check', sql`${t.status} in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN', 'CONFIRMED', 'NOT_SUBMITTED', 'CANCELLED', 'INVALIDATED', 'FAILED')`),
+]);

@@ -70,3 +70,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 ## Last local verification
 
 2026-10-03: all 10 scenarios passed in run `efafe351a5fa`, against a disposable database. The domain suite also passed all 18 tests. Lint and TypeScript checks passed. This covers the local workflows above; real public feeds were validated separately; see [source validation](source-validation.md).
+
+## v0.3 assisted applications
+
+The `assisted-application-preparation` scenario checks the actual isolated API, consent preview, EN/ES, cancellation and mobile width. It does not open or fill a real ATS. `pnpm run test:assisted` separately exercises synthetic Chromium forms and (with `CAREER_ASSIST_TEST_ADMIN_URL`) a disposable database. See [assisted applications](assisted-applications.md).
