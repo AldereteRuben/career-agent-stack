@@ -8,6 +8,11 @@ type Translator = (value: string, values?: Record<string, string | number>) => s
 type LocaleContextValue = { locale: Locale; setLocale: (locale: Locale) => void; t: Translator };
 
 const en: Record<string, string> = {
+  'Búsquedas automáticas por puesto o empresa': 'Automatic searches by role or company',
+  'Preparación automática de candidaturas': 'Automatic application preparation',
+  'Envío experimental autorizado en Lever': 'Experimental authorized Lever submission',
+  'Consulta periódica de empresas': 'Scheduled company checks', 'Ofertas nuevas por revisar': 'New jobs to review',
+  'Buscar empleo': 'Find jobs', 'Búsquedas automáticas': 'Automatic searches',
   'Tú decides cuándo compartir datos.': 'You decide when to share data.',
   'Puedes preparar formularios de Lever desde Solicitudes; el envío es manual.': 'Prepare Lever forms from Applications; submission is manual.',
   'Lever permite autocompletar datos de contacto con autorización. Revisa la misma ventana y toma el control para adjuntar y enviar tú. No hay envío automático, IA ni acceso al correo.': 'Lever contact fields can be filled with your permission. Review the same window and take control to attach and submit yourself. There is no automatic submission, AI or email access.',

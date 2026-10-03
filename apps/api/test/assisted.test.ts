@@ -14,11 +14,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const requireDb = createRequire(join(root, 'packages/db/package.json'));
 const adminUrl = process.env.CAREER_ASSIST_TEST_ADMIN_URL;
 class FakeBrowser extends AssistedBrowser {
-  active = new Map<string, () => Promise<void>>(); starts = 0; handoffs = 0;
+  active = new Map<string, () => Promise<void>>(); starts = 0; handoffs = 0; submissions = 0; submitOutcome: 'CONFIRMED' | 'UNKNOWN' = 'CONFIRMED';
   override busy() { return this.active.size > 0; }
   override has(id: string) { return this.active.has(id); }
   override async start(id: string, _plan: AssistedPlan, onLost: () => Promise<void>) { this.starts++; this.active.set(id, onLost); return { filled: ['name','email'], manual: ['resume','submit'] }; }
   override async handoff(id: string) { if (!this.has(id)) throw new Error('ASSIST_BROWSER_LOST'); this.handoffs++; }
+  override async inspectSubmit(id: string) { return this.has(id) ? { supported: true as const } : { supported: false as const, reason: 'ASSIST_BROWSER_LOST' }; }
+  override async submit(id: string, input: Parameters<AssistedBrowser['submit']>[1]) { assert.match(input.name, /\.pdf$/); assert.ok(input.bytes.length > 0); if (!this.has(id)) throw new Error('ASSIST_BROWSER_LOST'); this.submissions++; this.active.delete(id); return this.submitOutcome === 'CONFIRMED' ? { outcome: 'CONFIRMED' as const, reason: 'ASSIST_VISIBLE_RECEIPT', receipt: 'Fictional confirmation' } : { outcome: 'UNKNOWN' as const, reason: 'ASSIST_SUBMISSION_UNCERTAIN' }; }
   override async close(id: string) { this.active.delete(id); }
   override async closeAll() { this.active.clear(); }
 }
@@ -84,6 +86,50 @@ describe('assisted routes with fictional data and a disposable database', { skip
     assert.equal((await sql.query('select state from applications where id=$1',[f.application])).rows[0]!.state,'IN_PROGRESS');
     assert.equal((await resolveAttempt(a.id,'CONFIRMED')).json().status,'CONFIRMED'); assert.equal(browser.has(a.id),false);
     assert.equal((await post(`/applications/${f.application}/assist/prepare`,{documentId:f.doc})).json().error,'ASSIST_APPLICATION_CLOSED');
+  });
+  test('separate one-use submission consent uploads the approved PDF and records a visible receipt', async () => {
+    const before=browser.submissions;
+    const f=await fixture(); const a=await prepare(f.application,f.doc); await start(a);
+    const input={consent:true,expectedDigest:a.digest};
+    assert.equal((await post(`/assisted-attempts/${a.id}/submit`,{...input,consent:false})).statusCode,400);
+    const concurrent=await Promise.all([post(`/assisted-attempts/${a.id}/submit`,input),post(`/assisted-attempts/${a.id}/submit`,input)]);
+    assert.deepEqual(concurrent.map((response) => response.statusCode).sort(),[200,409]);
+    const submitted=concurrent.find((response) => response.statusCode === 200)!;
+    assert.equal(submitted.json().status,'CONFIRMED'); assert.equal(submitted.json().result.submissionPermit.state,'CONFIRMED');
+    assert.equal(browser.submissions,before+1); assert.equal((await sql.query('select state from applications where id=$1',[f.application])).rows[0]!.state,'CONFIRMED');
+    assert.equal((await post(`/assisted-attempts/${a.id}/submit`,input)).statusCode,409); assert.equal(browser.submissions,before+1);
+  });
+  test('uncertain submit is UNKNOWN and blocks duplicates and new attempts', async () => {
+    const before=browser.submissions;
+    const f=await fixture(); const a=await prepare(f.application,f.doc); await start(a); browser.submitOutcome='UNKNOWN';
+    try {
+      const res=await post(`/assisted-attempts/${a.id}/submit`,{consent:true,expectedDigest:a.digest});
+      assert.equal(res.json().status,'UNKNOWN'); assert.equal(res.json().result.submissionPermit.state,'UNKNOWN');
+      assert.equal((await post(`/assisted-attempts/${a.id}/submit`,{consent:true,expectedDigest:a.digest})).statusCode,409);
+      assert.equal((await post(`/applications/${f.application}/assist/prepare`,{documentId:f.doc})).json().error,'ASSIST_ACTIVE_ATTEMPT');
+      assert.equal(browser.submissions,before+1);
+    } finally { browser.submitOutcome='CONFIRMED'; }
+  });
+  test('changed profile or PDF after preview prevents submission before permit claim', async () => {
+    const before=browser.submissions;
+    const f=await fixture(); const a=await prepare(f.application,f.doc); await start(a);
+    await sql.query("update profile_versions set profile='{}'::jsonb where id=$1",[f.profile]);
+    assert.equal((await post(`/assisted-attempts/${a.id}/submit`,{consent:true,expectedDigest:a.digest})).json().error,'ASSIST_PROFILE_REQUIRED');
+    await post(`/assisted-attempts/${a.id}/cancel`,{});
+    const g=await fixture(); const b=await prepare(g.application,g.doc); await start(b); await writeFile(join(directory,`${g.doc}.pdf`),'changed pdf');
+    assert.equal((await post(`/assisted-attempts/${b.id}/submit`,{consent:true,expectedDigest:b.digest})).json().error,'ASSIST_DOCUMENT_STALE');
+    assert.equal(browser.submissions,before);
+    await post(`/assisted-attempts/${b.id}/cancel`,{});
+  });
+  test('a claimed permit survives restart as UNKNOWN and cannot be replayed', async () => {
+    const f=await fixture(); const a=await prepare(f.application,f.doc); await start(a);
+    await sql.query("update assisted_attempts set result='{" + '"submissionPermit":{"state":"CLAIMED","digest":"' + a.digest + '"}' + "}'::jsonb where id=$1",[a.id]);
+    await browser.close(a.id);
+    const restarted=Fastify(); await register(restarted,()=>workspace,new FakeBrowser());
+    const row=(await sql.query('select status,result from assisted_attempts where id=$1',[a.id])).rows[0]!;
+    assert.equal(row.status,'UNKNOWN'); assert.equal((row.result as {submissionPermit:{state:string}}).submissionPermit.state,'CLAIMED');
+    const replay=await restarted.inject({method:'POST',url:`/api/v1/assisted-attempts/${a.id}/submit`,payload:{consent:true,expectedDigest:a.digest}});
+    assert.equal(replay.statusCode,409); await restarted.close();
   });
   test('expired grants never open a browser and may be replaced', async () => {
     const f=await fixture(); const a=await prepare(f.application,f.doc); const count=browser.starts;

@@ -5,12 +5,14 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, applications, applicationEvents, assistedAttempts, documentVersions } from '@career/db';
-import { activeAssistedStates, assistedPrepareSchema, assistedConsentSchema, assistedHandoffSchema, assistedResolutionSchema, leverApplicationUrl, readIdentity, type AssistedPlan } from '@career/domain';
+import { activeAssistedStates, assistedPrepareSchema, assistedConsentSchema, assistedSubmitConsentSchema, assistedHandoffSchema, assistedResolutionSchema, leverApplicationUrl, readIdentity, documentFileName, type AssistedPlan } from '@career/domain';
 import { latestProfile, lockKey, profileLockKey, type Tx } from './workspace-data.js';
 import { AssistedBrowser } from './assisted-browser.js';
 import { config } from './config.js';
 
 type Attempt = typeof assistedAttempts.$inferSelect;
+type SubmissionPermit = { state: string; digest?: string; claimedAt?: string; completedAt?: string };
+const resultObject = (value: Attempt['result']) => (value ?? {}) as Record<string, unknown> & { submissionPermit?: SubmissionPermit };
 const digest = (plan: AssistedPlan) => createHash('sha256').update(JSON.stringify(plan)).digest('hex');
 const fail = (code: string): never => { throw new Error(code); };
 const terminalApplication = (state: string, stage: string) => ['CONFIRMED', 'CANCELLED'].includes(state) || ['HIRED', 'REJECTED', 'WITHDRAWN'].includes(stage);
@@ -18,7 +20,7 @@ const terminalApplication = (state: string, stage: string) => ['CONFIRMED', 'CAN
 export async function registerAssistedRoutes(app: FastifyInstance, workspace: (request: FastifyRequest) => string, browser = new AssistedBrowser()) {
   // A restart never resumes a grant or a browser action. Uncertain runs require human reconciliation.
   await db.update(assistedAttempts).set({ status: 'INVALIDATED', updatedAt: new Date(), result: { reason: 'ASSIST_RESTARTED' } }).where(eq(assistedAttempts.status, 'PREPARED'));
-  await db.update(assistedAttempts).set({ status: 'UNKNOWN', updatedAt: new Date(), result: { reason: 'ASSIST_BROWSER_LOST' } }).where(inArray(assistedAttempts.status, ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF']));
+  await db.execute(sql`update assisted_attempts set status = 'UNKNOWN', updated_at = now(), result = coalesce(result, '{}'::jsonb) || jsonb_build_object('reason', 'ASSIST_BROWSER_LOST') where status in ('STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF')`);
   await db.execute(sql`update applications set state = 'UNKNOWN', version = version + 1, updated_at = now() where state not in ('CONFIRMED', 'CANCELLED', 'UNKNOWN') and id in (select application_id from assisted_attempts where status = 'UNKNOWN')`);
   app.addHook('onClose', async () => { await stopAll(); });
   const attemptWhere = (id: string, workspaceId: string) => and(eq(assistedAttempts.id, id), eq(assistedAttempts.workspaceId, workspaceId));
@@ -45,7 +47,7 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) fail('ASSIST_DOCUMENT_REQUIRED');
     const bytes = await readFile(path).catch(() => fail('ASSIST_DOCUMENT_REQUIRED'));
     if (createHash('sha256').update(bytes).digest('hex') !== document.sha256) fail('ASSIST_DOCUMENT_STALE');
-    return { adapter: 'lever-hosted-v1', url, documentId, documentSha256: document.sha256, documentName: document.name, applicationVersion: application.version, fields: { name: identity.fullName, email: identity.email, phone, org } };
+    return { adapter: 'lever-hosted-v1', url, documentId, documentSha256: document.sha256, documentName: documentFileName(document.name, document.revision), applicationVersion: application.version, fields: { name: identity.fullName, email: identity.email, phone, org } };
   }
   async function validate(tx: Tx, attempt: Attempt, workspaceId: string) {
     const current = await planFor(tx, attempt.applicationId, workspaceId, attempt.plan.documentId, attempt.plan.fields.phone, attempt.plan.fields.org);
@@ -150,6 +152,61 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     });
     try { await browser.handoff(id); } catch { await markLost(id, workspaceId); return fail('ASSIST_BROWSER_LOST'); }
     return row;
+  }));
+  app.post('/api/v1/assisted-attempts/:id/submit', wrap(async (request) => {
+    const parsed = assistedSubmitConsentSchema.safeParse(request.body); if (!parsed.success) return fail('ASSIST_INVALID_INPUT');
+    const workspaceId = workspace(request); const id = requestId(request);
+    const preview = await db.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(workspaceId));
+      const attempt = await getAttempt(tx, id, workspaceId);
+      if (attempt.status !== 'REVIEW') fail('ASSIST_INVALID_STATE');
+      if (attempt.digest !== parsed.data.expectedDigest) fail('ASSIST_INPUTS_CHANGED');
+      if (resultObject(attempt.result).submissionPermit) fail('ASSIST_SUBMISSION_ALREADY_AUTHORIZED');
+      if (!browser.has(id)) fail('ASSIST_BROWSER_LOST');
+      await validate(tx, attempt, workspaceId);
+      return attempt;
+    });
+    const inspection = await browser.inspectSubmit(id);
+    if (!inspection.supported) return fail(inspection.reason);
+    const claimed = await db.transaction(async (tx) => {
+        await lockKey(tx, profileLockKey(workspaceId));
+        const attempt = await getAttempt(tx, id, workspaceId);
+        if (attempt.status !== 'REVIEW' || resultObject(attempt.result).submissionPermit) fail('ASSIST_SUBMISSION_ALREADY_AUTHORIZED');
+        if (attempt.digest !== preview.digest || attempt.digest !== parsed.data.expectedDigest) fail('ASSIST_INPUTS_CHANGED');
+        if (!browser.has(id)) fail('ASSIST_BROWSER_LOST');
+        await validate(tx, attempt, workspaceId);
+        const document = (await tx.select().from(documentVersions).where(and(eq(documentVersions.id, attempt.plan.documentId), eq(documentVersions.workspaceId, workspaceId))).limit(1))[0];
+        if (!document) return fail('ASSIST_DOCUMENT_STALE');
+        if (document.sha256 !== attempt.plan.documentSha256 || document.approvalStatus !== 'USER_APPROVED') fail('ASSIST_DOCUMENT_STALE');
+        const root = resolve(config.FILES_LOCAL_PATH); const path = resolve(root, document.storagePath); const rel = relative(root, path);
+        if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) fail('ASSIST_DOCUMENT_REQUIRED');
+        const uploaded = await readFile(path).catch(() => fail('ASSIST_DOCUMENT_REQUIRED'));
+        if (createHash('sha256').update(uploaded).digest('hex') !== attempt.plan.documentSha256) fail('ASSIST_DOCUMENT_STALE');
+        const now = new Date().toISOString();
+        const row = (await tx.update(assistedAttempts).set({ result: { ...resultObject(attempt.result), submissionPermit: { state: 'CLAIMED', digest: attempt.digest, claimedAt: now } } as Attempt['result'], updatedAt: new Date() }).where(attemptWhere(id, workspaceId)).returning())[0]!;
+        await event(tx, attempt, 'ASSIST_SUBMISSION_AUTHORIZED', 'Candidate separately authorized one upload and submission for the exact displayed employer URL, contact fields and PDF hash.');
+        return { row, bytes: uploaded };
+    });
+    const permit = claimed.row; const bytes = claimed.bytes;
+    let submission;
+    try {
+      submission = await browser.submit(id, { bytes, sha256: permit.plan.documentSha256, name: permit.plan.documentName, fields: permit.plan.fields });
+    } catch {
+      submission = { outcome: 'UNKNOWN' as const, reason: 'ASSIST_SUBMISSION_UNCERTAIN' };
+      await browser.close(id);
+    }
+    return db.transaction(async (tx) => {
+      const attempt = await getAttempt(tx, id, workspaceId);
+      const application = await getApplication(tx, attempt.applicationId, workspaceId);
+      const outcome = attempt.status === 'REVIEW' ? submission.outcome : 'UNKNOWN';
+      const finalReason = attempt.status === 'REVIEW' ? submission.reason : 'ASSIST_SUBMISSION_CANCELLED_DURING_WRITE';
+      const state = outcome === 'CONFIRMED' ? 'CONFIRMED' : 'UNKNOWN';
+      if (!['CANCELLED', 'CONFIRMED'].includes(application.state)) await tx.update(applications).set({ state, version: application.version + 1, updatedAt: new Date() }).where(eq(applications.id, application.id));
+      const result = { ...resultObject(attempt.result), submissionPermit: { ...resultObject(attempt.result).submissionPermit, state: outcome, completedAt: new Date().toISOString() }, reason: finalReason, ...(outcome === 'CONFIRMED' && submission.receipt ? { receipt: submission.receipt } : {}) } as Attempt['result'];
+      const row = (await tx.update(assistedAttempts).set({ status: outcome === 'CONFIRMED' ? 'CONFIRMED' : 'UNKNOWN', result, updatedAt: new Date() }).where(attemptWhere(id, workspaceId)).returning())[0]!;
+      await tx.insert(applicationEvents).values({ workspaceId, applicationId: application.id, eventType: outcome === 'CONFIRMED' ? 'ASSIST_SUBMISSION_CONFIRMED' : 'ASSIST_SUBMISSION_UNKNOWN', reason: finalReason, priorState: application.state, newState: state, aggregateVersion: application.version + 1, evidence: { attemptId: id, adapter: attempt.plan.adapter, digest: attempt.digest, receipt: submission.receipt ?? null } });
+      return row;
+    });
   }));
   app.post('/api/v1/assisted-attempts/:id/cancel', wrap(async (request) => {
     const workspaceId = workspace(request); const id = requestId(request);

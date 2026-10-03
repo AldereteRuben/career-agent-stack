@@ -85,6 +85,44 @@ export const searchProfiles = pgTable('search_profiles', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), name: varchar('name', { length: 160 }).notNull(), targetTitles: jsonb('target_titles').$type<string[]>().notNull().default([]), countries: jsonb('countries').$type<string[]>().notNull().default([]), workModes: jsonb('work_modes').$type<string[]>().notNull().default([]), unknownLocationPolicy: varchar('unknown_location_policy', { length: 40 }).notNull().default('NEEDS_REVIEW'), maximumPostedAgeDays: integer('maximum_posted_age_days').notNull().default(14), enabled: boolean('enabled').notNull().default(false), boardIds: jsonb('board_ids').$type<string[]>().notNull().default([]), createdAt: created(), updatedAt: changed(),
 });
 
+export const savedJobSearches = pgTable('saved_job_searches', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  role: varchar('role', { length: 200 }), company: varchar('company', { length: 200 }),
+  location: varchar('location', { length: 200 }), workMode: varchar('work_mode', { length: 16 }).notNull().default('any'),
+  frequencyHours: integer('frequency_hours').notNull().default(12), enabled: boolean('enabled').notNull().default(true),
+  autoPrepare: boolean('auto_prepare').notNull().default(false), language: varchar('language', { length: 2 }).notNull().default('en'),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }), nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  lastRunStatus: varchar('last_run_status', { length: 24 }), lastResultCount: integer('last_result_count').notNull().default(0),
+  lastNewCount: integer('last_new_count').notNull().default(0), lastError: varchar('last_error', { length: 80 }),
+  failureCount: integer('failure_count').notNull().default(0), createdAt: created(), updatedAt: changed(),
+}, (t) => [unique('saved_job_searches_workspace_id_uq').on(t.workspaceId, t.id), index('saved_job_searches_due_idx').on(t.enabled, t.nextRunAt)]);
+
+/** Public feed cache is shared across workspaces; entries contain normalized public job listings only. */
+export const jobSearchProviderCache = pgTable('job_search_provider_cache', {
+  provider: varchar('provider', { length: 24 }).primaryKey(),
+  payload: jsonb('payload').$type<Array<Record<string, unknown>>>().notNull().default([]),
+  coverage: varchar('coverage', { length: 16 }).notNull().default('COMPLETE'),
+  fetchedAt: timestamp('fetched_at', { withTimezone: true }), nextFetchAt: timestamp('next_fetch_at', { withTimezone: true }),
+  failureCount: integer('failure_count').notNull().default(0), lastError: varchar('last_error', { length: 80 }),
+  updatedAt: changed(),
+});
+
+export const jobSearchSources = pgTable('job_search_sources', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(),
+  provider: varchar('provider', { length: 24 }).notNull(), externalId: varchar('external_id', { length: 300 }).notNull(),
+  sourceUrl: text('source_url').notNull(), postedAt: timestamp('posted_at', { withTimezone: true }),
+  firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_search_sources_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_search_sources_identity_uq').on(t.workspaceId, t.provider, t.externalId), index('job_search_sources_job_idx').on(t.workspaceId, t.jobId)]);
+
+export const savedJobSearchMatches = pgTable('saved_job_search_matches', {
+  workspaceId: uuid('workspace_id').notNull(), searchId: uuid('search_id').notNull(), jobId: uuid('job_id').notNull(),
+  matchedAt: timestamp('matched_at', { withTimezone: true }).notNull().defaultNow(), lastMatchedAt: timestamp('last_matched_at', { withTimezone: true }).notNull().defaultNow(),
+  autoPreparedAt: timestamp('auto_prepared_at', { withTimezone: true }), autoPrepareAttempts: integer('auto_prepare_attempts').notNull().default(0), autoPrepareError: varchar('auto_prepare_error', { length: 80 }), autoPrepareNextAttemptAt: timestamp('auto_prepare_next_attempt_at', { withTimezone: true }),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'saved_job_search_matches_workspace_search_fk' }).onDelete('cascade'), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'saved_job_search_matches_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('saved_job_search_matches_identity_uq').on(t.workspaceId, t.searchId, t.jobId), index('saved_job_search_matches_search_idx').on(t.searchId, t.lastMatchedAt), index('saved_job_search_matches_pending_idx').on(t.autoPreparedAt, t.autoPrepareNextAttemptAt, t.workspaceId)]);
+
 /** Consent snapshots are one-use records; no browser cookies or session state is persisted. */
 export const assistedAttempts = pgTable('assisted_attempts', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

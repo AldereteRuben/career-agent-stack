@@ -1,5 +1,6 @@
 'use client';
 
+import { ApplicationPreparationAction } from '@/components/application-preparation';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -13,7 +14,7 @@ type Match = { titleAlignment: number | null; matchedTargetTitle: string | null;
 type Job = { discoveredAt: string | null; seenAt: string | null; id: string; title: string; company: string; location: string | null; canonicalUrl: string | null; fitScore: number | null; evidenceCoverage: number | null; eligibility: string; reasons: string[]; shortlistDecision: string; availability: string; createdAt: string; provisional?: boolean; match?: Match | null };
 type Snapshot = { id: string; title: string; descriptionText: string | null; fetchedAt: string };
 type JobApplication = { id: string; state: string; recruitmentStage?: string; updatedAt?: string };
-type Detail = { job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[] };
+type Detail = { searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[] };
 
 export default function JobDetailPage() {
   const { locale } = useLocale(); const c = copy(locale);
@@ -80,9 +81,11 @@ export default function JobDetailPage() {
           : <Button variant="secondary" onClick={() => void makeApplication()} disabled={busy !== null}>{busy === 'application' ? c('Creando…', 'Creating…') : c('Empezar seguimiento', 'Start tracking')} <Icon name="arrow" size={15}/></Button>}
         <Button variant="quiet" disabled={busy !== null} onClick={() => void archive()}>{job.shortlistDecision === 'ARCHIVED' ? c('Restaurar oferta', 'Restore job') : c('Archivar oferta', 'Archive job')}</Button>
       </div>}/>
-      {job.discoveredAt && !job.seenAt && <Notice actions={<Button variant="secondary" disabled={busy !== null} onClick={(event) => void markReviewed(event.currentTarget)}>{busy === 'seen' ? c('Guardando…', 'Saving…') : c('Marcar como revisada', 'Mark as reviewed')}</Button>}>{c('Oferta nueva de una empresa que sigues. Revisarla no envía ninguna solicitud.', 'New job from a company you follow. Reviewing it does not submit an application.')}</Notice>}
+      {job.discoveredAt && !job.seenAt && <Notice actions={<Button variant="secondary" disabled={busy !== null} onClick={(event) => void markReviewed(event.currentTarget)}>{busy === 'seen' ? c('Guardando…', 'Saving…') : c('Marcar como revisada', 'Mark as reviewed')}</Button>}>{c('Oferta nueva encontrada en tus búsquedas o empresas. Revisarla no envía ninguna solicitud.', 'New job found through your searches or companies. Reviewing it does not submit an application.')}</Notice>}
       {job.discoveredAt && job.seenAt && <Notice tone="success" actions={<Link ref={reviewContinuation} href={backHref} className="button button-secondary">{c('Volver a la lista de ofertas', 'Back to the job list')}</Link>}>{job.shortlistDecision === 'ARCHIVED' ? c('Oferta revisada. Sigue guardada en Archivadas.', 'Job reviewed. It is still saved under Archived.') : c('Oferta revisada. Sigue guardada en Activas.', 'Job reviewed. It is still saved under Active.')}</Notice>}
       {existing && <Notice>{c('Ya sigues esta oferta', 'You are already tracking this job')}: {labelFor.applicationState(existing.state, locale)}{existing.recruitmentStage ? ` · ${labelFor.recruitmentStage(existing.recruitmentStage, locale)}` : ''}.</Notice>}
+      {Boolean(data.searchSources?.length) && <Notice>{c('Fuente de la oferta: ', 'Job source: ')}{data.searchSources?.map((item, index) => <span key={item.url}>{index ? ' · ' : ''}<a href={item.url} target="_blank" rel="noopener noreferrer">{item.provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}</a></span>)}{data.searchSources?.some((item) => item.provider === 'remotive') && <> {c('Remotive publica su catálogo gratuito con 24 horas de retraso.', 'Remotive publishes its free feed with a 24-hour delay.')}</>}</Notice>}
+      <ApplicationPreparationAction jobId={job.id}/>
       <div className="detail-layout"><div className="detail-main">
         <Card className="detail-score"><div><span className="eyebrow"><span className="eyebrow-mark"/> {c('LECTURA BASADA EN EVIDENCIA', 'EVIDENCE-BASED READING')}</span><h2>{job.fitScore === null ? c('Sin datos suficientes para puntuar', 'Not enough information to score') : `${job.fitScore} / 100`}</h2><p>{c('El encaje mide cuánto cubren tus datos que confirmaste; no predice una contratación ni es una puntuación ATS.', 'The match measures how well your confirmed profile details cover the job. It does not predict hiring or represent an ATS score.')}</p></div><div className="score-ring" style={{ ['--score' as string]: `${job.fitScore ?? 0}%` }}><div><strong>{job.fitScore ?? '—'}</strong><small>{c('encaje', 'match')}</small></div></div></Card>
         <Card className="detail-description"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('CÓMO SE CALCULA', 'HOW IT IS CALCULATED')}</div><h2>{c('Por qué este encaje', 'Why this match')}</h2></div>{job.provisional && <Tag tone="amber">{c('PROVISIONAL', 'PROVISIONAL')}</Tag>}</div>

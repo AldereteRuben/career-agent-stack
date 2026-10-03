@@ -5,6 +5,8 @@ export type AssistedState = typeof assistedStates[number];
 export const activeAssistedStates: AssistedState[] = ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN'];
 export const assistedPrepareSchema = z.object({ documentId: z.string().uuid(), phone: z.string().trim().max(80).default(''), organization: z.string().trim().max(200).default('') }).strict();
 export const assistedConsentSchema = z.object({ consent: z.literal(true), expectedDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+/** Separate authorization for one external submission of this exact prepared application. */
+export const assistedSubmitConsentSchema = z.object({ consent: z.literal(true), expectedDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 export const assistedHandoffSchema = z.object({ confirmReviewed: z.literal(true) }).strict();
 export const assistedResolutionSchema = z.object({ outcome: z.enum(['CONFIRMED', 'NOT_SUBMITTED', 'UNKNOWN']), confirmReviewed: z.literal(true), reason: z.string().trim().min(1).max(2000) }).strict();
 export type AssistedFields = { name: string; email: string; phone: string; org: string };
