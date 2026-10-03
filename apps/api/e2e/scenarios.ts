@@ -1,3 +1,6 @@
+import { v041Scenarios } from './v041.js';
+import { uxReviewScenarios } from './ux-review.js';
+import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
@@ -59,7 +62,7 @@ export const scenarios: Scenario[] = [
     name: 'es-en-labels-on-every-page',
     async run({ page }) {
       // Interface words that must not leak into the other language. User data is fictional and avoids these words.
-      const spanishOnly = /\b(Vacantes|Candidaturas|Mi perfil|Documentos|Fuentes|Privacidad|Guardar|Añadir|Aprobar|Cancelar|Descargar|Borrador|Empresa|Puesto|Ubicación|Resumen|Sin fecha|Aún no|Todavía|Abrir menú|Cerrar menú)\b/;
+      const spanishOnly = /\b(Ofertas|Solicitudes|Mi perfil|Documentos|Fuentes|Privacidad|Guardar|Añadir|Aprobar|Cancelar|Descargar|Borrador|Empresa|Puesto|Ubicación|Resumen|Sin fecha|Aún no|Todavía|Abrir menú|Cerrar menú)\b/;
       const englishOnly = /\b(Jobs|Applications|My profile|Documents|Sources|Privacy|Save|Approve|Cancel|Download|Draft|Company|Location|Overview|No date|Not yet|Open menu|Close menu)\b/;
       const leaks: string[] = [];
       for (const locale of ['en', 'es'] as const) {
@@ -112,6 +115,7 @@ export const scenarios: Scenario[] = [
       const nameField = form.getByLabel(/^(Nombre|Name|Full name|Nombre completo)$/i).first();
       const draftName = `Alex Example ${marker}`;
       await nameField.fill(draftName);
+      await form.getByLabel(/^(Correo|Email)$/i).fill('alex@example.com');
       const revisionBefore = (await api.get<Profile>('/profile')).revision;
       let profileFailed = false;
       await page.route('**/api/v1/profile', async (route) => {
@@ -181,6 +185,7 @@ export const scenarios: Scenario[] = [
 
       await page.reload();
       await page.getByRole('heading', { level: 1 }).first().waitFor();
+      await page.getByRole('button', { name: /^(CV guardados|Saved resumes)/ }).click();
       for (const version of versions) await page.locator(`a[href*="/documents/${version.id}/file"]`).first().waitFor();
       const links = await page.locator('a[href*="/documents/"][href$="/file"]').evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')));
       for (const version of versions) assert.ok(links.some((href) => href?.includes(version.id)), `No download link for version ${version.revision}`);
@@ -200,11 +205,11 @@ export const scenarios: Scenario[] = [
       const company = `Northwind ${marker}`;
       const title = `QA Automation ${marker}`;
       await goTo(page, '/jobs');
-      await page.getByRole('button', { name: any('Añadir vacante', 'Add job', 'Add a job', 'Add role') }).first().click();
+      await page.getByRole('button', { name: any('Añadir oferta', 'Add job', 'Add a job', 'Add role') }).first().click();
       await page.getByLabel(any('Empresa', 'Company')).first().fill(company);
       await page.getByLabel(any('Puesto', 'Role', 'Job title', 'Title')).first().fill(title);
       await page.getByLabel(any('URL oficial', 'Official job URL', 'Job URL', 'URL')).first().fill(`https://example.com/jobs/${marker}`);
-      await page.getByRole('button', { name: any('Guardar y calcular', 'Save and score', 'Save and calculate', 'Guardar vacante', 'Save job') }).first().click();
+      await page.getByRole('button', { name: any('Guardar y calcular', 'Save and score', 'Save and calculate', 'Guardar oferta', 'Save job') }).first().click();
       await page.getByRole('link', { name: title }).first().waitFor();
       const jobs = await api.get<Array<{ id: string; company: string }>>('/jobs');
       assert.equal(jobs.filter((job) => job.company === company).length, 1, 'Manual import should create exactly one job');
@@ -214,10 +219,10 @@ export const scenarios: Scenario[] = [
       await page.screenshot({ path: join(artifacts, 'job-detail.png'), fullPage: true });
 
       await goTo(page, '/applications');
-      await page.getByRole('button', { name: any('Añadir candidatura', 'Add application', 'Registrar', 'Record') }).first().click();
+      await page.getByRole('button', { name: any('Añadir solicitud', 'Add application', 'Registrar', 'Record') }).first().click();
       await page.getByLabel(any('Empresa', 'Company')).first().fill(company);
       await page.getByLabel(any('Puesto', 'Role', 'Job title')).first().fill(title);
-      await page.getByRole('button', { name: any('Guardar candidatura', 'Save application', 'Guardar', 'Save') }).first().click();
+      await page.getByRole('button', { name: any('Guardar solicitud', 'Save application', 'Guardar', 'Save') }).first().click();
       await page.getByRole('heading', { name: title }).first().waitFor();
       const note = `Prepare technical examples ${marker}`;
       const noteField = page.getByLabel(any('Añadir nota', 'Add a note', 'Add note', 'Nota', 'Note')).first();
@@ -279,7 +284,7 @@ export const scenarios: Scenario[] = [
       assert.equal(await confirm.isDisabled(), true, 'One confirmation is insufficient');
       await card.getByRole('checkbox').nth(1).check();
       await confirm.click();
-      const search = card.getByRole('button', { name: any('Buscar vacantes nuevas', 'Find new jobs') });
+      const search = card.getByRole('button', { name: any('Buscar ofertas nuevas', 'Find new jobs') });
       await search.waitFor();
       // Only the refresh result is mocked: creation, review and disabling use the isolated API.
       // This prevents test fixtures from making outbound requests or importing real jobs.
@@ -297,7 +302,7 @@ export const scenarios: Scenario[] = [
     name: 'export-download-and-error-recovery',
     async run({ page, allowConsole }) {
       await goTo(page, '/settings');
-      const downloadButton = page.getByRole('button', { name: any('Descargar exportación', 'Download export') });
+      const downloadButton = page.getByRole('button', { name: any('Descargar mis datos', 'Download my data') });
       allowConsole(/409|Conflict/);
       const failExport = async (route: import('playwright').Route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'DOCUMENT_FILE_UNAVAILABLE' }) });
       await page.route('**/api/v1/export', failExport);
@@ -353,7 +358,7 @@ export const scenarios: Scenario[] = [
       await page.keyboard.press('Enter');
       await page.waitForURL((url) => url.pathname === '/applications');
       await eventually(() => menuButton.getAttribute('aria-expanded'), (value) => value === 'false', 'Navigating should close the drawer');
-      await page.getByText(any('Cargando candidaturas…', 'Loading applications…'), { exact: true }).waitFor({ state: 'hidden' });
+      await page.getByText(any('Cargando solicitudes…', 'Loading applications…'), { exact: true }).waitFor({ state: 'hidden' });
       assert.equal(await hasHorizontalOverflow(page), false, 'Applications page overflows horizontally on mobile');
       await page.screenshot({ path: join(artifacts, 'mobile-applications.png'), fullPage: true });
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -399,3 +404,9 @@ scenarios.push({
 });
 
 scenarios.push(...patchScenarios);
+
+scenarios.push(...v040Scenarios);
+
+scenarios.push(...uxReviewScenarios);
+
+scenarios.push(...v041Scenarios);

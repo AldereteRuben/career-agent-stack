@@ -4,3 +4,6 @@ export * from './contracts.js';
 export * from './profile.js';
 export * from './documents.js';
 export * from './assisted.js';
+
+export * from './entries.js';
+export * from './version.js';

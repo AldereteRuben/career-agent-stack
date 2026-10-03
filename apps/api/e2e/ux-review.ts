@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import type { Scenario } from './scenarios.js';
+import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+
+export const uxReviewScenarios: Scenario[] = [{
+  name: 'ux-review-focus-resume-drafts-and-return-filters',
+  async run({ page, api, marker, artifacts }) {
+    const company = `UX ${marker}`;
+    const job = await api.post<{ id: string }>('/jobs/import', { company, title: 'UX role one', jobUrl: `https://example.com/${marker}/ux-one` });
+    const other = await api.post<{ id: string }>('/jobs/import', { company, title: 'UX role two', jobUrl: `https://example.com/${marker}/ux-two` });
+    const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `UX example ${marker}` });
+    await api.post(`/profile/facts/${fact.id}/approve`);
+    await page.goto(new URL(`/profile?jobId=${job.id}`, page.url()).toString()); await setLocale(page, 'es');
+    await page.getByRole('navigation', { name: 'Secciones de tu perfil' }).getByRole('link', { name: /Revisar lo guardado/ }).click();
+    await page.locator('.fact-row').filter({ hasText: `UX example ${marker}` }).getByRole('button', { name: 'Editar', exact: true }).click();
+    await eventually(() => page.evaluate(() => document.activeElement?.textContent), (text) => text === 'Editar dato del CV', 'Editing moves keyboard focus to its heading');
+    await eventually(() => page.getByRole('heading', { name: 'Editar dato del CV' }).boundingBox(), (rect) => Boolean(rect && rect.y >= 0 && rect.y < 1000), 'Edit form is brought into view after scrolling');
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.getByRole('button', { name: 'Cancelar edición', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Pasos para esta solicitud' }).getByRole('link', { name: 'Preparar CV', exact: true }).click();
+    await page.waitForURL('**/documents?**');
+    const choice = () => page.locator('.fact-pick').filter({ hasText: `UX example ${marker}` }).locator('input');
+    await choice().check();
+    await page.getByLabel('Nombre de la versión', { exact: true }).fill(`Draft UX ${marker}`);
+    await page.getByLabel('Idioma del PDF', { exact: true }).selectOption('en');
+    await page.getByRole('link', { name: 'Añadir o corregir datos del perfil', exact: true }).click();
+    await page.waitForURL('**/profile?**');
+    await page.getByRole('navigation', { name: 'Pasos para esta solicitud' }).getByRole('link', { name: 'Preparar CV', exact: true }).click();
+    await page.waitForURL('**/documents?**');
+    await eventually(() => page.getByLabel('Nombre de la versión', { exact: true }).inputValue(), (name) => name === `Draft UX ${marker}`, 'Resume name survives profile navigation');
+    await page.reload();
+    await choice().waitFor();
+    assert.equal(await choice().isChecked(), true);
+    assert.equal(await page.getByLabel('Idioma del PDF', { exact: true }).inputValue(), 'en');
+    await page.getByLabel('¿Para qué oferta?', { exact: true }).selectOption(other.id);
+    await page.waitForURL((url) => url.searchParams.get('jobId') === other.id);
+    await eventually(() => page.getByLabel('Nombre de la versión', { exact: true }).inputValue(), (name) => name.includes('UX role two'), 'Another job starts with its own preparation');
+    assert.equal(await choice().isChecked(), false);
+    await page.getByLabel('¿Para qué oferta?', { exact: true }).selectOption(job.id);
+    await page.waitForURL((url) => url.searchParams.get('jobId') === job.id);
+    await eventually(() => page.getByLabel('Nombre de la versión', { exact: true }).inputValue(), (name) => name === `Draft UX ${marker}`, 'Switching back restores this job draft');
+    assert.equal(await choice().isChecked(), true);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('.sidebar').waitFor({ state: 'hidden' });
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+    assert.equal(await hasHorizontalOverflow(page), false);
+    await page.screenshot({ path: join(artifacts, 'ux-resume-mobile.png'), animations: 'disabled' });
+    await api.post(`/profile/facts/${fact.id}/reject`);
+    await page.reload();
+    await page.getByText('Algunos datos de tu selección cambiaron o dejaron de estar confirmados.', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Generar y revisar', exact: false }).isDisabled(), true);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await api.post(`/jobs/${job.id}/shortlist`, { decision: 'SHORTLISTED' });
+    const query = new URLSearchParams({ q: company, scope: 'favorites', page: '1' });
+    await page.goto(new URL(`/jobs?${query}`, page.url()).toString());
+    await page.getByRole('link', { name: 'UX role one', exact: true }).click();
+    await page.getByRole('link', { name: 'Volver a ofertas', exact: false }).click();
+    await page.waitForURL((url) => url.pathname === '/jobs' && url.searchParams.get('scope') === 'favorites');
+    assert.equal(new URL(page.url()).searchParams.get('q'), company);
+    await eventually(() => page.locator('.job-card').count(), (count) => count === 1, 'Return keeps search and favorite filter');
+    await page.goto(new URL(`/profile?jobId=${job.id}`, page.url()).toString());
+    await page.getByRole('navigation', { name: 'Secciones de tu perfil' }).waitFor();
+    await page.screenshot({ path: join(artifacts, 'ux-profile-desktop.png'), animations: 'disabled' });
+  },
+}];

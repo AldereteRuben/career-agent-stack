@@ -56,21 +56,21 @@ export default function HomePage() {
   // Profile basics come first: matching and documents depend on them, and they are quicker than source setup.
   const steps: NextStep[] = [];
   if (summary && completion) {
-    const identityMissing = profileChecks.filter((check) => ['fullName', 'email', 'country'].includes(check.key) && missing.has(check.key));
+    const identityMissing = profileChecks.filter((check) => ['fullName', 'email'].includes(check.key) && missing.has(check.key));
     const preferencesMissing = profileChecks.filter((check) => ['targetTitles', 'workModes'].includes(check.key) && missing.has(check.key));
     const list = (checks: typeof profileChecks) => checks.map((check) => c(check.es, check.en).toLowerCase()).join(', ');
     if (identityMissing.length) steps.push({ key: 'identity', href: '/profile', icon: 'user', title: c('Completa tus datos básicos', 'Complete your basic details'), detail: c(`Falta: ${list(identityMissing)}.`, `Missing: ${list(identityMissing)}.`) });
-    if (preferencesMissing.length) steps.push({ key: 'preferences', href: '/profile', icon: 'search', title: c('Indica qué buscas', 'Say what you are looking for'), detail: c(`Falta: ${list(preferencesMissing)}. Así podemos valorar el encaje de cada vacante.`, `Missing: ${list(preferencesMissing)}. This is how job fit is assessed.`) });
+    if (preferencesMissing.length) steps.push({ key: 'preferences', href: '/profile', icon: 'search', title: c('Indica qué buscas', 'Say what you are looking for'), detail: c(`Falta: ${list(preferencesMissing)}. Así podemos valorar el encaje de cada oferta.`, `Missing: ${list(preferencesMissing)}. This is how job fit is assessed.`) });
     if (missing.has('approvedFact')) steps.push(summary.pendingFacts > 0
       ? { key: 'first-fact', href: '/profile#experience', icon: 'check', title: c('Confirma tu primera experiencia', 'Confirm your first experience'), detail: summary.pendingFacts === 1 ? c('Tienes 1 dato por confirmar esperando tu revisión.', 'You have 1 detail to confirm waiting for review.') : c(`Tienes ${summary.pendingFacts} datos por confirmar esperando tu revisión.`, `You have ${summary.pendingFacts} details to confirm waiting for review.`) }
       : { key: 'first-fact', href: '/profile#experience', icon: 'plus', title: c('Añade tu primera experiencia o logro', 'Add your first experience or achievement'), detail: c('Un logro o experiencia que puedas respaldar. Nada se usa hasta que lo apruebes.', 'An achievement or experience you can stand behind. Nothing is used until you approve it.') });
     else if (summary.pendingFacts > 0) steps.push({ key: 'facts', href: '/profile#experience', icon: 'user', title: summary.pendingFacts === 1 ? c('Revisa 1 dato por confirmar', 'Review 1 detail to confirm') : c(`Revisa ${summary.pendingFacts} datos por confirmar`, `Review ${summary.pendingFacts} details to confirm`), detail: c('Nada se usa en tus documentos hasta que lo apruebes.', 'Nothing is used in your documents until you approve it.') });
     if (summary.unansweredItems > 0) steps.push({ key: 'answers', href: '/profile', icon: 'file', title: summary.unansweredItems === 1 ? c('Responde 1 pregunta pendiente', 'Answer 1 open question') : c(`Responde ${summary.unansweredItems} preguntas pendientes`, `Answer ${summary.unansweredItems} open questions`), detail: c('Son datos que solo tú puedes confirmar.', 'Only you can confirm these details.') });
-    if (needsReview > 0) steps.push({ key: 'applications', href: '/applications', icon: 'briefcase', title: needsReview === 1 ? c('1 candidatura necesita revisión', '1 application needs review') : c(`${needsReview} candidaturas necesitan revisión`, `${needsReview} applications need review`), detail: c('Confirma su estado para mantener el seguimiento al día.', 'Confirm their status to keep your tracker accurate.') });
-    if (summary.totalJobs === 0) steps.push({ key: 'first-job', href: '/jobs', icon: 'search', title: c('Guarda tu primera vacante', 'Save your first job'), detail: c('Añade a mano una vacante que ya tengas en mente.', 'Add a job you already have in mind by hand.') });
+    if (needsReview > 0) steps.push({ key: 'applications', href: '/applications', icon: 'briefcase', title: needsReview === 1 ? c('1 solicitud necesita revisión', '1 application needs review') : c(`${needsReview} solicitudes necesitan revisión`, `${needsReview} applications need review`), detail: c('Confirma su estado para mantener el seguimiento al día.', 'Confirm their status to keep your tracker accurate.') });
+    if (summary.totalJobs === 0) steps.push({ key: 'first-job', href: '/jobs', icon: 'search', title: c('Guarda tu primera oferta', 'Save your first job'), detail: c('Añade a mano una oferta que ya tengas en mente.', 'Add a job you already have in mind by hand.') });
     if (summary.approvedSourceCount === 0) steps.push(summary.boardCount
-      ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Confirma la página de una empresa', 'Confirm a company careers page'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar vacantes.', 'You have sources added, but none approved for job discovery yet.') }
-      : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir vacantes de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
+      ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Confirma la página de una empresa', 'Confirm a company careers page'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar ofertas.', 'You have sources added, but none approved for job discovery yet.') }
+      : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir ofertas de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
   }
 
   const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers'].includes(step.key));
@@ -151,24 +151,24 @@ export default function HomePage() {
 
     <div className="home-grid">
       <Card className="home-panel">
-        <div className="panel-heading"><h2>{c('Candidaturas recientes', 'Recent applications')}</h2><Link href="/applications" className="text-link">{t('Abrir seguimiento')} <Icon name="arrow" size={16}/></Link></div>
+        <div className="panel-heading"><h2>{c('Solicitudes recientes', 'Recent applications')}</h2><Link href="/applications" className="text-link">{t('Abrir seguimiento')} <Icon name="arrow" size={16}/></Link></div>
         {summary?.recentApplications.length ? <ul className="row-list">{summary.recentApplications.slice(0, 5).map((application) => <li key={application.id}><Link href={`/applications?id=${application.id}`} className="list-row">
           <span className="row-main"><strong>{application.role}</strong><span>{application.company} · {formatDate(application.updatedAt)}</span></span>
           <Tag tone={stateTone(application.state)}>{labelFor.applicationState(application.state, locale)}</Tag>
         </Link></li>)}</ul>
-          : !loading && <p className="panel-status">{c('Todavía no has registrado candidaturas.', 'You have not tracked any applications yet.')}</p>}
-        {totalApplications > 0 && <p className="panel-foot">{totalApplications === 1 ? c('1 candidatura en total', '1 application in total') : c(`${totalApplications} candidaturas en total`, `${totalApplications} applications in total`)}</p>}
+          : !loading && <p className="panel-status">{c('Todavía no has registrado solicitudes.', 'You have not tracked any applications yet.')}</p>}
+        {totalApplications > 0 && <p className="panel-foot">{totalApplications === 1 ? c('1 solicitud en total', '1 application in total') : c(`${totalApplications} solicitudes en total`, `${totalApplications} applications in total`)}</p>}
       </Card>
       <Card className="home-panel">
-        <div className="panel-heading"><h2>{c('Vacantes actualizadas recientemente', 'Recently updated jobs')}</h2><Link href="/jobs" className="text-link">{t('Ver todas')} <Icon name="arrow" size={16}/></Link></div>
+        <div className="panel-heading"><h2>{c('Ofertas actualizadas recientemente', 'Recently updated jobs')}</h2><Link href="/jobs" className="text-link">{t('Ver todas')} <Icon name="arrow" size={16}/></Link></div>
         {summary?.recentJobs.length ? <ul className="row-list">{summary.recentJobs.map((job) => <li key={job.id}><Link href={`/jobs/${job.id}`} className="list-row">
           <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
           <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
           {job.fitScore !== null && <span className="row-score">{job.provisional ? c(`Encaje provisional ${job.fitScore}`, `Provisional fit ${job.fitScore}`) : c(`Encaje ${job.fitScore}`, `Fit ${job.fitScore}`)}</span>}
           <Tag tone={job.eligibility === 'PASS' ? 'green' : job.eligibility === 'FAIL' ? 'red' : 'amber'}>{labelFor.eligibility(job.eligibility, locale)}</Tag>
         </Link></li>)}</ul>
-          : !loading && <Empty title={t('Tu lista aún está en blanco')} detail={summary?.boards.length ? t('Refresh an approved source or add a job manually.') : t('Set up a job source or add a job you already have in mind.')} action={<Link href={summary?.boards.length ? '/boards' : '/jobs'} className="text-link">{summary?.boards.length ? t('Revisar fuentes') : t('Añadir primera vacante')} <Icon name="arrow" size={16}/></Link>}/>}
-        {summary && summary.totalJobs > summary.recentJobs.length && <p className="panel-foot">{c(`Mostrando ${summary.recentJobs.length} de ${summary.totalJobs} vacantes guardadas`, `Showing ${summary.recentJobs.length} of ${summary.totalJobs} saved jobs`)}</p>}
+          : !loading && <Empty title={t('Tu lista aún está en blanco')} detail={summary?.boards.length ? t('Refresh an approved source or add a job manually.') : t('Set up a job source or add a job you already have in mind.')} action={<Link href={summary?.boards.length ? '/boards' : '/jobs'} className="text-link">{summary?.boards.length ? t('Revisar fuentes') : t('Añadir primera oferta')} <Icon name="arrow" size={16}/></Link>}/>}
+        {summary && summary.totalJobs > summary.recentJobs.length && <p className="panel-foot">{c(`Mostrando ${summary.recentJobs.length} de ${summary.totalJobs} ofertas guardadas`, `Showing ${summary.recentJobs.length} of ${summary.totalJobs} saved jobs`)}</p>}
       </Card>
     </div>
     </details>

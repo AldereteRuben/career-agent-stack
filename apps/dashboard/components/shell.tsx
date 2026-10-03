@@ -1,5 +1,9 @@
 'use client';
 
+import { Brand, BrandMark } from '@/components/brand';
+import { RELEASE_VERSION } from '@career/domain';
+
+
 import Link from 'next/link';
 import { clearSessionDrafts } from '@/lib/session-draft';
 import { usePathname, useRouter } from 'next/navigation';
@@ -38,7 +42,7 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
   const { t } = useLocale();
   const router = useRouter(); const [state, setState] = useState<'loading' | 'ready'>('loading');
   useEffect(() => { api<{ authenticated: boolean }>('/session').then((session) => { if (!session.authenticated) router.replace('/login'); else setState('ready'); }).catch(() => router.replace('/login')); }, [router]);
-  if (state === 'loading') return <div className="loading-screen" role="status"><span className="brand-mark" aria-hidden="true">{t("c")}</span><p>{t("Abriendo tu espacio privado…")}</p></div>;
+  if (state === 'loading') return <div className="loading-screen" role="status"><BrandMark/><p>{t("Abriendo tu espacio privado…")}</p></div>;
   return <>{children}</>;
 }
 
@@ -119,7 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {...(drawerOpen ? { role: 'dialog', 'aria-modal': true, 'aria-label': drawerLabel } : {})}
     >
       <div className="sidebar-top">
-        <Link href="/" className="brand"><span className="brand-mark" aria-hidden="true">{t("c")}</span><span>{t("career")}<span className="brand-light">{t("stack")}</span><small>{t("tu espacio de carrera")}</small></span></Link>
+        <Link href="/" className="brand"><Brand/></Link>
         <button type="button" className="drawer-close" onClick={closeMenu}><Icon name="close" size={20}/><span className="sr-only">{t("Cerrar menú")}</span></button>
       </div>
       <nav className="main-nav" aria-label={t("Navegación principal")}>
@@ -140,7 +144,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{t("Local y privado")}</span></span><LanguageSwitch/></div>
       </header>
       <main id="main-content" className="page-wrap" tabIndex={-1}>{children}</main>
-      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{"v0.3.1"}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
+      <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{RELEASE_VERSION}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
     </div>
   </div>;
 }

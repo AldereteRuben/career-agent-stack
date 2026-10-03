@@ -4,25 +4,28 @@ Your private workspace to organize a job search: keep your career profile, save 
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.3.1** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.3.1.md)
+**Current release: v0.4.1** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#041)
+
+Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
+
 
 The interface supports **English and Spanish**. Each person runs a separate installation with their own database and keys. This is a local application, not a shared hosted service.
 
 ## What you can do
 
-- Build your profile, correct or archive entries, and explicitly approve the facts used in documents.
+- Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
 - Keep reusable answers with their question and country context.
 - Add jobs manually or discover them through individually reviewed Greenhouse, Lever, and Ashby employer boards.
-- See explainable job matching based on your preferences and approved facts.
-- Generate, preview, review, and download versioned resumes. Reuse earlier content after profile changes without altering previous PDFs.
-- Track applications, notes, and hiring stages, including corrections with history.
+- Search jobs by title or company, filter favorites and availability, archive or restore offers, and see explainable matching.
+- Generate versioned resumes with English or Spanish headings, zoom the PDF preview, and reuse earlier content without altering previous PDFs.
+- Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
-No AI subscription or API key is required. Version 0.3 offers **experimental Lever contact-field autofill** in a visible browser with explicit consent. You attach files, complete questions and submit manually. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
+No AI subscription or API key is required. The app offers **experimental Lever contact-field autofill** in a visible browser with explicit consent. You attach files, complete questions and submit manually. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
 
 ## Assisted applications
 
-Open a Lever application in **Applications** and follow **Review data → Review browser → Submit yourself and record**. A current approved resume is required. Unknown results block another attempt until you check them. See [the walkthrough and limits](docs/operations/assisted-applications.md).
+Open a Lever application in **My applications** and follow **Review data → Review browser → Submit yourself and record**. A current approved resume is required. Unknown results block another attempt until you check them. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 ## Start here
 
@@ -62,10 +65,12 @@ After initial setup, macOS users can double-click **Start Career Agent Stack.com
 
 1. Choose **English** or **Español** using the language button.
 2. Open **My profile**, add your details and job preferences, and save.
-3. Add career facts and approve the ones you have checked.
-4. Open **Jobs** and add a job manually. Configuring external sources is optional.
-5. Prepare a PDF from approved facts and review it before approving the version.
-6. Use **Applications** to record progress and notes. Sending an application remains a manual action on the employer's website.
+3. Add work experience and education with dates, then confirm the details you have checked.
+4. Open **Saved jobs** and add a job manually. Configuring external sources is optional.
+5. Open the job and choose **Prepare a resume for this job**. Follow the steps to complete your profile, choose PDF content and language, and review the preview.
+6. Approve the resume, then choose **Continue with this application**. The reviewed version stays linked to it. Record progress and notes in **My applications**; submission remains manual on the employer’s website.
+
+Resume preparation keeps its name, language and content selection separately for each job in the current tab, so you can return after editing your profile. These temporary drafts are cleared on sign-out and may be lost when closing the tab; generate a PDF to save a version. If selected profile details change, the app asks you to review the selection again. Returning from a job to its list keeps your search and filters.
 
 ## Everyday commands
 
@@ -112,7 +117,7 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 - PostgreSQL stores records; `data/files/` stores generated documents. The Docker database uses the persistent `career-postgres` volume. Do not remove the volume to troubleshoot a startup issue.
 - External board discovery is opt-in and requires an explicit review of the employer association and public-read permission. It searches configured boards only, not the whole job market.
 - Operational backups include the database and PDFs, with hashes and a signed manifest. Restoration requires the separate key file and creates a new database and folder; it never overwrites an existing workspace. The archive is **not encrypted**. See [backup and restore](docs/operations/backup-restore.md).
-- Local verification was performed on macOS. Other operating systems have not received the same end-to-end validation.
+- Full installation, recovery and browser verification was performed on macOS. CI checks compilation and domain logic on Linux and Windows; this does not validate their full installation or desktop launchers. The local launcher currently relies on Unix process tools, so native Windows startup/shutdown is not supported. Linux/WSL installation remains unverified end to end.
 
 ## Back up your work
 

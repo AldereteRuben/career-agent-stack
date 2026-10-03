@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { ApplicationJourney } from '@/components/application-journey';
+import { ProfileEntryForm, type EntryInput, type ProfileEntry } from '@/components/profile-entry-form';
 import { useLocale } from '@/lib/i18n';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Field, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
-import { copy, countryName, countryOptions, humanizeKey, labelFor, normalizeWorkMode, selectableFactKinds, workModes as workModeLabels } from '@/lib/labels';
+import { copy, countryName, countryOptions, humanizeKey, labelFor, normalizeWorkMode, workModes as workModeLabels } from '@/lib/labels';
 
-type Fact = { id: string; kind: string; statement: string; tags: string[]; approvalStatus: string };
+type Fact = ProfileEntry & { approvalStatus: string };
 type Answer = { id: string; semanticKey: string; questionText?: string | null; jurisdiction: string; questionScope: string; value: unknown; approvalStatus: string; strategy: string; revision?: number };
 type Profile = { revision: number; locale?: string; profile: { identity?: { fullName?: string; email?: string; country?: string }; preferences?: { targetTitles?: string[]; workModes?: string[] } }; facts: Fact[]; answers: Answer[] };
 type ProfileForm = { name: string; email: string; country: string; titles: string; modes: string[] };
@@ -39,17 +42,21 @@ function CountryOptions({ current }: { current: string }) {
     <optgroup label={c('Todos los países', 'All countries')}>{options.all.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}</optgroup></>;
 }
 
-export default function ProfilePage() {
+function ProfileView() {
   const { locale } = useLocale(); const c = copy(locale);
+  const params = useSearchParams(); const jobId = params.get('jobId'); const applicationId = params.get('applicationId');
+  const journeyParams = new URLSearchParams(); if (jobId) journeyParams.set('jobId', jobId); if (applicationId) journeyParams.set('applicationId', applicationId);
+  const resumeHref = `/documents${journeyParams.size ? `?${journeyParams}` : ''}`;
   const [data, setData] = useState<Profile | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [busy, setBusy] = useState<string | null>(null); const [message, setMessage] = useState(''); const [error, setError] = useState('');
   const [form, setFormState] = useState<ProfileForm>(emptyForm); const formRef = useRef<ProfileForm>(emptyForm); const [dirty, setDirty] = useState(false); const dirtyRef = useRef(false);
   const [conflict, setConflict] = useState(false);
   const reviewList = useRef<HTMLDivElement>(null);
-  const [editing, setEditing] = useState<{ id: string; kind: string; statement: string; tags: string; revision: number } | null>(null);
+  const editHeading = useRef<HTMLHeadingElement>(null);
+  const [editing, setEditing] = useState<(Fact & { revision: number }) | null>(null);
+  useEffect(() => { if (editing && editHeading.current) { editHeading.current.focus({ preventScroll: true }); editHeading.current.scrollIntoView({ block: 'start', behavior: 'instant' }); } }, [editing]);
   const [archiving, setArchiving] = useState<string | null>(null);
-  const [fact, setFact] = useState(''); const [factTags, setFactTags] = useState(''); const [factKind, setFactKind] = useState('experience');
-  const [employment, setEmployment] = useState({ role: '', company: '', startMonth: '', endMonth: '', current: false });
+  const [entryDirty, setEntryDirty] = useState(false);
   const [question, setQuestion] = useState(''); const [jurisdiction, setJurisdiction] = useState(''); const [answerValue, setAnswerValue] = useState('');
   const semanticKey = question.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 96);
 
@@ -72,7 +79,7 @@ export default function ProfilePage() {
   }, []);
   useEffect(() => { void load({ replaceForm: true }); }, [load]);
   const leaveConfirmation = c('Tienes cambios sin guardar en tu perfil. ¿Salir y descartarlos?', 'You have unsaved changes on your profile. Leave and discard them?');
-  const hasDrafts = dirty || editing !== null || Boolean(fact.trim() || factTags.trim() || employment.role.trim() || employment.company.trim() || employment.startMonth || employment.endMonth || employment.current || question.trim() || answerValue.trim());
+  const hasDrafts = dirty || editing !== null || entryDirty || Boolean(question.trim() || answerValue.trim());
   useEffect(() => {
     if (!hasDrafts) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
@@ -102,13 +109,12 @@ export default function ProfilePage() {
     const snapshot = formRef.current; const base = data;
     // Keep the profile's region (en-GB, es-MX…) when it already matches the interface language.
     const profileLocale = base.locale?.toLowerCase().startsWith(locale) ? base.locale : locale;
-    await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Perfil guardado como nueva revisión.', 'Profile saved as a new revision.'), { savedSnapshot: snapshot });
+    await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Tus datos se han guardado.', 'Your details have been saved.'), { savedSnapshot: snapshot });
   };
-  const addFact = async (event: FormEvent) => {
-    event.preventDefault();
-    if (factKind === 'experience' && !employment.current && employment.endMonth < employment.startMonth) { setError(c('La fecha de fin no puede ser anterior a la de inicio.', 'The end date cannot be before the start date.')); return; }
-    const ok = await run('fact', () => api('/profile/facts', { method: 'POST', body: JSON.stringify({ kind: factKind, statement: fact.trim(), ...(factKind === 'experience' ? { employment: { role: employment.role.trim(), company: employment.company.trim(), startMonth: employment.startMonth, ...(!employment.current ? { endMonth: employment.endMonth } : {}), current: employment.current, locale } } : {}), tags: splitList(factTags), source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }) }), c('Dato guardado. Revísalo en la lista y pulsa Confirmar si es correcto.', 'Detail saved. Review it in the list and select Confirm if it is accurate.'));
-    if (ok) { setFact(''); setFactTags(''); setEmployment({ role: '', company: '', startMonth: '', endMonth: '', current: false }); reviewList.current?.focus(); }
+  const addFact = async (input: EntryInput) => {
+    const ok = await run('fact', () => api('/profile/facts', { method: 'POST', body: JSON.stringify({ ...input, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }) }), c('Dato guardado. Revísalo en la lista y pulsa Confirmar si es correcto.', 'Detail saved. Review it in the list and select Confirm if it is accurate.'));
+    if (ok) reviewList.current?.focus();
+    return ok;
   };
   const addAnswer = async (event: FormEvent) => {
     event.preventDefault();
@@ -117,11 +123,12 @@ export default function ProfilePage() {
     if (ok) { setQuestion(''); setAnswerValue(''); }
   };
   const reviewFact = (id: string, action: 'approve' | 'reject') => void run(`fact:${id}`, () => api(`/profile/facts/${id}/${action}`, { method: 'POST' }), action === 'approve' ? c('Dato confirmado. Ya puedes usarlo en tu CV.', 'Detail confirmed. You can now use it in your resume.') : c('Dato descartado.', 'Detail discarded.'));
-  const saveFactEdit = async (event: FormEvent) => {
-    event.preventDefault(); if (!editing) return;
+  const saveFactEdit = async (input: EntryInput) => {
+    if (!editing) return false;
     const draft = editing;
-    const ok = await run(`edit:${draft.id}`, () => api(`/profile/facts/${draft.id}`, { method: 'PUT', body: JSON.stringify({ expectedRevision: draft.revision, fact: { kind: draft.kind, statement: draft.statement.trim(), tags: splitList(draft.tags), source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' } }) }), c('Corrección guardada. Revisa el texto y confírmalo para usarlo en nuevos CV. Los PDF anteriores se conservan.', 'Correction saved. Review and confirm it for use in new resumes. Earlier PDFs are preserved.'));
+    const ok = await run(`edit:${draft.id}`, () => api(`/profile/facts/${draft.id}`, { method: 'PUT', body: JSON.stringify({ expectedRevision: draft.revision, fact: { ...input, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' } }) }), c('Corrección guardada. Revisa el texto y confírmalo para usarlo en nuevos CV. Los PDF anteriores se conservan.', 'Correction saved. Review and confirm it for use in new resumes. Earlier PDFs are preserved.'));
     if (ok) { setEditing(null); reviewList.current?.focus(); }
+    return ok;
   };
   const archiveFact = async (id: string) => {
     const ok = await run(`fact:${id}`, () => api(`/profile/facts/${id}/reject`, { method: 'POST' }), c('Texto archivado. Ya no se incluirá en nuevos CV; los PDF anteriores se conservan.', 'Entry archived. It will no longer be included in new resumes; earlier PDFs are preserved.'));
@@ -138,37 +145,34 @@ export default function ProfilePage() {
   const pendingFacts = data?.facts.filter((f) => f.approvalStatus === 'SUGGESTED').length ?? 0;
   const approvedFacts = data?.facts.filter((item) => item.approvalStatus === 'USER_APPROVED').length ?? 0;
   const canPrepareCv = Boolean(data?.profile.identity?.fullName?.trim() && data?.profile.identity?.email?.trim() && approvedFacts);
-  const examples: Record<string, { es: string; en: string }> = {
-    experience: { es: 'Me encargaba de [responsabilidades]. Conseguí [resultado] mediante [acción]. El puesto, la empresa y las fechas se añaden arriba.', en: 'I was responsible for [responsibilities]. I achieved [result] through [action]. Your role, company, and dates are added above.' },
-    achievement: { es: 'Conseguí [resultado] al hacer [acción]. Incluye cifras solo si puedes confirmarlas.', en: 'I achieved [result] by doing [action]. Only include numbers you can confirm.' },
-    skill_evidence: { es: 'Usé [herramienta o habilidad] para [tarea o proyecto concreto].', en: 'I used [tool or skill] for [specific task or project].' },
-    education: { es: 'Estudié [titulación o curso] en [centro] entre [fechas].', en: 'I studied [degree or course] at [institution] from [dates].' },
-    project: { es: 'En [proyecto], me encargué de [trabajo realizado] y conseguí [resultado].', en: 'For [project], I was responsible for [work] and achieved [result].' },
-  };
-  const example = examples[factKind] ?? examples.experience!;
   const knownModes = Object.keys(workModeLabels); const extraModes = form.modes.filter((mode) => !knownModes.includes(mode));
   const saving = (key: string) => busy === key;
   const locked = busy !== null || loadState !== 'ready';
 
   return <WorkspaceGate><AppShell>
     <PageHeader eyebrow={c('PREPARA TU INFORMACIÓN', 'PREPARE YOUR DETAILS')} title={c('Mi perfil', 'My profile')} description={c('Empieza por tu nombre y correo. Después añade una experiencia que quieras incluir en tu CV.', 'Start with your name and email. Then add an experience you want to include in your resume.')}/>
+    <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile"/>
+    {loadState === 'ready' && <nav className="profile-shortcuts" aria-label={c('Secciones de tu perfil', 'Profile sections')}>
+      <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a>
+      {canPrepareCv && <Link className="button button-primary" href={resumeHref}>{c('Continuar con mi CV', 'Continue to my resume')}</Link>}
+    </nav>}
     {error && <Notice tone="error">{error}{conflict && <> <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button></>}</Notice>}{message && <Notice tone="success">{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando tu perfil…', 'Loading your profile…')}</Notice>}
     {loadState === 'error' && <Notice tone="warning">{c('No pudimos cargar tu perfil.', 'We could not load your profile.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load({ replaceForm: true }); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
     <div className="profile-layout"><div className="profile-main">
-      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2>{c('Tus datos y lo que buscas', 'Your details and job preferences')}</h2><p>{c('El nombre y el correo aparecerán en los nuevos CV que generes.', 'Your name and email will appear on new resumes you generate.')}</p></div></div><Tag tone={dirty ? 'amber' : 'blue'}>{dirty ? c('CAMBIOS SIN GUARDAR', 'UNSAVED CHANGES') : c('SIN CAMBIOS PENDIENTES', 'NO UNSAVED CHANGES')}</Tag></div>
+      <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2 id="profile-details" tabIndex={-1}>{c('Tus datos y lo que buscas', 'Your details and job preferences')}</h2><p>{c('El nombre y el correo aparecerán en los nuevos CV que generes.', 'Your name and email will appear on new resumes you generate.')}</p></div></div><Tag tone={dirty ? 'amber' : 'blue'}>{dirty ? c('CAMBIOS SIN GUARDAR', 'UNSAVED CHANGES') : c('SIN CAMBIOS PENDIENTES', 'NO UNSAVED CHANGES')}</Tag></div>
         <form onSubmit={(event) => void saveProfile(event)} className="form-stack" aria-busy={saving('profile')}>
           <fieldset className="profile-fieldset"><legend>{c('Datos para tu CV', 'Details for your resume')}</legend><div className="form-grid">
           <Field disabled={locked || editing !== null} label={c('Nombre', 'Name')} autoComplete="name" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} placeholder={c('Cómo quieres que aparezca', 'How your name should appear')}/>
           <Field disabled={locked || editing !== null} label={c('Correo', 'Email')} type="email" autoComplete="email" value={form.email} onChange={(e) => updateForm({ email: e.target.value })} placeholder={c('nombre@ejemplo.com', 'name@example.com')}/>
           </div></fieldset>
           <fieldset className="profile-fieldset"><legend>{c('Qué empleo buscas', 'What work you are looking for')}</legend><p>{c('Estas preferencias ayudan a comparar ofertas con tu perfil. No se imprimen en tu CV.', 'These preferences help compare jobs with your profile. They are not printed on your resume.')}</p><div className="form-grid">
-          <SelectField disabled={locked || editing !== null} label={c('País donde quieres trabajar', 'Country you want to work in')} value={form.country} onChange={(e) => updateForm({ country: e.target.value })}>
+          <SelectField disabled={locked || editing !== null} label={c('País de trabajo', 'Work country')} hint={c('Opcional para preparar tu CV.', 'Optional for preparing your resume.')} value={form.country} onChange={(e) => updateForm({ country: e.target.value })}>
             <option value="">{c('Sin indicar', 'Not set')}</option>
             <CountryOptions current={form.country}/>
           </SelectField>
           <Field disabled={locked || editing !== null} label={c('Puestos que buscas', 'Roles you are looking for')} value={form.titles} onChange={(e) => updateForm({ titles: e.target.value })} placeholder={c('Por ejemplo: diseño, atención al cliente…', 'For example: design, customer support…')} hint={c('Separa los puestos con comas.', 'Separate roles with commas.')}/>
-          <div className="field" role="group" aria-labelledby="work-mode-label">
+          <div className="field field-span work-mode-field" role="group" aria-labelledby="work-mode-label">
             <span id="work-mode-label">{c('Modalidad de trabajo', 'Work arrangement')}</span>
             <div className="tag-row">
               {knownModes.map((mode) => { const active = form.modes.includes(mode); return <Button key={mode} type="button" disabled={locked} variant={active ? 'primary' : 'secondary'} aria-pressed={active} onClick={() => toggleMode(mode)}>{active ? '✓ ' : ''}{labelFor.workMode(mode, locale)}</Button>; })}
@@ -184,37 +188,16 @@ export default function ProfilePage() {
         </form>
       </Card>
 
-      <Card className="form-card"><div id="experience" className="form-heading"><div><span className="step-badge">02</span><div><h2>{c('Qué quieres contar en tu CV', 'What you want on your resume')}</h2><p>{c('Añade un empleo, un logro o un estudio cada vez. El texto que escribas se usará tal cual en tu CV.', 'Add one job, achievement, or qualification at a time. Your resume will use the text exactly as you write it.')}</p></div></div><Tag tone="amber">{pendingFacts} {pendingFacts === 1 ? c('PENDIENTE', 'PENDING') : c('PENDIENTES', 'PENDING')}</Tag></div>
-        <form onSubmit={(event) => void addFact(event)} className="form-stack" aria-busy={saving('fact')}>
-          <div className="form-grid">
-            <SelectField disabled={locked || editing !== null} label={c('Qué quieres añadir', 'What would you like to add')} value={factKind} onChange={(e) => setFactKind(e.target.value)}>{selectableFactKinds.map((kind) => <option key={kind} value={kind}>{labelFor.factKind(kind, locale)}</option>)}</SelectField>
-
-          </div>
-          {factKind === 'experience' && <fieldset className="profile-fieldset"><legend>{c('Datos del empleo', 'Employment details')}</legend><div className="form-grid">
-            <Field disabled={locked || editing !== null} label={c('Puesto que ocupaste', 'Job title')} value={employment.role} onChange={(event) => setEmployment({ ...employment, role: event.target.value })} required maxLength={200}/>
-            <Field disabled={locked || editing !== null} label={c('Empresa', 'Company')} value={employment.company} onChange={(event) => setEmployment({ ...employment, company: event.target.value })} required maxLength={200}/>
-            <Field disabled={locked || editing !== null} label={c('Fecha de inicio', 'Start date')} type="month" value={employment.startMonth} onChange={(event) => setEmployment({ ...employment, startMonth: event.target.value })} required min="1000-01" max="9999-12" hint={c('Mes y año.', 'Month and year.')}/>
-            {!employment.current && <Field disabled={locked || editing !== null} label={c('Fecha de fin', 'End date')} type="month" value={employment.endMonth} onChange={(event) => setEmployment({ ...employment, endMonth: event.target.value })} required min={employment.startMonth || '1000-01'} max="9999-12" hint={c('Mes y año.', 'Month and year.')}/>}
-            <label className="checkbox-line field-span"><input type="checkbox" disabled={locked} checked={employment.current} onChange={(event) => setEmployment({ ...employment, current: event.target.checked })}/><span>{c('Actualmente trabajo aquí', 'I currently work here')}</span></label>
-          </div></fieldset>}
-          <TextareaField disabled={locked || editing !== null} label={c('Describe tu experiencia o logro', 'Describe your experience or achievement')} value={fact} onChange={(e) => setFact(e.target.value)} placeholder={c('Qué hiciste, con qué herramientas y en qué contexto…', 'What you did, with which tools, and in what context…')} required rows={4} maxLength={factKind === 'experience' ? 3500 : 4000}/>
-          <div className="profile-example"><strong>{c('Ejemplo para orientarte', 'A guide to what to write')}</strong><p>{locale === 'en' ? example.en : example.es}</p></div>
-          <details className="profile-tags"><summary>{c('Añadir palabras clave · opcional', 'Add keywords · optional')}</summary><Field disabled={locked || editing !== null} label={c('Palabras clave', 'Keywords')} value={factTags} onChange={(e) => setFactTags(e.target.value)} placeholder={c('Por ejemplo: ventas, Excel…', 'For example: sales, Excel…')} hint={c('Separa con comas. Ayudan a comparar ofertas; no aparecen como etiquetas en el PDF.', 'Separate with commas. They help compare jobs and are not printed as tags in the PDF.')}/></details>
-          <p className="muted-label">{c('Al guardar, el texto aparecerá debajo para que lo revises. Después pulsa «Confirmar» si es correcto.', 'After saving, the text appears below for review. Then select “Confirm” if it is accurate.')}</p>
-          <div className="form-submit"><Button type="submit" disabled={locked || editing !== null || !fact.trim()}>{saving('fact') ? c('Guardando…', 'Saving…') : c('Añadir para revisar', 'Add for review')}</Button></div>
-        </form>
-          {editing !== null && <form className="form-stack fact-edit" onSubmit={(event) => void saveFactEdit(event)}>
-            <h4>{c('Corregir texto del CV', 'Correct resume entry')}</h4>
-            <TextareaField autoFocus label={c('Texto completo para el CV', 'Full resume text')} value={editing.statement} onChange={(event) => setEditing({ ...editing, statement: event.target.value })} rows={6} required maxLength={4000} disabled={locked} hint={c('Puedes corregir también el puesto, la empresa y las fechas. Revisa todo el texto antes de confirmarlo.', 'You can also correct the role, employer, and dates. Review the full text before confirming it.')}/>
-            <Field label={c('Palabras clave del texto', 'Entry keywords')} value={editing.tags} onChange={(event) => setEditing({ ...editing, tags: event.target.value })} disabled={locked}/>
-            <p>{c('La corrección quedará pendiente de confirmación. Tus PDF anteriores conservarán su contenido.', 'The correction will need confirmation. Your earlier PDFs will keep their content.')}</p>
-            {data?.revision !== editing.revision && <Notice tone="warning">{c('El perfil cambió mientras editabas. Copia tu corrección, cancela y abre de nuevo el texto actual para evitar sobrescribir cambios.', 'The profile changed while you were editing. Copy your correction, cancel, and reopen the current entry to avoid overwriting changes.')}</Notice>}
-            <div className="form-submit"><Button type="submit" disabled={locked || !editing.statement.trim() || data?.revision !== editing.revision}>{c('Guardar corrección para revisar', 'Save correction for review')}</Button><Button type="button" variant="quiet" disabled={locked} onClick={() => { if (window.confirm(c('¿Descartar esta corrección?', 'Discard this correction?'))) setEditing(null); }}>{c('Cancelar edición', 'Cancel editing')}</Button></div>
-          </form>}
-        <div className="fact-list" ref={reviewList} tabIndex={-1} aria-labelledby="saved-experience-heading"><h3 id="saved-experience-heading">{c('Lo que has guardado', 'What you have saved')}</h3><p className="muted-label">{c('Solo los textos confirmados estarán disponibles al preparar tu CV.', 'Only confirmed entries will be available when preparing your resume.')}</p>{data?.facts.length ? data.facts.map((item) => <div className="fact-row" key={item.id}>
+      <Card className="form-card"><div id="experience" tabIndex={-1} className="form-heading"><div><span className="step-badge">02</span><div><h2>{c('Qué quieres contar en tu CV', 'What you want on your resume')}</h2><p>{c('Añade un empleo, un logro o un estudio cada vez. El texto que escribas se usará tal cual en tu CV.', 'Add one job, achievement, or qualification at a time. Your resume will use the text exactly as you write it.')}</p></div></div><Tag tone="amber">{pendingFacts} {pendingFacts === 1 ? c('PENDIENTE', 'PENDING') : c('PENDIENTES', 'PENDING')}</Tag></div>
+        {!editing && <ProfileEntryForm busy={locked} onSave={addFact} onDirtyChange={setEntryDirty}/>}
+        {editing && <div className="fact-edit"><h3 ref={editHeading} tabIndex={-1}>{c('Editar dato del CV', 'Edit resume detail')}</h3>
+          {data?.revision !== editing.revision && <Notice tone="warning">{c('El perfil cambió mientras editabas. Conserva tu corrección y vuelve a abrir la entrada actual antes de guardar.', 'Your profile changed while editing. Keep your correction and reopen the current entry before saving.')}</Notice>}
+          <ProfileEntryForm key={editing.id} initial={editing} busy={locked} blocked={data?.revision !== editing.revision} onSave={saveFactEdit} onCancel={() => { if (window.confirm(c('¿Descartar esta corrección?', 'Discard this correction?'))) { setEditing(null); reviewList.current?.focus(); } }}/>
+        </div>}
+        <div className="fact-list" ref={reviewList} tabIndex={-1} aria-labelledby="saved-experience-heading"><h3 id="saved-experience-heading" tabIndex={-1}>{c('Lo que has guardado', 'What you have saved')}</h3><p className="muted-label">{c('Solo los textos confirmados estarán disponibles al preparar tu CV.', 'Only confirmed entries will be available when preparing your resume.')}</p>{data?.facts.length ? data.facts.map((item) => <div className="fact-row" key={item.id}>
           <div className="fact-marker">{item.approvalStatus === 'USER_APPROVED' ? '✓' : '·'}</div>
           <div className="fact-content"><div className="fact-meta"><span>{labelFor.factKind(item.kind, locale)}</span><Tag tone={item.approvalStatus === 'USER_APPROVED' ? 'green' : item.approvalStatus === 'REJECTED' ? 'red' : 'amber'}>{item.approvalStatus === 'REJECTED' ? c('ARCHIVADO', 'ARCHIVED') : labelFor.factApproval(item.approvalStatus, locale).toUpperCase()}</Tag></div><p style={{ whiteSpace: 'pre-wrap' }}>{item.statement}</p>{item.tags.length > 0 && <div className="tag-row">{item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</div>}</div>
-          <div className="fact-actions"><Button variant="quiet" disabled={locked || editing !== null} onClick={() => { setEditing({ id: item.id, kind: item.kind, statement: item.statement, tags: item.tags.join(', '), revision: data.revision }); setArchiving(null); }}>{c('Editar', 'Edit')}</Button>{item.approvalStatus === 'USER_APPROVED' && <Button variant="quiet" disabled={locked || editing !== null} onClick={() => setArchiving(item.id)}>{c('Archivar', 'Archive')}</Button>}
+          <div className="fact-actions"><Button variant="quiet" disabled={locked || editing !== null} onClick={() => { if (entryDirty && !window.confirm(c('Hay una entrada sin guardar. ¿Descartarla para editar esta?', 'There is an unsaved entry. Discard it to edit this one?'))) return; setEntryDirty(false); setEditing({ ...item, revision: data.revision }); setArchiving(null); }}>{c('Editar', 'Edit')}</Button>{item.approvalStatus === 'USER_APPROVED' && <Button variant="quiet" disabled={locked || editing !== null} onClick={() => setArchiving(item.id)}>{c('Archivar', 'Archive')}</Button>}
           {item.approvalStatus === 'REJECTED' && <Button variant="secondary" disabled={locked || editing !== null} onClick={() => reviewFact(item.id, 'approve')}>{c('Restaurar y confirmar', 'Restore and confirm')}</Button>}</div>
           {archiving === item.id && <div className="fact-edit"><p>{c('¿Archivar este texto? Se conservará aquí y en los PDF anteriores, pero no estará disponible para nuevos CV.', 'Archive this entry? It will remain here and in earlier PDFs, but will not be available for new resumes.')}</p><Button variant="secondary" disabled={locked} onClick={() => void archiveFact(item.id)}>{c('Confirmar archivo', 'Confirm archive')}</Button> <Button variant="quiet" disabled={locked} onClick={() => setArchiving(null)}>{c('Cancelar', 'Cancel')}</Button></div>}
           {item.approvalStatus === 'SUGGESTED' && <div className="fact-actions"><Button variant="quiet" disabled={locked} onClick={() => reviewFact(item.id, 'reject')}>{c('Descartar', 'Discard')}</Button><Button variant="secondary" disabled={locked} onClick={() => reviewFact(item.id, 'approve')}>{saving(`fact:${item.id}`) ? c('Guardando…', 'Saving…') : c('Confirmar', 'Confirm')}</Button></div>}
@@ -242,9 +225,11 @@ export default function ProfilePage() {
     </div><aside className="profile-aside">
       <Card className="aside-card"><h3>{c('Cómo llegar a tu primer CV', 'Steps to your first resume')}</h3><ol className="profile-checklist"><li>{c('Guarda tu nombre y correo.', 'Save your name and email.')}</li><li>{c('Añade al menos una experiencia y confirma que es correcta.', 'Add at least one experience and confirm it is accurate.')}</li><li>{c('Ve a Mis CV para elegir el contenido y generar el PDF.', 'Go to My resumes to choose the content and generate your PDF.')}</li></ol>
         <p>{c(`${approvedFacts} textos listos para usar · ${pendingFacts} por confirmar`, `${approvedFacts} entries ready to use · ${pendingFacts} to confirm`)}</p>
-        {loadState === 'ready' && (canPrepareCv ? <Link href="/documents" className="button button-primary">{c('Preparar mi CV', 'Prepare my resume')}</Link> : <p className="muted-label">{c('Para continuar: guarda tu nombre y correo y confirma una experiencia.', 'To continue: save your name and email and confirm one experience.')}</p>)}
+        {loadState === 'ready' && (canPrepareCv ? <Link href={resumeHref} className="button button-primary">{c('Preparar mi CV', 'Prepare my resume')}</Link> : <p className="muted-label">{c('Para continuar: guarda tu nombre y correo y confirma una experiencia.', 'To continue: save your name and email and confirm one experience.')}</p>)}
       </Card>
       <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Tú autorizas el uso de tus datos de contacto al preparar un formulario.', 'Your profile is saved on this device. You authorize using your contact details when preparing a form.')}</p><small>{c('Tú revisas y envías cada solicitud desde la página de la empresa.', 'You review and submit each application on the employer website.')}</small></Card>
     </aside></div>
   </AppShell></WorkspaceGate>;
 }
+
+export default function ProfilePage() { return <Suspense><ProfileView/></Suspense>; }

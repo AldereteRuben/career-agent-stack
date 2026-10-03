@@ -57,6 +57,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@career/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       next:
         specifier: 16.3.8
         version: 16.3.8(@types/node@24.10.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2337,7 +2340,7 @@ snapshots:
 
   '@types/pg@8.23.1':
     dependencies:
-      '@types/node': 24.19.0
+      '@types/node': 24.10.0
       pg-protocol: 1.16.1
       pg-types: 2.2.0
 

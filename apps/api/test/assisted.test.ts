@@ -45,6 +45,7 @@ describe('assisted routes with fictional data and a disposable database', { skip
     register = (await import('../src/assisted-routes.js')).registerAssistedRoutes;
     pool = (await import('@career/db')).pool;
     browser = new FakeBrowser(); app = Fastify(); runtime = await register(app, () => workspace, browser);
+    (await import('../src/resume-journey.js')).registerResumeJourney(app, () => workspace);
   });
   after(async () => {
     await app?.close(); await pool?.end(); await sql?.end();
@@ -127,6 +128,39 @@ describe('assisted routes with fictional data and a disposable database', { skip
     assert.equal((await sql.query('select state from applications where id=$1',[f.application])).rows[0]!.state,'UNKNOWN');
     const other=await fixture(); const unused=await prepare(other.application,other.doc); await runtime.stopAll();
     assert.equal((await sql.query('select status from assisted_attempts where id=$1',[unused.id])).rows[0]!.status,'INVALIDATED');
+  });
+
+  test('resume link is persistent, idempotent and recorded once', async () => {
+    const f = await fixture();
+    const first = await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc });
+    assert.equal(first.statusCode, 200, first.body); assert.equal(first.json().documentId, f.doc);
+    const again = await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc });
+    assert.equal(again.json().version, first.json().version);
+    assert.equal((await sql.query("select count(*)::int as n from application_events where application_id=$1 and event_type='APPLICATION_RESUME_SELECTED'", [f.application])).rows[0]!.n, 1);
+  });
+  test('resume links reject stale, unapproved and foreign documents without changing the application', async () => {
+    const f = await fixture(); const owner = workspace; const foreign = await fixture(); workspace = owner;
+    assert.equal((await post('/applications/with-resume', { applicationId: f.application, documentId: foreign.doc })).statusCode, 409);
+    assert.equal((await post('/applications/with-resume', { applicationId: foreign.application, documentId: f.doc })).statusCode, 404);
+    await sql.query("update document_versions set approval_status='PENDING_REVIEW' where id=$1", [f.doc]);
+    assert.equal((await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc })).statusCode, 409);
+    await sql.query("update document_versions set approval_status='USER_APPROVED' where id=$1", [f.doc]);
+    await sql.query('insert into profile_versions(workspace_id,revision,profile) values($1,2,$2)', [workspace, '{}']);
+    assert.equal((await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc })).json().error, 'PROFILE_CHANGED_REGENERATE_DOCUMENT');
+    assert.equal((await sql.query('select document_id from applications where id=$1', [f.application])).rows[0]!.document_id, null);
+  });
+  test('resume changes cannot alter submitted, closed or actively assisted applications', async () => {
+    const f = await fixture();
+    for (const state of ['CONFIRMED', 'CANCELLED', 'UNKNOWN', 'IN_PROGRESS']) {
+      await sql.query('update applications set state=$1 where id=$2', [state, f.application]);
+      assert.equal((await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc })).json().error, 'APPLICATION_RESUME_CLOSED');
+    }
+    await sql.query("update applications set state='DRAFT' where id=$1", [f.application]);
+    const attempt = await prepare(f.application, f.doc);
+    assert.equal((await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc })).json().error, 'ASSIST_ACTIVE_ATTEMPT');
+    await runtime.stopAll();
+    assert.equal((await sql.query('select document_id from applications where id=$1', [f.application])).rows[0]!.document_id, null);
+    assert.ok(attempt.id);
   });
 
 });

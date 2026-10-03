@@ -6,7 +6,8 @@
 //   pnpm start --copy-token  also copy the pending single-use sign-in token to the clipboard (never printed)
 //   pnpm run status       read-only report; starts, builds and migrates nothing; exits 1 when something needs attention
 //
-// It never seeds demo data, never resets or deletes data, and never prints secrets.
+// It never seeds demo data or deletes workspace data, and never prints secrets.
+// --recover-session explicitly replaces the local one-time sign-in code; existing sessions remain valid.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access, chmod, mkdir, open, readFile } from 'node:fs/promises';
@@ -21,7 +22,7 @@ import {
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
 const openBrowser = !args.has('--no-open') && !checkOnly;
-const copyToken = args.has('--copy-token') && !checkOnly;
+const copyToken = (args.has('--copy-token') || args.has('--recover-session')) && !checkOnly;
 
 // Things that need the user's attention. `pnpm run status` exits non-zero when there is any.
 let attention = 0;
@@ -373,6 +374,10 @@ async function main() {
   }
   if (attention) say(`! Listo, con ${attention} aviso(s): ${settings.webOrigin} puede no ejecutar la última versión (ver arriba).`, `! Ready with ${attention} warning(s): ${settings.webOrigin} may not run the latest version (see above).`);
   else ok(`Listo: ${settings.webOrigin}`, `Ready: ${settings.webOrigin}`);
+  if (args.has('--recover-session')) {
+    const recovery = run(process.execPath, [at('scripts/reset-session.mjs')]);
+    if (recovery.status !== 0) throw new Error('Could not create a new sign-in code.');
+  }
   await signInHint();
   say('  Para detener solo lo que inició este lanzador: pnpm run stop', 'To stop only what this launcher started: pnpm run stop');
   if (openBrowser) {

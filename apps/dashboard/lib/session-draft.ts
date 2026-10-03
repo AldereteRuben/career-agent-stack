@@ -21,18 +21,23 @@ export function useSessionDraft<T extends Record<string, string>>(key: string, i
   const leaveMessage = locale === 'es' ? 'No se pudo conservar el borrador. ¿Salir y perder los cambios sin guardar?' : 'The draft could not be preserved. Leave and lose unsaved changes?';
   const [value, setValue] = useState(initial);
   const current = useRef(initial);
-  const [ready, setReady] = useState(false);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const ready = loadedKey === key;
+  const currentKey = useRef<string | null>(null);
   const [storageFailed, setStorageFailed] = useState(false);
   const initialRef = useRef(initial); const validateRef = useRef(valid);
   useEffect(() => {
+    let next = initialRef.current;
+    setStorageFailed(false);
     try {
       const stored = sessionStorage.getItem(prefix + key);
       const parsed: unknown = stored ? JSON.parse(stored) : initialRef.current;
-      if (validateRef.current(parsed)) { current.current = parsed; setValue(parsed); }
+      if (validateRef.current(parsed)) next = parsed;
     } catch { setStorageFailed(true); }
-    setReady(true);
+    current.current = next; currentKey.current = key; setValue(next); setLoadedKey(key);
   }, [key]);
   const update = (action: SetStateAction<T>) => {
+    if (currentKey.current !== key) return;
     const next = typeof action === 'function' ? (action as (previous: T) => T)(current.current) : action;
     current.current = next; setValue(next);
     try { sessionStorage.setItem(prefix + key, JSON.stringify(next)); setStorageFailed(false); }
@@ -53,5 +58,5 @@ export function useSessionDraft<T extends Record<string, string>>(key: string, i
     window.addEventListener('beforeunload', warn); document.addEventListener('click', guard, true);
     return () => { window.removeEventListener('beforeunload', warn); document.removeEventListener('click', guard, true); };
   }, [storageFailed, value, leaveMessage]);
-  return { value, update, ready, storageFailed };
+  return { value: ready ? value : initialRef.current, update, ready, storageFailed };
 }

@@ -213,6 +213,17 @@ async function main() {
     expect(migrations.rows[0].n === journal && workspaces.rows[0].n === 1, 'the copy database must hold every migration and the one workspace the copy API created');
     record('web /login 200, sign-in with the copy token through the web origin, session authenticated, token consumed', true);
 
+    step = run(copy, process.execPath, ['scripts/reset-session.mjs']);
+    expect(step.status === 0, 'isolated access-code recovery must succeed');
+    const recoveredToken = (await readFile(tokenPath, 'utf8')).trim();
+    expect(recoveredToken !== token && await modeOf(tokenPath) === '600', 'recovery creates a different private code');
+    const recoveredLogin = await globalThis.fetch(`${web}/api/v1/session`, { method: 'POST', headers: { origin: web, 'content-type': 'application/json' }, body: JSON.stringify({ setupToken: recoveredToken }) });
+    expect(recoveredLogin.status === 200 && !(await readOrNull(tokenPath)), 'recovered code signs in exactly once');
+    const originalSession = await (await globalThis.fetch(`${web}/api/v1/session`, { headers: { cookie } })).json();
+    expect(originalSession.authenticated === true, 'recovering access preserves existing sessions');
+    expect(spawnSync('zsh', ['-n', join(copy, 'Recover Career Agent Stack.command')]).status === 0, 'recovery launcher parses');
+    record('access-code recovery: private new code accepted once, existing session preserved, recovery launcher parses', true);
+
     // Finder-like environment: minimal PATH, no shell profile, no inherited project variables.
     const finderEnv = { HOME: process.env.HOME, USER: process.env.USER, LOGNAME: process.env.USER, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', TERM: 'xterm-256color', TMPDIR: process.env.TMPDIR };
     const command = join(copy, 'Start Career Agent Stack.command');

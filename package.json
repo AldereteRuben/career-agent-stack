@@ -1,6 +1,6 @@
 {
   "name": "career-agent-stack",
-  "version": "0.3.1",
+  "version": "0.4.1",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.10.0",
@@ -22,7 +22,7 @@
     "bootstrap": "node scripts/bootstrap.mjs",
     "runner": "node scripts/assisted-help.mjs",
     "test:unit": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/*.test.ts",
-    "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs",
+    "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs scripts/test/v040-migration.test.mjs",
     "test:e2e": "pnpm --filter @career/api e2e",
     "test:evals": "node scripts/unsupported.mjs 'AI and ranking evaluations'",
     "reset:session": "node scripts/reset-session.mjs",

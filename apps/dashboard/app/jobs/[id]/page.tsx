@@ -2,7 +2,7 @@
 
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Icon, Notice, Tag } from '@/components/ui';
@@ -18,6 +18,8 @@ type Detail = { job: Job; snapshots: Snapshot[]; sources: Array<{ provider: stri
 export default function JobDetailPage() {
   const { locale } = useLocale(); const c = copy(locale);
   const { id } = useParams<{ id: string }>(); const router = useRouter();
+  const searchParams = useSearchParams(); const returnTo = searchParams.get('returnTo') ?? '';
+  const backHref = returnTo === '/jobs' || returnTo.startsWith('/jobs?') ? returnTo : '/jobs';
   const [data, setData] = useState<Detail | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -38,32 +40,42 @@ export default function JobDetailPage() {
   };
   const updateShortlist = async () => {
     if (!job) return; setBusy('shortlist'); setError(''); setMessage('');
-    try { await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: job.shortlistDecision === 'SHORTLISTED' ? 'UNREVIEWED' : 'SHORTLISTED' }) }); await load(); setMessage(job.shortlistDecision === 'SHORTLISTED' ? c('Quitada de tus vacantes guardadas.', 'Removed from your saved jobs.') : c('Añadida a tus vacantes guardadas.', 'Added to your saved jobs.')); }
+    try { await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: job.shortlistDecision === 'SHORTLISTED' ? 'UNREVIEWED' : 'SHORTLISTED' }) }); await load(); setMessage(job.shortlistDecision === 'SHORTLISTED' ? c('Quitada de favoritas.', 'Removed from favorites.') : c('Añadida a favoritas.', 'Added to favorites.')); }
+    catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  };
+
+  const archive = async () => {
+    if (!job) return;
+    const restoring = job.shortlistDecision === 'ARCHIVED';
+    if (!restoring && !window.confirm(c('¿Archivar esta oferta? Podrás restaurarla desde Archivadas. Tus solicitudes y CV se conservan.', 'Archive this job? You can restore it from Archived. Your applications and resumes are preserved.'))) return;
+    setBusy('archive'); setError('');
+    try { await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: restoring ? 'UNREVIEWED' : 'ARCHIVED' }) }); await load(); setMessage(restoring ? c('Oferta restaurada.', 'Job restored.') : c('Oferta archivada. Puedes encontrarla con el filtro Archivadas.', 'Job archived. Find it with the Archived filter.')); }
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
   };
 
   return <WorkspaceGate><AppShell>
-    <Link href="/jobs" className="back-link">← {c('Volver a vacantes', 'Back to jobs')}</Link>
+    <Link href={backHref} className="back-link">← {c('Volver a ofertas', 'Back to jobs')}</Link>
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
-    {loadState === 'loading' && <Notice>{c('Cargando vacante…', 'Loading job…')}</Notice>}
-    {loadState === 'error' && !job && <Notice tone="warning">{c('No pudimos cargar esta vacante.', 'We could not load this job.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
+    {loadState === 'loading' && <Notice>{c('Cargando oferta…', 'Loading job…')}</Notice>}
+    {loadState === 'error' && !job && <Notice tone="warning">{c('No pudimos cargar esta oferta.', 'We could not load this job.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
     {job && <><PageHeader eyebrow={job.company.toUpperCase()} title={job.title} description={`${job.location ?? c('Ubicación por confirmar', 'Location to be confirmed')} · ${c('Añadida el', 'Added on')} ${formatDate(job.createdAt)}`} action={<div className="detail-actions">
-        <Button variant="secondary" disabled={busy !== null} aria-pressed={job.shortlistDecision === 'SHORTLISTED'} onClick={() => void updateShortlist()}>{busy === 'shortlist' ? c('Guardando…', 'Saving…') : job.shortlistDecision === 'SHORTLISTED' ? `✓ ${c('Guardada', 'Saved')}` : c('Guardar vacante', 'Save job')}</Button>
-        <Link className="button button-secondary" href={`/documents?jobId=${job.id}`}><Icon name="file" size={15}/> {c('Preparar CV para esta vacante', 'Prepare a resume for this job')}</Link>
-        {existing ? <Link className="button button-primary" href={`/applications?id=${existing.id}`}>{c('Abrir tu candidatura', 'Open your application')} <Icon name="arrow" size={15}/></Link>
-          : <Button onClick={() => void makeApplication()} disabled={busy !== null}>{busy === 'application' ? c('Creando…', 'Creating…') : c('Empezar seguimiento', 'Start tracking')} <Icon name="arrow" size={15}/></Button>}
+        <Button variant="secondary" disabled={busy !== null || job.shortlistDecision === 'ARCHIVED'} aria-pressed={job.shortlistDecision === 'SHORTLISTED'} onClick={() => void updateShortlist()}>{busy === 'shortlist' ? c('Guardando…', 'Saving…') : job.shortlistDecision === 'SHORTLISTED' ? `✓ ${c('Favorita', 'Favorite')}` : c('Añadir a favoritas', 'Add to favorites')}</Button>
+        <Link className={`button ${existing ? 'button-secondary' : 'button-primary'}`} href={`/documents?jobId=${job.id}${existing ? `&applicationId=${existing.id}` : ''}`}><Icon name="file" size={15}/> {c('Preparar CV para esta oferta', 'Prepare a resume for this job')}</Link>
+        {existing ? <Link className="button button-primary" href={`/applications?id=${existing.id}`}>{c('Abrir tu solicitud', 'Open your application')} <Icon name="arrow" size={15}/></Link>
+          : <Button variant="secondary" onClick={() => void makeApplication()} disabled={busy !== null}>{busy === 'application' ? c('Creando…', 'Creating…') : c('Empezar seguimiento', 'Start tracking')} <Icon name="arrow" size={15}/></Button>}
+        <Button variant="quiet" disabled={busy !== null} onClick={() => void archive()}>{job.shortlistDecision === 'ARCHIVED' ? c('Restaurar oferta', 'Restore job') : c('Archivar oferta', 'Archive job')}</Button>
       </div>}/>
-      {existing && <Notice>{c('Ya sigues esta vacante', 'You are already tracking this job')}: {labelFor.applicationState(existing.state, locale)}{existing.recruitmentStage ? ` · ${labelFor.recruitmentStage(existing.recruitmentStage, locale)}` : ''}.</Notice>}
+      {existing && <Notice>{c('Ya sigues esta oferta', 'You are already tracking this job')}: {labelFor.applicationState(existing.state, locale)}{existing.recruitmentStage ? ` · ${labelFor.recruitmentStage(existing.recruitmentStage, locale)}` : ''}.</Notice>}
       <div className="detail-layout"><div className="detail-main">
         <Card className="detail-score"><div><span className="eyebrow"><span className="eyebrow-mark"/> {c('LECTURA BASADA EN EVIDENCIA', 'EVIDENCE-BASED READING')}</span><h2>{job.fitScore === null ? c('Sin datos suficientes para puntuar', 'Not enough information to score') : `${job.fitScore} / 100`}</h2><p>{c('El encaje mide cuánto cubren tus datos que confirmaste; no predice una contratación ni es una puntuación ATS.', 'The match measures how well your confirmed profile details cover the job. It does not predict hiring or represent an ATS score.')}</p></div><div className="score-ring" style={{ ['--score' as string]: `${job.fitScore ?? 0}%` }}><div><strong>{job.fitScore ?? '—'}</strong><small>{c('encaje', 'match')}</small></div></div></Card>
         <Card className="detail-description"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('CÓMO SE CALCULA', 'HOW IT IS CALCULATED')}</div><h2>{c('Por qué este encaje', 'Why this match')}</h2></div>{job.provisional && <Tag tone="amber">{c('PROVISIONAL', 'PROVISIONAL')}</Tag>}</div>
-          <p>{c('Comparamos la vacante con tus datos que confirmaste y los puestos que buscas. No es la probabilidad de que te contraten.', 'We compare the job with your confirmed profile details and the roles you are looking for. It is not the probability of being hired.')}</p>
+          <p>{c('Comparamos la oferta con tus datos que confirmaste y los puestos que buscas. No es la probabilidad de que te contraten.', 'We compare the job with your confirmed profile details and the roles you are looking for. It is not the probability of being hired.')}</p>
           {job.match ? <div className="form-stack">
             <div><strong>{c('Habilidades con evidencia', 'Skills backed by your evidence')}</strong><div className="tag-row">{job.match.matchedSkills.length ? job.match.matchedSkills.map((skill) => <Tag key={skill} tone="green">✓ {skill}</Tag>) : <small>{c('Ninguna todavía.', 'None yet.')}</small>}</div></div>
-            <div><strong>{c('Habilidades sin evidencia aprobada', 'Skills without approved evidence')}</strong><div className="tag-row">{job.match.missingSkills.length ? job.match.missingSkills.map((skill) => <Tag key={skill} tone="amber">{skill}</Tag>) : <small>{c('No falta ninguna de las que reconocimos.', 'None of the skills we recognised are missing.')}</small>}</div>{job.match.missingSkills.length > 0 && <small>{c('Si tienes esa experiencia, añádela como dato en tu perfil y apruébala.', 'If you have that experience, add it as a detail in your profile and approve it.')} <Link href="/profile">{c('Ir a mi perfil', 'Go to my profile')}</Link></small>}</div>
+            <div><strong>{c('Habilidades sin evidencia aprobada', 'Skills without approved evidence')}</strong><div className="tag-row">{job.match.missingSkills.length ? job.match.missingSkills.map((skill) => <Tag key={skill} tone="amber">{skill}</Tag>) : <small>{c('No falta ninguna de las que reconocimos.', 'None of the skills we recognised are missing.')}</small>}</div>{job.match.missingSkills.length > 0 && <small>{c('Si tienes esa experiencia, añádela como dato en tu perfil y apruébala.', 'If you have that experience, add it as a detail in your profile and approve it.')} <Link href={`/profile?jobId=${job.id}`}>{c('Ir a mi perfil', 'Go to my profile')}</Link></small>}</div>
             <div><strong>{c('Título del puesto', 'Job title')}</strong><p>{job.match.matchedTargetTitle ? c(`Coincide con «${job.match.matchedTargetTitle}», uno de los puestos que buscas.`, `Matches “${job.match.matchedTargetTitle}”, one of the roles you are looking for.`) : job.match.targetTitles.length ? c('No coincide con los puestos que buscas.', 'Does not match the roles you are looking for.') : c('Sin comparar: aún no indicaste qué puestos buscas.', 'Not compared: you have not said which roles you are looking for.')}</p></div>
             <small>{c(`Basado en ${job.match.approvedFactCount} datos que confirmaste de la revisión ${job.match.profileRevision} de tu perfil.`, `Based on ${job.match.approvedFactCount} confirmed profile details from revision ${job.match.profileRevision} of your profile.`)}</small>
-          </div> : <Notice>{c('Esta vacante se valoró antes de que existiera el detalle del encaje. Se actualizará en la próxima revisión.', 'This job was assessed before match details were available. They will appear after the next update.')}</Notice>}
+          </div> : <Notice>{c('Esta oferta se valoró antes de que existiera el detalle del encaje. Se actualizará en la próxima revisión.', 'This job was assessed before match details were available. They will appear after the next update.')}</Notice>}
           {[...(job.match?.notes ?? []), ...job.reasons].length > 0 && <ul>{[...new Set([...(job.match?.notes ?? []), ...job.reasons])].map((code) => <li key={code}>{labelFor.matchCode(code, locale)}</li>)}</ul>}
         </Card>
         <Card className="detail-description"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('EL PUESTO', 'THE JOB')}</div><h2>{c('Descripción guardada', 'Saved description')}</h2></div>{source && <Tag tone="blue">{source.provider.toUpperCase()}</Tag>}</div>{snapshot?.descriptionText ? <div className="description-text">{snapshot.descriptionText}</div> : <div className="notice notice-warning">{c('Esta fuente no incluyó descripción. No suponemos requisitos que no aparecen en los datos.', 'This source did not include a description. We do not assume requirements that are not in the data.')}</div>}</Card>

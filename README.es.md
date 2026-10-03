@@ -4,13 +4,16 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.3.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.3.1.md)
+**Versión actual: v0.4.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#041)
+
+Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
+
 
 La interfaz está disponible en **español e inglés**. Cada persona utiliza una instalación independiente, con su propia base de datos y claves. No es un servicio compartido en la nube.
 
 ## Qué puedes hacer
 
-- Guardar tu perfil y preferencias, corregir o archivar experiencias y confirmar los datos que se usan en tu CV.
+- Completar experiencia laboral y formación con fechas editables; corregir, archivar y confirmar los datos que se usan en tu CV.
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
 - Añadir vacantes manualmente o consultar fuentes de Greenhouse, Lever y Ashby revisadas individualmente.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
@@ -18,7 +21,13 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
-No necesitas una suscripción de IA ni una clave de API. La versión 0.3 incluye **autocompletado experimental de contactos en Lever**, con navegador visible y autorización. Tú adjuntas archivos, respondes y envías manualmente. No hay envío automático, acceso al correo ni preparación de entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+No necesitas una suscripción de IA ni una clave de API. La app incluye **autocompletado experimental de contactos en Lever**, con navegador visible y autorización. Tú adjuntas archivos, respondes y envías manualmente. No hay envío automático, acceso al correo ni preparación de entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+
+## Preparar una candidatura
+
+Abre una oferta y elige **Preparar CV para esta vacante**. Los pasos **Tu perfil → Preparar CV → Revisar y solicitar** conservan la oferta mientras completas tus datos. Elige el idioma del PDF, revisa su vista previa con zoom y aprueba la versión. **Continuar con esta solicitud** guarda el CV elegido en ella; podrás descargarlo o cambiarlo antes del envío.
+
+En las ofertas puedes buscar por puesto o empresa, filtrar favoritas y disponibilidad, y archivar o restaurar las que quieras. El idioma del PDF cambia encabezados y etiquetas de fechas: tus descripciones no se traducen automáticamente.
 
 ## Solicitudes asistidas
 
@@ -62,10 +71,12 @@ Después de la preparación inicial, en macOS puedes abrir **Start Career Agent 
 
 1. Elige **Español** o **English** con el botón de idioma.
 2. En **Mi perfil**, completa tus datos y preferencias de empleo y guarda.
-3. Añade hechos profesionales y aprueba los que hayas comprobado.
-4. En **Vacantes**, añade una oferta manualmente. Configurar fuentes externas es opcional.
-5. Prepara un PDF con hechos aprobados y revísalo antes de aprobar esa versión.
-6. En **Candidaturas**, registra avances y notas. El envío se realiza manualmente en la web de la empresa.
+3. Añade experiencia y formación con sus fechas; confirma los datos que hayas revisado.
+4. En **Ofertas guardadas**, añade una oferta manualmente. Configurar fuentes externas es opcional.
+5. Abre la oferta y elige **Preparar CV para esta vacante**. Completa tu perfil, selecciona el contenido y el idioma del PDF y revisa la vista previa.
+6. Aprueba el CV y pulsa **Continuar con esta solicitud**. El CV queda vinculado a ella. En **Mis solicitudes**, registra avances y notas; el envío se realiza manualmente en la web de la empresa.
+
+La preparación del CV conserva nombre, idioma y selección por oferta en esta pestaña, para que puedas volver después de editar tu perfil. Es temporal: se borra al cerrar sesión y puede perderse al cerrar la pestaña; genera el PDF para guardar una versión. Si cambian los datos seleccionados, la app te pide revisarlos. Al volver de una oferta a la lista, se conservan la búsqueda y los filtros.
 
 ## Uso diario
 
@@ -112,7 +123,7 @@ Al iniciar una API detenida se aplican las migraciones pendientes y se recompila
 - PostgreSQL almacena los registros; `data/files/` contiene los documentos. Docker utiliza el volumen persistente `career-postgres`: no lo elimines para resolver un problema de arranque.
 - Las fuentes externas necesitan una revisión explícita de la empresa y del permiso de lectura pública. Solo se consultan las fuentes configuradas, no todo el mercado laboral.
 - Las copias incluyen la base de datos y los PDF, con huellas y un manifiesto firmado. La restauración necesita el archivo de clave separado y crea una base y carpeta nuevas; nunca sobrescribe un espacio existente. El archivo **no está cifrado**. Consulta la [guía de recuperación](docs/operations/backup-restore.md).
-- La verificación local se realizó en macOS. Otros sistemas aún no tienen la misma validación de extremo a extremo.
+- La instalación completa, recuperación y uso en navegador se han comprobado en macOS. CI comprueba compilación y lógica en Linux y Windows; eso no valida sus instalaciones completas. El lanzador depende de utilidades de procesos Unix: el inicio y cierre nativos en Windows no están soportados. La instalación en Linux/WSL sigue sin validación de extremo a extremo.
 
 ## Guarda una copia de tu trabajo
 

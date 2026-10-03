@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.4.1
+
+Usability improvements in Spanish and English.
+
+- Guided sign-in with a masked access-code field and a macOS recovery launcher that creates and copies a new one-time code. Existing sessions and workspace data are preserved.
+- Consistent job/application terminology, clearer empty states and manual job entry instructions.
+- Resume prerequisites appear before the builder; name, email and confirmed experience are required in the UI. Country is optional for resume preparation.
+- Opening a PDF moves keyboard focus to the preview; closing it restores focus. Cancelling profile edits returns focus to saved entries.
+- Company forms preserve drafts in the current tab, explain the two required links and clearly state that job refreshes are manual.
+- Settings distinguishes recovery backups from JSON data exports and puts technical capability details behind an expandable section.
+- A shared release constant supplies the API and dashboard version.
+- Updated shared branding, aligned profile controls and select arrows, full-width prepare/saved-resume views, compact saved resume actions and aligned company panels.
+- Generic installation wording with operating-system-specific shortcuts clearly labelled.
+
+Validation on macOS: production build, TypeScript, ESLint, 108 unit/integration/synthetic-browser checks, all 16 existing E2E scenarios (run b5df5b7b30ec), and a clean-install smoke including isolated access-code recovery. An additional ES/EN layout and focus scenario is included. Backup restoration still requires a terminal. Native Windows startup/shutdown is not supported by the Unix-based launcher; Windows/Linux CI covers build and domain tests, not full installation. No live workspace credentials were reset.
+
+## 0.4.0
+
+A connected profile-to-application workflow. See [verification and limitations](docs/releases/v0.4.0.md).
+
+### Added
+
+- Structured work experience and education with editable dates and current-position/study fields. Canonical older employment entries can be edited as fields; ambiguous text is preserved.
+- Profile → Resume → Application navigation preserves the job. Approved resumes can be linked to an application and remain selected for assisted preparation. Repeated continuation reuses the existing open application.
+- English/Spanish PDF language selection and zoom controls with scrolling contained within the preview.
+- Job title/company search, favorites and availability filters, reversible archiving, and pagination with URL-persisted filters.
+- Additive database migration for entry metadata and application-resume links, with upgrade regression coverage.
+
+### Preserved
+
+- Earlier profile text, PDF bytes and application history remain intact. Resume changes are blocked for submitted/closed applications and active assisted attempts.
+- Employer submission remains manual. Public-repository preparation and dependency alert follow-ups remain deferred.
+
 ## 0.3.1
 
 Profile, resume and draft reliability fixes. See [verification and limitations](docs/releases/v0.3.1.md).

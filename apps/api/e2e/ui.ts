@@ -46,7 +46,7 @@ export async function goTo(page: Page, href: string) {
 
 export async function signIn(page: Page, uiUrl: string, token: string) {
   await page.goto(`${uiUrl}/login`, { waitUntil: 'domcontentloaded' });
-  const field = page.getByLabel(/token/i).first();
+  const field = page.getByLabel(/^(Código de acceso|Sign-in code)$/i).first();
   await field.fill(token);
   const submit = page.getByRole('button', { name: any('Entrar', 'Sign in', 'Iniciar sesión', 'Continue', 'Continuar', 'Open my workspace') }).first();
   if (await submit.isVisible().catch(() => false)) await submit.click();

@@ -1,17 +1,19 @@
+import { RELEASE_VERSION } from '@career/domain';
 import { config } from './config.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile, chmod, unlink } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { and, desc, eq, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces } from '@career/db';
-import { applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, profileCompletion } from '@career/domain';
+import { entryStatement, legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, profileCompletion } from '@career/domain';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl, readBoardWithReport } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
 import { documentReadiness } from './document-reuse.js';
+import { registerResumeJourney } from './resume-journey.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, occurrencesForBoard, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
@@ -110,7 +112,7 @@ app.get('/api/v1/profile', async (request) => {
     latestFacts(db, id, profile?.id),
     latestAnswers(db, id),
   ]);
-  return { revision: profile?.revision ?? 1, locale: profile?.locale ?? 'en-GB', profile: profile?.profile ?? {}, facts, answers, completion: profileCompletion(profile?.profile ?? {}, facts) };
+  return { revision: profile?.revision ?? 1, locale: profile?.locale ?? 'en-GB', profile: profile?.profile ?? {}, facts: facts.map((fact) => ({ ...fact, details: fact.details ?? legacyEmployment(fact.kind, fact.statement) })), answers, completion: profileCompletion(profile?.profile ?? {}, facts) };
 });
 
 /** Rescoring is derived data; a failure must not undo the user's committed change. */
@@ -147,7 +149,7 @@ app.post('/api/v1/profile/facts', async (request, reply) => {
     await lockKey(tx, profileLockKey(id));
     const version = await latestProfile(tx, id);
     if (!version) return null;
-    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: version.id, kind: parsed.kind, statement: parsed.statement, tags: parsed.tags, source: parsed.source, approvalStatus: 'SUGGESTED' }).returning())[0];
+    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: version.id, kind: parsed.kind, statement: parsed.statement, details: parsed.details, tags: parsed.tags, source: parsed.source, approvalStatus: 'SUGGESTED' }).returning())[0];
   });
   if (!fact) return fail(reply, 409, 'PROFILE_NOT_CONFIGURED');
   return reply.code(201).send(fact);
@@ -168,7 +170,7 @@ app.put('/api/v1/profile/facts/:id', async (request, reply) => {
     const created = (await tx.insert(profileVersions).values({ workspaceId: id, revision: latest.revision + 1, locale: latest.locale, profile: latest.profile }).returning())[0]!;
     const unchanged = facts.filter((fact) => fact.id !== factId);
     if (unchanged.length) await tx.insert(profileFacts).values(unchanged.map((fact) => ({ ...omit(fact, 'id'), profileVersionId: created.id })));
-    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, tags: parsed.tags, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }).returning())[0]!;
+    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, details: parsed.details, tags: parsed.tags, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }).returning())[0]!;
   });
   if (typeof result === 'string') return fail(reply, 409, result);
   await rescoreAfterChange(id);
@@ -309,11 +311,20 @@ app.post('/api/v1/boards/:id/refresh', async (request, reply) => {
 });
 
 app.get('/api/v1/jobs', async (request) => {
-  const query = request.query as { q?: string; availability?: string; shortlist?: string };
-  const filters = [eq(jobs.workspaceId, workspace(request))];
-  if (query.q) filters.push(ilike(jobs.title, `%${query.q.slice(0, 80).replace(/[\\%_]/g, (char) => `\\${char}`)}%`));
-  const rows = await db.select().from(jobs).where(and(...filters)).orderBy(desc(jobs.updatedAt)).limit(200);
-  return scoreJobs(db, workspace(request), rows);
+  const query = request.query as { q?: string; availability?: string; scope?: string; page?: string; paged?: string };
+  const id = workspace(request); const filters = [eq(jobs.workspaceId, id)];
+  if (query.q) { const pattern = `%${query.q.slice(0, 80).replace(/[\\%_]/g, (char) => `\\${char}`)}%`; filters.push(or(ilike(jobs.title, pattern), ilike(jobs.company, pattern))!); }
+  if (query.scope === 'favorites') filters.push(eq(jobs.shortlistDecision, 'SHORTLISTED'));
+  else if (query.scope === 'archived') filters.push(eq(jobs.shortlistDecision, 'ARCHIVED'));
+  else if (query.scope === 'active') filters.push(ne(jobs.shortlistDecision, 'ARCHIVED'));
+  if (['OPEN', 'POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN'].includes(query.availability ?? '')) filters.push(eq(jobs.availability, query.availability as 'OPEN' | 'POSSIBLY_CLOSED' | 'CLOSED' | 'UNKNOWN'));
+  const paged = query.paged === 'true'; const page = Math.max(1, Math.min(100000, Number.parseInt(query.page ?? '1', 10) || 1));
+  const [rows, count] = await Promise.all([
+    db.select().from(jobs).where(and(...filters)).orderBy(desc(jobs.updatedAt), desc(jobs.id)).limit(paged ? 24 : 200).offset(paged ? (page - 1) * 24 : 0),
+    paged ? db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...filters)) : Promise.resolve([]),
+  ]);
+  const items = await scoreJobs(db, id, rows);
+  return paged ? { items, total: count[0]?.total ?? 0, page, pageSize: 24 } : items;
 });
 app.get('/api/v1/jobs/:id', async (request, reply) => {
   const { id: jobId } = request.params as { id: string }; const id = workspace(request);
@@ -353,6 +364,8 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   return updated[0] ? updated[0] : fail(reply, 404, 'NOT_FOUND');
 });
 
+registerResumeJourney(app, workspace);
+
 app.get('/api/v1/applications', async (request) => db.select().from(applications).where(eq(applications.workspaceId, workspace(request))).orderBy(desc(applications.updatedAt)).limit(500));
 app.post('/api/v1/applications', async (request, reply) => {
   const parsed = parseBody(applicationSchema, request.body, reply); if (!parsed) return;
@@ -375,6 +388,11 @@ app.post('/api/v1/applications', async (request, reply) => {
     return { application, created: true };
   });
   return reply.code(result.created ? 201 : 200).send(result.application);
+});
+app.get('/api/v1/applications/:id', async (request, reply) => {
+  const id = workspace(request); const { id: applicationId } = request.params as { id: string };
+  const row = (await db.select().from(applications).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
+  return row ?? fail(reply, 404, 'NOT_FOUND');
 });
 app.get('/api/v1/applications/:id/events', async (request, reply) => {
   const { id: applicationId } = request.params as { id: string }; const id = workspace(request);
@@ -447,11 +465,13 @@ app.post('/api/v1/documents', async (request, reply) => {
   const computedRelativePath = relative(storageRoot, filePath);
   if (computedRelativePath.startsWith(`..${sep}`) || computedRelativePath === '..' || isAbsolute(computedRelativePath)) return fail(reply, 400, 'DOCUMENT_PATH_INVALID');
   const removeFile = () => unlink(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') app.log.warn({ err: error, documentId: docId }, 'Could not remove orphaned document file'); });
+  const pdfLocale = documentLanguage(body.locale, profile.locale);
+  const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: (fact.details ?? legacyEmployment(fact.kind, fact.statement)) ? entryStatement((fact.details ?? legacyEmployment(fact.kind, fact.statement))!, pdfLocale) : fact.statement, tags: fact.tags }));
   let rendered: { sha256: string; size: number };
-  try { rendered = await renderResume({ path: filePath, fullName: typeof identity?.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: typeof identity?.email === 'string' ? identity.email.slice(0, 320) : '', role, locale: documentLanguage(body.locale, profile.locale), facts: selected.map((fact) => ({ kind: fact.kind, statement: fact.statement, tags: fact.tags })) }); }
+  try { rendered = await renderResume({ path: filePath, fullName: typeof identity?.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: typeof identity?.email === 'string' ? identity.email.slice(0, 320) : '', role, locale: pdfLocale, facts: renderedFacts }); }
   catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
-  const claims = selected.map((fact) => ({ text: fact.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
+  const claims = selected.map((fact, index) => ({ text: renderedFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
   let row: typeof documentVersions.$inferSelect;
   try {
     row = await db.transaction(async (tx) => {
@@ -531,7 +551,7 @@ app.get('/api/v1/export', async (request, reply) => {
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
 
-app.get('/api/v1/capabilities', async () => ({ release: 'v0.3.1', available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
+app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill'], unavailable: ['ai-processing', 'external-submission', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: false }));
 
 app.setErrorHandler((error, _request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');

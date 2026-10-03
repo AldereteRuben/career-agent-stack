@@ -26,6 +26,7 @@ export const patchScenarios: Scenario[] = [
       assert.equal(after.reusableFactIds.length, 1); assert.equal(after.missingFactCount, 0); assert.equal(after.assistReady, false);
       assert.notEqual(after.reusableFactIds[0], fact.id, 'Copied facts have fresh row ids');
       await goTo(page, '/documents');
+      await page.getByRole('button', { name: /^CV guardados/ }).click();
       await page.locator('.document-card').filter({ hasText: doc.name }).getByRole('button', { name: 'Usar como base', exact: true }).click();
       assert.equal(await page.locator('.fact-pick input:checked').count(), 1);
       assert.equal(await page.locator('.notice[role=alert]').count(), 0);
@@ -67,7 +68,7 @@ export const patchScenarios: Scenario[] = [
     name: 'v031-drafts-survive-navigation-reload-and-row-switch',
     async run({ page, api, marker, artifacts }) {
       await goTo(page, '/jobs'); await setLocale(page, 'es');
-      await page.getByRole('button', { name: 'Añadir vacante', exact: true }).click();
+      await page.getByRole('button', { name: 'Añadir oferta', exact: true }).click();
       await page.getByLabel('Empresa', { exact: true }).fill(`Borrador ${marker}`);
       await goTo(page, '/'); await goTo(page, '/jobs');
       await page.getByRole('button', { name: 'Continuar borrador', exact: true }).click();
@@ -79,7 +80,7 @@ export const patchScenarios: Scenario[] = [
       await page.getByRole('button', { name: 'Descartar borrador', exact: true }).click();
       assert.equal(await page.getByLabel('Empresa', { exact: true }).inputValue(), '');
       await api.post('/jobs/import', { company: `Fixture ${marker}`, title: 'Designer', jobUrl: `https://example.com/jobs/${marker}/draft-regression` });
-      await page.getByRole('textbox', { name: 'Buscar vacantes', exact: true }).fill('zzzz-no-match');
+      await page.getByRole('textbox', { name: 'Buscar ofertas', exact: true }).fill('zzzz-no-match');
       await page.getByRole('button', { name: 'Buscar', exact: true }).click();
       await page.getByRole('heading', { name: 'No hay ofertas que coincidan', exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Añadir la primera', exact: true }).count(), 0);

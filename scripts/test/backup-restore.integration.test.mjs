@@ -193,7 +193,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal(manifest.documents.length, 3);
     assert.ok(![...entries.keys()].some((name) => name.includes('orphan')), 'unreferenced files are excluded');
     assert.equal(manifest.tables['public.boards'], 2);
-    assert.equal(manifest.migrations.length, 5);
+    assert.equal(manifest.migrations.length, 6);
     // A second backup reuses the same key file instead of writing another one.
     await delay(1100); // archive names have one-second resolution
     const second = await run('backup.mjs', ['--env-file', envFile, '--out-dir', backupDir]);
@@ -272,7 +272,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, `select count(*)::int as n from source_policy_reviews where permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from search_profiles where enabled')).rows[0].n, 0);
-    assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, 5);
+    assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, 6);
     assert.equal((await query(database, `select statement from profile_facts where kind = 'skill'`)).rows[0].statement, 'Builds fictional test fixtures');
 
     assert.equal((await query(database, 'select status from assisted_attempts')).rows[0].status, 'UNKNOWN');

@@ -121,7 +121,7 @@ export const matchReasons: LabelMap = {
 export const matchNotes: LabelMap = {
   NO_TARGET_TITLES: { es: 'Añade los puestos que buscas en tu perfil para comparar el título.', en: 'Add the roles you are looking for in your profile to compare the title.' },
   NO_APPROVED_FACTS: { es: 'Aún no tienes hechos aprobados; el encaje no puede usar tu experiencia.', en: 'You have no approved facts yet, so the match cannot use your experience.' },
-  NO_JOB_DESCRIPTION: { es: 'La vacante no tiene descripción, así que no hay requisitos que comparar.', en: 'The job has no description, so there are no requirements to compare.' },
+  NO_JOB_DESCRIPTION: { es: 'La oferta no tiene descripción, así que no hay requisitos que comparar.', en: 'The job has no description, so there are no requirements to compare.' },
   NO_KNOWN_SKILLS_IN_DESCRIPTION: { es: 'No reconocimos habilidades concretas en la descripción.', en: 'We did not recognise specific skills in the description.' },
   PROVISIONAL_LOW_EVIDENCE: { es: 'Resultado provisional: hay poca información para comparar.', en: 'Provisional result: there is little information to compare.' },
 };

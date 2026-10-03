@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { entryStatement, type StructuredEntry } from './entries.js';
 import { applicationState, boardPermission, factApproval, recruitmentStage, shortlistDecision } from './states.js';
 
 export const boardSchema = z.object({
@@ -15,16 +16,25 @@ export const employmentSchema = z.object({
   if (job.endMonth && job.endMonth < job.startMonth) ctx.addIssue({ code: 'custom', path: ['endMonth'], message: 'End month cannot precede start month.' });
 });
 
-export const factSchema = z.object({ kind: z.string().min(1).max(64), statement: z.string().trim().min(1).max(4000), tags: z.array(z.string().min(1).max(80)).max(40).default([]), source: z.enum(['USER_ENTERED', 'IMPORTED_SUGGESTION']).default('USER_ENTERED'), approvalStatus: z.enum(factApproval).default('SUGGESTED'), employment: employmentSchema.optional() }).strict()
-  .refine((fact) => !fact.employment || fact.kind === 'experience', { path: ['employment'], message: 'Employment fields are only supported for work experience.' })
+export const educationSchema = z.object({
+  qualification: z.string().trim().min(1).max(200), institution: z.string().trim().min(1).max(200),
+  startMonth: employmentMonth, endMonth: employmentMonth.optional(), current: z.boolean(), locale: z.enum(['es', 'en']),
+}).strict().superRefine((study, ctx) => {
+  if (!study.current && !study.endMonth) ctx.addIssue({ code: 'custom', path: ['endMonth'], message: 'End month is required.' });
+  if (study.current && study.endMonth) ctx.addIssue({ code: 'custom', path: ['endMonth'], message: 'An ongoing course cannot have an end month.' });
+  if (study.endMonth && study.endMonth < study.startMonth) ctx.addIssue({ code: 'custom', path: ['endMonth'], message: 'End month cannot precede start month.' });
+});
+
+export const factSchema = z.object({ kind: z.string().min(1).max(64), statement: z.string().trim().max(4000), tags: z.array(z.string().min(1).max(80)).max(40).default([]), source: z.enum(['USER_ENTERED', 'IMPORTED_SUGGESTION']).default('USER_ENTERED'), approvalStatus: z.enum(factApproval).default('SUGGESTED'), employment: employmentSchema.optional(), education: educationSchema.optional() }).strict()
+  .refine((fact) => !fact.employment || fact.kind === 'experience', { path: ['employment'], message: 'Employment fields require work experience.' })
+  .refine((fact) => !fact.education || fact.kind === 'education', { path: ['education'], message: 'Education fields require education.' })
+  .refine((fact) => Boolean(fact.statement || fact.employment || fact.education), { path: ['statement'], message: 'Describe this entry.' })
   .transform((fact) => {
-    if (!fact.employment) return fact;
-    const job = fact.employment;
-    const month = (value: string) => `${value.slice(5)}/${value.slice(0, 4)}`;
-    // Save one reviewable snapshot: dates and employer travel with the approved text into exports and PDFs.
-    const dates = `${month(job.startMonth)} - ${job.current ? (job.locale === 'es' ? 'Actualidad' : 'Present') : month(job.endMonth!)}`;
-    return { ...fact, statement: `${job.role} · ${job.company}\n${dates}\n${fact.statement}` };
-  }).refine((fact) => fact.statement.length <= 4000, { path: ['statement'], message: 'Work experience including dates must fit within 4000 characters.' });
+    let details: StructuredEntry | null = null;
+    if (fact.employment) { const job = fact.employment; details = { type: 'employment', title: job.role, organization: job.company, startMonth: job.startMonth, ...(job.endMonth ? { endMonth: job.endMonth } : {}), current: job.current, locale: job.locale, description: fact.statement }; }
+    if (fact.education) { const study = fact.education; details = { type: 'education', title: study.qualification, organization: study.institution, startMonth: study.startMonth, ...(study.endMonth ? { endMonth: study.endMonth } : {}), current: study.current, locale: study.locale, description: fact.statement }; }
+    return { ...fact, details, statement: details ? entryStatement(details) : fact.statement };
+  }).refine((fact) => fact.statement.length <= 4000, { path: ['statement'], message: 'The complete entry must fit within 4000 characters.' });
 
 export const answerSchema = z.object({ semanticKey: z.string().min(1).max(100), jurisdiction: z.string().length(2), questionScope: z.string().min(1).max(160), value: z.unknown().nullable(), strategy: z.enum(['EXACT_APPROVED', 'DERIVED_RULE', 'DRAFT_FOR_REVIEW', 'ASK_USER', 'LEAVE_OPTIONAL_BLANK']), approvalStatus: z.enum(['UNANSWERED', 'USER_APPROVED']).default('UNANSWERED'), reviewAfter: z.string().datetime().nullable().default(null), questionText: z.string().trim().max(500).nullable().default(null) }).strict();
 export const jobImportSchema = z.object({ title: z.string().min(1).max(300), company: z.string().min(1).max(200), location: z.string().max(300).nullable().default(null), description: z.string().max(50000).nullable().default(null), jobUrl: z.string().url(), applyUrl: z.string().url().nullable().default(null), sourcePostedAt: z.string().datetime().nullable().default(null) }).strict();

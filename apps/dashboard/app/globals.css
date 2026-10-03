@@ -1563,11 +1563,8 @@ main:focus {
 }
 
 .jobs-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  padding: 12px 13px;
+  display: block;
+  padding: 16px 20px;
   margin-bottom: 14px;
 }
 
@@ -3047,3 +3044,91 @@ main:focus {
 .fact-edit { flex-basis: 100%; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); }
 
 .draft-fields { display: contents; }
+
+.entry-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 18px; }
+
+.application-journey { padding: 20px; margin-block: 18px; background: var(--blue-pale); border: 1px solid var(--line); border-radius: var(--radius); }
+.application-journey > div { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.application-journey ol { list-style: none; padding: 0; margin: 16px 0 0; display: flex; gap: 16px; flex-wrap: wrap; }
+.application-journey li { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.application-journey li > span:first-child { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-strong); flex: 0 0 auto; }
+.application-journey li[aria-current] { color: var(--blue-dark); font-weight: 700; }
+.application-journey li[aria-current] > span:first-child { background: var(--blue); color: white; border-color: var(--blue); }
+.next-step-card, .application-resume { padding: 20px; margin-block: 18px; border: 1px solid var(--line); border-radius: var(--radius); }
+.next-step-card { border-color: var(--green); background: var(--green-pale); }
+.next-step-card p, .application-resume p { margin-block: 12px; }
+@media (max-width: 600px) { .application-journey ol { flex-direction: column; gap: 12px; } }
+
+.jobs-toolbar .search-form { max-width: none; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.jobs-toolbar .coverage-line { margin-top: 16px; flex-wrap: wrap; }
+.job-filters { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; padding-top: 12px; }
+.job-filters .field { flex: 1 1 200px; min-width: 0; }
+.pagination, .pdf-zoom { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; margin-block: 16px; }
+.pdf-viewport { overflow: auto; max-height: 80vh; overscroll-behavior: contain; border: 1px solid var(--line); }
+
+/* Shortcuts and focus destinations for long forms. */
+.profile-shortcuts { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-block: 20px; }
+.profile-shortcuts > a:not(.button) { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: 4px; }
+#profile-details, #experience, #saved-experience-heading, .fact-edit h3 { scroll-margin-top: 88px; }
+.fact-edit h3:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.selection-hint { color: var(--blue-dark); background: var(--blue-pale); padding: 12px; border-radius: var(--radius-sm); }
+.search-form:focus-within { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--radius-sm); }
+
+/* Release 0.4.1: readable help and focus targets below the fixed header. */
+.login-steps, .help-steps { padding-left: 1.4rem; line-height: 1.65; }
+.login-steps li + li, .help-steps li + li { margin-top: .6rem; }
+.login-help summary, .technical-detail summary { cursor: pointer; }
+.login-help strong, .help-steps strong { overflow-wrap: anywhere; }
+.focus-heading { scroll-margin-top: 6rem; }
+.focus-heading:focus-visible { outline: 2px solid var(--accent, #3659cb); outline-offset: 5px; }
+
+/* Shared identity: a clear wordmark and a progress symbol at small sizes. */
+.brand { gap: 10px; padding: 4px; }
+.brand-mark { width: 38px; height: 38px; border-radius: 12px; background: #b9dbc9; color: #203e34; }
+.brand-mark svg { width: 32px; height: 32px; }
+.brand-wordmark { white-space: nowrap; font-size: 19px; font-weight: 700; letter-spacing: -.035em; }
+.brand-wordmark > span { font-weight: 400; }
+.login-brand .brand-wordmark { font-size: 23px; }
+
+/* Balanced fields and compact collection layouts. */
+.field select:not([multiple]) {
+  appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23536578' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 18px;
+}
+.work-mode-field { padding-top: 8px; }
+.work-mode-field .tag-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.work-mode-field .button { flex: 0 1 auto; min-width: 108px; }
+.document-view-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.documents-layout { grid-template-columns: minmax(0, 1fr); }
+.document-builder[hidden], .document-history[hidden] { display: none; }
+.document-history .section-heading { margin-bottom: 0; }
+.document-history .document-card { padding: 18px; }
+.document-history .document-card-top { justify-content: flex-start; gap: 8px 16px; }
+.document-history .document-actions { gap: 8px; }
+.document-history .technical-detail { margin-top: 8px; }
+.board-collection { padding: 20px; min-width: 0; }
+.board-collection > .section-heading { align-items: flex-start; margin: 0; }
+.board-collection > .section-heading > .muted-label { flex-basis: 100%; }
+.board-collection > .jobs-empty { border: 0; box-shadow: none; margin: 0; padding: 0; }
+.board-collection > .jobs-empty .empty { padding: 28px 0; }
+.board-collection .refresh-policy { margin: 0; }
+@media (forced-colors: active) {
+  .field select:not([multiple]) { appearance: auto; background-image: none; }
+}
+@media (max-width: 600px) {
+  .work-mode-field .button { flex: 1 1 110px; }
+  .document-view-switch .button { flex: 1; }
+}
+
+.document-history { container: resume-library / inline-size; }
+@container resume-library (min-width: 720px) {
+  .document-card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
+  .document-card-top, .document-card-main > p, .document-card-main > .technical-detail { grid-column: 1; }
+  .document-card-main > .document-actions { grid-column: 2; grid-row: 1 / span 4; align-self: center; margin-top: 0; }
+}
+.add-board-aside .form-heading .step-badge { display: none; }
+.add-board-aside .form-heading h2 { font-size: var(--text-xl); }
