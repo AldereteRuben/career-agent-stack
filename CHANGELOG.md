@@ -14,7 +14,7 @@ Usability improvements in Spanish and English.
 - Updated shared branding, aligned profile controls and select arrows, full-width prepare/saved-resume views, compact saved resume actions and aligned company panels.
 - Generic installation wording with operating-system-specific shortcuts clearly labelled.
 
-Validation on macOS: production build, TypeScript, ESLint, 108 unit/integration/synthetic-browser checks, all 16 existing E2E scenarios (run b5df5b7b30ec), and a clean-install smoke including isolated access-code recovery. An additional ES/EN layout and focus scenario is included. Backup restoration still requires a terminal. Native Windows startup/shutdown is not supported by the Unix-based launcher; Windows/Linux CI covers build and domain tests, not full installation. No live workspace credentials were reset.
+Validation on macOS: production build, TypeScript, ESLint, 108 unit/integration/synthetic-browser checks, all 17 E2E scenarios (run 91c30fb02eb3), and a clean-install smoke including isolated access-code recovery. The ES/EN layout and focus scenario includes 1096px desktop and 390px mobile captures. GitHub CI passed Linux quality checks and Windows/Linux build plus domain-test jobs (run 37123530516). Backup restoration still requires a terminal. Native Windows startup/shutdown is not supported by the Unix-based launcher; Windows/Linux CI covers build and domain tests, not full installation. No live workspace credentials were reset.
 
 ## 0.4.0
 

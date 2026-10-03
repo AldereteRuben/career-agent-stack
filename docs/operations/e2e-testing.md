@@ -69,7 +69,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 ## Last local verification
 
-2026-10-03: all 10 scenarios passed in run `efafe351a5fa`, against a disposable database. The domain suite also passed all 18 tests. Lint and TypeScript checks passed. This covers the local workflows above; real public feeds were validated separately; see [source validation](source-validation.md).
+2026-10-03: v0.4.1 passed all 17 scenarios in run `91c30fb02eb3`, against a disposable database. This includes the profile-to-application journey, filters, resume drafts, preview focus, ES/EN copy and 390px/1096px layout checks. The 108 domain/source/backup/integration/assisted checks and clean-install smoke also passed. GitHub CI run `37123530516` passed Linux quality checks and Windows/Linux builds plus domain tests. Native Windows launch/stop and full Linux/WSL installation remain outside this validation.
 
 ## v0.3 assisted applications
 
