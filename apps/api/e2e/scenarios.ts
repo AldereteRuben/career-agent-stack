@@ -1,3 +1,5 @@
+import { v060Scenario } from './v060.js';
+import type { PgClient } from './isolation.js';
 import { v052Scenario } from './v052.js';
 import { v051First, v051Last } from './v051.js';
 import { v050Scenarios } from './v050.js';
@@ -26,6 +28,7 @@ export type ScenarioContext = {
   page: Page;
   context: BrowserContext;
   api: ApiClient;
+  db: PgClient;
   uiUrl: string;
   marker: string;
   token: () => Promise<string>;
@@ -423,4 +426,6 @@ scenarios.splice(1, 0, v051First);
 // v053 leaves current approved PDFs behind; v052's printed-name change then restores the guide state v051Last expects.
 scenarios.push(...v053Scenarios);
 scenarios.push(v052Scenario);
+// The final sign-out scenario must remain last.
+scenarios.push(v060Scenario);
 scenarios.push(v051Last);

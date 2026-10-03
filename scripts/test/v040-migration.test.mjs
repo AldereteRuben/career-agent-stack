@@ -8,7 +8,7 @@ const root = new URL('../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
 const adminUrl = process.env.CAREER_BACKUP_TEST_ADMIN_URL;
 
-test('0.3.1 data survives the 0.4 and 0.5.1 migrations and resume links enforce workspace ownership', { skip: !adminUrl }, async () => {
+test('0.3.1 data survives the migrations through 0.6.0 and resume links enforce workspace ownership', { skip: !adminUrl }, async () => {
   const name = `career_v040_${randomBytes(6).toString('hex')}`;
   const admin = new Client({ connectionString: adminUrl }); await admin.connect();
   let client;
@@ -41,6 +41,9 @@ test('0.3.1 data survives the 0.4 and 0.5.1 migrations and resume links enforce 
     assert.equal(entry.details, null); assert.equal(entry.approval_status, 'USER_APPROVED'); assert.match(entry.statement, /Original text$/);
     assert.equal((await client.query('SELECT document_id FROM applications WHERE id=$1', [application])).rows[0].document_id, null);
     await client.query('UPDATE applications SET document_id=$1 WHERE id=$2', [doc, application]);
+    await apply('0007_automatic_discovery');
+    assert.equal((await client.query('SELECT discovery_enabled FROM workspaces WHERE id=$1', [workspace])).rows[0].discovery_enabled, false);
+    assert.equal((await client.query('SELECT sha256 FROM document_versions WHERE id=$1', [doc])).rows[0].sha256, 'a'.repeat(64));
     const otherWorkspace = randomUUID(); const otherDoc = randomUUID();
     await client.query('INSERT INTO workspaces(id) VALUES ($1)', [otherWorkspace]);
     await client.query("INSERT INTO document_versions(id,workspace_id,name,revision,media_type,storage_path,sha256) VALUES ($1,$2,'Other',1,'application/pdf','other.pdf',$3)", [otherDoc, otherWorkspace, 'b'.repeat(64)]);

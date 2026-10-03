@@ -4,7 +4,7 @@ Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, va
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.5.3** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#053)
+**Versión actual: v0.6.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#060)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -28,6 +28,15 @@ No necesitas una suscripción de IA ni una clave de API. La app incluye **autoco
 Abre una oferta y elige **Preparar CV para esta vacante**. Los pasos **Tu perfil → Preparar CV → Revisar y solicitar** conservan la oferta mientras completas tus datos. Elige el idioma del PDF, revisa su vista previa con zoom y aprueba la versión. **Continuar con esta solicitud** guarda el CV elegido en ella; podrás descargarlo o cambiarlo antes del envío.
 
 En las ofertas puedes buscar por puesto o empresa, filtrar favoritas y disponibilidad, y archivar o restaurar las que quieras. El idioma del PDF cambia encabezados y etiquetas de fechas: tus descripciones no se traducen automáticamente.
+
+## Búsqueda automática de ofertas
+
+1. En **Empresas que sigo**, añade y confirma las empresas que quieres consultar.
+2. Pulsa **Activar búsqueda automática**. Empieza pausada, también al actualizar desde versiones anteriores a v0.6 o restaurar una copia.
+3. Mantén el servicio local encendido. Puedes cerrar la pestaña; apagar el servicio o suspender el equipo detiene las consultas hasta que vuelva a funcionar.
+4. En Inicio, abre **Revisar ofertas nuevas**. Se ordenan por encaje con tu perfil. Abre cada una y pulsa **Marcar como revisada** al terminar; seguirá disponible en Activas.
+
+Se consulta aproximadamente cada seis horas por empresa. El panel de actividad muestra resultados, errores y la próxima consulta. Puedes pausar cuando quieras; una consulta en curso puede terminar. Al reiniciar, se retoman las consultas vencidas una vez. Los fallos retrasan los reintentos y se respeta el plazo indicado por la fuente. Solo se consultan empresas confirmadas y no se envía tu CV. [Funcionamiento y límites](docs/operations/automatic-discovery.md).
 
 ## Solicitudes asistidas
 

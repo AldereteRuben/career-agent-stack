@@ -226,6 +226,7 @@ async function restore(options) {
     if (await hasTable(appClient, 'public.boards')) {
       sanitised.boardsDisabled = (await appClient.query('select count(*)::int as n from boards where enabled')).rows[0].n;
       sanitised.boardPermissionsReset = (await appClient.query(`select count(*)::int as n from boards where permission_status <> 'UNKNOWN'`)).rows[0].n;
+      if ((await appClient.query("select 1 from information_schema.columns where table_schema = 'public' and table_name = 'workspaces' and column_name = 'discovery_enabled'")).rowCount) await appClient.query('update workspaces set discovery_enabled = false');
       await appClient.query(`update boards set enabled = false, permission_status = 'UNKNOWN', updated_at = now() where enabled or permission_status <> 'UNKNOWN'`);
     }
     if (await hasTable(appClient, 'public.source_policy_reviews')) {
