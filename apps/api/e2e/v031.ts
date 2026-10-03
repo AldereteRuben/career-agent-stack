@@ -22,6 +22,10 @@ export const patchScenarios: Scenario[] = [
       const originalPdf = await api.bytes(`/api/v1/documents/${doc.id}/file`);
       profile = await api.get<Profile>('/profile');
       await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, preferences: { targetTitles: ['QA'], workModes: ['remote'] } } });
+      // Preferences are not printed: the approved PDF stays usable (v0.5.3). A printed identity change makes it stale.
+      assert.equal((await api.get<Document[]>('/documents')).find((item) => item.id === doc.id)!.assistReady, true, 'Preference-only save keeps the PDF usable');
+      profile = await api.get<Profile>('/profile');
+      await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Alex Fictional Renamed', email: 'alex@example.com' } } });
       const after = (await api.get<Document[]>('/documents')).find((item) => item.id === doc.id)!;
       assert.equal(after.reusableFactIds.length, 1); assert.equal(after.missingFactCount, 0); assert.equal(after.assistReady, false);
       assert.notEqual(after.reusableFactIds[0], fact.id, 'Copied facts have fresh row ids');

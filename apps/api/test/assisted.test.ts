@@ -163,4 +163,63 @@ describe('assisted routes with fictional data and a disposable database', { skip
     assert.ok(attempt.id);
   });
 
+  /** Mirrors PUT /api/v1/profile: a new revision with the given profile and exact copies (new ids) of every fact. */
+  async function revise(profile: object) {
+    const latest = (await sql.query('select id, revision from profile_versions where workspace_id=$1 order by revision desc limit 1', [workspace])).rows[0]!;
+    const next = randomUUID();
+    await sql.query('insert into profile_versions(id,workspace_id,revision,profile) values($1,$2,$3,$4)', [next, workspace, Number(latest.revision) + 1, JSON.stringify(profile)]);
+    await sql.query('insert into profile_facts(workspace_id,profile_version_id,kind,statement,details,tags,source,approval_status,approved_at,created_at) select workspace_id,$1,kind,statement,details,tags,source,approval_status,approved_at,created_at from profile_facts where profile_version_id=$2', [next, latest.id]);
+    return next;
+  }
+  const identity = { fullName: 'Fictional Candidate', email: 'candidate@example.test', country: 'ES' };
+  const readiness = async (application: string, doc: string) => ((await app.inject({ method: 'GET', url: `/api/v1/applications/${application}/assist` })).json() as { documents: Array<{ id: string; assistReady: boolean }> }).documents.find((row) => row.id === doc)?.assistReady;
+
+  test('preference-only and unprinted identity changes keep an approved PDF usable, linkable and consented', async () => {
+    const f = await fixture(); const pdf = await readFile(join(directory, `${f.doc}.pdf`));
+    const prepared = await prepare(f.application, f.doc);
+    await revise({ identity: { ...identity, country: 'MX' }, preferences: { targetTitles: ['Fictional QA'], workModes: ['remote'] } });
+    assert.equal(await readiness(f.application, f.doc), true);
+    const started = await start(prepared); assert.equal(started.statusCode, 200, started.body); assert.equal(started.json().status, 'REVIEW');
+    await resolveAttempt(prepared.id, 'NOT_SUBMITTED');
+    await revise({ identity, preferences: { targetTitles: [], workModes: [] } });
+    const linked = await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc });
+    assert.equal(linked.statusCode, 200, linked.body); assert.equal(linked.json().documentId, f.doc);
+    const again = await prepare(f.application, f.doc); assert.equal(again.plan.profileRevisionId, undefined); await post(`/assisted-attempts/${again.id}/cancel`, {});
+    assert.deepEqual(await readFile(join(directory, `${f.doc}.pdf`)), pdf, 'The stored PDF is never rewritten');
+    assert.equal((await sql.query('select sha256 from document_versions where id=$1', [f.doc])).rows[0]!.sha256, createHash('sha256').update(pdf).digest('hex'));
+  });
+  test('printed name or email changes block approval-based use until restored', async () => {
+    for (const changed of [{ ...identity, fullName: 'Renamed Candidate' }, { ...identity, email: 'renamed@example.test' }]) {
+      const f = await fixture(); const prepared = await prepare(f.application, f.doc);
+      await revise({ identity: changed });
+      assert.equal(await readiness(f.application, f.doc), false);
+      assert.equal((await start(prepared)).json().error, 'ASSIST_DOCUMENT_STALE');
+      await post(`/assisted-attempts/${prepared.id}/cancel`, {});
+      assert.equal((await post(`/applications/${f.application}/assist/prepare`, { documentId: f.doc })).json().error, 'ASSIST_DOCUMENT_STALE');
+      assert.equal((await post('/applications/with-resume', { applicationId: f.application, documentId: f.doc })).json().error, 'PROFILE_CHANGED_REGENERATE_DOCUMENT');
+      assert.equal((await sql.query('select document_id from applications where id=$1', [f.application])).rows[0]!.document_id, null);
+      await revise({ identity });
+      assert.equal(await readiness(f.application, f.doc), true, 'Printing the same identity again is equivalent');
+    }
+  });
+  test('edited, rejected, archived and evidence-free sources stay blocked across revisions', async () => {
+    const edited = await fixture(); const revision = await revise({ identity, preferences: { workModes: ['hybrid'] } });
+    await sql.query("update profile_facts set statement='Edited fictional experience', created_at=now() where profile_version_id=$1", [revision]);
+    assert.equal(await readiness(edited.application, edited.doc), false);
+    assert.equal((await post('/applications/with-resume', { applicationId: edited.application, documentId: edited.doc })).json().error, 'PROFILE_CHANGED_REGENERATE_DOCUMENT');
+    const rejected = await fixture(); const next = await revise({ identity });
+    await sql.query("update profile_facts set approval_status='REJECTED' where profile_version_id=$1", [next]);
+    assert.equal(await readiness(rejected.application, rejected.doc), false);
+    assert.equal((await post(`/applications/${rejected.application}/assist/prepare`, { documentId: rejected.doc })).json().error, 'ASSIST_DOCUMENT_STALE');
+    const changedDetails = await fixture(); const detailed = await revise({ identity });
+    await sql.query(`update profile_facts set details='{"type":"employment","title":"Other","organization":"Example","startMonth":"2020-01","current":true,"description":"Fictional experience","locale":"en"}'::jsonb where profile_version_id=$1`, [detailed]);
+    assert.equal(await readiness(changedDetails.application, changedDetails.doc), false, 'A different structured entry is not an exact copy');
+    const missing = await fixture(); await revise({ identity });
+    await sql.query("update document_versions set claims=$2 where id=$1", [missing.doc, JSON.stringify([{ text: 'Fictional experience', sourceFactIds: [], approvalStatus: 'USER_REVIEWED' }])]);
+    assert.equal(await readiness(missing.application, missing.doc), false);
+    const unknown = await fixture(); await revise({ identity });
+    await sql.query('update document_versions set profile_revision_id=null where id=$1', [unknown.doc]);
+    assert.equal(await readiness(unknown.application, unknown.doc), false, 'Without the generation revision the printed identity cannot be compared');
+  });
+
 });

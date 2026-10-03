@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { db, applications, applicationEvents, assistedAttempts, documentVersions, profileFacts } from '@career/db';
+import { db, applications, applicationEvents, assistedAttempts, documentVersions } from '@career/db';
 import { activeAssistedStates, assistedPrepareSchema, assistedConsentSchema, assistedHandoffSchema, assistedResolutionSchema, leverApplicationUrl, readIdentity, type AssistedPlan } from '@career/domain';
 import { latestProfile, lockKey, profileLockKey, type Tx } from './workspace-data.js';
 import { AssistedBrowser } from './assisted-browser.js';
@@ -38,15 +38,14 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     const identity = readIdentity(profile.profile);
     if (!identity.fullName || identity.fullName.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.email) || identity.email.length > 254) fail('ASSIST_PROFILE_REQUIRED');
     const document = (await tx.select().from(documentVersions).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, workspaceId))).limit(1))[0];
-    if (!document || document.approvalStatus !== 'USER_APPROVED' || document.profileRevisionId !== profile.id) return fail('ASSIST_DOCUMENT_REQUIRED');
-    const approved = await tx.select({ id: profileFacts.id }).from(profileFacts).where(and(eq(profileFacts.workspaceId, workspaceId), eq(profileFacts.profileVersionId, profile.id), eq(profileFacts.approvalStatus, 'USER_APPROVED')));
-    const ids = new Set(approved.map((fact) => fact.id));
-    if (!document.claims.length || document.claims.some((claim) => !claim.sourceFactIds.length || claim.sourceFactIds.some((id) => !ids.has(id)))) fail('ASSIST_DOCUMENT_STALE');
+    if (!document || document.approvalStatus !== 'USER_APPROVED') return fail('ASSIST_DOCUMENT_REQUIRED');
+    // Same printed-content check as approval and linking: the PDF must still show the current name, email and approved facts.
+    if (!(await documentReadiness(tx, workspaceId, [document]))[0]?.assistReady) fail('ASSIST_DOCUMENT_STALE');
     const root = resolve(config.FILES_LOCAL_PATH); const path = resolve(root, document.storagePath); const rel = relative(root, path);
     if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) fail('ASSIST_DOCUMENT_REQUIRED');
     const bytes = await readFile(path).catch(() => fail('ASSIST_DOCUMENT_REQUIRED'));
     if (createHash('sha256').update(bytes).digest('hex') !== document.sha256) fail('ASSIST_DOCUMENT_STALE');
-    return { adapter: 'lever-hosted-v1', url, profileRevisionId: profile.id, documentId, documentSha256: document.sha256, documentName: document.name, applicationVersion: application.version, fields: { name: identity.fullName, email: identity.email, phone, org } };
+    return { adapter: 'lever-hosted-v1', url, documentId, documentSha256: document.sha256, documentName: document.name, applicationVersion: application.version, fields: { name: identity.fullName, email: identity.email, phone, org } };
   }
   async function validate(tx: Tx, attempt: Attempt, workspaceId: string) {
     const current = await planFor(tx, attempt.applicationId, workspaceId, attempt.plan.documentId, attempt.plan.fields.phone, attempt.plan.fields.org);

@@ -680,6 +680,35 @@ main:focus {
   font-size: var(--text-xs);
 }
 
+/* The icon is the only flex sibling of .notice-content; everything else wraps inside that column. */
+.notice-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.notice-message > p {
+  margin: 0;
+}
+
+.notice-message > p + p {
+  margin-top: 8px;
+}
+
+.notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.notice-content .button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
 .notice-success {
   background: #eff8f1;
   border-color: #c4dfca;
@@ -3158,6 +3187,5 @@ main:focus {
 .profile-aside details > summary { cursor: pointer; }
 .document-actions { min-width: 0; }
 
-.resume-stale-notice { min-width: 0; }
-.resume-stale-notice p { margin: 0 0 12px; }
-.resume-stale-notice .button { white-space: normal; max-width: 100%; }
+/* v0.5.3: the resume linked to the application in context. */
+.linked-resume-label { display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--green); font-weight: 600; font-size: var(--text-sm); }

@@ -45,6 +45,12 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `source-review-and-partial-results` | Both confirmations required, partial results explained, source can be disabled; refresh response is mocked, all other requests use the isolated API. |
 | `export-download-and-error-recovery` | Failed export shows actionable feedback; retry downloads JSON with a matching checksum and disabled source permissions. |
 | `mobile-drawer-keyboard-and-focus` | At 390 px: the drawer opens with the keyboard and focus moves into it, Tab stays inside, Escape closes it and returns focus, navigating closes it, and there is no horizontal overflow. |
+| `v053-notice-actions-wrap-on-mobile` | At 320 px and 390 px, in ES and EN, job/application draft notices and the “sent” confirmation keep text at full width with actions below, inside the viewport, after the message in keyboard order. |
+| `v053-linked-resume-review-and-change` | Review or change resume opens the linked PDF (reload, Back, close keep context), another approved resume can be linked from the library, and the unlinked case opens the builder. |
+| `v053-home-pending-review-lands-on-saved-list` | Pending-detail links from Home land on the saved list with focus after loading (390 px and desktop); saves do not move scroll or focus; `#experience` stays the add form. |
+| `v053-preferences-keep-approved-resume-ready` | Preferences changed in the profile form keep approved and pending PDFs ready; a printed name change blocks approval, linking and assisted preparation until restored; the PDF bytes never change. |
+
+The dashboard copy runs the dashboard's PDF.js asset step itself, so a fresh checkout or worktree needs no prior dashboard build.
 
 Locators prefer roles, `href`s and form structure, and they match Spanish or English copy so that wording changes do not break them. Outcomes are checked against the isolated API.
 
@@ -69,7 +75,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 ## Last local verification
 
-2026-10-03: v0.4.1 passed all 17 scenarios in run `91c30fb02eb3`, against a disposable database. This includes the profile-to-application journey, filters, resume drafts, preview focus, ES/EN copy and 390px/1096px layout checks. The 108 domain/source/backup/integration/assisted checks and clean-install smoke also passed. GitHub CI run `37123530516` passed Linux quality checks and Windows/Linux builds plus domain tests. Native Windows launch/stop and full Linux/WSL installation remain outside this validation.
+2026-10-03: v0.5.3 passed all 26 scenarios in run `cf1b28916f06` against a disposable database, from a fresh worktree whose `.env` names only an empty local sentinel database. This includes notices at 320/390 px, linked-resume review, landing on saved profile details and preference-only profile saves, in ES/EN. The 123 domain/source/backup/integration/assisted checks, `pnpm run build` and the clean-install smoke also passed. Native Windows launch/stop and full Linux/WSL installation remain outside this validation.
 
 ## v0.3 assisted applications
 

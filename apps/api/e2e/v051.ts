@@ -82,8 +82,11 @@ export const v051Last: Scenario = {
       await page.screenshot({ animations: 'disabled', path: join(artifacts, `v051-settings-mobile-${locale}.png`) });
     }
     await page.setViewportSize({ width: 1440, height: 1000 }); await setLocale(page, 'es');
-    const latest = await api.get<Profile>('/profile');
+    let latest = await api.get<Profile>('/profile');
     await api.put('/profile', { expectedRevision: latest.revision, profile: latest.profile });
+    assert.equal((await api.get<Resume[]>('/documents')).find((row) => row.id === doc.id)?.reviewReady, true, 'An identical profile save keeps the PDF approvable');
+    latest = await api.get<Profile>('/profile');
+    await api.put('/profile', { expectedRevision: latest.revision, profile: { ...latest.profile, identity: { ...(latest.profile.identity as object), email: `changed-${marker}@example.com` } } });
     assert.equal((await api.get<Resume[]>('/documents')).find((row) => row.id === doc.id)?.reviewReady, false, 'Stale PDF is not offered as ready to approve');
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Salir', exact: true }).click();

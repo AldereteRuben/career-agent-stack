@@ -6,7 +6,7 @@
 // Before any browser write happens the stack proves it is wired to the disposable resources and refuses to
 // continue otherwise. The user's database, token file, files and the shared `.next` build are only read
 // (fingerprinted), never written.
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { copyFile, cp, lstat, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -204,6 +204,9 @@ export async function createIsolatedStack() {
     const runsRoot = resolve(projectRoot, 'output/e2e-runs');
     const uiDir = resolve(runsRoot, runId, 'dashboard');
     await cloneDashboard(resolve(projectRoot, 'apps/dashboard'), uiDir);
+    // `next dev` is started directly, so run the dashboard's PDF.js asset step here, inside the private copy.
+    // A fresh checkout or worktree has no public/pdf-assets yet; the source tree is never written.
+    execFileSync(process.execPath, ['prepare-pdf-assets.mjs'], { cwd: uiDir, stdio: 'ignore' });
     cleanup.push(async () => {
       const runDir = dirname(uiDir);
       if (!runDir.startsWith(`${runsRoot}${sep}`) || !runDir.endsWith(runId)) throw new Error('Refusing to remove an unexpected directory');

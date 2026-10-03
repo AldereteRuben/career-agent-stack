@@ -33,6 +33,8 @@ const leavingLink = (event: MouseEvent): HTMLAnchorElement | null => {
   if (url.origin !== window.location.origin || (url.pathname === window.location.pathname && url.search === window.location.search)) return null;
   return anchor;
 };
+/** Fragment targets on this page that are rendered only after the profile loads. */
+const profileSections = new Set(['profile-details', 'experience', 'saved-experience-heading']);
 const answerText = (value: unknown) => typeof value === 'string' ? value : value === null || value === undefined ? '' : JSON.stringify(value);
 
 function CountryOptions({ current }: { current: string }) {
@@ -78,6 +80,21 @@ function ProfileView() {
     } catch (err) { setLoadState((current) => current === 'ready' ? 'ready' : 'error'); setError(errorMessage(err)); }
   }, []);
   useEffect(() => { void load({ replaceForm: true }); }, [load]);
+  // Links such as /profile#saved-experience-heading arrive before the sections exist. Land on the requested section once,
+  // when the first load has rendered it; later reloads after saves never move the reader's position or focus.
+  const landed = useRef(false);
+  useEffect(() => {
+    if (loadState !== 'ready' || landed.current) return;
+    landed.current = true;
+    const id = window.location.hash.slice(1);
+    if (!profileSections.has(id)) return;
+    const target = document.getElementById(id);
+    // Respect a reader who already moved focus into the page while it loaded.
+    const active = document.activeElement;
+    if (!target || (active && active !== document.body && active.id !== 'main-content')) return;
+    target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    target.focus({ preventScroll: true });
+  }, [loadState]);
   const leaveConfirmation = c('Tienes cambios sin guardar en tu perfil. ¿Salir y descartarlos?', 'You have unsaved changes on your profile. Leave and discard them?');
   const hasDrafts = dirty || editing !== null || entryDirty || Boolean(question.trim() || answerValue.trim());
   useEffect(() => {
@@ -156,9 +173,9 @@ function ProfileView() {
       <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a>
       {canPrepareCv && <Link className="button button-primary" href={resumeHref}>{c('Continuar con mi CV', 'Continue to my resume')}</Link>}
     </nav>}
-    {error && <Notice tone="error">{error}{conflict && <> <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button></>}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    {error && <Notice tone="error" actions={conflict && <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button>}>{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando tu perfil…', 'Loading your profile…')}</Notice>}
-    {loadState === 'error' && <Notice tone="warning">{c('No pudimos cargar tu perfil.', 'We could not load your profile.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load({ replaceForm: true }); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
+    {loadState === 'error' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load({ replaceForm: true }); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar tu perfil.', 'We could not load your profile.')}</Notice>}
     <div className="profile-layout"><div className="profile-main">
       <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2 id="profile-details" tabIndex={-1}>{c('Tus datos para el CV', 'Your resume details')}</h2><p>{c('El nombre y el correo aparecerán en los nuevos CV que generes.', 'Your name and email will appear on new resumes you generate.')}</p></div></div><Tag tone={dirty ? 'amber' : 'neutral'}>{dirty ? c('Cambios sin guardar', 'Unsaved changes') : c('Sin cambios pendientes', 'No unsaved changes')}</Tag></div>
         <form onSubmit={(event) => void saveProfile(event)} className="form-stack" aria-busy={saving('profile')}>

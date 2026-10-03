@@ -30,7 +30,7 @@ export function BackupPanel() {
   };
   return <div className="form-stack backup-panel">
     <p>{c('Crea una copia de tus datos y PDF sin abrir la terminal. Puedes seguir usando tu espacio mientras se prepara.', 'Back up your data and PDFs without opening a terminal. You can keep using your workspace while it is prepared.')}</p>
-    {error && <Notice tone="error">{error}<Button variant="quiet" onClick={() => void refresh()}>{c('Reintentar', 'Try again')}</Button></Notice>}
+    {error && <Notice tone="error" actions={<Button variant="quiet" onClick={() => void refresh()}>{c('Reintentar', 'Try again')}</Button>}>{error}</Notice>}
     <div role="status" aria-live="polite">
       {job.state === 'running' && <p>{c('Preparando y comprobando la copia… Puedes volver a esta página en unos momentos.', 'Preparing and verifying your backup… You can return to this page in a few moments.')}</p>}
       {job.state === 'failed' && <Notice tone="error">{c('No se pudo crear la copia. Tus datos siguen intactos. Inténtalo otra vez; si se repite, consulta las opciones de terminal de abajo y comprueba PostgreSQL y el espacio disponible.', 'The backup could not be created. Your data is unchanged. Try again; if it keeps failing, use the terminal options below and check PostgreSQL and available disk space.')}</Notice>}

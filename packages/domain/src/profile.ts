@@ -22,6 +22,16 @@ export function readIdentity(profile: Record<string, unknown>): ProfileIdentity 
   return { fullName: text(identity.fullName), email: text(identity.email), country: text(identity.country) };
 }
 
+/**
+ * Identity exactly as the resume generator receives it: the untrimmed name and email, truncated like the renderer input.
+ * Country, locale and job preferences are never printed, so they are not part of it.
+ */
+export type PrintedIdentity = { fullName: string; email: string };
+export function printedResumeIdentity(profile: Record<string, unknown>): PrintedIdentity {
+  const identity = record(profile.identity);
+  return { fullName: typeof identity.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: typeof identity.email === 'string' ? identity.email.slice(0, 320) : '' };
+}
+
 export const profileCompletionChecks = ['fullName', 'email', 'country', 'targetTitles', 'workModes', 'approvedFact'] as const;
 export type ProfileCompletionCheck = (typeof profileCompletionChecks)[number];
 
