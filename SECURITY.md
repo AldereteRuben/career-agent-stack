@@ -22,4 +22,8 @@ Operational backups include a database dump and generated documents. The archive
 
 ## Reporting
 
-This private repository does not have a public security disclosure process. For private development, report issues directly to the project owner and include sanitized reproduction steps only.
+Do not report vulnerabilities, tokens or personal information in public issues or pull requests. While this repository remains private, contact the owner through your existing private collaboration channel and include sanitized reproduction steps only.
+
+When the repository is made public and private vulnerability reporting is enabled, use [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new). This endpoint is not currently enabled for the private repository. If the button is unavailable, open an issue only asking the maintainer to enable a private reporting channel; include no vulnerability details. No response-time guarantee is offered.
+
+Reports should describe the affected version, impact and a minimal reproduction using fictional data. Do not access someone else's workspace or upload backups as proof.

@@ -145,6 +145,16 @@ For provider compatibility and the real public feeds checked, see [source valida
 
 See [Security](SECURITY.md), [third-party notices](THIRD_PARTY_NOTICES.md), and the [implementation brief](docs/implementation-brief.md). The brief describes broader product intent; the capabilities and limitations above describe this release.
 
+## Community and contributions
+
+Bug reports, feature ideas, translations and pull requests are welcome in English or Spanish. See [Contributing](CONTRIBUTING.md), [community conduct](CODE_OF_CONDUCT.md) and [security reporting](SECURITY.md).
+
 ## License
 
-No license has been selected. This repository does not currently grant an open-source license.
+Free for noncommercial use under [PolyForm Noncommercial 1.0.0](LICENSE), with an [additional permission for your own job search](LICENSE-PERSONAL-USE.md), including seeking paid employment. You may clone, adapt and share the project for permitted purposes while retaining the license and notices. Commercial sale, paid hosting and reuse in commercial products or business operations are not licensed, subject to the standard license's express permissions for noncommercial organizations. Those permissions include specified charitable, educational and government institutions regardless of their funding.
+
+This is **source-available software with noncommercial restrictions**. It is not OSI-approved open source. A license provides legal terms; it cannot technically prevent copying or guarantee enforcement. Your CVs and other user-created career documents remain yours; this software license does not license your personal data.
+
+Third-party components retain their [own licenses and notices](THIRD_PARTY_NOTICES.md). These terms accompany the current licensed source tree; earlier release archives did not include them. Use the licensed revision of `main` until a new licensed release is tagged.
+
+[Repository publication controls](docs/operations/public-repository.md).

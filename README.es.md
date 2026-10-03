@@ -145,6 +145,16 @@ Consulta los proveedores y las fuentes públicas reales comprobadas en la [valid
 
 Más información: [seguridad](SECURITY.md), [componentes de terceros](THIRD_PARTY_NOTICES.md) y [especificación](docs/implementation-brief.md). La especificación describe una intención de producto más amplia; las funciones y límites de esta página corresponden a la versión actual.
 
+## Comunidad y contribuciones
+
+Aceptamos issues, propuestas, traducciones y pull requests en español o inglés. Consulta [cómo contribuir](CONTRIBUTING.md), [convivencia](CODE_OF_CONDUCT.md) y [reportes de seguridad](SECURITY.md).
+
 ## Licencia
 
-Todavía no se ha elegido una licencia. El repositorio no concede actualmente una licencia de código abierto.
+Uso no comercial gratuito bajo [PolyForm Noncommercial 1.0.0](LICENSE), con un [permiso adicional para tu propia búsqueda de empleo](LICENSE-PERSONAL-USE.md), aunque busques empleo remunerado. Puedes clonar, adaptar y compartir el proyecto para los fines permitidos conservando la licencia y los avisos. La venta, el alojamiento de pago y su reutilización en productos u operaciones comerciales no están autorizados, con las excepciones expresas de la licencia estándar para organizaciones no comerciales. Estas incluyen determinadas instituciones benéficas, educativas y gubernamentales independientemente de su financiación.
+
+Es **código disponible con restricciones no comerciales** (*source available*). No es open source aprobado por la OSI. La licencia establece condiciones legales; no impide técnicamente las copias ni garantiza que puedan perseguirse todas las infracciones. Tus CV y demás documentos profesionales siguen siendo tuyos; esta licencia de software no concede derechos sobre tus datos personales.
+
+Los componentes de terceros conservan sus [propias licencias y avisos](THIRD_PARTY_NOTICES.md). Estos términos acompañan al código actual; los archivos de versiones anteriores no los incluían. Usa la revisión licenciada de `main` hasta que se publique otra versión con licencia.
+
+[Preparación del repositorio público](docs/operations/public-repository.md).
