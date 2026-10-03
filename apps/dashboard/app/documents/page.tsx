@@ -9,15 +9,16 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Field, Icon, Notice, SelectField, Tag } from '@/components/ui';
-import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
+import { api, ApiError, errorMessage } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
 
 type Fact = { id: string; kind: string; statement: string; tags: string[]; approvalStatus: string };
 type Profile = { facts: Fact[]; profile: { identity?: { fullName?: string; email?: string } } };
-type Document = { jobId: string | null; reusableFactIds: string[]; missingFactCount: number; assistReady: boolean; id: string; name: string; revision: number; sha256: string; mediaType: string; approvalStatus: string; createdAt: string; jobSnapshotId: string | null; claims: Array<{ text: string; sourceFactIds: string[] }> };
+type Document = { language: 'en' | 'es' | null; jobId: string | null; reusableFactIds: string[]; missingFactCount: number; assistReady: boolean; id: string; name: string; revision: number; sha256: string; mediaType: string; approvalStatus: string; createdAt: string; jobSnapshotId: string | null; claims: Array<{ text: string; sourceFactIds: string[] }> };
 type Job = { id: string; title: string; company: string };
 type Preview = { id: string; url: string | null; state: 'loading' | 'ready' | 'error'; error?: string };
 
+const resumeTime = (value: string, locale: string) => new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 const fileUrl = (id: string) => `/api/v1/documents/${id}/file`;
 
 function DocumentsView() {
@@ -30,11 +31,21 @@ function DocumentsView() {
   const pdfLocale = draft.value.language === 'en' || draft.value.language === 'es' ? draft.value.language : locale;
   const setPdfLanguage = (language: string) => draft.update((value) => ({ ...value, language }));
   const [approvedNext, setApprovedNext] = useState('');
-  const [showHistory, setShowHistory] = useState(false);
-  const previewFromHistory = useRef(false);
+  const showHistory = searchParams.get('view') === 'saved';
+  const routeDocumentId = searchParams.get('document') ?? '';
+  const fromHistory = searchParams.get('from') === 'saved';
+  const navigateView = (view: 'saved' | 'prepare' | 'review', id = '', from = '') => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('view', view);
+    if (id) params.set('document', id); else params.delete('document');
+    if (from) params.set('from', from); else params.delete('from');
+    router.push(`${pathname}?${params}`, { scroll: false });
+  };
+  const setShowHistory = (saved: boolean) => navigateView(saved ? 'saved' : 'prepare');
   const [identityReady, setIdentityReady] = useState(false);
   const previewHeading = useRef<HTMLHeadingElement>(null);
   const builderHeading = useRef<HTMLHeadingElement>(null);
+  const historyHeading = useRef<HTMLHeadingElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const restoreFocus = useRef(false);
   const profileParams = new URLSearchParams(); if (urlJobId) profileParams.set('jobId', urlJobId); if (applicationId) profileParams.set('applicationId', applicationId);
@@ -79,7 +90,7 @@ function DocumentsView() {
     if (previewUrl.current) { URL.revokeObjectURL(previewUrl.current); previewUrl.current = null; }
     return ++previewRequest.current;
   }, []);
-  const closePreview = () => { setShowHistory(previewFromHistory.current); restoreFocus.current = true; resetPreview(); setPreview(null); setReviewed(false); };
+  const closePreview = () => { restoreFocus.current = true; setShowHistory(fromHistory); };
   const previewId = preview?.id;
   useEffect(() => {
     if (previewId && !showHistory) {
@@ -87,7 +98,7 @@ function DocumentsView() {
       previewHeading.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
     } else if (!previewId && restoreFocus.current) {
       restoreFocus.current = false;
-      const target = returnFocus.current?.isConnected ? returnFocus.current : builderHeading.current;
+      const target = returnFocus.current?.isConnected && returnFocus.current.getClientRects().length ? returnFocus.current : showHistory ? historyHeading.current : builderHeading.current;
       target?.focus();
     }
   }, [previewId, showHistory]);
@@ -101,9 +112,11 @@ function DocumentsView() {
   const toggle = (id: string) => setSelected(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
 
   /** Loads the PDF through the authenticated API and shows it inline, so reviewing does not require a separate download. */
-  const openPreview = async (id: string) => {
-    if (!preview) { previewFromHistory.current = showHistory; if (document.activeElement instanceof HTMLElement) returnFocus.current = document.activeElement; }
-    setShowHistory(false);
+  const openPreview = (id: string) => {
+    if (document.activeElement instanceof HTMLElement) returnFocus.current = document.activeElement;
+    navigateView('review', id, showHistory ? 'saved' : 'prepare');
+  };
+  const fetchPreview = useCallback(async (id: string) => {
     const ticket = resetPreview(); const controller = new AbortController(); previewAbort.current = controller;
     setReviewed(false); setPreview({ id, url: null, state: 'loading' });
     try {
@@ -120,7 +133,12 @@ function DocumentsView() {
       const text = err instanceof ApiError ? localizedError(err.code, locale) : errorMessage(err);
       setPreview({ id, url: null, state: 'error', error: text });
     }
-  };
+  }, [resetPreview, locale]);
+  useEffect(() => {
+    if (routeDocumentId && !showHistory) void fetchPreview(routeDocumentId);
+    else { resetPreview(); setPreview(null); setReviewed(false); }
+    return () => { resetPreview(); };
+  }, [routeDocumentId, showHistory, fetchPreview, resetPreview]);
 
   const generate = async (event: FormEvent) => {
     event.preventDefault(); setBusy('generate'); setError(''); setMessage('');
@@ -160,7 +178,7 @@ function DocumentsView() {
   /** Reuses the facts of an older version (keeping only those still approved) so it can be regenerated after profile changes. */
   const reuse = (doc: Document) => {
     const ids = (doc.reusableFactIds ?? doc.claims.flatMap((claim) => claim.sourceFactIds)).filter((id) => facts.some((fact) => fact.id === id));
-    setError(''); setMessage(''); setSelected(ids); setName(doc.name); closePreview(); setShowHistory(false); returnFocus.current = builderHeading.current;
+    setError(''); setMessage(''); setSelected(ids); setName(doc.name); if (doc.language) setPdfLanguage(doc.language); restoreFocus.current = true; returnFocus.current = builderHeading.current; setShowHistory(false);
     if (!ids.length) setError(c('Los textos de este CV se editaron o archivaron. Confirma y selecciona los datos actuales para crear una nueva versión.', 'The entries in this resume were edited or archived. Confirm and select your current details to create a new version.'));
     else if (doc.missingFactCount) setError(c('Recuperamos parte de la selección. Algunos textos se editaron o archivaron; revisa y añade los datos actuales antes de generar.', 'Part of the selection was recovered. Some entries were edited or archived; review and add your current details before generating.'));
     else setMessage(c('Selección recuperada. Revisa los datos y genera una nueva versión con tu perfil actual.', 'Selection restored. Review the details and generate a new version with your current profile.'));
@@ -175,21 +193,21 @@ function DocumentsView() {
     {loadState === 'loading' && <Notice>{c('Cargando datos de tu experiencia y documentos…', 'Loading profile details and documents…')}</Notice>}
     {loadState === 'error' && <Notice tone="warning">{c('No pudimos cargar tus datos.', 'We could not load your data.')} <Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button></Notice>}
     <div className="document-view-switch" role="group" aria-label={c('Vista de mis CV', 'Resume view')}>
-      <Button variant={!showHistory ? 'primary' : 'secondary'} aria-pressed={!showHistory} aria-controls="resume-builder" onClick={() => setShowHistory(false)}>{preview ? c('Revisar CV', 'Review resume') : c('Preparar CV', 'Prepare resume')}</Button>
+      <Button variant={!showHistory ? 'primary' : 'secondary'} aria-pressed={!showHistory} aria-controls="resume-builder" onClick={() => { if (!preview) setShowHistory(false); }}>{preview ? c('Revisar CV', 'Review resume') : c('Preparar CV', 'Prepare resume')}</Button>
       <Button variant={showHistory ? 'primary' : 'secondary'} aria-pressed={showHistory} aria-controls="resume-history" onClick={() => setShowHistory(true)}>{c('CV guardados', 'Saved resumes')}{loadState === 'ready' ? ` (${documents.length})` : ''}</Button>
     </div>
     <div className="documents-layout"><div id="resume-builder" className="document-builder" hidden={showHistory}>
       {preview ? <Card className="form-card"><div className="form-heading"><div><span className="step-badge">02</span><div><h2 ref={previewHeading} tabIndex={-1} className="focus-heading">{c('Revisa esta versión', 'Review this version')}</h2><p>{reviewing ? `${reviewing.name} · ${c('Rev.', 'Rev.')} ${reviewing.revision}` : ''}</p></div></div><Tag tone="amber">{reviewing ? labelFor.documentApproval(reviewing.approvalStatus, locale).toUpperCase() : ''}</Tag></div>
         {preview.state === 'loading' && <Notice>{c('Abriendo el PDF…', 'Opening the PDF…')}</Notice>}
-        {preview.state === 'error' && <Notice tone="error">{preview.error} <Button variant="quiet" onClick={() => void openPreview(preview.id)}>{c('Reintentar', 'Try again')}</Button></Notice>}
+        {preview.state === 'error' && <Notice tone="error">{preview.error} <Button variant="quiet" onClick={() => void fetchPreview(preview.id)}>{c('Reintentar', 'Try again')}</Button></Notice>}
         {preview.state === 'ready' && preview.url && <PdfPreview key={preview.id} url={preview.url}/>}
         <div className="form-stack">
           <a className="button button-secondary" href={fileUrl(preview.id)}>{c('Descargar PDF', 'Download PDF')} <Icon name="download" size={14}/></a>
           {reviewing?.approvalStatus === 'PENDING_REVIEW' && <>
             <label className="checkbox-line"><input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)}/><span>{c('He leído el documento completo y cada afirmación es correcta.', 'I read the whole document and every statement is accurate.')}<small>{c('Revisa fechas, cifras, títulos y credenciales.', 'Check dates, numbers, titles, and credentials.')}</small></span></label>
-            <div className="form-submit"><Button disabled={!reviewed || busy !== null} onClick={() => void approve(reviewing)}>{busy === `approve:${reviewing.id}` ? c('Guardando…', 'Saving…') : c('Aprobar esta versión', 'Approve this version')}</Button><Button variant="quiet" disabled={busy !== null} onClick={closePreview}>{c('Cambiar contenido del CV', 'Change resume content')}</Button></div>
+            <div className="form-submit"><Button disabled={!reviewed || busy !== null} onClick={() => void approve(reviewing)}>{busy === `approve:${reviewing.id}` ? c('Guardando…', 'Saving…') : c('Aprobar esta versión', 'Approve this version')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => reuse(reviewing)}>{c('Cambiar contenido del CV', 'Change resume content')}</Button></div>
           </>}
-          {reviewing && reviewing.approvalStatus !== 'PENDING_REVIEW' && <Button variant="quiet" onClick={closePreview}>{c('Cerrar vista previa', 'Close preview')}</Button>}
+          <Button variant="quiet" onClick={closePreview}>{c('Cerrar vista previa', 'Close preview')}</Button>
         </div>
       </Card> : loadState === 'ready' && (!identityReady || !facts.length) ? <Card className="form-card"><Empty title={c('Primero, prepara tu perfil', 'First, prepare your profile')} detail={!identityReady ? c('Guarda tu nombre y correo. Después añade y confirma al menos una experiencia para incluirla en tu CV.', 'Save your name and email. Then add and confirm at least one experience to include in your resume.') : c('Añade y confirma al menos una experiencia. Después podrás elegir el contenido y generar tu PDF.', 'Add and confirm at least one experience. Then you can choose the content and generate your PDF.')} action={<Link href={profileHref} className="button button-primary">{c('Continuar con mi perfil', 'Continue with my profile')}</Link>}/></Card> : <Card className="form-card"><div className="form-heading"><div><span className="step-badge">01</span><div><h2 ref={builderHeading} tabIndex={-1} className="focus-heading">{c('Preparar una versión', 'Prepare a version')}</h2><p>{c('Usamos los datos que confirmaste, sin añadir ni reescribir logros.', 'We use your profile details as written: nothing is rewritten or added.')}</p></div></div><Tag tone="blue">PDF</Tag></div>
         <form onSubmit={(event) => void generate(event)} className="form-stack" aria-busy={busy === 'generate'}><fieldset className="entry-fields" disabled={busy !== null || !draft.ready || loadState !== 'ready'}>
@@ -215,15 +233,15 @@ function DocumentsView() {
       </Card>}
       <Card className="renderer-note"><details><summary>{c('Sobre el formato y los PDF anteriores', 'About the layout and earlier PDFs')}</summary><p>{c('Diseño de una columna, nombre y correo destacados, secciones claras y páginas numeradas. Si un PDF anterior incluye la palabra «borrador», elige Usar como base y genera una nueva versión para quitarla. Aprobar o descargar el PDF anterior no cambia su contenido.', 'A single-column layout with prominent name and email, clear sections, and page numbers. If an older PDF includes a draft label, choose Use as starting point and generate a new version to remove it. Approving or downloading the older PDF does not change its contents.')}</p></details></Card>
     </div>
-      <aside id="resume-history" className="document-history" hidden={!showHistory}><div className="section-heading compact"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('CV GUARDADOS', 'SAVED RESUMES')}</div><h2>{c('Tus documentos', 'Your documents')}</h2></div></div>
+      <aside id="resume-history" className="document-history" hidden={!showHistory}><div className="section-heading compact"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('CV GUARDADOS', 'SAVED RESUMES')}</div><h2 ref={historyHeading} tabIndex={-1} className="focus-heading">{c('Tus documentos', 'Your documents')}</h2></div></div>
         {documents.length ? documents.map((doc) => <Card className="document-card" key={doc.id}><div className="document-icon"><Icon name="file" size={19}/></div><div className="document-card-main">
-          <div className="document-card-top"><strong>{doc.name}</strong><Tag tone={doc.approvalStatus === 'USER_APPROVED' ? 'green' : doc.approvalStatus === 'PENDING_REVIEW' ? 'amber' : 'neutral'}>{labelFor.documentApproval(doc.approvalStatus, locale).toUpperCase()}</Tag></div>
+          <div className="document-card-top"><strong id={`resume-title-${doc.id}`}>{doc.name}</strong><Tag tone={doc.approvalStatus === 'USER_APPROVED' ? 'green' : doc.approvalStatus === 'PENDING_REVIEW' ? 'amber' : 'neutral'}>{labelFor.documentApproval(doc.approvalStatus, locale).toUpperCase()}</Tag></div>
           {doc.approvalStatus === 'USER_APPROVED' && doc.assistReady === false && <p>{c('Tu perfil cambió. Usa este CV como base y aprueba la nueva versión para preparar una solicitud asistida.', 'Your profile changed. Use this resume as a starting point and approve the new version to prepare an assisted application.')}</p>}
-          <p>{c('Rev.', 'Rev.')} {doc.revision} · {formatDate(doc.createdAt)} · {doc.claims.length} {doc.claims.length === 1 ? c('dato', 'detail') : c('datos de tu experiencia', 'profile details')} · {doc.jobSnapshotId ? c('Para una oferta', 'For a job') : c('Base', 'Base')}</p>
+          <p>{c('Rev.', 'Rev.')} {doc.revision} · {resumeTime(doc.createdAt, locale)} · {doc.claims.length} {doc.claims.length === 1 ? c('dato', 'detail') : c('datos de tu experiencia', 'profile details')} · {doc.language === 'en' ? 'English' : doc.language === 'es' ? 'Español' : c('Idioma sin registrar', 'Language not recorded')} · {jobs.find((item) => item.id === doc.jobId)?.company ?? (doc.jobSnapshotId ? c('Para una oferta', 'For a job') : c('CV general', 'General resume'))}</p>
           <details className="technical-detail"><summary>{c('Detalles del archivo', 'File details')}</summary><small className="hash-short">SHA-256 · {doc.sha256}</small></details>
-          <div className="document-actions">
+          <div className="document-actions" role="group" aria-label={`${doc.name} · ${c('versión', 'version')} ${doc.revision}`}>
             <Button variant={doc.approvalStatus === 'PENDING_REVIEW' ? 'secondary' : 'quiet'} disabled={busy !== null} onClick={() => void openPreview(doc.id)}>{doc.approvalStatus === 'PENDING_REVIEW' ? c('Revisar y aprobar', 'Review and approve') : c('Ver', 'View')}</Button>
-            <a className="button button-quiet" href={fileUrl(doc.id)}>{c('Descargar', 'Download')} <Icon name="download" size={14}/></a>
+            <a className="button button-quiet" href={fileUrl(doc.id)}>{c('Descargar', 'Download')}<span className="sr-only"> {doc.name} · {doc.revision}</span> <Icon name="download" size={14}/></a>
             {doc.assistReady && (jobId || applicationId) && (!doc.jobId || doc.jobId === jobId) && <Button disabled={busy !== null} onClick={() => void useResume(doc)}>{c('Usar en esta solicitud', 'Use for this application')}</Button>}
             <Button variant="quiet" disabled={busy !== null} onClick={() => reuse(doc)}>{c('Usar como base', 'Use as starting point')}</Button>
           </div>

@@ -288,8 +288,9 @@ export function LanguageToggle({ className = '' }: { className?: string }) {
 
 export function localizedError(code: string, locale: Locale) {
   const spanish: Record<string, string> = {
+    BACKUP_IN_PROGRESS: 'Ya hay una copia en preparación. Espera a que termine.', BACKUP_NOT_AVAILABLE: 'Esta descarga ya no está disponible. Crea otra copia desde Ajustes.',
     INVALID_INPUT: 'Revisa los campos e inténtalo de nuevo.', INVALID_PROFILE: 'No se pudo guardar el perfil. Revisa los datos.', SESSION_REQUIRED: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
-    INVALID_SETUP_TOKEN: 'El token no es válido. Comprueba el token local e inténtalo de nuevo.', SETUP_TOKEN_ALREADY_USED: 'Este token ya se utilizó. Genera uno nuevo desde el proyecto local.',
+    INVALID_SETUP_TOKEN: 'El código no es válido. Comprueba que lo copiaste completo e inténtalo de nuevo.', SETUP_TOKEN_ALREADY_USED: 'Este código ya se utilizó. Abre la ayuda de esta pantalla para obtener uno nuevo.',
     JOB_URL_INVALID: 'Añade una URL válida que empiece por https://.', LINKEDIN_URL_MANUAL_ONLY: 'Añade la descripción manualmente; no abrimos enlaces de LinkedIn.', JOB_ALREADY_EXISTS: 'Esta oferta ya está guardada.',
     BOARD_REQUIRES_REVIEW_FIRST: 'Completa primero la revisión de la fuente.', BOARD_TENANT_INVALID: 'El enlace de la fuente no parece válido. Comprueba que sea de Greenhouse, Lever o Ashby.',
     BOARD_NOT_APPROVED_FOR_DISCOVERY: 'Revisa y aprueba esta fuente antes de actualizar ofertas.', BOARD_REFRESH_COOLDOWN: 'Espera seis horas antes de volver a actualizar esta fuente.',
@@ -320,8 +321,9 @@ export function localizedError(code: string, locale: Locale) {
     FACT_NOT_IN_CURRENT_REVISION: 'Este hecho pertenece a una revisión anterior del perfil. Recarga la última versión e inténtalo de nuevo.',
   };
   const english: Record<string, string> = {
+    BACKUP_IN_PROGRESS: 'A backup is already being prepared. Wait for it to finish.', BACKUP_NOT_AVAILABLE: 'This download is no longer available. Create another backup in Settings.',
     INVALID_INPUT: 'Check the fields and try again.', INVALID_PROFILE: 'We could not save your profile. Check the details.', SESSION_REQUIRED: 'Your session expired. Sign in again.',
-    INVALID_SETUP_TOKEN: 'That token is not valid. Check your local setup token and try again.', SETUP_TOKEN_ALREADY_USED: 'This token has already been used. Create a new one from the local project.',
+    INVALID_SETUP_TOKEN: 'That code is not valid. Check that you copied the entire code and try again.', SETUP_TOKEN_ALREADY_USED: 'This code has already been used. Open the help on this screen to get a new one.',
     JOB_URL_INVALID: 'Enter a valid URL starting with https://.', LINKEDIN_URL_MANUAL_ONLY: 'Paste the job description manually; LinkedIn links are not opened.', JOB_ALREADY_EXISTS: 'This job is already saved.',
     BOARD_REQUIRES_REVIEW_FIRST: 'Review this source before enabling it.', BOARD_TENANT_INVALID: 'This job board link looks invalid. Check that it is from Greenhouse, Lever, or Ashby.',
     BOARD_NOT_APPROVED_FOR_DISCOVERY: 'Review and approve this source before refreshing jobs.', BOARD_REFRESH_COOLDOWN: 'Wait six hours before refreshing this source again.',

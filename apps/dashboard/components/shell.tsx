@@ -8,9 +8,9 @@ import Link from 'next/link';
 import { clearSessionDrafts } from '@/lib/session-draft';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
-import { Icon } from './ui';
+import { Icon, Notice } from './ui';
 
 const links = [
   { href: '/', label: 'Inicio', icon: 'home', hint: 'Qué hacer ahora' },
@@ -66,7 +66,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const wasOpen = useRef(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const signOut = async () => { clearSessionDrafts(); await api('/session', { method: 'DELETE' }).catch(() => undefined); router.replace('/login'); };
+  const [signingOut, setSigningOut] = useState(false);
+  const [sessionError, setSessionError] = useState('');
+  const signOut = async () => {
+    if (signingOut || !window.confirm(locale === 'es' ? '¿Cerrar sesión? Los borradores sin guardar de esta pestaña se perderán. Tus datos guardados se conservan.' : 'Sign out? Unsaved drafts in this tab will be lost. Your saved data is kept.')) return;
+    setSigningOut(true); setSessionError('');
+    try { await api('/session', { method: 'DELETE' }); clearSessionDrafts(); router.replace('/login'); }
+    catch (err) { setSessionError(errorMessage(err)); setSigningOut(false); }
+  };
 
   // Close the drawer on navigation and when the viewport grows past the drawer breakpoint.
   useEffect(() => { setMenuOpen(false); }, [pathname]);
@@ -109,7 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
 
-  const current = links.find((link) => isActive(link.href, pathname)) ?? links[0]!;
+  const current = pathname === '/start' ? { label: locale === 'es' ? 'Primeros pasos' : 'Getting started' } : links.find((link) => isActive(link.href, pathname)) ?? links[0]!;
   const drawerLabel = locale === 'en' ? 'Main menu' : 'Menú principal';
 
   return <div className="app-layout">
@@ -134,7 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </nav>
       <div className="sidebar-spacer"/>
       <div className="local-card"><Icon name="shield" size={18}/><div><strong>{t("Solo en este equipo")}</strong><p>{t("Tú decides cuándo compartir datos.")}</p></div></div>
-      <button type="button" className="profile-chip" onClick={signOut}><span className="avatar" aria-hidden="true">{t("T")}</span><span><strong>{t("Tu espacio")}</strong><small>{t("Sesión local")}</small></span><span className="signout">{t("Salir")}</span></button>
+      <div className="profile-chip"><span className="avatar" aria-hidden="true">{t("T")}</span><span><strong>{t("Tu espacio")}</strong><small>{t("Sesión local")}</small></span><button type="button" className="signout" disabled={signingOut} onClick={() => void signOut()}>{signingOut ? (locale === 'es' ? 'Saliendo…' : 'Signing out…') : t("Salir")}</button></div>{sessionError && <Notice tone="error">{sessionError}</Notice>}
     </aside>
     {drawerOpen && <div className="mobile-scrim" aria-hidden="true" onClick={closeMenu}/>}
     <div className="main-column" inert={drawerOpen}>
