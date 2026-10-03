@@ -14,6 +14,7 @@ import { Icon, Notice } from './ui';
 
 const links = [
   { href: '/', label: 'Inicio', icon: 'home', hint: 'Qué hacer ahora' },
+  { href: '/searches', label: 'Buscar empleo', icon: 'search', hint: 'Búsquedas automáticas' },
   { href: '/profile', label: 'Mi perfil', icon: 'user', hint: 'Tus datos y experiencia' },
   { href: '/jobs', label: 'Ofertas guardadas', icon: 'search', hint: 'Empleos que te interesan' },
   { href: '/documents', label: 'Mis CV', icon: 'file', hint: 'Preparar y descargar PDF' },
@@ -116,7 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   };
 
-  const current = pathname === '/start' ? { label: locale === 'es' ? 'Primeros pasos' : 'Getting started' } : links.find((link) => isActive(link.href, pathname)) ?? links[0]!;
+  const current = pathname === '/preparations' ? { label: locale === 'es' ? 'Candidaturas preparadas' : 'Prepared applications' } : pathname === '/start' ? { label: locale === 'es' ? 'Primeros pasos' : 'Getting started' } : links.find((link) => isActive(link.href, pathname)) ?? links[0]!;
   const drawerLabel = locale === 'en' ? 'Main menu' : 'Menú principal';
 
   return <div className="app-layout">

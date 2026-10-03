@@ -82,7 +82,7 @@ export const v040Scenarios: Scenario[] = [
       assert.equal((await api.get<Array<{ jobId: string }>>('/applications')).filter((row) => row.jobId === job.id).length, 1);
       await page.getByRole('link', { name: 'Descargar CV elegido', exact: true }).waitFor();
       assert.equal(await page.getByRole('link', { name: 'Descargar CV elegido', exact: true }).getAttribute('href'), `/api/v1/documents/${resume.id}/file`);
-      await eventually(() => page.getByLabel('CV aprobado que adjuntarás tú', { exact: true }).inputValue(), (value) => value === resume.id, 'Linked resume stays selected');
+      await eventually(() => page.getByLabel('CV aprobado para esta solicitud', { exact: true }).inputValue(), (value) => value === resume.id, 'Linked resume stays selected');
       await page.screenshot({ path: join(artifacts, 'v040-linked-application-mobile.png'), fullPage: true, animations: 'disabled' });
       await page.setViewportSize({ width: 1440, height: 1000 });
       await setLocale(page, 'en');

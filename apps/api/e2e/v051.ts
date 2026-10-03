@@ -9,8 +9,10 @@ export const v051First: Scenario = {
   name: 'v051-honest-home-action-and-safe-signout',
   async run({ page, api, marker, allowConsole }) {
     await goTo(page, '/'); await setLocale(page, 'es');
-    const action = page.getByRole('link', { name: 'Completar mis datos', exact: true });
-    assert.equal(await action.getAttribute('href'), '/start'); await action.click();
+    const action = page.getByRole('link', { name: 'Crear mi búsqueda', exact: true });
+    assert.equal(await action.getAttribute('href'), '/searches'); await action.click();
+    await page.getByRole('heading', { name: 'Búsquedas guardadas', exact: true }).waitFor();
+    await goTo(page, '/start');
     const name = page.getByLabel('Nombre', { exact: true }); await name.fill(`Unsaved ${marker}`);
     assert.equal(await page.locator('button.profile-chip').count(), 0);
     page.once('dialog', (dialog) => dialog.dismiss());

@@ -40,16 +40,26 @@ jobs:
       - run: pnpm run build:shared
       - run: pnpm run lint
       - run: pnpm run typecheck
+      - run: pnpm --filter @career/api exec tsc --noEmit --project e2e/tsconfig.json
       - run: pnpm run test:unit
       - run: pnpm run test:sources
       - name: Verify automatic discovery with fictional sources
         run: pnpm run test:discovery
         env:
           CAREER_DISCOVERY_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify saved job searches with fictional feeds
+        run: pnpm run test:searches
+        env:
+          CAREER_JOB_SEARCH_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_DISCOVERY_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:backup
       - run: pnpm run test:backup-api
       - name: Install Chromium for synthetic browser tests
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
+      - name: Verify preparation with a disposable workspace
+        run: pnpm run test:preparation
+        env:
+          CAREER_PREPARATION_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify assisted applications against fictional fixtures
         run: pnpm run test:assisted
         env:

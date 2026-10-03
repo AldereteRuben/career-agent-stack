@@ -1,0 +1,8 @@
+.queue { display: grid; gap: 16px; }
+.card { display: grid; gap: 16px; }
+.head, .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.card h2 { margin: 4px 0 0; }
+.card h3 { margin: 0 0 8px; font-size: 1rem; }
+.card ul { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.reason { display: block; color: var(--ink-muted); margin-top: 3px; }
+@media (max-width: 600px) { .actions > * { width: 100%; } }

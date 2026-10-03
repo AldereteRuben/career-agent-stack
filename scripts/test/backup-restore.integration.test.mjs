@@ -20,7 +20,7 @@ import { after, before, describe, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { buildHeader, extractArchive, writeArchive } from '../lib/backup-archive.mjs';
-import { keyFileContent, manifestMac, withDatabase } from '../lib/backup-core.mjs';
+import { keyFileContent, repoMigrations, manifestMac, withDatabase } from '../lib/backup-core.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const adminUrl = process.env.CAREER_BACKUP_TEST_ADMIN_URL;
@@ -126,6 +126,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     await client.query(`insert into source_policy_reviews (workspace_id, board_id, capability, access_class, permission_status, api_host, adapter_version, reviewed_at) values ($1, $2, 'discovery', 'public-api', 'APPROVED_FOR_SCOPE', 'boards-api.example.test', 'test-1', now())`, [ws, board]);
     await client.query('update workspaces set discovery_enabled = true where id = $1', [ws]);
     await client.query(`insert into search_profiles (workspace_id, name, enabled) values ($1, 'Fictional search', true)`, [ws]);
+    await client.query(`insert into saved_job_searches (workspace_id, role, enabled, auto_prepare) values ($1, 'Fictional engineer', true, true)`, [ws]);
     const job = (await client.query(`insert into jobs (workspace_id, company, title) values ($1, 'Fictional Co', 'Example Engineer') returning id`, [ws])).rows[0].id;
     const snapshot = (await client.query(`insert into job_snapshots (workspace_id, job_id, title, snapshot_hash) values ($1, $2, 'Example Engineer', $3) returning id`, [ws, job, sha('Example Engineer')])).rows[0].id;
     const application = (await client.query(`insert into applications (workspace_id, job_id, company, role, state) values ($1, $2, 'Fictional Co', 'Example Engineer', 'IN_PROGRESS') returning id`, [ws, job])).rows[0].id;
@@ -194,7 +195,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal(manifest.documents.length, 3);
     assert.ok(![...entries.keys()].some((name) => name.includes('orphan')), 'unreferenced files are excluded');
     assert.equal(manifest.tables['public.boards'], 2);
-    assert.equal(manifest.migrations.length, 8);
+    assert.equal(manifest.migrations.length, (await repoMigrations()).length);
     // A second backup reuses the same key file instead of writing another one.
     await delay(1100); // archive names have one-second resolution
     const second = await run('backup.mjs', ['--env-file', envFile, '--out-dir', backupDir]);
@@ -274,7 +275,8 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(database, `select count(*)::int as n from source_policy_reviews where permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from workspaces where discovery_enabled')).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from search_profiles where enabled')).rows[0].n, 0);
-    assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, 8);
+    assert.equal((await query(database, 'select count(*)::int as n from saved_job_searches where enabled or auto_prepare')).rows[0].n, 0);
+    assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, (await repoMigrations()).length);
     assert.equal((await query(database, `select statement from profile_facts where kind = 'skill'`)).rows[0].statement, 'Builds fictional test fixtures');
 
     assert.equal((await query(database, 'select status from assisted_attempts')).rows[0].status, 'UNKNOWN');

@@ -1,10 +1,10 @@
 # Career Agent Stack
 
-Tu espacio privado para organizar la búsqueda de empleo: perfil profesional, vacantes, borradores PDF y seguimiento de candidaturas.
+Tu espacio privado para buscar ofertas automáticamente, preparar candidaturas con tu experiencia confirmada y seguir cada postulación.
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.6.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](CHANGELOG.md#061)
+**Versión actual: v0.7.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.7.0.md)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -15,13 +15,13 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 
 - Completar experiencia laboral y formación con fechas editables; corregir, archivar y confirmar los datos que se usan en tu CV.
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
-- Añadir vacantes manualmente o consultar fuentes de Greenhouse, Lever y Ashby revisadas individualmente.
+- Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive y Arbeitnow. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
 - Generar, visualizar, revisar y descargar versiones de tu CV. Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
-No necesitas una suscripción de IA ni una clave de API. La app incluye **autocompletado experimental de contactos en Lever**, con navegador visible y autorización. Tú adjuntas archivos, respondes y envías manualmente. No hay envío automático, acceso al correo ni preparación de entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+No necesitas una suscripción de IA ni una clave de API. La app prepara candidaturas con datos aprobados de tu perfil e incluye **asistencia experimental en Lever**, con navegador visible. Una autorización adicional para una sola candidatura permite adjuntar el PDF aprobado y enviar un formulario sencillo reconocido. CAPTCHA, declaraciones legales, preguntas no compatibles y formularios desconocidos requieren intervención manual. No hay envío desatendido de candidaturas, acceso al correo ni preparación de entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
 
 ## Preparar una candidatura
 
@@ -31,16 +31,17 @@ En las ofertas puedes buscar por puesto o empresa, filtrar favoritas y disponibi
 
 ## Búsqueda automática de ofertas
 
-1. En **Empresas que sigo**, añade y confirma las empresas que quieres consultar.
-2. Pulsa **Activar búsqueda automática**. Empieza pausada, también al actualizar desde versiones anteriores a v0.6 o restaurar una copia.
-3. Mantén el servicio local encendido. Puedes cerrar la pestaña; apagar el servicio o suspender el equipo detiene las consultas hasta que vuelva a funcionar.
-4. En Inicio, abre **Revisar ofertas nuevas**. Se ordenan por encaje con tu perfil. Abre cada una y pulsa **Marcar como revisada** al terminar; seguirá disponible en Activas. Si llegan cambios mientras tienes la lista abierta, pulsa **Actualizar resultados** cuando quieras; se conservan tus filtros.
+1. Abre **Buscar empleo**. Indica un puesto, una empresa o ambos; ubicación y modalidad son opcionales.
+2. Guarda tu búsqueda y elige cada 6, 12 o 24 horas. Puedes editarla o pausarla después.
+3. Las fuentes integradas son **Remotive** y **Arbeitnow**. No necesitas enlaces de empresas ni claves. Su cobertura es parcial: ofertas remotas y principalmente europeas; Remotive retrasa su catálogo público 24 horas. Cada resultado enlaza a su fuente.
+4. Opcionalmente activa **Preparar documentos para nuevas coincidencias**. La app selecciona experiencia confirmada y genera candidaturas para revisar en **Candidaturas preparadas**. Si faltan datos, indica qué completar.
+5. Mantén el servicio local encendido. Puedes cerrar la pestaña; el equipo suspendido o apagado no puede buscar.
 
-Se consulta aproximadamente cada seis horas por empresa. El panel de actividad muestra resultados, errores y la próxima consulta. Puedes pausar cuando quieras; una consulta en curso puede terminar. Al reiniciar, se retoman las consultas vencidas una vez. Los fallos retrasan los reintentos y se respeta el plazo indicado por la fuente. Solo se consultan empresas confirmadas y no se envía tu CV. [Funcionamiento y límites](docs/operations/automatic-discovery.md).
+Las fuentes comparten resultados durante seis horas para evitar consultas repetidas. **Actualizar ahora** reutiliza esos resultados cuando todavía están vigentes; no fuerza peticiones ilimitadas. Las búsquedas restauradas desde una copia quedan pausadas y sin preparación automática. Las empresas de Greenhouse, Lever y Ashby que ya sigues conservan su programación independiente. [Funcionamiento y límites](docs/operations/automatic-discovery.md).
 
 ## Solicitudes asistidas
 
-Abre una candidatura de Lever y sigue **Revisar datos → Revisar navegador → Enviar tú y registrar**. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
+Abre **Candidaturas preparadas** para revisar el PDF generado y los datos pendientes. En una candidatura de Lever, sigue **Revisar datos → Revisar navegador** y elige continuar manualmente o autorizar por separado el envío compatible. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Las páginas públicas de Lever inspeccionadas para esta versión requirieron intervención manual; no se ha verificado un envío a una empresa real. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
 
 ## Empieza aquí
 
@@ -81,9 +82,9 @@ Después de la preparación inicial, en macOS puedes abrir **Start Career Agent 
 1. Elige **Español** o **English** con el botón de idioma.
 2. Desde **Inicio**, abre **Guía para empezar**. Guarda tu nombre y correo; las preferencias de empleo pueden esperar.
 3. Sigue la guía para añadir y confirmar una experiencia y preparar y revisar tu primer PDF. Puedes volver cuando quieras: el progreso se calcula con lo que has guardado.
-4. En **Ofertas guardadas**, añade una oferta manualmente. Configurar fuentes externas es opcional.
+4. En **Buscar empleo**, guarda tu primera búsqueda. También puedes añadir una oferta manualmente desde **Ofertas guardadas**.
 5. Abre la oferta y elige **Preparar CV para esta vacante**. Completa tu perfil, selecciona el contenido y el idioma del PDF y revisa la vista previa.
-6. Aprueba el CV y pulsa **Continuar con esta solicitud**. El CV queda vinculado a ella. En **Mis solicitudes**, registra avances y notas; el envío se realiza manualmente en la web de la empresa.
+6. Aprueba el CV y pulsa **Continuar con esta solicitud**. El CV queda vinculado a ella. En **Mis solicitudes**, registra avances y notas; la asistencia de Lever requiere una autorización separada y los formularios no compatibles se completan manualmente en la web de la empresa.
 
 La preparación del CV conserva nombre, idioma y selección por oferta en esta pestaña, para que puedas volver después de editar tu perfil. Es temporal: se borra al cerrar sesión y puede perderse al cerrar la pestaña; genera el PDF para guardar una versión. Si cambian los datos seleccionados, la app te pide revisarlos. Al volver de una oferta a la lista, se conservan la búsqueda y los filtros.
 
@@ -132,7 +133,7 @@ Al iniciar una API detenida se aplican las migraciones pendientes y se recompila
 - Los servicios escuchan en `127.0.0.1`. No los expongas a la red como servicio multiusuario.
 - `.env`, `data/`, exportaciones y copias deben permanecer privados y están excluidos de Git. **No borres `.env` para reiniciar la app**: contiene la clave de cifrado.
 - PostgreSQL almacena los registros; `data/files/` contiene los documentos. Docker utiliza el volumen persistente `career-postgres`: no lo elimines para resolver un problema de arranque.
-- Las fuentes externas necesitan una revisión explícita de la empresa y del permiso de lectura pública. Solo se consultan las fuentes configuradas, no todo el mercado laboral.
+- Las fuentes externas necesitan una revisión explícita de la empresa y del permiso de lectura pública. Las búsquedas guardadas utilizan los catálogos públicos integrados; las empresas que sigues necesitan revisión. No cubrimos todo el mercado laboral.
 - Las copias incluyen la base de datos y los PDF, con huellas y un manifiesto firmado. La restauración necesita el archivo de clave separado y crea una base y carpeta nuevas; nunca sobrescribe un espacio existente. El archivo **no está cifrado**. Consulta la [guía de recuperación](docs/operations/backup-restore.md).
 - La instalación completa, recuperación y uso en navegador se han comprobado en macOS. CI comprueba compilación y lógica en Linux y Windows; eso no valida sus instalaciones completas. El lanzador depende de utilidades de procesos Unix: el inicio y cierre nativos en Windows no están soportados. La instalación en Linux/WSL sigue sin validación de extremo a extremo.
 

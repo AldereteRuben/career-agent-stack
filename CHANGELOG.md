@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- Saved automatic searches by role and/or company, optional location/work mode, and selectable 6/12/24-hour schedules. Remotive and Arbeitnow public feeds need no API keys or manually entered employer URLs. Source links, attribution, coverage and freshness are visible; source reads are shared and rate limited across searches.
+- Find jobs becomes the first action on Home. Saved searches can be edited, paused and resumed. The creation form closes after saving so results take priority; lists include pagination, next-check times and ES/EN mobile layouts.
+- Optional automatic application preparation selects confirmed profile facts and approved answers, creates a PDF awaiting review, and records missing details. Repeated inputs reuse the draft; changed inputs update the same application while preserving old PDFs and protecting approved documents and submitted/uncertain applications.
+- Experimental single-application Lever submission adds separate authorization for the exact contact values and approved PDF. One-use permits prevent concurrent/double sends. Confirmation requires a successful submission response and a new visible receipt; uncertain outcomes block retries until reconciled. Manual handoff remains available.
+- New additive search migration, private export support, and backup restoration that pauses saved searches and disables preparation. Schedules require the local service and computer to remain running.
+- Validation uses disposable databases, fictional feeds, synthetic browser forms and isolated UI flows. No employer applications are sent during development tests.
+
+Coverage is limited to the public source feeds, not LinkedIn or the whole web. Remotive listings have a 24-hour delay. Preparation uses deterministic evidence matching, not AI-generated claims. Automatic sending is experimental: public Lever forms inspected for this release required CAPTCHA/custom controls and remain manual-only; real-employer submission is not verified. See [release evidence and limitations](docs/releases/v0.7.0.md).
+
 ## 0.6.1
 
 - Company confirmation and disabling use company-specific labels, distinct from global automatic discovery.

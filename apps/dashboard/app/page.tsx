@@ -11,13 +11,14 @@ import { ButtonLink, Card, Empty, Icon, Notice, Tag } from '@/components/ui';
 
 type Summary = {
   boards: Array<{ id: string; companyName: string; enabled: boolean; lastSuccessfulRefreshAt: string | null }>;
-  recentJobs: Array<{ id: string; title: string; company: string; location: string | null; fitScore: number | null; eligibility: string; provisional?: boolean }>;
+  recentJobs: Array<{ searchSources?: Array<{ provider: string; url: string }>; id: string; title: string; company: string; location: string | null; fitScore: number | null; eligibility: string; provisional?: boolean }>;
   recentApplications: Array<{ id: string; role: string; company: string; state: string; updatedAt: string }>;
   pendingFacts: number;
   unansweredItems: number;
   applicationCounts: Record<string, number>;
   approvedSourceCount: number;
   boardCount: number;
+  savedSearchCount: number; activeSearchCount: number;
   /** Totals computed by the API; the recent lists above are capped at 6 and are not totals. */
   totalJobs: number;
   activeApplications: number;
@@ -54,7 +55,7 @@ export default function HomePage() {
   const missing = new Set(completion?.missing ?? []);
   const loading = !summary && !error;
 
-  // Profile basics come first: matching and documents depend on them, and they are quicker than source setup.
+  // Start with discovery; profile details are needed when preparing an application.
   const steps: NextStep[] = [];
   if (summary && completion) {
     const identityMissing = profileChecks.filter((check) => ['fullName', 'email'].includes(check.key) && missing.has(check.key));
@@ -68,7 +69,7 @@ export default function HomePage() {
     else if (summary.pendingFacts > 0) steps.push({ key: 'facts', href: '/profile#saved-experience-heading', icon: 'user', title: summary.pendingFacts === 1 ? c('Revisa 1 dato por confirmar', 'Review 1 detail to confirm') : c(`Revisa ${summary.pendingFacts} datos por confirmar`, `Review ${summary.pendingFacts} details to confirm`), detail: c('Nada se usa en tus documentos hasta que lo apruebes.', 'Nothing is used in your documents until you approve it.') });
     if (summary.unansweredItems > 0) steps.push({ key: 'answers', href: '/profile', icon: 'file', title: summary.unansweredItems === 1 ? c('Responde 1 pregunta pendiente', 'Answer 1 open question') : c(`Responde ${summary.unansweredItems} preguntas pendientes`, `Answer ${summary.unansweredItems} open questions`), detail: c('Son datos que solo tú puedes confirmar.', 'Only you can confirm these details.') });
     if (needsReview > 0) steps.push({ key: 'applications', href: '/applications', icon: 'briefcase', title: needsReview === 1 ? c('1 solicitud necesita revisión', '1 application needs review') : c(`${needsReview} solicitudes necesitan revisión`, `${needsReview} applications need review`), detail: c('Confirma su estado para mantener el seguimiento al día.', 'Confirm their status to keep your tracker accurate.') });
-    if (summary.totalJobs === 0) steps.push({ key: 'first-job', href: '/jobs', icon: 'search', title: c('Guarda tu primera oferta', 'Save your first job'), detail: c('Añade a mano una oferta que ya tengas en mente.', 'Add a job you already have in mind by hand.') });
+    if (summary.savedSearchCount === 0) steps.unshift({ key: 'first-job', href: '/searches', icon: 'search', title: c('Encuentra ofertas automáticamente', 'Find jobs automatically'), detail: c('Indica un puesto o una empresa. Guardaremos las coincidencias y repetiremos tu búsqueda con la frecuencia que elijas.', 'Enter a role or company. We will save matches and repeat your search at your chosen interval.') });
     if (summary.approvedSourceCount === 0) steps.push(summary.boardCount
       ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Confirma la página de una empresa', 'Confirm a company careers page'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar ofertas.', 'You have sources added, but none approved for job discovery yet.') }
       : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir ofertas de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
@@ -80,7 +81,7 @@ export default function HomePage() {
     { key: 'jobs', label: c('Ofertas guardadas', 'Saved jobs'), value: summary?.totalJobs, href: '/jobs' },
     { key: 'active', label: c('Solicitudes activas', 'Active applications'), value: summary?.activeApplications, href: '/applications' },
     { key: 'facts', label: c('Datos confirmados', 'Confirmed profile details'), value: completion?.approvedFactCount, href: '/profile' },
-    { key: 'sources', label: c('Empresas conectadas', 'Connected companies'), value: summary?.approvedSourceCount, href: '/boards' },
+    { key: 'searches', label: c('Búsquedas activas', 'Active searches'), value: summary?.activeSearchCount, href: '/searches' },
   ];
 
   return <WorkspaceGate><AppShell>
@@ -88,7 +89,7 @@ export default function HomePage() {
       action={<ButtonLink href="/start" variant="secondary">{c('Guía para empezar', 'Getting started')}</ButtonLink>}
       eyebrow={t('Resumen')}
       title={c('Tu búsqueda, hoy', 'Your search today')}
-      description={c('Organiza tu búsqueda de empleo: guarda ofertas, prepara tu CV y lleva el seguimiento de tus solicitudes.', 'Organize your job search: save jobs, prepare your resume, and track your applications.')}
+      description={c('Encuentra ofertas, prepara candidaturas con tus datos confirmados y sigue cada postulación.', 'Find jobs, prepare applications from your confirmed details, and track each application.')}
     />
     {error && <Notice tone="error">{error}</Notice>}
 
@@ -96,17 +97,18 @@ export default function HomePage() {
       <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
       <h2>{primaryStep?.title ?? c('Elige una oferta que te interese', 'Choose a job you are interested in')}</h2>
       <p>{primaryStep?.detail ?? c('Abre una oferta guardada para preparar tu CV o empezar a seguir tu solicitud.', 'Open a saved job to prepare your resume or start tracking your application.')}</p>
-      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
-      <p className="muted-label">{c('Puedes guardar ofertas desde el principio. Conectar páginas de empresas y guardar respuestas es opcional.', 'You can save jobs right away. Connecting company careers pages and saving answers are optional.')}</p>
+      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href === '/searches' ? c('Crear mi búsqueda', 'Create my search') : primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
+      <p className="muted-label">{c('Puedes buscar empleo sin completar tu perfil. Tus datos confirmados se necesitan para preparar candidaturas.', 'You can search for jobs before completing your profile. Confirmed details are needed to prepare applications.')}</p>
     </Card>}
+    <div className="home-automation-actions"><ButtonLink href="/searches" variant="secondary">{c('Mis búsquedas automáticas', 'My automatic searches')}</ButtonLink><ButtonLink href="/preparations" variant="secondary">{c('Candidaturas preparadas', 'Prepared applications')}</ButtonLink></div>
     <section className="search-guide" aria-labelledby="search-guide-heading">
       <h2 id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</h2>
       <ol className="journey-grid">
         {[
           { href: '/profile', title: c('Cuenta tu experiencia', 'Add your experience'), detail: c('Guarda tus datos y los logros que quieres incluir en tu CV.', 'Save your details and the achievements you want on your resume.') },
-          { href: '/jobs', title: c('Guarda una oferta', 'Save a job'), detail: c('Copia el enlace y la descripción de un empleo que te interese.', 'Copy the link and description of a job you are interested in.') },
-          { href: '/documents', title: c('Prepara tu CV', 'Prepare your resume'), detail: c('Elige qué incluir, genera el PDF y confirma que está correcto.', 'Choose what to include, generate the PDF, and check it is accurate.') },
-          { href: '/applications', title: c('Solicita el puesto y anótalo', 'Apply and track it'), detail: c('Envía tú la solicitud a la empresa y registra lo que ocurra. Lever permite completar tus datos con ayuda.', 'Submit the application yourself and track what happens. Lever supports assisted contact entry.') },
+          { href: '/searches', title: c('Activa tu búsqueda', 'Start your search'), detail: c('Indica qué buscas y cada cuánto quieres recibir nuevas coincidencias.', 'Choose what you are looking for and how often to find new matches.') },
+          { href: '/preparations', title: c('Revisa lo preparado', 'Review prepared applications'), detail: c('La preparación automática usa tus datos confirmados. Revisa el CV antes de autorizar su envío.', 'Automatic preparation uses your confirmed details. Review the resume before authorizing submission.') },
+          { href: '/applications', title: c('Solicita el puesto y anótalo', 'Apply and track it'), detail: c('Autoriza una postulación compatible o continúa en la página de la empresa. Consulta el resultado aquí.', 'Authorize a supported application or continue on the company website. Track the result here.') },
         ].map((step, index) => <li key={step.href}><Link href={step.href}><span className="step-badge" aria-hidden="true">{index + 1}</span><strong>{step.title}</strong><span>{step.detail}</span></Link></li>)}
       </ol>
     </section>
@@ -169,8 +171,8 @@ export default function HomePage() {
           <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
           {job.fitScore !== null && <span className="row-score">{job.provisional ? c(`Encaje provisional ${job.fitScore}`, `Provisional fit ${job.fitScore}`) : c(`Encaje ${job.fitScore}`, `Fit ${job.fitScore}`)}</span>}
           <Tag tone={job.eligibility === 'PASS' ? 'green' : job.eligibility === 'FAIL' ? 'red' : 'amber'}>{labelFor.eligibility(job.eligibility, locale)}</Tag>
-        </Link></li>)}</ul>
-          : !loading && <Empty title={t('Tu lista aún está en blanco')} detail={summary?.boards.length ? t('Refresh an approved source or add a job manually.') : t('Set up a job source or add a job you already have in mind.')} action={<Link href={summary?.boards.length ? '/boards' : '/jobs'} className="text-link">{summary?.boards.length ? t('Revisar fuentes') : t('Añadir primera oferta')} <Icon name="arrow" size={16}/></Link>}/>}
+        </Link>{job.searchSources?.map((source) => <small key={source.url}>{c('Fuente: ', 'Source: ')}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}</a></small>)}</li>)}</ul>
+          : !loading && <Empty title={t('Tu lista aún está en blanco')} detail={c('Guarda una búsqueda para encontrar ofertas de las fuentes integradas.', 'Save a search to find jobs from the integrated sources.')} action={<Link href="/searches" className="text-link">{c('Ir a buscar empleo', 'Find jobs')} <Icon name="arrow" size={16}/></Link>}/>}
         {summary && summary.totalJobs > summary.recentJobs.length && <p className="panel-foot">{c(`Mostrando ${summary.recentJobs.length} de ${summary.totalJobs} ofertas guardadas`, `Showing ${summary.recentJobs.length} of ${summary.totalJobs} saved jobs`)}</p>}
       </Card>
     </div>

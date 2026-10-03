@@ -1,3 +1,4 @@
+import { v070Scenario } from './v070.js';
 import { v061Scenario } from './v061.js';
 import { v060Scenario } from './v060.js';
 import type { PgClient } from './isolation.js';
@@ -386,7 +387,7 @@ scenarios.push({
     const application = await api.post<Application>('/applications', { company: 'Fictional', role: `Fixture ${marker}`, canonicalUrl: 'https://jobs.lever.co/example/11111111-1111-4111-8111-111111111111', state: 'DRAFT' });
     await setLocale(page, 'es'); await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
     const panel = page.locator('.assist-panel'); await panel.getByRole('button', { name: 'Revisar datos y destino', exact: true }).waitFor();
-    await panel.getByLabel('CV aprobado que adjuntarás tú', { exact: true }).selectOption(doc.id);
+    await panel.getByLabel('CV aprobado para esta solicitud', { exact: true }).selectOption(doc.id);
     await panel.getByLabel('Teléfono (opcional)', { exact: true }).fill('+34000000000');
     await panel.getByRole('button', { name: 'Revisar datos y destino', exact: true }).click();
     const open = panel.getByRole('button', { name: 'Abrir y autocompletar', exact: true }); await open.waitFor();
@@ -407,8 +408,43 @@ scenarios.push({
     await eventually(() => api.get<{ attempts: Array<{ status: string }> }>(`/applications/${application.id}/assist`), value => value.attempts[0]?.status === 'CANCELLED', 'Preparation can be cancelled without opening any browser');
     await panel.getByRole('button', { name: 'Review data and destination', exact: true }).waitFor();
     await page.screenshot({ path: join(artifacts, 'assisted-preparation-en.png'), fullPage: true });
+    // UI-only REVIEW fixture: every submission request is intercepted before it reaches the API/browser.
+    const fixtureState = await api.get<{ attempts: Array<Record<string, unknown>> }>(`/applications/${application.id}/assist`);
+    let reviewAttempt: Record<string, unknown> & { status: string; result: Record<string, unknown> } = { ...fixtureState.attempts[0]!, status: 'REVIEW', result: {} };
+    let submissionRequests = 0;
+    const assistRoute = `**/api/v1/applications/${application.id}/assist`;
+    const submitRoute = `**/api/v1/assisted-attempts/${String(reviewAttempt.id)}/submit`;
+    await page.route(assistRoute, (route) => route.fulfill({ json: { ...fixtureState, attempts: [reviewAttempt] } }));
+    await page.route(submitRoute, async (route) => {
+      submissionRequests++;
+      assert.deepEqual(route.request().postDataJSON(), { consent: true, expectedDigest: reviewAttempt.digest });
+      reviewAttempt = { ...reviewAttempt, status: 'UNKNOWN', result: { reason: 'ASSIST_SUBMISSION_UNCERTAIN' } };
+      await route.fulfill({ json: reviewAttempt });
+    });
+    try {
+      await page.reload();
+      for (const locale of ['en', 'es'] as const) {
+        await setLocale(page, locale);
+        const submit = panel.getByRole('button', { name: locale === 'es' ? 'Adjuntar CV y enviar solicitud' : 'Attach resume and submit application', exact: true });
+        await submit.waitFor(); assert.equal(await submit.isDisabled(), true);
+        const permission = panel.getByRole('checkbox', { name: locale === 'es' ? /Autorizo una sola vez/ : /I authorize the app once/ });
+        await permission.check(); assert.equal(await submit.isEnabled(), true); await permission.uncheck();
+        assert.equal(submissionRequests, 0);
+        await page.setViewportSize({ width: 320, height: 844 });
+        await page.locator('#app-sidebar').waitFor({ state: 'hidden' });
+        const overflowing = await page.evaluate(() => Array.from(document.querySelectorAll('main *')).filter((node) => node.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map((node) => ({ tag: node.tagName, class: node.className, text: node.textContent?.slice(0, 60), width: node.getBoundingClientRect().width })).slice(-12));
+        assert.equal(await hasHorizontalOverflow(page), false, `Submission review fits ${locale} at 320px: ${JSON.stringify(overflowing)}`);
+      }
+      await panel.getByRole('checkbox', { name: /Autorizo una sola vez/ }).check();
+      await panel.getByRole('button', { name: 'Adjuntar CV y enviar solicitud', exact: true }).click();
+      await panel.getByText(/No sabemos si se envió/).waitFor();
+      assert.equal(submissionRequests, 1);
+      assert.equal(await panel.getByRole('button', { name: 'Adjuntar CV y enviar solicitud', exact: true }).count(), 0);
+      await page.screenshot({ path: join(artifacts, 'v070-submit-unknown-es-mobile.png'), fullPage: true });
+    } finally { await page.unroute(assistRoute); await page.unroute(submitRoute); }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await setLocale(page, 'es');
-    note('Consent preview, manual PDF context, EN/ES and mobile checks use the isolated API. No external ATS page was opened; browser execution is verified separately against synthetic fixtures.');
+    note('Consent preview uses the isolated API; submission consent/UNKNOWN UI uses intercepted fictional responses. No ATS page was opened. Actual browser transmission is tested separately against synthetic forms.');
   },
 });
 
@@ -430,4 +466,5 @@ scenarios.push(v052Scenario);
 // The final sign-out scenario must remain last.
 scenarios.push(v060Scenario);
 scenarios.push(v061Scenario);
+scenarios.push(v070Scenario);
 scenarios.push(v051Last);

@@ -1,4 +1,29 @@
-# Automatic discovery / Búsqueda automática — v0.6.0
+# Automatic job discovery / Búsqueda automática
+
+## Saved role/company searches — v0.7.0
+
+**English:** Open **Find jobs**, enter a role, company or both, optionally choose location and work mode, then save the search. The local service reads the public Remotive and Arbeitnow listings and filters their results. No employer URL or API key is required. Select a 6, 12 or 24 hour schedule; pause or edit it from the saved search. Closing the browser does not stop checks, but the local service and computer must stay on.
+
+Coverage is limited to the listings these sources expose. Remotive covers remote roles and delays its public feed by 24 hours. Arbeitnow emphasizes European listings. Missing or broad location restrictions need review on the original listing. This does not search LinkedIn or the entire web. Results keep source attribution and links; they are not guarantees of eligibility or current availability. “New” means first found by this installation.
+
+Each provider is read at most once per six hours across searches/workspaces. Repeated refreshes reuse its saved feed. Source failures retain earlier results, label reduced freshness/coverage and apply backoff. Searches, schedules and matched jobs persist across restarts. Restoring a backup pauses searches and disables preparation until you enable it again.
+
+**Español:** En **Buscar empleo**, escribe un puesto, una empresa o ambos, y opcionalmente una ubicación y modalidad. Guarda la búsqueda y elige cada 6, 12 o 24 horas. La app consulta Remotive y Arbeitnow y filtra sus resultados sin pedirte enlaces de empresas ni claves. Puedes pausar o editar cada búsqueda. Cerrar la pestaña no detiene las consultas; apagar el equipo o el servicio local sí.
+
+La cobertura depende de esas fuentes: Remotive publica puestos remotos con 24 horas de retraso y Arbeitnow se centra en Europa. Revisa las restricciones de ubicación en la oferta original. No se busca en LinkedIn ni en todo internet. Se conservan las ofertas previas si falla una fuente, y se avisa de resultados antiguos o incompletos. Al restaurar una copia, las búsquedas quedan pausadas y sin preparación automática.
+
+## Optional application preparation
+
+Turn on **Prepare applications** for a saved search to produce review drafts for matches. The service selects existing approved profile facts and approved saved answers; it does not invent qualifications or use a language model. A name, email and confirmed experience are required for a PDF. Missing details appear in **Prepared applications** with links to fix the profile. Documents await approval and are never sent by the search worker.
+
+Repeated preparation with the same inputs reuses the draft. Changed profile content regenerates on the same application while preserving previous PDF files. Approved/user-selected documents and submitted, uncertain or closed applications are protected. A job from an aggregator may need its direct employer application URL before Lever assistance is available.
+
+Activa **Preparar candidaturas** para obtener borradores con la experiencia confirmada y respuestas aprobadas. Los datos pendientes aparecen en **Candidaturas preparadas**. Revisa y aprueba el PDF antes de usarlo. Esta opción no autoriza envíos. Los enlaces de un agregador pueden necesitar el enlace directo al formulario de la empresa para usar la asistencia de Lever.
+
+## Individually followed companies
+
+The existing employer-board schedule remains independent of saved role/company searches:
+
 
 ## Use it / Cómo usarla
 

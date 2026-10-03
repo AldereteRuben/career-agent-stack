@@ -1,10 +1,10 @@
 # Career Agent Stack
 
-Your private workspace to organize a job search: keep your career profile, save jobs, prepare PDF drafts, and track applications in one place.
+Your private workspace to find jobs automatically, prepare applications from your confirmed experience, and track each application.
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.6.1** · [Changelog](CHANGELOG.md) · [Verification and limits](CHANGELOG.md#061)
+**Current release: v0.7.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.7.0.md)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -15,26 +15,27 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 
 - Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
 - Keep reusable answers with their question and country context.
-- Add jobs manually or discover them through individually reviewed Greenhouse, Lever, and Ashby employer boards.
+- Save searches by role or company and automatically discover matches from Remotive and Arbeitnow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter favorites and availability, archive or restore offers, and see explainable matching.
 - Generate versioned resumes with English or Spanish headings, zoom the PDF preview, and reuse earlier content without altering previous PDFs.
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
-No AI subscription or API key is required. The app offers **experimental Lever contact-field autofill** in a visible browser with explicit consent. You attach files, complete questions and submit manually. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
+No AI subscription or API key is required. The app prepares application drafts from approved profile facts and offers **experimental Lever assistance** in a visible browser. A separate, single-application authorization can attach the approved PDF and submit a recognized simple form. CAPTCHA, legal declarations, unsupported questions and unrecognized forms require manual completion. This is not unattended application sending. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
 
 ## Automatic job search
 
-1. In **Companies I follow**, add and confirm the companies you want to check.
-2. Select **Turn on automatic search**. The default is paused, including when upgrading from before v0.6 or restoring a backup.
-3. Keep the local service running. You can close the browser tab; stopping the service or putting the computer to sleep stops checks until it resumes.
-4. Open **Review new jobs** on Home. Jobs are ordered by profile fit; open one and choose **Mark as reviewed** when finished. It remains in Active jobs. If new results arrive while the inbox is open, choose **Update results** when ready; your filters are kept.
+1. Open **Find jobs**. Enter a role, a company, or both; location and work mode are optional.
+2. Save the search and choose a 6, 12 or 24 hour interval. You can edit or pause it later.
+3. Integrated sources are **Remotive** and **Arbeitnow**. No employer links or API keys are required. Coverage is partial: remote and mainly European jobs; Remotive delays its public feed by 24 hours. Each result links to its source.
+4. Optionally enable **Prepare documents for new matches**. The app selects confirmed experience and generates drafts in **Prepared applications**. Missing details produce actionable review items.
+5. Keep the local service running. You can close the browser tab; a sleeping or powered-off computer cannot search.
 
-Checks run about every six hours per company. The activity panel shows results, failures and the next check. Pause any time; an in-progress check may finish. Restarts catch up once rather than replaying every missed interval. Failed checks back off and respect the source's retry window. Only confirmed company boards are queried; your CV is not transmitted. See [operation and limits](docs/operations/automatic-discovery.md).
+Sources share cached results for six hours to avoid repeat requests. **Refresh now** reuses current results instead of forcing unlimited upstream calls. Restored searches are paused with automatic preparation disabled. Greenhouse, Lever and Ashby companies you already follow retain their separate schedule. See [operation and limits](docs/operations/automatic-discovery.md).
 
 ## Assisted applications
 
-Open a Lever application in **My applications** and follow **Review data → Review browser → Submit yourself and record**. A current approved resume is required. Unknown results block another attempt until you check them. See [the walkthrough and limits](docs/operations/assisted-applications.md).
+Open **Prepared applications** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 ## Start here
 
@@ -75,9 +76,9 @@ After initial setup, macOS users can double-click **Start Career Agent Stack.com
 1. Choose **English** or **Español** using the language button.
 2. From **Home**, open **Getting started**. Save your name and email; job preferences can wait.
 3. Follow the guide to add and confirm one experience, then prepare and review your first PDF. You can return to the guide at any time; it uses your saved progress.
-4. Open **Saved jobs** and add a job manually. Configuring external sources is optional.
+4. Open **Find jobs** and save a role or company search. You can also add a job manually in **Saved jobs**.
 5. Open the job and choose **Prepare a resume for this job**. Follow the steps to complete your profile, choose PDF content and language, and review the preview.
-6. Approve the resume, then choose **Continue with this application**. The reviewed version stays linked to it. Record progress and notes in **My applications**; submission remains manual on the employer’s website.
+6. Approve the resume, then choose **Continue with this application**. The reviewed version stays linked to it. Record progress and notes in **My applications**. Lever assistance has separate consent; unsupported forms continue manually on the employer’s website.
 
 Resume preparation keeps its name, language and content selection separately for each job in the current tab, so you can return after editing your profile. These temporary drafts are cleared on sign-out and may be lost when closing the tab; generate a PDF to save a version. If selected profile details change, the app asks you to review the selection again. Returning from a job to its list keeps your search and filters.
 

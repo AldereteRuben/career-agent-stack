@@ -62,6 +62,7 @@ export default function StartPage() {
   const titles = [c('Tus datos', 'Your details'), c('Una experiencia', 'One experience'), c('Tu primer CV', 'Your first resume')];
   return <WorkspaceGate><AppShell>
     <PageHeader eyebrow={c('PRIMEROS PASOS', 'GETTING STARTED')} title={c('Prepara tu primer CV, paso a paso', 'Prepare your first resume, step by step')} description={c('Empieza con lo esencial. Puedes volver a esta guía desde Inicio cuando quieras.', 'Start with the essentials. You can return to this guide from Home whenever you want.')}/>
+    <Notice actions={<Link className="button button-secondary" href="/searches">{c('Buscar empleo', 'Find jobs')}</Link>}>{c('Puedes empezar a buscar ofertas ahora. Completa esta guía para que podamos preparar tus candidaturas.', 'You can start finding jobs now. Complete this guide so we can prepare your applications.')}</Notice>
     <div className="onboarding-layout">
       <ol className="onboarding-progress" aria-label={c('Tu progreso', 'Your progress')}>
         {titles.map((title, index) => <li key={index} aria-current={index === step ? 'step' : undefined}><span className="step-badge" aria-hidden="true">{index < step ? '✓' : index + 1}</span><span>{title}<small>{index < step ? c('Listo', 'Done') : index === step ? c('Ahora', 'Now') : c('Después', 'Next')}</small></span></li>)}
