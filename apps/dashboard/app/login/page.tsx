@@ -30,11 +30,14 @@ export default function LoginPage() {
       <a href="/" className="brand login-brand"><Brand/></a>
       <h1>{c('Entra en tu espacio', 'Open your workspace')}</h1>
       <p>{c('Tu búsqueda de empleo se guarda en este equipo. Usa un código de acceso para abrirla.', 'Your job search is saved on this device. Use a sign-in code to open it.')}</p>
-      <ol className="login-steps">
-        <li>{c('Abre la carpeta donde instalaste Career Stack.', 'Open the folder where you installed Career Stack.')}</li>
-        <li>{c('Abre el archivo', 'Open the file')} <code>data/setup-token</code> {c('con un editor de texto y copia su contenido.', 'with a text editor and copy its contents.')}</li>
-        <li>{c('Pega el código aquí para entrar.', 'Paste the code here to sign in.')}</li>
-      </ol>
+      <p>{c('Si acabas de iniciar la app y el código se copió automáticamente, pégalo abajo.', 'If you just started the app and the code was copied automatically, paste it below.')}</p>
+      <details className="login-help"><summary>{c('¿Dónde encuentro mi código?', 'Where do I find my code?')}</summary>
+        <ol className="login-steps">
+          <li>{c('Abre la carpeta donde instalaste Career Stack.', 'Open the folder where you installed Career Stack.')}</li>
+          <li>{c('Dentro de data, abre setup-token con un editor de texto.', 'Inside data, open setup-token with a text editor.')}</li>
+          <li>{c('Copia su contenido y pégalo abajo.', 'Copy its contents and paste it below.')}</li>
+        </ol>
+      </details>
       {error && <Notice tone="error">{error}</Notice>}
       <form onSubmit={submit} className="login-form" aria-busy={busy}>
         <Field label={c('Código de acceso', 'Sign-in code')} disabled={!ready || busy} type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="one-time-code" autoCapitalize="none" spellCheck={false} required placeholder={c('Pega el código aquí', 'Paste the code here')}/>

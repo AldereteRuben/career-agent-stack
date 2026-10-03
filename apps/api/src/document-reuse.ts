@@ -27,7 +27,9 @@ export async function documentReadiness(executor: Executor, workspaceId: string,
     const ids = [...new Set(doc.claims.flatMap((claim) => claim.sourceFactIds))];
     const resolved = ids.map((id) => approvedIds.has(id) ? id : originals.has(id) ? copies.get(copyKey(originals.get(id)!)) : undefined);
     const reusableFactIds = [...new Set(resolved.filter((id): id is string => Boolean(id)))];
-    const assistReady = doc.approvalStatus === 'USER_APPROVED' && doc.profileRevisionId === profile?.id && doc.claims.length > 0 && doc.claims.every((claim) => claim.sourceFactIds.length > 0 && claim.sourceFactIds.every((id) => approvedIds.has(id)));
-    return { ...doc, jobId: doc.jobSnapshotId ? snapshotJobs.get(doc.jobSnapshotId) ?? null : null, reusableFactIds, missingFactCount: resolved.filter((id) => !id).length, assistReady };
+    const currentContent = doc.profileRevisionId === profile?.id && doc.claims.length > 0 && doc.claims.every((claim) => claim.sourceFactIds.length > 0 && claim.sourceFactIds.every((id) => approvedIds.has(id)));
+    const assistReady = doc.approvalStatus === 'USER_APPROVED' && currentContent;
+    const reviewReady = doc.approvalStatus === 'PENDING_REVIEW' && currentContent;
+    return { ...doc, reviewReady, jobId: doc.jobSnapshotId ? snapshotJobs.get(doc.jobSnapshotId) ?? null : null, reusableFactIds, missingFactCount: resolved.filter((id) => !id).length, assistReady };
   });
 }

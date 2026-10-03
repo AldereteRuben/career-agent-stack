@@ -34,6 +34,8 @@ async function runScenarios(stack: IsolatedStack, artifacts: string): Promise<Re
       await new Promise((resolve) => setTimeout(resolve, Math.max(0, start - Date.now())));
     };
     await context.route('**/api/v1/**', async (route) => { await pace(); await route.continue(); });
+    context.setDefaultTimeout(30_000);
+    context.setDefaultNavigationTimeout(45_000);
     const page = await context.newPage();
     let allowed: RegExp[] = [];
     let browserErrors: string[] = [];
