@@ -5,6 +5,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Keep declarations aligned with the supported Node 24 runtime.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
+      # TypeScript 7 is outside the lint toolchain's supported range.
+      - dependency-name: "typescript"
+        versions: [">=7"]
     groups:
       compatible-updates:
         update-types: [minor, patch]
