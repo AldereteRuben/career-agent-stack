@@ -1,5 +1,7 @@
 'use client';
 
+import { useDisclosureFocus } from '@/lib/disclosure-focus';
+
 import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { ApplicationJourney } from '@/components/application-journey';
 import { AssistedApplication } from '@/components/assisted-application';
@@ -45,6 +47,7 @@ function ApplicationsView() {
   const [selectedId, setSelectedId] = useState<string | null>(urlId);
   const [events, setEvents] = useState<AppEvent[]>([]); const [eventsState, setEventsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [open, setOpen] = useState(false);
+  const formHeading = useDisclosureFocus(open);
   const formDraft = useSessionDraft('application-create', { company: '', role: '', url: '', location: '', applied: '' }, (value): value is { company: string; role: string; url: string; location: string; applied: string } => stringDraft(value) && ['company', 'role', 'url', 'location', 'applied'].every((key) => typeof value[key] === 'string'));
   const { company, role, url, location } = formDraft.value; const alreadyApplied = formDraft.value.applied === 'yes';
   const setCompany = (company: string) => formDraft.update((d) => ({ ...d, company })); const setRole = (role: string) => formDraft.update((d) => ({ ...d, role })); const setUrl = (url: string) => formDraft.update((d) => ({ ...d, url })); const setLocation = (location: string) => formDraft.update((d) => ({ ...d, location })); const setAlreadyApplied = (applied: boolean) => formDraft.update((d) => ({ ...d, applied: applied ? 'yes' : '' }));
@@ -145,7 +148,7 @@ function ApplicationsView() {
     <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Mis solicitudes', 'My applications')} description={c('Guarda los puestos a los que quieres solicitar, prepara el formulario y anota las respuestas de las empresas. Añadir aquí una solicitud no la envía.', 'Track jobs you want to apply for, prepare the form, and record employer responses. Adding an application here does not submit it.')} action={<Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir solicitud', 'Add application')}</Button>}/>
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
     {hasFormDraft && <Notice tone={formDraft.storageFailed ? 'warning' : 'info'}>{formDraft.storageFailed ? c('No se pudo conservar el borrador. Guarda o descarta la solicitud antes de salir.', 'The draft could not be preserved. Save or discard the application before leaving.') : c('Solicitud sin guardar: el borrador se conserva en esta pestaña hasta que cierres sesión.', 'Unsaved application: the draft is kept in this tab until you sign out.')} <Button variant="quiet" onClick={() => setOpen(true)}>{c('Continuar borrador', 'Continue draft')}</Button> <Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar esta solicitud sin guardar?', 'Discard this unsaved application?'))) formDraft.update({ company: '', role: '', url: '', location: '', applied: '' }); }}>{c('Descartar borrador', 'Discard draft')}</Button></Notice>}
-    {open && <Card className="import-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2>{c('Registrar una solicitud', 'Add an application')}</h2><p>{c('Solo guardamos lo que tú escribes; nada se envía a la empresa.', 'We only save what you type; nothing is sent to the employer.')}</p></div></div></div>
+    {open && <Card className="import-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 ref={formHeading} tabIndex={-1}>{c('Registrar una solicitud', 'Add an application')}</h2><p>{c('Solo guardamos lo que tú escribes; nada se envía a la empresa.', 'We only save what you type; nothing is sent to the employer.')}</p></div></div></div>
       <form className="form-grid" onSubmit={(event) => void create(event)} aria-busy={busy === 'create'}>
         <Field label={c('Empresa', 'Company')} disabled={busy === 'create' || !formDraft.ready} value={company} onChange={(e) => setCompany(e.target.value)} required/><Field label={c('Puesto', 'Role')} disabled={busy === 'create' || !formDraft.ready} value={role} onChange={(e) => setRole(e.target.value)} required/>
         <Field label={c('Ubicación', 'Location')} disabled={busy === 'create' || !formDraft.ready} value={location} onChange={(e) => setLocation(e.target.value)}/><Field label={c('Enlace a la oferta', 'Link to the job post')} type="url" disabled={busy === 'create' || !formDraft.ready} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://"/>

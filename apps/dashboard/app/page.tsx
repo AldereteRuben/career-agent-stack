@@ -59,7 +59,7 @@ export default function HomePage() {
     const identityMissing = profileChecks.filter((check) => ['fullName', 'email'].includes(check.key) && missing.has(check.key));
     const preferencesMissing = profileChecks.filter((check) => ['targetTitles', 'workModes'].includes(check.key) && missing.has(check.key));
     const list = (checks: typeof profileChecks) => checks.map((check) => c(check.es, check.en).toLowerCase()).join(', ');
-    if (identityMissing.length) steps.push({ key: 'identity', href: '/profile', icon: 'user', title: c('Completa tus datos básicos', 'Complete your basic details'), detail: c(`Falta: ${list(identityMissing)}.`, `Missing: ${list(identityMissing)}.`) });
+    if (identityMissing.length) steps.push({ key: 'identity', href: '/start', icon: 'user', title: c('Completa tus datos básicos', 'Complete your basic details'), detail: c(`Falta: ${list(identityMissing)}.`, `Missing: ${list(identityMissing)}.`) });
     if (preferencesMissing.length) steps.push({ key: 'preferences', href: '/profile', icon: 'search', title: c('Indica qué buscas', 'Say what you are looking for'), detail: c(`Falta: ${list(preferencesMissing)}. Así podemos valorar el encaje de cada oferta.`, `Missing: ${list(preferencesMissing)}. This is how job fit is assessed.`) });
     if (missing.has('approvedFact')) steps.push(summary.pendingFacts > 0
       ? { key: 'first-fact', href: '/profile#experience', icon: 'check', title: c('Confirma tu primera experiencia', 'Confirm your first experience'), detail: summary.pendingFacts === 1 ? c('Tienes 1 dato por confirmar esperando tu revisión.', 'You have 1 detail to confirm waiting for review.') : c(`Tienes ${summary.pendingFacts} datos por confirmar esperando tu revisión.`, `You have ${summary.pendingFacts} details to confirm waiting for review.`) }
@@ -73,7 +73,7 @@ export default function HomePage() {
       : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir ofertas de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
   }
 
-  const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers'].includes(step.key));
+  const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers', 'preferences'].includes(step.key));
 
   const metrics = [
     { key: 'jobs', label: c('Ofertas guardadas', 'Saved jobs'), value: summary?.totalJobs, href: '/jobs' },
@@ -84,6 +84,7 @@ export default function HomePage() {
 
   return <WorkspaceGate><AppShell>
     <PageHeader
+      action={<ButtonLink href="/start" variant="secondary">{c('Guía para empezar', 'Getting started')}</ButtonLink>}
       eyebrow={t('Resumen')}
       title={c('Tu búsqueda, hoy', 'Your search today')}
       description={c('Organiza tu búsqueda de empleo: guarda ofertas, prepara tu CV y lleva el seguimiento de tus solicitudes.', 'Organize your job search: save jobs, prepare your resume, and track your applications.')}
@@ -94,7 +95,7 @@ export default function HomePage() {
       <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
       <h2>{primaryStep?.title ?? c('Elige una oferta que te interese', 'Choose a job you are interested in')}</h2>
       <p>{primaryStep?.detail ?? c('Abre una oferta guardada para preparar tu CV o empezar a seguir tu solicitud.', 'Open a saved job to prepare your resume or start tracking your application.')}</p>
-      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
+      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
       <p className="muted-label">{c('Puedes guardar ofertas desde el principio. Conectar páginas de empresas y guardar respuestas es opcional.', 'You can save jobs right away. Connecting company careers pages and saving answers are optional.')}</p>
     </Card>}
     <section className="search-guide" aria-labelledby="search-guide-heading">

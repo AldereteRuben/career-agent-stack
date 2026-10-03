@@ -1,6 +1,16 @@
 # Backup and isolated restore · Copia de seguridad y restauración aislada
 
-## Backup
+## From Settings / Desde Ajustes
+
+Choose **Settings and privacy → Create backup**. Wait for verification, then download **both** the archive and recovery key. The checksum download is optional. The app uses the same verified backup command with the running API's configuration; it does not read another installation's `.env`.
+
+En **Ajustes y privacidad → Crear copia de seguridad**, espera la comprobación y descarga **la copia y la clave**. El archivo de comprobación es opcional. Se utiliza la configuración de la instalación abierta.
+
+Download before creating another backup or restarting the API. Completed originals remain in `data/backups/<id>/`, with the separate key under `keys/`. Old copies are not deleted automatically. Failed attempts are removed. One backup can run at a time, with a five-minute limit; leave and return to Settings to see its progress. Downloads require the local session and are never cached. PostgreSQL client tools are still required. Restoring still uses the terminal instructions below.
+
+Descarga antes de crear otra copia o reiniciar la API. Los originales quedan en `data/backups/<id>/`, con la clave en `keys/`; gestiona las copias antiguas desde esa carpeta. Las copias fallidas se eliminan. Puedes salir de Ajustes y volver mientras se prepara. La restauración sigue requiriendo la terminal.
+
+## Backup from a terminal
 
 ```sh
 pnpm run backup                      # → backups/career-backup-<UTC>.tar (+ .sha256) and backups/career-key-<fingerprint>.json
