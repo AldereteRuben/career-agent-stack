@@ -22,11 +22,11 @@ export const v060Scenario: Scenario = {
       for (const locale of ['es', 'en'] as const) {
         await setLocale(page, locale); await page.setViewportSize({ width: 390, height: 844 });
         await goTo(page, '/boards');
-        const activate = page.getByRole('button', { name: locale === 'es' ? 'Activar búsqueda automática' : 'Turn on automatic search', exact: true });
+        const activate = page.getByRole('button', { name: locale === 'es' ? 'Activar consultas de empresas' : 'Turn on company checks', exact: true });
         await activate.waitFor(); await activate.click();
         await eventually(async () => (await api.get<{ enabled: boolean }>('/discovery')).enabled, Boolean, 'Opt-in persisted');
         await page.reload();
-        const pause = page.getByRole('button', { name: locale === 'es' ? 'Pausar búsqueda' : 'Pause search', exact: true }); await pause.waitFor();
+        const pause = page.getByRole('button', { name: locale === 'es' ? 'Pausar consultas de empresas' : 'Pause company checks', exact: true }); await pause.waitFor();
         await page.screenshot({ path: join(artifacts, `v060-layout-${locale}.png`), fullPage: true });
         assert.equal(await hasHorizontalOverflow(page), false, JSON.stringify(await page.locator('main *').evaluateAll((nodes) => nodes.filter((node) => node.getBoundingClientRect().right > window.innerWidth + 1).map((node) => ({ tag: node.tagName, class: node.className, right: node.getBoundingClientRect().right })).slice(0, 15))));
         await page.locator('.discovery-details summary').click();

@@ -11,8 +11,8 @@ export const v051First: Scenario = {
     await goTo(page, '/'); await setLocale(page, 'es');
     const action = page.getByRole('link', { name: 'Crear mi búsqueda', exact: true });
     assert.equal(await action.getAttribute('href'), '/searches'); await action.click();
-    await page.getByRole('heading', { name: 'Búsquedas guardadas', exact: true }).waitFor();
-    await goTo(page, '/start');
+    await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
+    await goTo(page, '/profile/setup');
     const name = page.getByLabel('Nombre', { exact: true }); await name.fill(`Unsaved ${marker}`);
     assert.equal(await page.locator('button.profile-chip').count(), 0);
     page.once('dialog', (dialog) => dialog.dismiss());
@@ -38,7 +38,7 @@ export const v051Last: Scenario = {
     const doc = await api.post<Resume>('/documents', { name: `UX resume ${marker}`, locale: 'es', factIds: [fact.id] });
     assert.equal(doc.language, 'es');
     assert.equal((await api.get<Resume[]>('/documents')).find((row) => row.id === doc.id)?.reviewReady, true);
-    await goTo(page, '/start'); await setLocale(page, 'es');
+    await goTo(page, '/profile/setup'); await setLocale(page, 'es');
     await page.getByRole('link', { name: 'Continuar revisando mi CV', exact: true }).click();
     await page.getByRole('heading', { name: 'Revisa esta versión', exact: true }).waitFor();
     assert.equal(new URL(page.url()).searchParams.get('document'), doc.id);

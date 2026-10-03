@@ -1,2 +1,3 @@
-import ApplicationPreparationPage from '@/components/application-preparation';
-export default ApplicationPreparationPage;
+import { redirect } from 'next/navigation';
+
+export default function PreparationsPage() { redirect('/applications?view=review'); }

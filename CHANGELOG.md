@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.1
+
+- Search-first onboarding, visible saved-search cards, simpler defaults and preserved search context through profile, resume and application screens.
+- Local results and preparation queues refresh while visible and when returning to the tab. Background arrivals preserve focus, drafts and action errors without querying providers again.
+- Inline search errors focus the missing criterion; failed source checks retain honest recovery guidance instead of suggesting filter changes. Broad locations are labelled as requiring confirmation.
+- One automatic preparation action is available from jobs, the profile and applications without a resume. Saving experience leads directly to explicit confirmation; generated resumes open for review.
+- Unsent records say “No contact yet”, manual state corrections are secondary, and unsupported forms offer a direct manual continuation. Closed applications do not offer another submission. Preparation and submission activity is localized.
+- Imported HTML descriptions render as readable text; provisional matches do not show a misleading score. Compact job metadata, responsive controls, shorter guidance and consistent resume views reduce unnecessary scrolling.
+- Validation and release evidence: [v0.7.1](docs/releases/v0.7.1.md). No new data migration, external provider or unattended submission capability.
+
 ## 0.7.0
 
 - Saved automatic searches by role and/or company, optional location/work mode, and selectable 6/12/24-hour schedules. Remotive and Arbeitnow public feeds need no API keys or manually entered employer URLs. Source links, attribution, coverage and freshness are visible; source reads are shared and rate limited across searches.

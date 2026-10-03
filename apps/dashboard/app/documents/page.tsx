@@ -1,8 +1,11 @@
 'use client';
 
+import { useErrorFocus } from '@/lib/disclosure-focus';
+
 import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { localizedError, useLocale } from '@/lib/i18n';
 import Link from 'next/link';
+import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { ApplicationJourney } from '@/components/application-journey';
 import { PdfPreview } from '@/components/pdf-preview';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -24,6 +27,7 @@ const fileUrl = (id: string) => `/api/v1/documents/${id}/file`;
 function DocumentsView() {
   const { locale } = useLocale(); const c = copy(locale);
   const router = useRouter(); const pathname = usePathname(); const searchParams = useSearchParams(); const urlJobId = searchParams.get('jobId') ?? ''; const applicationId = searchParams.get('applicationId') ?? '';
+  const returnTo = searchOrigin(searchParams.get('returnTo'));
   const draft = useSessionDraft(`resume:${applicationId || urlJobId || 'base'}`, { name: '', named: '', language: '', facts: '' }, (value): value is { name: string; named: string; language: string; facts: string } => {
     if (!stringDraft(value) || !['name', 'named', 'language', 'facts'].every((key) => typeof value[key] === 'string') || !['', 'es', 'en'].includes(value.language!)) return false;
     try { const ids: unknown = JSON.parse(value.facts || '[]'); return Array.isArray(ids) && ids.length <= 50 && ids.every((id) => typeof id === 'string'); } catch { return false; }
@@ -49,7 +53,7 @@ function DocumentsView() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const restoreFocus = useRef(false);
   const profileParams = new URLSearchParams(); if (urlJobId) profileParams.set('jobId', urlJobId); if (applicationId) profileParams.set('applicationId', applicationId);
-  const profileHref = `/profile${profileParams.size ? `?${profileParams}` : ''}`;
+  const profileHref = withSearchOrigin(`/profile${profileParams.size ? `?${profileParams}` : ''}`, returnTo);
   const [facts, setFacts] = useState<Fact[]>([]); const [documents, setDocuments] = useState<Document[]>([]); const [jobs, setJobs] = useState<Job[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [jobId, setJobId] = useState(urlJobId);
@@ -61,6 +65,7 @@ function DocumentsView() {
   const name = draft.value.name; const nameTouched = draft.value.named === 'yes';
   const setName = (name: string) => draft.update((value) => ({ ...value, name, named: 'yes' }));
   const [busy, setBusy] = useState<string | null>(null); const [error, setError] = useState(''); const [message, setMessage] = useState('');
+  const errorFocus = useErrorFocus(error);
   const [preview, setPreview] = useState<Preview | null>(null); const [reviewed, setReviewed] = useState(false);
   // Each preview fetch gets a generation number; only the latest may display its bytes.
   const previewRequest = useRef(0); const previewAbort = useRef<AbortController | null>(null);
@@ -178,7 +183,7 @@ function DocumentsView() {
     setBusy(`use:${doc.id}`); setError('');
     try {
       const application = await api<{ id: string }>('/applications/with-resume', { method: 'POST', body: JSON.stringify({ documentId: doc.id, ...(applicationId ? { applicationId } : { jobId }) }) });
-      router.push(`/applications?id=${application.id}`);
+      router.push(withSearchOrigin(`/applications?id=${application.id}`, returnTo));
     } catch (err) { setError(errorMessage(err)); await load(); } finally { setBusy(null); }
   };
   const nextDocument = documents.find((doc) => doc.id === approvedNext && doc.assistReady);
@@ -222,9 +227,9 @@ function DocumentsView() {
 
   return <>
     <PageHeader eyebrow={c('MIS CV', 'MY RESUMES')} title={showHistory ? c('Tus CV guardados', 'Your saved resumes') : routeDocumentId ? c('Revisa tu CV', 'Review your resume') : c('Prepara tu CV', 'Prepare your resume')} description={showHistory ? c('Consulta, descarga o usa una versión anterior como base para otra.', 'View, download or use an earlier version as a starting point.') : routeDocumentId ? c('Lee esta versión. Si necesitas cambios, prepara una nueva; este PDF se conserva.', 'Read this version. If you need changes, prepare a new one; this PDF is kept.') : c('Selecciona las experiencias que quieres incluir en tu CV, genera el PDF y revísalo antes de usarlo.', 'Select the experience you want on your resume, generate the PDF, and review it before using it.')}/>
-    <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="resume" title={job ? `${job.title} · ${job.company}` : undefined}/>
-    {nextDocument && <Card className="next-step-card"><h2>{c('Tu CV está listo', 'Your resume is ready')}</h2><p>{c('Ahora puedes asociarlo a tu solicitud. Tú revisarás y enviarás el formulario desde la página de la empresa.', 'You can now select it for your application. You will review and submit the form on the employer’s website.')}</p>{jobId || applicationId ? <Button disabled={busy !== null} onClick={() => void useResume(nextDocument)}>{c('Continuar con esta solicitud', 'Continue with this application')}</Button> : <Link className="button button-primary" href="/jobs">{c('Elegir una oferta', 'Choose a job')}</Link>}</Card>}
-    {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="resume" returnTo={returnTo} title={job ? `${job.title} · ${job.company}` : undefined}/>
+    {nextDocument && <Card className="next-step-card"><h2>{c('Tu CV está listo', 'Your resume is ready')}</h2><p>{c('Continúa para revisar los datos del formulario. Te indicaremos si el envío puede hacerse desde aquí o en la página de la empresa.', 'Continue to review the form details. We will show whether you can submit here or need to use the employer’s website.')}</p>{jobId || applicationId ? <Button disabled={busy !== null} onClick={() => void useResume(nextDocument)}>{c('Continuar con esta solicitud', 'Continue with this application')}</Button> : <Link className="button button-primary" href="/jobs">{c('Elegir una oferta', 'Choose a job')}</Link>}</Card>}
+    {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando datos de tu experiencia y documentos…', 'Loading profile details and documents…')}</Notice>}
     {loadState === 'error' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar tus datos.', 'We could not load your data.')}</Notice>}
     <div className="document-view-switch" role="group" aria-label={c('Vista de mis CV', 'Resume view')}>
@@ -258,7 +263,7 @@ function DocumentsView() {
             {jobId && !job && loadState === 'ready' && <option value={jobId}>{c('Oferta no disponible', 'Job not available')}</option>}
             {jobs.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.company}</option>)}
           </SelectField>
-          {job && <p className="muted-label">{c('El documento usará el título de esta oferta.', 'The document will use this job title.')} <Link href={`/jobs/${job.id}`}>{c('Ver oferta', 'View job')}</Link></p>}
+          {job && <p className="muted-label">{c('El documento usará el título de esta oferta.', 'The document will use this job title.')} <Link href={withSearchOrigin(`/jobs/${job.id}`, returnTo)}>{c('Ver oferta', 'View job')}</Link></p>}
           <SelectField label={c('Idioma del PDF', 'PDF language')} value={pdfLocale} onChange={(event) => setPdfLanguage(event.target.value as 'es' | 'en')} hint={c('Cambia los títulos y las fechas. Tus descripciones se conservan en el idioma en que las escribiste.', 'Changes headings and dates. Your descriptions stay in the language you wrote them.')}><option value="es">Español</option><option value="en">English</option></SelectField>
           <Field label={c('Nombre de la versión', 'Version name')} value={documentName} onChange={(e) => { setName(e.target.value); }} required maxLength={200} hint={c('Si repites un nombre, se guarda como una versión nueva.', 'If you reuse a name, it is saved as a new version.')}/>
           <details className="technical-detail"><summary>{c('¿Puedo continuar después?', 'Can I continue later?')}</summary><p className="muted-label">{c('Cada oferta conserva su nombre, idioma y selección en esta pestaña. Puedes volver después de editar tu perfil. Cerrar sesión borra esta preparación.', 'Each job keeps its name, language and selection in this tab. You can return after editing your profile. Signing out clears this preparation.')}</p></details><Link href={profileHref}>{c('Añadir o corregir datos del perfil', 'Add or edit profile details')}</Link>
@@ -289,7 +294,7 @@ function DocumentsView() {
             <Button variant="quiet" disabled={busy !== null} onClick={() => reuse(doc)}>{c('Usar como base', 'Use as starting point')}</Button>
           </div>
         </div></Card>) : loadState === 'ready' && <Card className="jobs-empty"><Empty title={c('Aún no hay documentos', 'No documents yet')} detail={c('Cuando apruebes tus primeros datos de tu experiencia, podrás generar una versión para revisar.', 'Once you approve your first profile details, you can generate a version to review.')}/></Card>}
-        <div className="notice notice-info document-boundary">{c('Preparar un CV no lo envía a ninguna empresa. Descárgalo y adjúntalo tú al solicitar el puesto.', 'Creating a resume does not send it to an employer. Download it and attach it yourself when applying.')}</div>
+        <div className="notice notice-info document-boundary">{c('Preparar un CV no lo envía a ninguna empresa. Después de revisarlo, continúa en Mis solicitudes o descárgalo para postular por tu cuenta.', 'Creating a resume does not send it to an employer. After reviewing it, continue in My applications or download it to apply yourself.')}</div>
       </aside>
     </div>
   </>;

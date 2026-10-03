@@ -1,3 +1,5 @@
+import { decodeEntities, htmlToText } from './sources.js';
+
 export type JobSearchProvider = 'remotive' | 'arbeitnow';
 export type SearchWorkMode = 'any' | 'remote' | 'hybrid' | 'onsite';
 export type PublicJob = {
@@ -31,10 +33,21 @@ const allowedHost = (provider: JobSearchProvider, value: unknown): string | null
 
 const text = (value: unknown, limit = 2000): string | null => typeof value === 'string' && value.trim() ? value.trim().slice(0, limit) : null;
 const identifier = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim().slice(0, 300) : typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : null;
-const plainDescription = (value: unknown): string | null => {
-  const valueText = text(value, 100_000);
-  return valueText ? valueText.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/\s+/g, ' ').trim().slice(0, 20_000) : null;
+/** Feed descriptions can contain escaped HTML as well as ordinary markup.
+ * Always return text: never pass provider HTML through to the browser.
+ */
+export const plainDescription = (value: unknown): string | null => {
+  let description = text(value, 100_000);
+  if (!description) return null;
+  // Bounded decoding handles providers that escape their whole HTML fragment.
+  for (let level = 0; level < 2; level++) {
+    const decoded = decodeEntities(description);
+    if (decoded === description) break;
+    description = decoded;
+  }
+  return htmlToText(description).slice(0, 20_000).trim() || null;
 };
+
 const modeFrom = (remote: unknown, title: string, location: string | null, raw: Record<string, unknown>): PublicJob['workMode'] => {
   const signals = `${title} ${location ?? ''} ${JSON.stringify(raw.tags ?? '')} ${JSON.stringify(raw.job_type ?? raw.job_types ?? '')}`.toLowerCase();
   if (/\b(hybrid|partly remote|partially remote)\b/.test(signals)) return 'hybrid';

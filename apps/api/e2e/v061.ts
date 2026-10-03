@@ -43,7 +43,7 @@ export const v061Scenario: Scenario = {
           await panel.locator('.tag').filter({ hasText: c('PAUSADA', 'PAUSED') }).waitFor();
           failGet = true; await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
           await panel.locator('.tag').filter({ hasText: c('SIN ACTUALIZAR', 'OUT OF DATE') }).waitFor();
-          const activate = panel.getByRole('button', { name: c('Activar búsqueda automática', 'Turn on automatic search'), exact: true });
+          const activate = panel.getByRole('button', { name: c('Activar consultas de empresas', 'Turn on company checks'), exact: true });
           assert.equal(await activate.isDisabled(), true);
           for (const width of [1096, 390, 320]) {
             await page.setViewportSize({ width, height: 844 });

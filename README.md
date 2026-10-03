@@ -4,7 +4,7 @@ Your private workspace to find jobs automatically, prepare applications from you
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.7.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.7.0.md)
+**Current release: v0.7.1** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.7.1.md)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 

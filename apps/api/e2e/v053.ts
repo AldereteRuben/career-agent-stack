@@ -64,7 +64,7 @@ export const v053Scenarios: Scenario[] = [
           await page.getByRole('button', { name: t(locale, 'Guardar solicitud', 'Save application'), exact: true }).waitFor();
           await page.getByLabel(t(locale, 'Puesto', 'Role'), { exact: true }).fill(`Notice role ${marker}`);
           await page.getByRole('button', { name: t(locale, 'Guardar solicitud', 'Save application'), exact: true }).click();
-          await page.getByLabel(t(locale, 'Estado de la solicitud', 'Application status'), { exact: true }).selectOption('CONFIRMED');
+          await page.getByRole('button', { name: t(locale, 'Ya envié esta solicitud', 'I already sent this application'), exact: true }).click();
           const confirmation = page.locator('.notice[role=alert]').filter({ has: page.getByRole('button', { name: t(locale, 'Sí, la envié', 'Yes, I sent it'), exact: true }) });
           await confirmation.waitFor();
           await assertNoticeLayout(page, confirmation, `confirmation ${locale}`);

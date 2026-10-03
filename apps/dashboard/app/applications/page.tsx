@@ -1,18 +1,23 @@
 'use client';
 
+import { useErrorFocus } from '@/lib/disclosure-focus';
+
 import { useDisclosureFocus } from '@/lib/disclosure-focus';
 
 import { useSessionDraft, stringDraft } from '@/lib/session-draft';
+import { ApplicationQueue, ApplicationPreparationAction } from '@/components/application-preparation';
+import { ApplicationSections } from '@/components/application-sections';
 import { ApplicationJourney } from '@/components/application-journey';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
+import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
-import { copy, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
+import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
 import type { Locale } from '@/lib/locale';
 
 type Application = { documentId: string | null; id: string; jobId: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; updatedAt: string; version?: number };
@@ -38,6 +43,7 @@ function eventDetail(event: AppEvent, locale: Locale) {
     const arrow = `${labelFor.recruitmentStage(event.priorState, locale)} → ${labelFor.recruitmentStage(event.newState, locale)}`;
     return event.reason && /correct/i.test(event.reason) ? `${arrow} · ${c('corrección', 'correction')}` : arrow;
   }
+  if (event.eventType === 'PREPARATION_CREATED') return c('Se comprobaron los datos disponibles y los pasos pendientes. Preparar no envía la solicitud.', 'Available details and remaining steps were checked. Preparing does not submit the application.');
   if (event.eventType === 'APPLICATION_RESUME_SELECTED') return c('CV seleccionado para esta solicitud: ', 'Resume selected for this application: ') + (event.reason ?? '');
   if (event.eventType === 'APPLICATION_STATE_CHANGED') return `${labelFor.applicationState(event.priorState, locale)} → ${labelFor.applicationState(event.newState, locale)}`;
   if (event.eventType.startsWith('ASSIST_') && event.eventType !== 'ASSIST_USER_RECONCILED') return c('Acción registrada para esta solicitud. Consulta el resultado y la evidencia del envío.', 'Action recorded for this application. Check the submission result and evidence.');
@@ -49,6 +55,7 @@ function eventDetail(event: AppEvent, locale: Locale) {
 function ApplicationsView() {
   const { locale } = useLocale(); const c = copy(locale);
   const router = useRouter(); const pathname = usePathname(); const searchParams = useSearchParams(); const urlId = searchParams.get('id');
+  const returnTo = searchOrigin(searchParams.get('returnTo'));
   const [rows, setRows] = useState<Application[]>([]); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [selectedId, setSelectedId] = useState<string | null>(urlId);
   const [events, setEvents] = useState<AppEvent[]>([]); const [eventsState, setEventsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -62,10 +69,19 @@ function ApplicationsView() {
   const note = selectedId ? notes.value[selectedId] ?? '' : '';
   const setNote = (text: string) => { if (selectedId) notes.update((drafts) => ({ ...drafts, [selectedId]: text })); }; const [pendingStage, setPendingStage] = useState<string | null>(null); const [confirmApplied, setConfirmApplied] = useState(false);
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
+  const errorFocus = useErrorFocus(error);
   const eventsRequest = useRef(0);
   // The selection as of now, not as of the render that started a request: async handlers compare against it after every await.
   const selectedRef = useRef<string | null>(urlId);
   const selected = rows.find((row) => row.id === selectedId) ?? null;
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const listHeading = useRef<HTMLHeadingElement>(null);
+  const focusSelection = useRef(Boolean(urlId));
+  useEffect(() => {
+    if (!focusSelection.current || loadState !== 'ready') return;
+    const target = selectedId ? detailHeading.current : listHeading.current;
+    if (target) { focusSelection.current = false; target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'start' }); }
+  }, [selectedId, selected?.id, loadState]);
 
   const loadRows = useCallback(async () => {
     try { const list = await api<Application[]>('/applications'); setRows(list); setLoadState('ready'); return list; }
@@ -80,7 +96,7 @@ function ApplicationsView() {
 
   useEffect(() => { void loadRows(); }, [loadRows]);
   // Follow the URL (deep links from job pages, back/forward navigation).
-  useEffect(() => { setSelectedId(urlId); }, [urlId]);
+  useEffect(() => { focusSelection.current = true; setSelectedId(urlId); }, [urlId]);
   useEffect(() => {
     selectedRef.current = selectedId;
     setEvents([]); setPendingStage(null); setConfirmApplied(false);
@@ -88,7 +104,7 @@ function ApplicationsView() {
   }, [selectedId, loadEvents]);
 
   const select = (id: string | null, keepNotices = false) => {
-    selectedRef.current = id; setSelectedId(id); if (!keepNotices) { setMessage(''); setError(''); }
+    focusSelection.current = true; selectedRef.current = id; setSelectedId(id); if (!keepNotices) { setMessage(''); setError(''); }
     // Read the live URL: after an await, the searchParams captured by this render may already be outdated.
     const params = new URLSearchParams(window.location.search); if (id) params.set('id', id); else params.delete('id');
     router.replace(`${pathname}${params.size ? `?${params}` : ''}`, { scroll: false });
@@ -148,12 +164,13 @@ function ApplicationsView() {
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
   };
 
+  const canAutoPrepare = Boolean(selected?.jobId && !selected.documentId && !['CONFIRMED', 'CANCELLED', 'UNKNOWN', 'IN_PROGRESS'].includes(selected.state));
   const stateChoices = selected ? [selected.state, ...(transitions[selected.state] ?? []).filter((state) => (selectableApplicationStates as readonly string[]).includes(state))] : [];
 
   return <>
     <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Mis solicitudes', 'My applications')} description={c('Guarda los puestos a los que quieres solicitar, prepara el formulario y anota las respuestas de las empresas. Añadir aquí una solicitud no la envía.', 'Track jobs you want to apply for, prepare the form, and record employer responses. Adding an application here does not submit it.')} action={<Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir solicitud', 'Add application')}</Button>}/>
-    <p><Link className="button button-secondary" href="/preparations">{c('Ver candidaturas preparadas', 'View prepared applications')}</Link></p>
-    {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    <ApplicationSections active="tracking"/>
+    {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
     {hasFormDraft && <Notice tone={formDraft.storageFailed ? 'warning' : 'info'} actions={<><Button variant="quiet" onClick={() => setOpen(true)}>{c('Continuar borrador', 'Continue draft')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar esta solicitud sin guardar?', 'Discard this unsaved application?'))) formDraft.update({ company: '', role: '', url: '', location: '', applied: '' }); }}>{c('Descartar borrador', 'Discard draft')}</Button></>}>{formDraft.storageFailed ? c('No se pudo conservar el borrador. Guarda o descarta la solicitud antes de salir.', 'The draft could not be preserved. Save or discard the application before leaving.') : c('Solicitud sin guardar: el borrador se conserva en esta pestaña hasta que cierres sesión.', 'Unsaved application: the draft is kept in this tab until you sign out.')}</Notice>}
     {open && <Card className="import-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 ref={formHeading} tabIndex={-1}>{c('Registrar una solicitud', 'Add an application')}</h2><p>{c('Solo guardamos lo que tú escribes; nada se envía a la empresa.', 'We only save what you type; nothing is sent to the employer.')}</p></div></div></div>
       <form className="form-grid" onSubmit={(event) => void create(event)} aria-busy={busy === 'create'}>
@@ -165,24 +182,26 @@ function ApplicationsView() {
     {loadState === 'loading' ? <Notice>{c('Cargando solicitudes…', 'Loading applications…')}</Notice>
       : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty title={c('No pudimos cargar tus solicitudes', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
       : rows.length ? <div className="tracker-layout">
-        <Card className="tracker-list"><div className="tracker-list-head"><span>{rows.length} {rows.length === 1 ? c('REGISTRO', 'RECORD') : c('REGISTROS', 'RECORDS')}</span><span>{c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
-          {rows.map((row) => <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {labelFor.recruitmentStage(row.recruitmentStage, locale)}</small></span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>)}
+        <Card className="tracker-list"><h2 className="sr-only focus-heading" ref={listHeading} tabIndex={-1}>{c('Lista de solicitudes', 'Application list')}</h2><div className="tracker-list-head"><span>{rows.length} {rows.length === 1 ? c('REGISTRO', 'RECORD') : c('REGISTROS', 'RECORDS')}</span><span>{c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
+          {rows.map((row) => <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {applicationStage(row.recruitmentStage, row.state, locale)}</small></span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>)}
         </Card>
-        <Card className="tracker-detail">{selected ? <>
-          <div className="tracker-detail-head"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('TU HISTORIAL', 'YOUR HISTORY')}</div><h2>{selected.role}</h2><p>{selected.company}{selected.location ? ` · ${selected.location}` : ''}</p>
-            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={`/jobs/${selected.jobId}`}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}</div>
+        <Card className="tracker-detail">{selected ? <><Button variant="quiet" onClick={() => select(null)}>{c('Volver a la lista de solicitudes', 'Back to application list')}</Button>
+          <div className="tracker-detail-head"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('TU HISTORIAL', 'YOUR HISTORY')}</div><h2 className="focus-heading" ref={detailHeading} tabIndex={-1}>{selected.role}</h2><p>{selected.company}{selected.location ? ` · ${selected.location}` : ''}</p>
+            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={withSearchOrigin(`/jobs/${selected.jobId}`, returnTo)}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}</div>
           </div><Tag tone={stateTone(selected.state)}>{labelFor.applicationState(selected.state, locale)}</Tag></div>
-          <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application"/>
-          <div className="application-resume"><h3>{c('CV para esta solicitud', 'Resume for this application')}</h3>{selected.documentId ? <><p>{c('El CV elegido está vinculado a esta solicitud. Descargarlo no lo envía a la empresa.', 'The selected resume is linked to this application. Downloading it does not send it to the employer.')}</p><a className="button button-secondary" href={`/api/v1/documents/${selected.documentId}/file`}>{c('Descargar CV elegido', 'Download selected resume')}</a></> : <p>{c('Todavía no has elegido un CV para esta solicitud.', 'You have not selected a resume for this application yet.')}</p>}<Link className="button button-quiet" href={resumeHref(selected)}>{selected.documentId ? c('Revisar o cambiar CV', 'Review or change resume') : c('Preparar o elegir CV', 'Prepare or choose resume')}</Link></div>
+          <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application" returnTo={returnTo}/>
+          {canAutoPrepare && selected.jobId && <ApplicationPreparationAction key={`prepare:${selected.id}`} jobId={selected.jobId} applicationId={selected.id} returnTo={returnTo} disabled={busy !== null}/>}
+          {!canAutoPrepare && <div className="application-resume"><h3>{c('CV para esta solicitud', 'Resume for this application')}</h3>{selected.documentId ? <><p>{c('El CV elegido está vinculado a esta solicitud. Descargarlo no lo envía a la empresa.', 'The selected resume is linked to this application. Downloading it does not send it to the employer.')}</p><a className="button button-secondary" href={`/api/v1/documents/${selected.documentId}/file`}>{c('Descargar CV elegido', 'Download selected resume')}</a></> : <p>{c('Todavía no has elegido un CV para esta solicitud.', 'You have not selected a resume for this application yet.')}</p>}<Link className="button button-quiet" href={withSearchOrigin(resumeHref(selected), returnTo)}>{selected.documentId ? c('Revisar o cambiar CV', 'Review or change resume') : c('Preparar o elegir CV', 'Prepare or choose resume')}</Link></div>}
           <div className="tracker-controls">
-            <SelectField label={c('Etapa del proceso', 'Hiring stage')} value={pendingStage ?? selected.recruitmentStage} disabled={busy !== null} onChange={(e) => chooseStage(e.target.value)}>{recruitmentStageOrder.map((stage) => <option key={stage} value={stage}>{labelFor.recruitmentStage(stage, locale)}</option>)}</SelectField>
-            <SelectField label={c('Estado de la solicitud', 'Application status')} value={confirmApplied ? 'CONFIRMED' : selected.state} disabled={busy !== null || stateChoices.length < 2} onChange={(e) => chooseState(e.target.value)}>{stateChoices.map((state) => <option key={state} value={state}>{labelFor.applicationState(state, locale)}</option>)}</SelectField>
-            <div className="notice notice-info tracker-boundary">{c('Tú decides cuándo enviar. Usa el flujo asistido para registrar el resultado de la ventana de Lever.', 'You decide when to submit. Use the assisted flow to record the outcome from the Lever window.')}</div>
+            <SelectField label={c('Etapa del proceso', 'Hiring stage')} value={pendingStage ?? selected.recruitmentStage} disabled={busy !== null} onChange={(e) => chooseStage(e.target.value)}>{recruitmentStageOrder.map((stage) => <option key={stage} value={stage}>{applicationStage(stage, selected.state, locale)}</option>)}</SelectField>
+            {stateChoices.includes('CONFIRMED') && !confirmApplied && <Button variant="secondary" disabled={busy !== null} onClick={() => setConfirmApplied(true)}>{c('Ya envié esta solicitud', 'I already sent this application')}</Button>}
+            <details className="application-state-options"><summary>{c('Corregir estado o cancelar', 'Correct status or cancel')}</summary><SelectField label={c('Estado de la solicitud', 'Application status')} value={confirmApplied ? 'CONFIRMED' : selected.state} disabled={busy !== null || stateChoices.length < 2} onChange={(e) => chooseState(e.target.value)}>{stateChoices.map((state) => <option key={state} value={state}>{labelFor.applicationState(state, locale)}</option>)}</SelectField></details>
+            <div className="notice notice-info tracker-boundary">{c('Anota aquí los contactos y entrevistas. Marca la solicitud como enviada solo después de completar el envío.', 'Record contacts and interviews here. Mark the application as sent only after completing the submission.')}</div>
           </div>
           {pendingStage && <Notice tone="warning" role="alert" actions={<><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmCorrection()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, corregir etapa', 'Yes, correct stage')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setPendingStage(null)}>{c('Cancelar', 'Cancel')}</Button></>}>{c(`¿Corregir la etapa de «${labelFor.recruitmentStage(selected.recruitmentStage, locale)}» a «${labelFor.recruitmentStage(pendingStage, locale)}»? Úsalo si te equivocaste; el historial guardará la corrección.`, `Correct the stage from “${labelFor.recruitmentStage(selected.recruitmentStage, 'en')}” to “${labelFor.recruitmentStage(pendingStage, 'en')}”? Use this if you made a mistake; the history keeps the correction.`)}</Notice>}
           {confirmApplied && <Notice tone="warning" role="alert" actions={<><Button variant="secondary" disabled={busy !== null} onClick={() => void confirmSent()}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Sí, la envié', 'Yes, I sent it')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => setConfirmApplied(false)}>{c('Cancelar', 'Cancel')}</Button></>}>{c('Confirma que enviaste esta solicitud tú mismo. Se guardará como tu declaración; no lo comprobamos con la empresa.', 'Confirm that you sent this application yourself. It is saved as your statement; we do not check it with the employer.')}</Notice>}
           {selected.state === 'CONFIRMED' && <div className="notice notice-success">{c('Confirmación basada en tu declaración. No se verificó con la empresa.', 'This confirmation is based on your statement. It was not verified with the employer.')}</div>}
-          <AssistedApplication key={selected.id} applicationId={selected.id} onChanged={() => { void loadRows(); void loadEvents(selected.id); }}/>
+          <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} returnTo={returnTo} onChanged={() => { void loadRows(); void loadEvents(selected.id); }}/>
           <form className="note-form" onSubmit={(event) => void addNote(event)}><TextareaField label={c('Añadir nota al historial', 'Add a note to the history')} rows={3} value={note} disabled={busy === 'note' || !notes.ready} onChange={(e) => setNote(e.target.value)} placeholder={c('Próximo paso, preguntas o contexto…', 'Next step, questions, or context…')} maxLength={10000}/><Button type="submit" variant="secondary" disabled={busy !== null || !notes.ready || !note.trim()}>{busy === 'note' ? c('Guardando…', 'Saving…') : c('Añadir nota', 'Add note')}</Button></form>
           {note && <Notice tone={notes.storageFailed ? 'warning' : 'info'} actions={<Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar el borrador de esta nota?', 'Discard this note draft?'))) notes.update((drafts) => { const next = { ...drafts }; delete next[selected!.id]; return next; }); }}>{c('Descartar nota', 'Discard note')}</Button>}>{notes.storageFailed ? c('No se pudo conservar el borrador. Añade la nota o descártala antes de salir.', 'The draft could not be preserved. Add the note or discard it before leaving.') : c('Borrador de esta solicitud conservado en esta pestaña hasta que cierres sesión. Pulsa Añadir nota para guardarlo en el historial.', 'This application draft is kept in this tab until you sign out. Select Add note to save it to the history.')}</Notice>}
           <div className="timeline"><h3>{c('Actividad', 'Activity')}</h3>
@@ -193,10 +212,15 @@ function ApplicationsView() {
         </> : selectedId && loadState === 'ready' ? <Empty title={c('No encontramos esa solicitud', 'We could not find that application')} detail={c('Puede que se haya eliminado o que el enlace sea antiguo. Elige otra de la lista.', 'It may have been removed or the link is outdated. Choose another one from the list.')} action={<Button variant="secondary" onClick={() => select(null)}>{c('Quitar selección', 'Clear selection')}</Button>}/>
           : <Empty title={c('Elige una solicitud', 'Choose an application')} detail={c('Selecciona un registro para ver su actividad y actualizar el siguiente paso.', 'Choose an application to see its activity and update the next step.')}/>}</Card>
       </div>
-      : <Card className="jobs-empty"><Empty title={c('Todavía no hay solicitudes', 'No applications yet')} detail={c('Crea un registro al empezar una solicitud o anota una solicitud que ya enviaste.', 'Create a record when you start an application, or log one you already sent.')} action={<Button variant="secondary" onClick={() => setOpen(true)}><Icon name="plus" size={15}/> {c('Crear primer registro', 'Create your first record')}</Button>}/></Card>}
+      : <Card className="jobs-empty"><Empty title={c('Todavía no hay solicitudes', 'No applications yet')} detail={c('Empieza por buscar una oferta. Desde sus detalles podrás preparar tu candidatura y seguirla aquí.', 'Start by finding a job. From its details you can prepare an application and track it here.')} action={<Link className="button button-primary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>}/></Card>}
   </>;
 }
 
+function ApplicationsContent() {
+  const params = useSearchParams();
+  return params.get('view') === 'review' ? <ApplicationQueue/> : <ApplicationsView/>;
+}
+
 export default function ApplicationsPage() {
-  return <WorkspaceGate><AppShell><Suspense fallback={null}><ApplicationsView/></Suspense></AppShell></WorkspaceGate>;
+  return <WorkspaceGate><AppShell><Suspense fallback={null}><ApplicationsContent/></Suspense></AppShell></WorkspaceGate>;
 }

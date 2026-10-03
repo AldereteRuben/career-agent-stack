@@ -1796,7 +1796,31 @@ main:focus {
 
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   gap: 8px;
+}
+
+.detail-actions > .button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.job-detail-header .page-header {
+  display: block;
+}
+
+.job-detail-header .page-header h1 {
+  overflow-wrap: anywhere;
+}
+
+.job-detail-header .page-header-action {
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 16px;
 }
 
 .detail-layout {
@@ -1870,6 +1894,7 @@ main:focus {
 }
 
 .description-text {
+  overflow-wrap: anywhere;
   max-height: 600px;
   overflow: auto;
   margin-top: 15px;
@@ -3231,3 +3256,37 @@ main:focus {
 .assist-panel .button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 
 .tracker-list, .tracker-detail { min-width: 0; }
+
+.application-sections { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 0 24px; }
+.application-sections .button { white-space: normal; }
+
+.preparation-action { padding: 20px; margin-block: 20px; }
+.preparation-action > h2 { margin: 0 0 8px; }
+.preparation-action > p { color: var(--muted); max-width: 75ch; }
+.preparation-action > .card { margin-top: 16px; padding: 16px; }
+
+.fit-explanation > summary { cursor: pointer; font-weight: 600; padding-block: 8px; }
+.fit-explanation[open] > summary { margin-bottom: 16px; }
+
+/* One clear route from discovery to application review. */
+.journey-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.preparation-alternatives { margin-block: 14px; }
+.preparation-alternatives > summary { cursor: pointer; font-weight: 600; padding-block: 8px; }
+.preparation-alternatives[open] > summary { margin-bottom: 10px; }
+.entry-review { padding: 20px; border: 1px solid var(--blue); border-radius: var(--radius); background: var(--blue-pale); margin-bottom: 20px; min-width: 0; }
+.entry-review h3 { margin-top: 0; }
+.entry-review-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border-radius: var(--radius-sm); background: white; }
+.entry-review .detail-actions { flex-wrap: wrap; }
+.entry-review .button { max-width: 100%; white-space: normal; }
+@media (max-width: 700px) { .journey-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Keep secondary job metadata compact and application corrections out of the main path. */
+.job-detail-meta { color: var(--muted); font-size: .875rem; margin: 0 0 1rem; overflow-wrap: anywhere; }
+.job-detail-meta p { margin: .35rem 0; }
+.application-state-options { min-width: 0; grid-column: 1 / -1; }
+.application-state-options summary { cursor: pointer; padding: .65rem 0; }
+.application-state-options .field { margin-top: .75rem; max-width: 28rem; }
+.preparation-feedback, #search-role { scroll-margin-top: 6rem; }
+.preparation-feedback:empty { display: none; }
+
+.action-error { scroll-margin-top: 6rem; }

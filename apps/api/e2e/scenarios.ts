@@ -1,3 +1,4 @@
+import { v071Scenarios } from './v071.js';
 import { v070Scenario } from './v070.js';
 import { v061Scenario } from './v061.js';
 import { v060Scenario } from './v060.js';
@@ -117,6 +118,7 @@ export const scenarios: Scenario[] = [
       await page.unroute('**/api/v1/profile/facts');
       await page.getByRole('button', { name: any('Añadir para revisar', 'Add for review') }).click();
       await eventually(() => factsWith(api, statement), (facts) => facts.length === 1, 'Retrying after the failure should save the fact exactly once');
+      await page.getByRole('button', { name: any('Revisar después', 'Review later'), exact: true }).click();
       await eventually(() => factField.inputValue(), (value) => value === '', 'Fact field should clear after a successful save');
 
       // Profile draft: same expectation for the profile form.
@@ -272,12 +274,20 @@ export const scenarios: Scenario[] = [
       assert.equal((await api.get<Application[]>('/applications')).find((application) => application.id === first.id)?.recruitmentStage, 'NO_RESPONSE', 'Correcting one application changed another');
       assert.match(page.url(), new RegExp(`[?&]id=${second.id}`), 'Application context (?id) was lost after updating the stage');
 
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.locator('#app-sidebar').waitFor({ state: 'hidden' });
       const firstEntry = page.getByText(first.role).first();
       if (await firstEntry.isVisible().catch(() => false)) {
         await firstEntry.click();
         await page.getByRole('heading', { name: first.role }).first().waitFor();
         await page.waitForURL((url) => url.searchParams.get('id') === first.id);
+        const detail = page.getByRole('heading', { name: first.role, exact: true });
+        await eventually(() => detail.evaluate((node) => node === document.activeElement), Boolean, 'Selected application receives keyboard focus');
+        await eventually(() => detail.boundingBox(), (rect) => Boolean(rect && rect.y >= 50 && rect.y < 844), 'Selected application is brought into view on mobile');
+        await page.getByRole('button', { name: any('Volver a la lista de solicitudes', 'Back to application list') }).click();
+        await eventually(() => page.getByRole('heading', { name: any('Lista de solicitudes', 'Application list') }).evaluate((node) => node === document.activeElement), Boolean, 'Back action focuses the application list');
       }
+      await page.setViewportSize({ width: 1440, height: 1000 });
     },
   },
   {
@@ -467,4 +477,5 @@ scenarios.push(v052Scenario);
 scenarios.push(v060Scenario);
 scenarios.push(v061Scenario);
 scenarios.push(v070Scenario);
+scenarios.push(...v071Scenarios);
 scenarios.push(v051Last);

@@ -2,6 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 
+/** Keep failed saves discoverable even when their form is below the page header. */
+export function useErrorFocus(error: string) {
+  const target = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (error) target.current?.focus(); }, [error]);
+  return target;
+}
+
 /** Announce an opened inline form and return focus to its trigger when it closes. */
 export function useDisclosureFocus(open: boolean) {
   const heading = useRef<HTMLHeadingElement>(null);
