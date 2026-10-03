@@ -9,7 +9,7 @@ import { Button, Card, Notice, Tag } from './ui';
 
 type DiscoveryBoard = { id: string; companyName: string; eligible: boolean; lastRunAt: string | null; lastRunStatus: string | null; lastNewCount: number; nextRunAt: string | null };
 type Discovery = { enabled: boolean; unreadCount: number; boards: DiscoveryBoard[] };
-export function DiscoveryPanel({ compact = false, revision = '' }: { compact?: boolean; revision?: string }) {
+export function DiscoveryPanel({ compact = false, revision = '', onAddCompany }: { compact?: boolean; revision?: string; onAddCompany?: () => void }) {
   const { locale } = useLocale(); const c = copy(locale);
   const [data, setData] = useState<Discovery | null>(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [refresh, setRefresh] = useState(0);
   useEffect(() => {
@@ -49,7 +49,7 @@ export function DiscoveryPanel({ compact = false, revision = '' }: { compact?: b
     {error && <Notice tone="error" actions={<Button variant="quiet" onClick={() => setRefresh((value) => value + 1)}>{c('Reintentar', 'Try again')}</Button>}>{error}</Notice>}
     {!data ? <p>{c('Cargando búsqueda…', 'Loading search…')}</p> : <>
       <p>{c('Consulta las empresas que confirmes aproximadamente cada 6 horas, mientras el servicio local esté encendido. Puedes cerrar esta pestaña.', 'Checks companies you confirm about every 6 hours while the local service is running. You can close this tab.')}</p>
-      {!eligible.length && <p>{c('Añade y confirma al menos una empresa para empezar.', 'Add and confirm at least one company to get started.')} <Link href={data.boards.length ? '/boards#saved-companies' : '/boards#follow-company-heading'}>{data.boards.length ? c('Ver empresas por confirmar', 'Review your companies') : c('Añadir una empresa', 'Add a company')}</Link></p>}
+      {!eligible.length && <p>{c('Añade y confirma al menos una empresa para empezar.', 'Add and confirm at least one company to get started.')} {data.boards.length ? <Link href="/boards#saved-companies">{c('Ver empresas por confirmar', 'Review your companies')}</Link> : onAddCompany ? <button type="button" className="discovery-add-link" onClick={onAddCompany}>{c('Añadir una empresa', 'Add a company')}</button> : <Link href="/boards?add=1">{c('Añadir una empresa', 'Add a company')}</Link>}</p>}
       {data.enabled && next && <p><strong>{c('Próxima consulta:', 'Next check:')}</strong> {new Date(next).getTime() <= Date.now() + 30_000 ? c('En breve', 'Shortly') : date(next)}</p>}
       {!!incomplete && <Notice tone="warning">{c(`La última consulta quedó incompleta en ${incomplete} empresas. Tus ofertas guardadas se conservan.`, `The last check was incomplete for ${incomplete} companies. Your saved jobs are kept.`)}{compact && <> <Link href="/boards">{c('Ver actividad', 'View activity')}</Link></>}</Notice>}
       <div className="discovery-actions">

@@ -3212,3 +3212,12 @@ main:focus {
   .discovery-actions { align-items: stretch; }
   .discovery-actions .button { width: 100%; padding-block: 10px; }
 }
+
+/* Company entry stays within its sidebar even with long hints and two actions. */
+.add-board-aside, .add-board-aside .form-card, .add-board-aside .form-stack,
+.add-board-aside .entry-fields, .add-board-aside .field { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.add-board-aside .entry-fields > *, .add-board-aside .field input { min-width: 0; max-width: 100%; }
+.add-board-aside .form-submit { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+.add-board-aside .form-submit .button { max-width: 100%; white-space: normal; padding-block: 10px; }
+.add-board-aside .source-help { overflow-wrap: anywhere; }
+.discovery-add-link { display: inline; padding: 0; min-height: 44px; border: 0; background: none; color: var(--blue); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }

@@ -5,7 +5,7 @@ import { useDisclosureFocus } from '@/lib/disclosure-focus';
 import Link from 'next/link';
 import { DiscoveryPanel } from '@/components/discovery-panel';
 import { useSessionDraft, stringDraft } from '@/lib/session-draft';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Field, Icon, Notice, Tag } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
@@ -43,6 +43,31 @@ export default function BoardsPage() {
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const formHeading = useDisclosureFocus(open); const [now, setNow] = useState(() => Date.now());
+  const focusNameOnOpen = useRef(false);
+  const focusCompanyName = () => {
+    const input = document.getElementById('company-name');
+    if (!input || input.matches(':disabled')) return false;
+    input.focus({ preventScroll: true });
+    input.scrollIntoView({ block: 'center', inline: 'nearest' });
+    return true;
+  };
+  const startCompany = () => {
+    if (open && draft.ready) focusCompanyName();
+    else { focusNameOnOpen.current = true; setOpen(true); }
+  };
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('add') === '1') { focusNameOnOpen.current = true; setOpen(true); }
+  }, []);
+  useEffect(() => {
+    if (!open || !draft.ready || !focusNameOnOpen.current) return;
+    // A direct link can open the form before WorkspaceGate has mounted its children.
+    const focusWhenMounted = () => { if (focusCompanyName()) { focusNameOnOpen.current = false; observer.disconnect(); } };
+    const observer = new MutationObserver(focusWhenMounted);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    focusWhenMounted();
+    return () => observer.disconnect();
+  }, [open, draft.ready]);
+
   const source = parseJobBoardUrl(boardUrl); const careersDomain = getOfficialDomain(careersUrl); const provider = source ? providers[source.provider] : null;
 
   const load = useCallback(async () => {
@@ -114,7 +139,7 @@ export default function BoardsPage() {
     <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in Saved jobs.')}/>
     {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar este formulario. Añade la empresa antes de salir para no perderlo.', 'We could not preserve this form. Add the company before leaving to keep it.')}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message} {activeCount > 0 && <Link href="/jobs">{c('Ver ofertas', 'See jobs')}</Link>}</Notice>}
-    <DiscoveryPanel revision={JSON.stringify(boards)}/><div className="source-policy-banner"><span className="source-policy-icon"><Icon name="shield" size={19}/></span><div><strong>{c('Solo lectura', 'Read-only')}</strong><p>{c('Seguir una empresa nunca permite a esta app rellenar o enviar formularios.', 'Adding a source never lets this app fill in or submit forms.')}</p></div><Tag tone="green">{c('SIN ENVÍOS', 'NO SUBMISSIONS')}</Tag></div>
+    <DiscoveryPanel revision={JSON.stringify(boards)} onAddCompany={startCompany}/><div className="source-policy-banner"><span className="source-policy-icon"><Icon name="shield" size={19}/></span><div><strong>{c('Solo lectura', 'Read-only')}</strong><p>{c('Seguir una empresa nunca permite a esta app rellenar o enviar formularios.', 'Adding a source never lets this app fill in or submit forms.')}</p></div><Tag tone="green">{c('SIN ENVÍOS', 'NO SUBMISSIONS')}</Tag></div>
     <div className="boards-layout"><div className="boards-list board-collection card">
       <div className="section-heading compact"><div><h2 id="saved-companies" tabIndex={-1}>{c('Empresas guardadas', 'Saved companies')}</h2></div><span className="muted-label">{c(`${activeCount} de ${boards.length} listas para consultar`, `${activeCount} of ${boards.length} ready to check`)}</span></div>
       {loadState === 'loading' && <Notice>{c('Cargando empresas…', 'Loading companies…')}</Notice>}
@@ -153,7 +178,7 @@ export default function BoardsPage() {
       <Card className="form-card"><div className="form-heading"><div><span className="step-badge">＋</span><div><h2 id="follow-company-heading" ref={formHeading} tabIndex={-1}>{c('Seguir una empresa', 'Follow a company')}</h2><p>{c('Necesitas dos enlaces: la página de empleo de la empresa y una oferta publicada desde ella.', 'You need two links: the company careers page and a job listed on it.')}</p></div></div></div>
         {!open && <p className="muted-label">{companyName || careersUrl || boardUrl ? c('Tienes una empresa por terminar de añadir.', 'You have an unfinished company form.') : c('Compatible con Greenhouse, Lever y Ashby.', 'Supports Greenhouse, Lever, and Ashby.')}</p>}
         {!open ? <Button onClick={() => setOpen(true)}><Icon name="plus" size={15}/>{c('Añadir empresa', 'Add company')}</Button> : <form onSubmit={(event) => void add(event)} className="form-stack" aria-busy={busy === 'add'}><fieldset className="entry-fields" disabled={!draft.ready || busy !== ''}>
-          <Field label={c('Nombre de la empresa', 'Company name')} value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder={c('Ejemplo: Northwind', 'Example: Northwind')} required/>
+          <Field id="company-name" label={c('Nombre de la empresa', 'Company name')} value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder={c('Ejemplo: Northwind', 'Example: Northwind')} required/>
           <Field label={c('Página de empleo de la empresa', 'Company careers page')} type="url" value={careersUrl} onChange={(event) => setCareersUrl(event.target.value)} placeholder="https://company.com/careers" required hint={c('La página donde la empresa publica sus ofertas.', 'The page where the company lists its jobs.')}/>
           {careersUrl && !careersDomain && <div className="notice notice-warning">{c('Ese enlace no parece una dirección web válida.', 'That link does not look like a valid web address.')}</div>}
           <Field label={c('Enlace a una oferta de esa empresa', 'Link to a job at this company')} type="url" value={boardUrl} onChange={(event) => setBoardUrl(event.target.value)} placeholder="https://jobs.lever.co/company" required hint={c('Abre una oferta desde la página de empleo y copia la dirección del navegador.', 'Open a job from the careers page and copy the address from your browser.')}/>
