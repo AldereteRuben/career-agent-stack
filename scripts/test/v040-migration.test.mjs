@@ -8,7 +8,7 @@ const root = new URL('../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
 const adminUrl = process.env.CAREER_BACKUP_TEST_ADMIN_URL;
 
-test('0.3.1 data survives the 0.4 migration and resume links enforce workspace ownership', { skip: !adminUrl }, async () => {
+test('0.3.1 data survives the 0.4 and 0.5.1 migrations and resume links enforce workspace ownership', { skip: !adminUrl }, async () => {
   const name = `career_v040_${randomBytes(6).toString('hex')}`;
   const admin = new Client({ connectionString: adminUrl }); await admin.connect();
   let client;
@@ -30,7 +30,13 @@ test('0.3.1 data survives the 0.4 migration and resume links enforce workspace o
     await client.query("INSERT INTO applications(id,workspace_id,company,role) VALUES ($1,$2,'Example','Designer')", [application, workspace]);
     const before = (await client.query('SELECT * FROM document_versions WHERE id=$1', [doc])).rows[0];
     await apply('0005_structured_profile_and_resume_link');
-    assert.deepEqual((await client.query('SELECT * FROM document_versions WHERE id=$1', [doc])).rows[0], before);
+    await apply('0006_document_language');
+    const legacyDocument = (await client.query('SELECT language, sha256 FROM document_versions WHERE id=$1', [doc])).rows[0];
+    assert.equal(legacyDocument.language, null, 'Do not guess the language of older PDFs');
+    assert.equal(legacyDocument.sha256, 'a'.repeat(64), 'Migration does not alter existing PDFs');
+    await assert.rejects(client.query("UPDATE document_versions SET language='xx' WHERE id=$1", [doc]), /document_versions_language_check/);
+    assert.deepEqual((await client.query('SELECT * FROM document_versions WHERE id=$1', [doc])).rows[0], { ...before, language: null });
+    await client.query("UPDATE document_versions SET language='es' WHERE id=$1", [doc]);
     const entry = (await client.query('SELECT * FROM profile_facts WHERE id=$1', [fact])).rows[0];
     assert.equal(entry.details, null); assert.equal(entry.approval_status, 'USER_APPROVED'); assert.match(entry.statement, /Original text$/);
     assert.equal((await client.query('SELECT document_id FROM applications WHERE id=$1', [application])).rows[0].document_id, null);
