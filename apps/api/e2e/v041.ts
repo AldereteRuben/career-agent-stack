@@ -25,6 +25,7 @@ export const v041Scenarios: Scenario[] = [{
       await goTo(page, '/documents');
       assert.equal(await page.locator('#resume-history').isVisible(), false);
       await page.getByRole('button', { name: /^(CV guardados|Saved resumes)/ }).click();
+      await page.locator('#resume-history:visible').waitFor();
       assert.equal(await page.locator('#resume-builder').isVisible(), false);
       const review = page.locator('.document-card').getByRole('button', { name: /^(Revisar y aprobar|Review and approve|Ver|View)$/ }).first();
       await review.click();
