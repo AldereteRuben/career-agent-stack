@@ -1,5 +1,6 @@
 import { RELEASE_VERSION } from '@career/domain';
-import { config } from './config.js';
+import { registerBackupRoutes } from './backup-routes.js';
+import { config, projectRoot } from './config.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile, chmod, unlink } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -59,7 +60,7 @@ const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]): Omit
 };
 
 app.get('/healthz', async (_request, reply) => {
-  try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: true, version: '0.3.0' }; }
+  try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: true, version: RELEASE_VERSION }; }
   catch { return fail(reply, 503, 'DATABASE_UNAVAILABLE'); }
 });
 
@@ -365,6 +366,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 });
 
 registerResumeJourney(app, workspace);
+registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
 app.get('/api/v1/applications', async (request) => db.select().from(applications).where(eq(applications.workspaceId, workspace(request))).orderBy(desc(applications.updatedAt)).limit(500));
 app.post('/api/v1/applications', async (request, reply) => {
@@ -478,7 +480,7 @@ app.post('/api/v1/documents', async (request, reply) => {
       await lockKey(tx, `document:${id}:${name}`);
       const latestRevision = await tx.select({ revision: sql<number>`coalesce(max(${documentVersions.revision}), 0)::int` }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.name, name)));
       const revision = (latestRevision[0]?.revision ?? 0) + 1;
-      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
+      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
     });
   } catch (error) { await removeFile(); throw error; }
   return reply.code(201).send({ ...documentView(row), sizeBytes: rendered.size });
@@ -566,5 +568,17 @@ const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
-app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, 'Career Agent Stack API v0.3 started');
-for (const unavailable of ['automatic submission', 'email OAuth', 'interview coaching']) app.log.info({ capability: unavailable, status: 'UNAVAILABLE_IN_V0_3' });
+app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);
+for (const unavailable of ['automatic submission', 'email OAuth', 'interview coaching']) app.log.info({ capability: unavailable, status: 'UNAVAILABLE', release: RELEASE_VERSION });
+
+let closing = false;
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.once(signal, () => {
+    if (closing) return;
+    closing = true;
+    const deadline = setTimeout(() => process.exit(1), 15_000); deadline.unref();
+    void app.close().then(() => pool.end()).then(() => {
+      clearTimeout(deadline); process.exit(0);
+    }).catch(() => { clearTimeout(deadline); process.exit(1); });
+  });
+}

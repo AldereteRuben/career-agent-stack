@@ -3132,3 +3132,28 @@ main:focus {
 }
 .add-board-aside .form-heading .step-badge { display: none; }
 .add-board-aside .form-heading h2 { font-size: var(--text-xl); }
+
+.onboarding-layout { max-width: 820px; display: grid; gap: 20px; }
+.onboarding-progress { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 0; margin: 0; }
+.onboarding-progress li { display: flex; gap: 10px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.onboarding-progress li[aria-current="step"] { background: var(--blue-pale); border-color: var(--blue); }
+.onboarding-progress small { display: block; color: var(--muted); margin-top: 4px; }
+.onboarding-card h2 { margin-top: 0; }
+.onboarding-card p { margin-bottom: 20px; }
+@media (max-width: 600px) { .onboarding-progress { grid-template-columns: 1fr; gap: 8px; } }
+
+.backup-panel { gap: 12px; }
+.backup-panel p { margin: 0; }
+.backup-downloads { display: grid; gap: 10px; margin: 0; }
+@media (max-width: 600px) {
+  .onboarding-progress li { padding: 8px 12px; }
+  .onboarding-progress small { display: inline; margin-left: 8px; }
+}
+
+/* v0.5.1: compact optional controls and explicit session action. */
+.profile-chip { cursor: default; }
+.profile-chip .signout { color: inherit; background: transparent; border: 1px solid var(--sidebar-muted, #8c9dab); border-radius: 6px; padding: 8px; cursor: pointer; font: inherit; }
+.profile-preferences > summary { font-weight: 600; cursor: pointer; }
+.profile-preferences[open] > summary { margin-bottom: 16px; }
+.profile-aside details > summary { cursor: pointer; }
+.document-actions { min-width: 0; }

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.1
+
+- Home's main action now names its actual destination. The first-resume guide resumes a current PDF awaiting review instead of asking for another copy.
+- Resume library and preview state live in the URL. Reload, Back and Forward keep the selected view/document. Closing a preview and changing its content are separate actions; reusing a PDF preserves its recorded language.
+- Saved resumes show creation date/time, version and PDF language. A nullable language column records new PDFs; older files remain unchanged and show “Language not recorded”.
+- Sign out is a separate button, explains draft loss before leaving, and clears drafts only after the session is successfully closed. A failed sign-out keeps the session and drafts recoverable.
+- Profile job preferences and repeated guidance are folded; saved-state badges are quieter. Opening job, application and company forms moves keyboard focus to their headings.
+- Backup results show their creation time. JSON export is under advanced options. Repeated profile/resume actions have labelled groups for accessibility.
+- Verification covers upgrade preservation, resume reload/history, pending-review continuation, optional preferences, form focus, and cancelled/failed/successful sign-out, in ES/EN and mobile layouts.
+
+Known limits from v0.5.0 still apply: backup restoration needs a terminal, backup download links last until another backup or API restart, native Windows startup is unsupported, and dependency alerts remain pending. No existing profile entries or PDFs are deleted by this patch.
+
+## 0.5.0
+
+- Bilingual getting-started guide: name/email, confirmed experience, and a reviewed first resume. Progress comes from saved data; drafts survive reloads and concurrent profile changes are handled without discarding them.
+- Home keeps job preferences optional and links back to the guide. Completed guides open the saved resume library directly.
+- Shorter sign-in screen with expandable, operating-system-neutral instructions.
+- Settings creates a verified database/PDF backup without a terminal, with progress, retry, and separate archive/key downloads. It uses the running API configuration, authenticated downloads, private temporary files, and the existing verified archive writer.
+- Release procedure recorded in AGENTS.md: validation, main push, annotated tag, published GitHub release, and remote verification for every completed version.
+- E2E actions now have bounded timeouts; screenshots disable transitions to avoid capturing a sidebar mid-animation.
+
+Limits: restoration still requires a terminal. UI backup links are available until another backup or API restart; completed copies remain under `data/backups`. Backups are not encrypted and old copies are not removed automatically. Native Windows startup/shutdown and full Linux/WSL installation remain unverified/unsupported as documented. Existing dependency alerts remain pending.
+
 ## 0.4.1
 
 Usability improvements in Spanish and English.
