@@ -16,7 +16,7 @@ const links = [
   { href: '/', label: 'Inicio', icon: 'home', hint: 'Qué hacer ahora' },
   { href: '/searches', label: 'Buscar empleo', icon: 'search', hint: 'Búsquedas automáticas' },
   { href: '/profile', label: 'Mi perfil', icon: 'user', hint: 'Tus datos y experiencia' },
-  { href: '/jobs', label: 'Ofertas guardadas', icon: 'search', hint: 'Empleos que te interesan' },
+  { href: '/jobs', label: 'Ofertas encontradas', icon: 'search', hint: 'Todas tus ofertas' },
   { href: '/documents', label: 'Mis CV', icon: 'file', hint: 'Preparar y descargar PDF' },
   { href: '/applications', label: 'Mis solicitudes', icon: 'briefcase', hint: 'Preparar, enviar y dar seguimiento' },
   { href: '/boards', label: 'Empresas que sigo', icon: 'building', hint: 'Consultar sus ofertas · opcional' },

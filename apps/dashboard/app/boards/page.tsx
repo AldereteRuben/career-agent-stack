@@ -137,7 +137,7 @@ export default function BoardsPage() {
   };
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in Saved jobs.')}/>
+    <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Ofertas encontradas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in Found jobs.')}/>
     {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar este formulario. Añade la empresa antes de salir para no perderlo.', 'We could not preserve this form. Add the company before leaving to keep it.')}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message} {activeCount > 0 && <Link href="/jobs">{c('Ver ofertas', 'See jobs')}</Link>}</Notice>}
     {loadError && loadState === 'ready' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{loadError} {c('La lista muestra la última información disponible.', 'The list shows the last available information.')}</Notice>}
@@ -173,7 +173,7 @@ export default function BoardsPage() {
           </div>}
         </Card>;
       })}
-      {loadState === 'ready' && !boards.length && <Card className="jobs-empty"><Empty title={c('Aún no sigues empresas', 'No followed companies yet')} detail={c('Añade una empresa para consultar sus ofertas cuando quieras. También puedes guardar una oferta directamente en Ofertas guardadas.', 'Add a company to check its jobs when you choose. You can also add a job directly in Saved jobs.')}/></Card>}
+      {loadState === 'ready' && !boards.length && <Card className="jobs-empty"><Empty title={c('Aún no sigues empresas', 'No followed companies yet')} detail={c('Añade una empresa para consultar sus ofertas cuando quieras. También puedes guardar una oferta directamente en Ofertas encontradas.', 'Add a company to check its jobs when you choose. You can also add a job directly in Found jobs.')}/></Card>}
       <div className="refresh-policy">{c('Puedes consultar manualmente cada empresa o activar las consultas de empresas arriba. Dejamos al menos seis horas entre consultas; los reintentos pueden tardar más.', 'Check each company manually or turn on company checks above. Checks are at least six hours apart; retries may take longer.')}</div>
     </div>
     <aside className="add-board-aside">
@@ -185,7 +185,7 @@ export default function BoardsPage() {
           {careersUrl && !careersDomain && <div className="notice notice-warning">{c('Ese enlace no parece una dirección web válida.', 'That link does not look like a valid web address.')}</div>}
           <Field label={c('Enlace a una oferta de esa empresa', 'Link to a job at this company')} type="url" value={boardUrl} onChange={(event) => setBoardUrl(event.target.value)} placeholder="https://jobs.lever.co/company" required hint={c('Abre una oferta desde la página de empleo y copia la dirección del navegador.', 'Open a job from the careers page and copy the address from your browser.')}/>
           {source && provider ? <div className="source-detected"><span className="status-dot status-ready"/><span>{c(`Enlace compatible con ${provider.label}`, `Link supported by ${provider.label}`)}{source.region === 'eu' ? ` · ${labelFor.region(source.region, locale)}` : ''}</span></div>
-            : boardUrl ? <div className="notice notice-warning">{c('Este enlace no es compatible. Puedes guardar la oferta directamente en Ofertas guardadas.', 'This link is not supported. You can add the job directly in Saved jobs.')}</div>
+            : boardUrl ? <div className="notice notice-warning">{c('Este enlace no es compatible. Puedes guardar la oferta directamente en Ofertas encontradas.', 'This link is not supported. You can add the job directly in Found jobs.')}</div>
             : <details className="source-help"><summary>{c('¿Dónde encuentro estos enlaces?', 'Where can I find these links?')}</summary><p>{c('Abre la página oficial de empleo de la empresa y copia su dirección. Luego abre una oferta y copia también ese enlace.', 'Open the company’s official careers page and copy its address. Then open a listed job and copy that address too.')}</p><small>Greenhouse · boards.greenhouse.io/company<br/>Lever · jobs.lever.co/company<br/>Ashby · jobs.ashbyhq.com/company</small></details>}
           <div className="form-submit"><Button type="submit" disabled={busy !== '' || !source || !careersDomain || !companyName.trim()}>{busy === 'add' ? c('Guardando…', 'Saving…') : c('Añadir empresa', 'Add company')}</Button><Button type="button" variant="quiet" onClick={() => setOpen(false)}>{c('Cerrar y continuar después', 'Close and continue later')}</Button></div>
         </fieldset></form>}
