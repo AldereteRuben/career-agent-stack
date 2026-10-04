@@ -44,6 +44,12 @@ jobs:
       - run: pnpm run test:unit
       - name: Verify AI foundations with synthetic processes (no provider account)
         run: pnpm run test:ai
+        env:
+          CAREER_V090_QUEUE_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_ROUTES_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_AUTOMATION_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_DOCUMENT_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_HISTORY_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:ui-logic
       - run: pnpm run test:sources
       - name: Verify automatic discovery with fictional sources
@@ -59,10 +65,21 @@ jobs:
         run: node --test scripts/test/v080-migration.test.mjs
         env:
           CAREER_V080_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify v0.9 additive migration
+        run: node --test scripts/test/v090-migration.test.mjs
+        env:
+          CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:backup
       - run: pnpm run test:backup-api
       - name: Install Chromium for synthetic browser tests
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
+      - name: Install PDF text inspection
+        run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+      - name: Verify reviewed assistant PDFs with fictional content
+        run: pnpm --filter @career/api exec tsx --test test/ai-documents.test.ts
+        env:
+          CAREER_V090_DOCUMENT_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_PDF_TEST: 'true'
       - name: Verify preparation with a disposable workspace
         run: pnpm run test:preparation
         env:

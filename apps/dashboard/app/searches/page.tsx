@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
-import { Button, Card, Empty, Notice } from '@/components/ui';
+import { Button, Card, Empty, Notice, TextareaField } from '@/components/ui';
+import { AiDraftAction, useAiAvailable } from '@/components/ai/draft-action';
+import type { AiArtifact } from '@/components/ai/result-view';
 import { SearchCard } from '@/components/search-card';
 import { SearchForm } from '@/components/search-form';
 import { SearchEmptyState, SearchStatus } from '@/components/search-progress';
@@ -30,7 +32,7 @@ const actionMessages = {
 
 const defaultProviders: ProviderId[] = ['remotive', 'arbeitnow', 'himalayas'];
 const emptyDraft = (): SearchDraft => ({ role: '', company: '', location: '', workMode: 'any', frequencyHours: 24, enabled: true, autoPrepare: false, providerIds: defaultProviders, matcherVersion: 2, includeRelated: false, improveMatching: false });
-type FormState = { draft: SearchDraft; editing: string; open: boolean; idempotencyKey: string };
+type FormState = { draft: SearchDraft; editing: string; open: boolean; idempotencyKey: string; aiArtifactId?: string };
 const initialForm = (): FormState => ({ draft: emptyDraft(), editing: '', open: false, idempotencyKey: '' });
 function readForm(payload: string): FormState {
   try {
@@ -40,7 +42,7 @@ function readForm(payload: string): FormState {
       ['role', 'company', 'location'].every((key) => typeof d[key as 'role'] === 'string') &&
       ['any', 'remote', 'hybrid', 'onsite'].includes(d.workMode ?? '') && [6, 12, 24].includes(d.frequencyHours ?? -1) &&
       typeof d.enabled === 'boolean' && typeof d.autoPrepare === 'boolean') {
-      return { ...value as FormState, idempotencyKey: typeof value.idempotencyKey === 'string' ? value.idempotencyKey : '', draft: { ...emptyDraft(), ...d, providerIds: Array.isArray(d.providerIds) ? d.providerIds : defaultProviders } };
+      return { draft: { ...emptyDraft(), ...d, providerIds: Array.isArray(d.providerIds) ? d.providerIds : defaultProviders }, editing: value.editing, open: value.open, idempotencyKey: typeof value.idempotencyKey === 'string' ? value.idempotencyKey : '', ...(typeof value.aiArtifactId === 'string' && /^[a-f0-9-]{36}$/i.test(value.aiArtifactId) ? { aiArtifactId: value.aiArtifactId } : {}) };
     }
   } catch { /* Ignore malformed draft data. */ }
   return initialForm();
@@ -96,6 +98,12 @@ export default function SearchesPage() {
   /** Current matches in the selected scope before the New filter; tells "no matches yet" from "all seen". */
   const [matchesTotal, setMatchesTotal] = useState<number | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const aiAvailable = useAiAvailable();
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiSearchRequest, setAiSearchRequest] = useState('');
+  const [aiSearchProposal, setAiSearchProposal] = useState<AiArtifact | null>(null);
+  const [aiProposalError, setAiProposalError] = useState('');
+  const [aiProposalRetry, setAiProposalRetry] = useState(0);
   const titleRef = useRef<HTMLHeadingElement>(null); const resultsTitle = useRef<HTMLHeadingElement>(null); const focusForm = useRef(false);
   const manageButton = useRef<HTMLButtonElement>(null); const resultList = useRef<HTMLDivElement>(null); const pendingFocus = useRef<{ id: string; index: number } | null>(null);
   const selectedRef = useRef(''); const viewRef = useRef<SearchView>('new'); const sortRef = useRef<SearchSort>('relevance'); const offsetRef = useRef(0); const listRequest = useRef(0); const resultRequest = useRef(0); const initialized = useRef(false);
@@ -192,6 +200,19 @@ export default function SearchesPage() {
     restore(); window.addEventListener('popstate', restore);
     return () => { listRequest.current++; resultRequest.current++; window.removeEventListener('popstate', restore); };
   }, [load]);
+  useEffect(() => {
+    const artifactId = formState.aiArtifactId;
+    if (!formDraft.ready || !artifactId || aiSearchProposal?.id === artifactId) return;
+    const controller = new AbortController();
+    setAiProposalError('');
+    void api<AiArtifact>(`/ai/artifacts/${encodeURIComponent(artifactId)}`, { signal: controller.signal }).then(artifact => {
+      if (controller.signal.aborted) return;
+      if (artifact.output.operation !== 'SEARCH_DRAFT') throw new Error('invalid saved search suggestion');
+      setAiSearchProposal(artifact);
+      if (artifact.sources.searchRequest) setAiSearchRequest(artifact.sources.searchRequest);
+    }).catch(cause => { if (!controller.signal.aborted) setAiProposalError(errorMessage(cause)); });
+    return () => controller.abort();
+  }, [formDraft.ready, formState.aiArtifactId, aiSearchProposal?.id, aiProposalRetry]);
   useEffect(() => { if (formOpen && focusForm.current) { titleRef.current?.focus(); focusForm.current = false; } }, [formOpen, editing]);
   useEffect(() => {
     if (!formError) return;
@@ -213,18 +234,26 @@ export default function SearchesPage() {
   const dirtyDraft = formOpen && Boolean(draft.role || draft.company || draft.location);
   const openNew = () => {
     if (dirtyDraft && !window.confirm(t('¿Descartar este borrador y crear otra búsqueda?', 'Discard this draft and create another search?'))) return;
-    focusForm.current = true; setFormState({ draft: emptyDraft(), editing: '', open: true, idempotencyKey: crypto.randomUUID() });
+    setAiSearchProposal(null); focusForm.current = true; setFormState({ draft: emptyDraft(), editing: '', open: true, idempotencyKey: crypto.randomUUID() });
+  };
+  const reviewAiSearch = (artifact: AiArtifact) => {
+    if (artifact.output.operation !== 'SEARCH_DRAFT' || !formDraft.ready || busy !== '') return;
+    if (dirtyDraft && !window.confirm(t('¿Sustituir los campos de este borrador por la propuesta? Todavía podrás editarlos antes de buscar.', 'Replace this draft’s fields with the suggestion? You can still edit them before searching.'))) return;
+    const criteria = artifact.output.criteria;
+    setFormState({ draft: { ...emptyDraft(), role: criteria.role ?? '', company: criteria.company ?? '', location: criteria.location ?? '', workMode: criteria.workMode }, editing: '', open: true, idempotencyKey: crypto.randomUUID(), aiArtifactId: artifact.id });
+    setAiSearchProposal(artifact); setAiProposalError(''); setAiOpen(false); setFormError(''); setCriteriaMissing(false); setInvalidField(null);
+    requestAnimationFrame(() => titleRef.current?.focus());
   };
   const beginEdit = (search: Search) => {
     if (formOpen && editing === search.id) { titleRef.current?.focus(); return; }
     if (dirtyDraft && !window.confirm(t('¿Descartar este borrador para editar otra búsqueda?', 'Discard this draft to edit another search?'))) return;
-    const legacy = search.matcherVersion === 1;
+    setAiSearchProposal(null); const legacy = search.matcherVersion === 1;
     focusForm.current = true;
     setFormState({ editing: search.id, open: true, idempotencyKey: '', draft: { role: search.role ?? '', company: search.company ?? '', location: search.location ?? '', workMode: search.workMode, frequencyHours: search.frequencyHours, enabled: search.enabled, autoPrepare: search.autoPrepare, providerIds: search.providerIds ?? defaultProviders, matcherVersion: search.matcherVersion ?? 1, includeRelated: search.includeRelated ?? false, improveMatching: !legacy } });
   };
   const closeDraft = () => {
     if (dirtyDraft && !window.confirm(editing ? t('¿Cancelar la edición sin guardar los cambios?', 'Cancel editing without saving changes?') : t('¿Descartar este borrador sin guardar?', 'Discard this unsaved draft?'))) return;
-    setFormError(''); setCriteriaMissing(false); formDraft.update({ payload: '' });
+    setAiSearchProposal(null); setFormError(''); setCriteriaMissing(false); formDraft.update({ payload: '' });
   };
   /** With several searches, "adjust" first asks which one; it never opens a create form (U05). */
   const openManage = () => { setManageOpen(true); requestAnimationFrame(() => manageButton.current?.focus()); };
@@ -241,6 +270,7 @@ export default function SearchesPage() {
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setFormError(''); setCriteriaMissing(false); setInvalidField(null); setMessage('');
+    if (formState.aiArtifactId && aiSearchProposal?.id !== formState.aiArtifactId) { setFormError(t('Espera a recuperar la propuesta de IA para revisar las condiciones que no se usan como filtros.', 'Wait for the AI suggestion to load so you can review conditions that are not used as filters.')); return; }
     if (!draft.role.trim() && !draft.company.trim()) { setCriteriaMissing(true); setFormError(t('Escribe un puesto o, en «Añadir empresa o modalidad», una empresa.', 'Enter a role or, under “Add company or work mode”, a company.')); revealAndFocus('search-role'); return; }
     const tooLong = (['role', 'company', 'location'] as const).find((field) => draft[field].trim().length > 200);
     if (tooLong) { setInvalidField(tooLong); setFormError(t('Usa un máximo de 200 caracteres en cada campo.', 'Use at most 200 characters in each field.')); revealAndFocus(`search-${tooLong}`); return; }
@@ -262,7 +292,7 @@ export default function SearchesPage() {
       const id = response.search.id; setMessage('searchSaved');
       // Land on this search's jobs (U07): offers first, management stays secondary. The draft is cleared after the
       // list arrives so a first search never flashes an empty form; a retry before then reuses the idempotency key.
-      await load(false, { search: id, view: 'new', sort: 'relevance', offset: 0 }); formDraft.update({ payload: '' }); resultsTitle.current?.focus();
+      await load(false, { search: id, view: 'new', sort: 'relevance', offset: 0 }); formDraft.update({ payload: '' }); setAiSearchProposal(null); resultsTitle.current?.focus();
     } catch (cause) { setFormError(problem(cause)); } finally { setBusy(''); }
   };
   const runAction = async (search: Search, action: 'refresh' | 'toggle') => {
@@ -320,7 +350,16 @@ export default function SearchesPage() {
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}
     {message && <Notice tone="success">{t(successMessages[message][0], successMessages[message][1])}</Notice>}
     <div className={styles.layout}>
-      {(formOpen || firstUse) && <SearchForm key={editing || 'new'} defaultProviders={defaultProviders} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t} />}
+      {(formOpen || firstUse) && <div className={styles.formColumn}>
+        {aiAvailable && !editing && <details className={`card ${styles.formCard}`} open={aiOpen} onToggle={event => setAiOpen(event.currentTarget.open)}><summary>{t('Describir lo que busco con ayuda de IA · opcional', 'Describe what I want with AI help · optional')}</summary><div className={styles.form}>
+          <p className={styles.intro}>{t('Cuéntalo con tus palabras. Codex propondrá los filtros; tú los revisarás antes de guardar y empezar la búsqueda.', 'Describe it in your own words. Codex will suggest filters for you to review before saving and starting the search.')}</p>
+          <TextareaField label={t('¿Qué trabajo te gustaría encontrar?', 'What job would you like to find?')} value={aiSearchRequest} maxLength={2000} rows={3} onChange={event => setAiSearchRequest(event.target.value)} placeholder={t('Por ejemplo: busco diseño de producto en remoto desde España.', 'For example: I am looking for a remote product design job based in Spain.')}/>
+          {aiSearchRequest.trim() ? <AiDraftAction visible={aiOpen} request={{ operation: 'SEARCH_DRAFT', locale, searchRequest: aiSearchRequest.trim() }} label={t('Preparar los filtros con Codex', 'Prepare filters with Codex')} onReview={reviewAiSearch}/> : <small>{t('Describe lo que buscas para revisar los datos que compartirás.', 'Describe what you are looking for to review the data you will share.')}</small>}
+        </div></details>}
+        {aiSearchProposal?.output.operation === 'SEARCH_DRAFT' && <Notice role={null}><div className="form-stack"><p>{t('Propuesta de IA en los campos de abajo. Revísalos y pulsa Buscar ofertas cuando quieras empezar.', 'The AI suggestion is in the fields below. Review them and choose Find jobs when you want to start.')}</p>{aiSearchProposal.output.unsupportedConstraints.length > 0 && <><strong>{t('Recuerda comprobar estas condiciones en cada oferta; no se usan como filtros:', 'Remember to check these conditions in each posting; they are not used as filters:')}</strong><ul>{aiSearchProposal.output.unsupportedConstraints.map((item, index) => <li key={index}>«{item.requestQuote}» — {item.explanation}</li>)}</ul></>}{aiSearchProposal.output.clarifications.length > 0 && <ul>{aiSearchProposal.output.clarifications.map((item, index) => <li key={index}>{item.question}</li>)}</ul>}</div></Notice>}
+        {formState.aiArtifactId && aiSearchProposal?.id !== formState.aiArtifactId && <Notice tone={aiProposalError ? 'warning' : 'info'} actions={aiProposalError ? <><Button type="button" variant="secondary" onClick={() => setAiProposalRetry(value => value + 1)}>{t('Recuperar la propuesta', 'Retrieve the suggestion')}</Button><Button type="button" variant="quiet" onClick={() => { if (window.confirm(t('¿Descartar esta propuesta y sus campos para empezar una búsqueda nueva?', 'Discard this suggestion and its fields to start a new search?'))) { setAiSearchProposal(null); setFormState({ ...initialForm(), open: true }); setFormError(''); } }}>{t('Descartar esta propuesta', 'Discard this suggestion')}</Button></> : undefined}>{aiProposalError ? t('No pudimos recuperar las notas de esta propuesta. Consérvalas antes de buscar para no perder las condiciones que requieren revisión manual.', 'We could not retrieve the notes for this suggestion. Recover them before searching so conditions requiring a manual check are not lost.') : t('Recuperando la propuesta y las condiciones que debes revisar…', 'Retrieving the suggestion and the conditions you need to check…')}</Notice>}
+        <SearchForm key={`${editing || 'new'}-${aiSearchProposal?.id ?? 'manual'}`} defaultProviders={defaultProviders} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t}/>
+      </div>}
       {loading && <Notice>{t('Cargando tus búsquedas…', 'Loading your searches…')}</Notice>}
       {listFailed && <Card className={styles.emptyResults}><Empty title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
       {searches.length > 0 && <section className={styles.results} id="search-results" aria-labelledby="search-results-title">

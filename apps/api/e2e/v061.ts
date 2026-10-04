@@ -68,16 +68,21 @@ export const v061Scenario: Scenario = {
         const detailId = new URL((await jobLink.getAttribute('href'))!, page.url()).pathname.split('/').pop()!;
         const detailPattern = `**/api/v1/jobs/${detailId}`;
         let detailReads = 0;
+        const overlapsInitialReads = process.env.E2E_PRODUCTION !== '1';
+        let releaseDelayedRead!: () => void;
+        const releaseRead = new Promise<void>((resolve) => { releaseDelayedRead = resolve; });
+        let snapshotCaptured = false;
         let finishDelayedRead!: () => void;
         const delayedRead = new Promise<void>((resolve) => { finishDelayedRead = resolve; });
-        // React development mode starts two initial reads. Return the first snapshot late,
-        // after a successful mutation, to make stale-read overwrites reproducible.
+        // React StrictMode duplicates this effect only in development. In that mode hold the first
+        // snapshot until the mutation succeeds; production must not be expected to make duplicate reads.
         await page.route(detailPattern, async (route) => {
           detailReads += 1;
-          if (detailReads !== 1) return route.continue();
+          if (!overlapsInitialReads || detailReads !== 1) return route.continue();
           try {
             const response = await route.fetch();
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+            snapshotCaptured = true;
+            await releaseRead;
             await route.fulfill({ response });
           } finally { finishDelayedRead(); }
         });
@@ -86,6 +91,7 @@ export const v061Scenario: Scenario = {
         await page.route('**/api/v1/jobs/*/seen', async (route) => failReview ? route.fulfill({ status: 500, json: { error: 'INTERNAL_ERROR' } }) : route.continue());
         try {
           const review = page.getByRole('button', { name: c('Marcar como revisada', 'Mark as reviewed'), exact: true });
+          if (overlapsInitialReads) await eventually(async () => snapshotCaptured, Boolean, 'Initial snapshot captured before the review');
           await review.click(); await page.locator('main').getByRole('alert').waitFor();
           await eventually(() => review.isEnabled(), Boolean, 'Failed review can be retried');
           failReview = false;
@@ -94,14 +100,20 @@ export const v061Scenario: Scenario = {
           const response = await retryResponse;
           assert.equal(response.status(), 200, `Review retry returned ${response.status()}`);
           note(`${locale}: review retry reached API and returned 200`);
-          await delayedRead;
-          assert.ok(detailReads >= 2, 'The regression fixture exercised overlapping initial reads');
+          if (overlapsInitialReads) {
+            releaseDelayedRead(); await delayedRead;
+            assert.ok(detailReads >= 2, 'The development fixture exercised overlapping initial reads');
+            note(`${locale}: delayed development snapshot released only after the successful review`);
+          } else {
+            assert.ok(detailReads >= 1, 'Production loaded the job before reviewing it');
+            note(`${locale}: production review/retry checked (${detailReads} initial read); StrictMode overlap is a development-only fixture`);
+          }
           assert.ok((await db.query('select seen_at from jobs where id=$1', [detailId])).rows[0]?.seen_at, 'Successful review persisted');
           const continuation = page.getByRole('link', { name: c('Volver a la lista de ofertas', 'Back to the job list'), exact: true });
           await eventually(() => continuation.evaluate((node) => node === document.activeElement), Boolean, 'Review keeps a useful keyboard continuation');
           assert.equal(await page.locator('main').getByRole('alert').count(), 0, 'Successful retry clears the previous error');
           await continuation.click();
-        } finally { await page.unroute('**/api/v1/jobs/*/seen'); await page.unroute(detailPattern); }
+        } finally { releaseDelayedRead(); await page.unroute('**/api/v1/jobs/*/seen'); await page.unroute(detailPattern); }
         await page.waitForURL((url) => url.pathname === '/jobs' && !url.searchParams.has('page'));
         assert.equal(new URL(page.url()).searchParams.get('scope'), 'new'); assert.equal(new URL(page.url()).searchParams.get('q'), filter); assert.equal(new URL(page.url()).searchParams.get('availability'), 'OPEN');
         await eventually(() => page.locator('.job-card').count(), (count) => count === 24, 'All remaining jobs are accessible');

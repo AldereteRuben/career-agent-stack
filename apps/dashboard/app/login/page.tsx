@@ -52,7 +52,7 @@ export default function LoginPage() {
         <p>{c('Desde una terminal en la carpeta de instalación:', 'From a terminal in the installation folder:')} <code>pnpm start --copy-token</code>. {c('Si la copia automática no está disponible, abre data/setup-token y copia su contenido.', 'If automatic copying is unavailable, open data/setup-token and copy its contents.')}</p>
         <p><strong>macOS:</strong> {c('también puedes abrir Start Career Agent Stack.command. Para crear un código nuevo, abre Recover Career Agent Stack.command.', 'you can also open Start Career Agent Stack.command. To create a new code, open Recover Career Agent Stack.command.')}</p>
       </details>
-      <div className="login-footer"><span><span className="local-pulse"/> {c('Local y privado', 'Local and private')}</span><span>{RELEASE_VERSION}</span></div>
+      <div className="login-footer"><span><span className="local-pulse"/> {c('Datos guardados en tu equipo', 'Data saved on your device')}</span><span>{RELEASE_VERSION}</span></div>
     </section>
   </main>;
 }

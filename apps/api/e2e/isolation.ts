@@ -183,7 +183,7 @@ export async function createIsolatedStack() {
     const apiLog = join(logsDir, 'api.log');
     const tsxCli = createRequire(resolve(projectRoot, 'apps/api/package.json')).resolve('tsx/cli');
     const api = await startChild('api', process.execPath, [tsxCli, 'src/server.ts'], resolve(projectRoot, 'apps/api'), apiLog, childEnv({
-      NODE_ENV: 'test', LOG_LEVEL: 'warn', AI_PROVIDER: 'none',
+      NODE_ENV: 'test', LOG_LEVEL: 'warn', AI_PROVIDER: 'none', CAREER_AI_ENABLED: 'false',
       DATABASE_URL: disposableUrl, API_HOST: '127.0.0.1', API_PORT: String(apiPort), WEB_ORIGIN: uiUrl,
       DATA_LOCAL_PATH: dataDir, FILES_LOCAL_PATH: filesDir,
       APP_ENCRYPTION_KEY: randomBytes(32).toString('base64'), APP_SESSION_SECRET: randomBytes(32).toString('base64'),

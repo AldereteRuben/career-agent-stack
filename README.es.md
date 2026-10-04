@@ -4,7 +4,7 @@ Tu espacio privado para buscar ofertas automáticamente, preparar candidaturas c
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.8.2** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.8.2.md)
+**Versión actual: v0.9.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.9.0.md)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -22,6 +22,18 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
 No necesitas una suscripción de IA ni una clave de API. La app prepara candidaturas con datos aprobados de tu perfil e incluye **asistencia experimental en Lever**, con navegador visible. Una autorización adicional para una sola candidatura permite adjuntar el PDF aprobado y enviar un formulario sencillo reconocido. CAPTCHA, declaraciones legales, preguntas no compatibles y formularios desconocidos requieren intervención manual. No hay envío desatendido de candidaturas, acceso al correo ni preparación de entrevistas. La puntuación refleja cobertura de evidencia; no es una probabilidad de contratación ni una puntuación ATS.
+
+## Ayuda opcional de Codex
+
+En **Perfil y herramientas → Ajustes y privacidad → Asistente**, conecta Codex oficial con tu propia cuenta de ChatGPT. También puedes conectar al pedir ayuda en una búsqueda, oferta, CV o pregunta guardada. Career Stack muestra el texto seleccionado antes de compartirlo. Consume la cuota de tu plan; no utiliza una API de pago alternativa.
+
+- Convierte lo que buscas en criterios editables. Los filtros que no se pueden aplicar quedan visibles para que los compruebes.
+- Resume una oferta y la compara con la experiencia confirmada que selecciones.
+- Revisa propuestas para tu CV junto a sus fuentes; después genera y aprueba el PDF exacto.
+- Prepara respuestas apoyadas en tus datos. Las decisiones personales o legales requieren tu respuesta.
+- Tras un análisis manual, puedes activar el análisis de ofertas futuras de las búsquedas elegidas. Empieza desactivado, tiene un máximo de cinco por consulta y diez por día UTC, y se puede pausar sin detener la búsqueda de empleo.
+
+La ejecución de IA está soportada únicamente en **macOS con Codex CLI 0.160.0** y autenticación de un plan de ChatGPT. Las funciones habituales siguen disponibles en otros sistemas o versiones; esa integración aún no está certificada. Desconectar revoca el acceso de Career Stack sin cerrar tu sesión de Codex en otras aplicaciones. Claude queda aplazado. [Configuración, privacidad y límites](docs/operations/assistant.md).
 
 ## Preparar una candidatura
 

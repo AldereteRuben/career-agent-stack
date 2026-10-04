@@ -9,8 +9,10 @@ import { documentLanguage, printedResumeIdentity, printedStatement, readIdentity
 import { config } from './config.js';
 import { documentReadiness } from './document-reuse.js';
 import { renderResume } from './document-renderer.js';
+import { latestReusableAnswers } from './ai/answer-current.js';
+import { lockJobIdentity } from './job-identity.js';
 import { applicationPreparationBlockReason, findPriorPreparationResult, preparationGaps, preparationKey, selectRelevantPreparationFacts } from './preparation-domain.js';
-import { latestAnswers, lockKey, profileLockKey } from './workspace-data.js';
+import { lockKey, profileLockKey } from './workspace-data.js';
 
 export type PreparationLocale = 'es' | 'en';
 export type PreparationResult = {
@@ -26,7 +28,7 @@ const blocked = (jobId: string, reason: string, profileRevisionId: string | null
 const closedStages = ['HIRED', 'REJECTED', 'WITHDRAWN'];
 
 
-function answerSuggestions(rows: Awaited<ReturnType<typeof latestAnswers>>, jobText: string, locale: PreparationLocale) {
+function answerSuggestions(rows: Awaited<ReturnType<typeof latestReusableAnswers>>, jobText: string, locale: PreparationLocale) {
   const lower = jobText.toLocaleLowerCase();
   return rows.filter((row) => row.approvalStatus === 'USER_APPROVED' && row.value !== null)
     .filter((row) => [row.semanticKey, row.questionScope, row.questionText ?? ''].some((text) => {
@@ -41,6 +43,7 @@ export async function prepareApplication(workspaceId: string, jobId: string, loc
   let generatedFilePath: string | null = null;
   try {
     const result = await db.transaction(async (tx) => {
+      await lockJobIdentity(tx, workspaceId);
       await lockKey(tx, profileLockKey(workspaceId));
       await lockKey(tx, `application:${workspaceId}:${jobId}`);
       const job = (await tx.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, workspaceId))).limit(1))[0];
@@ -60,7 +63,7 @@ export async function prepareApplication(workspaceId: string, jobId: string, loc
       const pdfLocale = documentLanguage(locale, profile?.locale);
       const approved = facts.filter((fact) => fact.approvalStatus === 'USER_APPROVED');
       const selected = selectRelevantPreparationFacts(approved, jobText, locale);
-      const answers = await latestAnswers(tx, workspaceId);
+      const answers = await latestReusableAnswers(tx, workspaceId);
       const suggestions = answerSuggestions(answers, jobText, locale);
       const key = preparationKey({
         profileRevisionId, snapshotId, locale,
@@ -157,7 +160,7 @@ export function registerPreparationRoutes(app: FastifyInstance, workspace: (requ
     const [facts, snapshots, answers] = await Promise.all([
       profile[0] ? db.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, id), eq(profileFacts.profileVersionId, profile[0].id))) : Promise.resolve([]),
       jobIds.length ? db.selectDistinctOn([jobSnapshots.jobId]).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), inArray(jobSnapshots.jobId, jobIds))).orderBy(jobSnapshots.jobId, desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)) : Promise.resolve([]),
-      latestAnswers(db, id),
+      latestReusableAnswers(db, id),
     ]);
     const snapshotByJob = new Map(snapshots.map((snapshot) => [snapshot.jobId, snapshot]));
     const identity = readIdentity(profile[0]?.profile ?? {});

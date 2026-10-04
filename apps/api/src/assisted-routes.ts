@@ -1,4 +1,5 @@
 import { documentReadiness } from './document-reuse.js';
+import { lockJobIdentity } from './job-identity.js';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
@@ -42,7 +43,9 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     const document = (await tx.select().from(documentVersions).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, workspaceId))).limit(1))[0];
     if (!document || document.approvalStatus !== 'USER_APPROVED') return fail('ASSIST_DOCUMENT_REQUIRED');
     // Same printed-content check as approval and linking: the PDF must still show the current name, email and approved facts.
-    if (!(await documentReadiness(tx, workspaceId, [document]))[0]?.assistReady) fail('ASSIST_DOCUMENT_STALE');
+    const ready = (await documentReadiness(tx, workspaceId, [document]))[0];
+    if (!ready?.assistReady) fail('ASSIST_DOCUMENT_STALE');
+    if (ready?.jobId && ready.jobId !== application.jobId) fail('ASSIST_DOCUMENT_JOB_MISMATCH');
     const root = resolve(config.FILES_LOCAL_PATH); const path = resolve(root, document.storagePath); const rel = relative(root, path);
     if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) fail('ASSIST_DOCUMENT_REQUIRED');
     const bytes = await readFile(path).catch(() => fail('ASSIST_DOCUMENT_REQUIRED'));
@@ -88,12 +91,13 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
       db.select().from(documentVersions).where(and(eq(documentVersions.workspaceId, workspaceId), eq(documentVersions.approvalStatus, 'USER_APPROVED'))).orderBy(desc(documentVersions.createdAt)),
       db.select().from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, workspaceId), eq(assistedAttempts.applicationId, id))).orderBy(desc(assistedAttempts.createdAt)).limit(30),
     ]);
-    return { supported: Boolean(leverApplicationUrl(application.canonicalUrl)), url: leverApplicationUrl(application.canonicalUrl), identity: readIdentity(profile?.profile ?? {}), application, documents: (await documentReadiness(db, workspaceId, documents)).map(({ id, name, revision, sha256, approvalStatus, assistReady }) => ({ id, name, revision, sha256, approvalStatus, assistReady })), attempts };
+    return { supported: Boolean(leverApplicationUrl(application.canonicalUrl)), url: leverApplicationUrl(application.canonicalUrl), identity: readIdentity(profile?.profile ?? {}), application, documents: (await documentReadiness(db, workspaceId, documents)).filter(document => !document.jobId || document.jobId === application.jobId).map(({ id, name, revision, sha256, approvalStatus, assistReady }) => ({ id, name, revision, sha256, approvalStatus, assistReady })), attempts };
   }));
   app.post('/api/v1/applications/:id/assist/prepare', wrap(async (request) => {
     const parsed = assistedPrepareSchema.safeParse(request.body); if (!parsed.success) return fail('ASSIST_INVALID_INPUT');
     const workspaceId = workspace(request); const applicationId = requestId(request);
     return db.transaction(async (tx) => {
+      await lockJobIdentity(tx, workspaceId);
       await lockKey(tx, profileLockKey(workspaceId));
       await getApplication(tx, applicationId, workspaceId);
       const existing = (await tx.select().from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, workspaceId), eq(assistedAttempts.applicationId, applicationId), inArray(assistedAttempts.status, activeAssistedStates))).limit(1))[0];
@@ -110,6 +114,7 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     const workspaceId = workspace(request); const id = requestId(request);
     if (browser.busy()) return fail('ASSIST_BROWSER_BUSY');
     await db.transaction(async (tx) => {
+      await lockJobIdentity(tx, workspaceId);
       await lockKey(tx, profileLockKey(workspaceId));
       const attempt = await getAttempt(tx, id, workspaceId);
       if (attempt.status !== 'PREPARED') fail('ASSIST_CONSENT_ALREADY_USED');
@@ -121,6 +126,7 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     });
     try {
       return await db.transaction(async (tx) => {
+        await lockJobIdentity(tx, workspaceId);
         await lockKey(tx, profileLockKey(workspaceId));
         const attempt = await getAttempt(tx, id, workspaceId);
         if (attempt.status !== 'STARTING') fail('ASSIST_CONSENT_ALREADY_USED');
@@ -140,6 +146,7 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     if (!assistedHandoffSchema.safeParse(request.body).success) return fail('ASSIST_INVALID_INPUT');
     const workspaceId = workspace(request); const id = requestId(request);
     const row = await db.transaction(async (tx) => {
+      await lockJobIdentity(tx, workspaceId);
       await lockKey(tx, profileLockKey(workspaceId));
       const attempt = await getAttempt(tx, id, workspaceId);
       if (!['REVIEW', 'HANDOFF_REQUIRED'].includes(attempt.status)) return fail('ASSIST_INVALID_STATE');
@@ -157,6 +164,7 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     const parsed = assistedSubmitConsentSchema.safeParse(request.body); if (!parsed.success) return fail('ASSIST_INVALID_INPUT');
     const workspaceId = workspace(request); const id = requestId(request);
     const preview = await db.transaction(async (tx) => {
+      await lockJobIdentity(tx, workspaceId);
       await lockKey(tx, profileLockKey(workspaceId));
       const attempt = await getAttempt(tx, id, workspaceId);
       if (attempt.status !== 'REVIEW') fail('ASSIST_INVALID_STATE');
@@ -169,6 +177,7 @@ export async function registerAssistedRoutes(app: FastifyInstance, workspace: (r
     const inspection = await browser.inspectSubmit(id);
     if (!inspection.supported) return fail(inspection.reason);
     const claimed = await db.transaction(async (tx) => {
+        await lockJobIdentity(tx, workspaceId);
         await lockKey(tx, profileLockKey(workspaceId));
         const attempt = await getAttempt(tx, id, workspaceId);
         if (attempt.status !== 'REVIEW' || resultObject(attempt.result).submissionPermit) fail('ASSIST_SUBMISSION_ALREADY_AUTHORIZED');

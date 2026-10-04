@@ -1,0 +1,240 @@
+#!/usr/bin/env node
+/* global document */
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { mkdir } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(fileURLToPath(new URL('../apps/api/package.json', import.meta.url)));
+const { chromium } = require('playwright');
+assert.equal(process.env.V090_ISOLATED, '1', 'Use the isolated runner');
+assert.ok(process.env.V090_TOKEN, 'Use the isolated sign-in token');
+const checkedUrl = (value) => {
+  const url = new URL(value); assert.equal(url.protocol, 'http:');
+  assert.ok(['127.0.0.1', 'localhost'].includes(url.hostname)); assert.ok(url.port && !['3000', '3001'].includes(url.port)); return url;
+};
+const ui = checkedUrl(process.env.V090_UI_URL); const apiUrl = checkedUrl(process.env.V090_API_URL);
+assert.notEqual(ui.port, apiUrl.port);
+const artifacts = process.env.V090_ARTIFACTS ?? resolve('output/playwright/v090');
+const ids = { job: randomUUID(), fact: randomUUID(), question: randomUUID(), search: randomUUID(), observation: randomUUID(), connection: randomUUID() };
+const now = new Date().toISOString(); const future = () => new Date(Date.now() + 300_000).toISOString();
+const fact = { id: ids.fact, kind: 'experience', statement: 'Built a fictional booking website with accessible forms.', tags: ['design'], approvalStatus: 'USER_APPROVED' };
+const question = { id: ids.question, semanticKey: 'describe_your_relevant_work_experience', questionText: 'Describe your relevant work experience', jurisdiction: 'ES', questionScope: 'job_application', value: null, approvalStatus: 'UNANSWERED', strategy: 'ASK_USER', revision: 1 };
+const profile = { revision: 1, locale: 'en', profile: { identity: { fullName: 'Alex Example', email: 'alex@example.test', country: 'ES' }, preferences: { targetTitles: ['Designer'], workModes: ['remote'] } }, facts: [fact], answers: [question] };
+const job = { id: ids.job, title: 'Fictional Product Designer', company: 'Example Studio', location: 'Remote', canonicalUrl: 'https://example.test/job', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: [], shortlistDecision: 'UNREVIEWED', availability: 'OPEN', createdAt: now, discoveredAt: null, seenAt: now };
+const posting = 'Design accessible booking forms. Experience with usability research is preferred.';
+const sourcesFor = request => ({ ...(request.searchRequest ? { searchRequest: request.searchRequest } : {}), ...(request.jobId ? { job: posting } : {}), facts: request.selectedFactIds?.includes(ids.fact) ? [{ factId: ids.fact, kind: fact.kind, text: fact.statement }] : [], ...(request.questionId ? { question: question.questionText } : {}) });
+const outputFor = request => {
+  const common = { operation: request.operation, locale: request.locale };
+  if (request.operation === 'SEARCH_DRAFT') return { ...common, criteria: { role: 'Product Designer', company: null, location: 'Spain', workMode: 'remote' }, unsupportedConstraints: [{ requestQuote: 'four days a week', explanation: 'Check the work schedule in each posting.' }], clarifications: [] };
+  if (request.operation === 'JOB_ANALYSIS') return { ...common, summary: [{ text: 'Designing accessible booking forms.', citations: [{ quote: 'Design accessible booking forms.' }] }], requirements: [], personalMatches: [], gaps: [], warnings: [] };
+  if (request.operation === 'RESUME_DRAFT') return { ...common, proposals: [{ proposalKey: 'first', section: 'EXPERIENCE', text: 'Built accessible booking forms for a fictional website.', changeExplanation: 'Makes the supplied experience easier to read.', sourceFactIds: [ids.fact], warnings: [] }], warnings: [] };
+  return { ...common, result: { status: 'DRAFT', text: 'I built a fictional booking website with accessible forms.', evidence: [{ factId: ids.fact }] } };
+};
+const state = { connected: false, observed: false, previewError: null, mode: 'success', startLost: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
+const observation = () => ({ id: ids.observation, sessionState: 'SIGNED_IN', version: '0.test', maskedIdentity: 'a***@example.test', plan: null, usage: null });
+const connectionState = () => ({ enabled: true, connection: state.connected ? { ...observation(), id: ids.connection, authorized: true } : null, observation: state.observed ? observation() : null });
+const response = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-GB' });
+let page = await context.newPage(); page.setDefaultTimeout(15_000);
+const failures = []; const unmatched = [];
+context.on('page', item => item.on('pageerror', error => failures.push(error.message)));
+page.on('pageerror', error => failures.push(error.message));
+const goto = path => page.goto(new URL(path, ui).toString(), { waitUntil: 'domcontentloaded' });
+const visible = async locator => { await locator.waitFor({ state: 'visible' }); return locator; };
+const click = async name => (await visible(page.getByRole('button', { name, exact: true }))).click();
+const locale = async value => { if (!(await page.locator('html').getAttribute('lang')).startsWith(value)) await click(value === 'es' ? 'Español' : 'English'); };
+const overflow = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true, 'No horizontal page overflow');
+const screenshot = async name => {
+  await page.evaluate(() => document.scrollingElement?.scrollTo(0, 0));
+  await page.screenshot({ path: join(artifacts, name), fullPage: true });
+};
+try {
+  await mkdir(artifacts, { recursive: true });
+  await goto('/login');
+  await page.getByLabel(/^(Código de acceso|Sign-in code)$/).fill(process.env.V090_TOKEN);
+  await page.getByRole('button', { name: /^(Entrar|Sign in|Iniciar sesión|Continue|Continuar|Open my workspace)$/ }).click();
+  await page.waitForURL(url => !url.pathname.startsWith('/login'));
+  await context.route('**/api/v1/**', async route => {
+    const request = route.request(); const url = new URL(request.url()); const path = url.pathname.replace('/api/v1', ''); const method = request.method();
+    if (path === '/session') return route.continue();
+    if (path === '/capabilities') return response(route, { available: ['ai-processing'], unavailable: [] });
+    if (path === '/summary') return response(route, { boards: [], recentJobs: [], recentApplications: [], pendingFacts: 0, unansweredItems: 0, applicationCounts: {}, savedSearchCount: 0, activeSearchCount: 0, totalJobs: 0, activeApplications: 0, profileCompletion: { percent: 100, completed: 6, total: 6, missing: [], approvedFactCount: 1, pendingFactCount: 0 } });
+    if (path === '/profile') return response(route, profile);
+    if (path === '/documents') return response(route, []);
+    if (path === '/jobs') return response(route, [job]);
+    if (path === `/jobs/${ids.job}`) return response(route, { job, snapshots: [{ id: randomUUID(), title: job.title, descriptionText: posting, fetchedAt: now }], sources: [], applications: [] });
+    if (path === '/job-searches' && method === 'GET') return response(route, { searches: [], coverage: {} });
+    if (path.startsWith('/job-searches') && method === 'GET') return response(route, { items: [], total: 0 });
+    if (path === '/job-searches' && method === 'POST') { state.searchSaves.push(request.postDataJSON()); return response(route, { error: 'TEST_SAVE_NOT_ALLOWED' }, 409); }
+    if (path === '/answers' && method === 'POST') { state.questionSaves.push(request.postDataJSON()); return response(route, { id: randomUUID() }, 201); }
+    if (path.endsWith('/approve') && path.startsWith('/answers/')) return response(route, { ok: true });
+    if (path === '/settings' || path === '/privacy' || path === '/discovery') return response(route, {});
+    if (path === '/backups/current') return response(route, { state: 'idle' });
+    if (path === '/ai/connections') return response(route, connectionState());
+    if (path === '/ai/connections/codex/inspect') { state.observed = true; return response(route, connectionState()); }
+    if (path === '/ai/connections/codex/authorize') { assert.equal(request.postDataJSON().observationId, ids.observation); state.connected = true; return response(route, connectionState()); }
+    if (path === `/ai/connections/${ids.connection}/disconnect`) { state.connected = false; state.observed = false; return response(route, connectionState()); }
+    if (path === '/ai/consents') return response(route, { consents: state.consentRevokes ? [] : [{ id: 'consent', operation: 'SEARCH_DRAFT', dataCategories: ['SEARCH_REQUEST'], searchIds: [], remembered: true, grantedAt: now }] });
+    if (path === '/ai/consents/consent/revoke') { state.consentRevokes++; return response(route, { ok: true }); }
+    if (path === '/ai/history/clear-preview') { state.historyPreviews++; return response(route, { previewId: 'history-preview', expiresAt: future(), removable: { runs: 2, artifacts: 1, usageRecords: 0 }, preserved: { activeRuns: 1, referencedArtifacts: 2, retainedDependencies: 3 }, retentionDays: 30 }); }
+    if (path === '/ai/history/clear') { assert.deepEqual(request.postDataJSON(), { previewId: 'history-preview' }); state.historyClears++; return response(route, { deleted: { runs: 2, artifacts: 1, usageRecords: 0 }, retentionDays: 30 }); }
+    if (path === '/ai/runs/preview') {
+      if (state.previewError) { const code = state.previewError; state.previewError = null; return response(route, { error: code }, 409); }
+      const value = request.postDataJSON(); const previewId = randomUUID(); state.previews.set(previewId, value);
+      return response(route, { previewId, operation: value.operation, locale: value.locale, expiresAt: future(), categories: value.operation === 'SEARCH_DRAFT' ? ['SEARCH_REQUEST'] : ['JOB_POSTING', 'APPROVED_FACTS'], sources: sourcesFor(value), rememberedPermission: false, connection: { maskedIdentity: 'a***@example.test' } });
+    }
+    if (path === '/ai/runs' && method === 'POST') {
+      const body = request.postDataJSON(); state.starts.push(body);
+      let run = state.runs.find(item => item.key === body.idempotencyKey);
+      if (!run) { const source = state.previews.get(body.previewId); assert.ok(source); const id = randomUUID(); const artifactId = randomUUID(); run = { id, state: state.mode === 'success' ? 'SUCCEEDED' : state.mode === 'failure' ? 'FAILED' : 'RUNNING', origin: 'MANUAL', artifactId, key: body.idempotencyKey, request: source, selectedFactIds: source.selectedFactIds ?? [], error: state.mode === 'failure' ? { code: 'PROVIDER_ERROR', dispatched: 'YES' } : undefined }; state.runs.unshift(run); state.artifacts.set(artifactId, { id: artifactId, revision: 1, state: 'PENDING_REVIEW', operation: source.operation, output: outputFor(source), sources: sourcesFor(source) }); }
+      if (state.startLost) { state.startLost = false; return route.abort('connectionreset'); }
+      return response(route, run, 202);
+    }
+    if (path === '/ai/runs' && method === 'GET') return response(route, { runs: state.runs.filter(run => run.request.operation === url.searchParams.get('operation') && run.request.locale === url.searchParams.get('locale') && (!url.searchParams.has('jobId') || run.request.jobId === url.searchParams.get('jobId')) && (!url.searchParams.has('questionId') || run.request.questionId === url.searchParams.get('questionId'))) });
+    const runId = path.match(/^\/ai\/runs\/([^/]+)(\/cancel)?$/);
+    if (runId) { const run = state.runs.find(item => item.id === runId[1]); assert.ok(run); if (runId[2]) run.state = 'CANCELLED'; return response(route, run); }
+    const artifact = path.match(/^\/ai\/artifacts\/([^/]+)(\/(answer|resume))?$/);
+    if (artifact) {
+      if (artifact[3] === 'answer') { state.savedAnswers.push(request.postDataJSON()); question.id = randomUUID(); question.revision++; question.value = request.postDataJSON().text; question.approvalStatus = 'UNANSWERED'; return response(route, question, 201); }
+      if (artifact[3] === 'resume') { state.resumeSaves.push(request.postDataJSON()); return response(route, { error: 'AI_SOURCE_CHANGED' }, 409); }
+      return response(route, state.artifacts.get(artifact[1]));
+    }
+    if (path === '/ai/automation' && method === 'GET') return response(route, { enabled: true, policies: state.policies, searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], facts: [{ factId: ids.fact, kind: fact.kind, text: fact.statement }], limits: { maximumDailyStarts: 10, maximumPerPass: 5 } });
+    if (path === '/ai/automation/preview') { const body = request.postDataJSON(); state.automationPreviews.push(body); return response(route, { previewId: 'automation-preview', expiresAt: future(), searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], sources: { facts: [] }, categories: ['JOB_POSTING'], locale: body.locale, maximumDailyStarts: body.maximumDailyStarts, connection: { maskedIdentity: 'a***@example.test' }, newOffersOnly: true }); }
+    if (path === '/ai/automation' && method === 'POST') { state.policies = [{ id: 'policy', revision: 1, active: true, paused: false, searchIds: [ids.search], selectedFactIds: [], locale: 'en', maximumDailyStarts: 1, activatedAt: now, maskedIdentity: 'a***@example.test', queued: 0, ready: 0 }]; return response(route, state.policies[0], 201); }
+    if (path === '/ai/automation/policy/pause') { state.paused++; state.policies[0].paused = true; return response(route, state.policies[0]); }
+    unmatched.push(`${method} ${path}`); return response(route, { error: 'UNMOCKED_E2E_REQUEST' }, 501);
+  });
+
+  await goto('/settings'); await locale('en');
+  await click('Check Codex'); await click('Use this account');
+  await visible(page.getByRole('button', { name: 'Disconnect from Career Stack', exact: true }));
+  assert.equal(state.starts.length, 0, 'Connection must not start work');
+  await screenshot('connection-en.png');
+  console.log('✓ Explicit account inspection and connection; no task starts');
+
+  await goto('/searches');
+  await page.getByText('Describe what I want with AI help · optional', { exact: true }).click();
+  await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).fill('Product Designer in Spain, remote, four days a week');
+  state.previewError = 'AI_NOT_CONNECTED';
+  await page.getByRole('button', { name: /Codex/ }).last().click();
+  await click('Check the connection here'); await visible(page.getByRole('button', { name: 'Disconnect from Career Stack', exact: true }));
+  assert.match(await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).inputValue(), /four days/);
+  await click('Review my task’s data again');
+  await page.getByText('See exactly what will be shared', { exact: true }).click();
+  assert.equal(state.starts.length, 0); await visible(page.locator('p').filter({ hasText: /^Product Designer in Spain, remote, four days a week$/ }));
+  state.startLost = true; await click('Allow this task'); await click('Retry this task');
+  await visible(page.getByRole('heading', { name: 'Your suggested search', exact: true }));
+  assert.equal(state.starts[0].idempotencyKey, state.starts[1].idempotencyKey, 'Lost response retry uses same key');
+  assert.equal(await page.getByRole('button', { name: 'Review and edit the search', exact: true }).isEnabled(), false);
+  await page.getByRole('checkbox', { name: /I understand those conditions/ }).check(); await click('Review and edit the search');
+  assert.equal(state.searchSaves.length, 0, 'Review does not create or run a search');
+  await visible(page.getByText('Remember to check these conditions in each posting; they are not used as filters:', { exact: true }));
+  await screenshot('search-review-en.png');
+  console.log('✓ Search exact consent, inline connection, idempotent retry and unsupported-constraint review');
+
+  await goto(`/jobs/${ids.job}`); await click('Summarize and explain with Codex');
+  await click('Allow this task'); await visible(page.getByRole('heading', { name: 'The job, at a glance', exact: true }));
+  await page.getByText('See the supporting information', { exact: true }).click(); await visible(page.getByText('Design accessible booking forms.', { exact: true }));
+  const automation = page.locator('details').filter({ has: page.locator('summary', { hasText: 'Summarize new jobs automatically · optional' }) }).last();
+  await automation.locator('summary').first().click();
+  await visible(automation.getByRole('button', { name: 'Review before enabling', exact: true }));
+  assert.equal(await automation.getByRole('checkbox', { checked: true }).count(), 0, 'No searches or profile facts preselected');
+  assert.equal(await automation.getByRole('button', { name: 'Review before enabling', exact: true }).isEnabled(), false);
+  await automation.getByRole('checkbox', { name: 'Product Designer · Spain', exact: true }).check();
+  await automation.getByRole('button', { name: 'Review before enabling', exact: true }).click();
+  assert.equal(state.policies.length, 0); assert.deepEqual(state.automationPreviews[0].selectedFactIds, []);
+  await automation.getByRole('button', { name: 'Allow automatic summaries', exact: true }).click();
+  await automation.getByRole('button', { name: 'Pause summaries', exact: true }).click(); assert.equal(state.paused, 1);
+  await screenshot('job-analysis-en.png');
+  console.log('✓ Job analysis evidence, opt-in automatic setup, exact scope preview and pause (all mocked)');
+
+  state.mode = 'waiting'; await click('Summarize and explain with Codex'); await click('Allow this task');
+  const startsBeforeReopen = state.starts.length;
+  await page.close(); page = await context.newPage(); page.setDefaultTimeout(15_000);
+  await goto(`/jobs/${ids.job}`); await click('View assistance progress'); await visible(page.getByRole('button', { name: 'Cancel task', exact: true }));
+  assert.equal(state.starts.length, startsBeforeReopen, 'Reopening only polls the same run');
+  await click('Cancel task'); await visible(page.getByText('Task cancelled. No new suggestion has been added.', { exact: true }));
+  state.mode = 'failure'; await click('Summarize and explain with Codex'); await click('Allow this task');
+  await visible(page.getByText('Codex could not complete the task. You can try again when you are ready.', { exact: true }));
+  await visible(page.getByRole('heading', { name: 'The job, at a glance', exact: true }));
+  state.mode = 'success'; console.log('✓ Page close/reopen recovers active work; cancel and failure preserve the prior result');
+
+  await goto(`/documents?jobId=${ids.job}`); await locale('en');
+  const factCheckbox = page.locator('.fact-pick input'); if (!(await factCheckbox.isChecked())) await factCheckbox.check();
+  await click('Improve wording for this job'); await click('Allow this task'); await click('Review my resume suggestions');
+  const resumeText = page.getByRole('textbox', { name: 'Text that will appear in the resume', exact: true });
+  await resumeText.fill('Reviewed fictional experience wording.'); assert.equal(state.resumeSaves.length, 0);
+  await click('Generate and review the PDF');
+  assert.equal(state.resumeSaves[0].selections[0].text, 'Reviewed fictional experience wording.');
+  assert.equal(await resumeText.inputValue(), 'Reviewed fictional experience wording.', 'Failed PDF save preserves edits');
+  await screenshot('resume-review-en.png');
+  await goto(`/jobs/${ids.job}`); await goto(`/documents?jobId=${ids.job}`);
+  await click('View the saved suggestion'); await click('Review my resume suggestions');
+  await page.waitForFunction(() => document.querySelector('section[aria-label="Review resume wording"] textarea')?.disabled === false);
+  assert.equal(await page.getByRole('textbox', { name: 'Text that will appear in the resume', exact: true }).inputValue(), 'Reviewed fictional experience wording.', 'Review edits recover after navigation');
+  assert.equal(await page.getByRole('button', { name: 'Generate and review', exact: true }).count(), 0, 'Ordinary generation is hidden during AI review');
+  await page.getByRole('combobox', { name: 'PDF language', exact: true }).selectOption('es');
+  assert.equal(await page.getByRole('button', { name: 'Generate and review the PDF', exact: true }).isEnabled(), false, 'Changed language blocks stale review');
+  await page.getByRole('combobox', { name: 'PDF language', exact: true }).selectOption('en');
+  assert.equal(await page.getByRole('button', { name: 'Generate and review the PDF', exact: true }).isEnabled(), true);
+  await page.getByRole('checkbox', { name: 'Use suggestion 1', exact: true }).uncheck();
+  const savedResumeCount = state.resumeSaves.length;
+  await click('Continue with my original wording'); await visible(page.getByRole('button', { name: 'Generate and review', exact: true }));
+  assert.equal(state.resumeSaves.length, savedResumeCount, 'Choosing originals does not submit AI proposals');
+  console.log('✓ Resume edits survive errors/navigation; changed context blocks stale review; all-original wording returns to ordinary generation');
+
+  await goto('/profile'); await page.getByText('Saved answers · optional', { exact: true }).click();
+  const answerRow = page.locator('.answer-row').filter({ hasText: question.questionText });
+  assert.equal(await answerRow.getByRole('button', { name: 'Approve answer', exact: true }).isEnabled(), false);
+  await answerRow.getByText('Draft an answer from my experience', { exact: true }).click();
+  assert.equal(await answerRow.getByRole('checkbox', { checked: true }).count(), 0);
+  await answerRow.getByRole('checkbox', { name: /Built a fictional/ }).check();
+  await answerRow.getByRole('button', { name: 'Draft with Codex', exact: true }).click(); await click('Allow this task'); await click('Review and edit my answer');
+  await page.getByRole('textbox', { name: 'Answer to save', exact: true }).fill('My reviewed fictional answer.'); assert.equal(state.savedAnswers.length, 0);
+  await click('Save answer for review'); assert.equal(state.savedAnswers[0].text, 'My reviewed fictional answer.'); assert.equal(question.approvalStatus, 'UNANSWERED');
+  await visible(answerRow.getByRole('button', { name: 'Approve answer', exact: true }));
+  await page.getByRole('textbox', { name: 'What is the application asking?', exact: true }).fill('Do you have permission to work in Spain?');
+  await page.getByRole('combobox', { name: 'Country it applies to', exact: true }).selectOption('ES');
+  await click('Save question for later'); assert.equal(state.questionSaves[0].value, null);
+  console.log('✓ Experience answer selection, editable review, save still unapproved and empty question saving');
+
+  await locale('es'); await page.setViewportSize({ width: 390, height: 844 }); await overflow();
+  await screenshot('profile-mobile-es.png');
+  await goto(`/jobs/${ids.job}`); await locale('en'); await click('View the saved suggestion'); await overflow();
+  await screenshot('job-mobile-en.png');
+  await goto('/settings'); await locale('es'); await visible(page.getByRole('button', { name: 'Desconectar de Career Stack', exact: true })); await overflow();
+  await screenshot('settings-mobile-es.png');
+  for (const language of ['es', 'en']) {
+    await locale(language);
+    for (const width of [360, 768, 1096, 1440, 720]) {
+      await page.setViewportSize({ width, height: width === 720 ? 450 : 900 });
+      await overflow();
+      const check = page.getByRole('button', { name: language === 'es' ? 'Comprobar Codex' : 'Check Codex', exact: true });
+      await check.focus(); await page.keyboard.press('Tab');
+      assert.equal(await page.evaluate(() => document.activeElement?.tagName === 'BUTTON'), true, 'Keyboard can reach the next account action');
+      const box = await page.locator(':focus').boundingBox(); assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, 'Focused action fits the viewport');
+    }
+    await screenshot(`settings-200-percent-equivalent-${language}.png`);
+  }
+  console.log('✓ 360/768/1096/1440 CSS-pixel widths in ES/EN and 720×450 equivalent to 200% at 1440×900; keyboard focus visible. No screen-reader or real-user claim.');
+  await locale('es');
+  await click('Desconectar de Career Stack'); assert.equal(state.connected, false);
+  await page.getByText('Historial local de ayuda con IA', { exact: true }).click();
+  assert.equal(state.historyPreviews, 0, 'Opening history is not a delete request');
+  await click('Revisar qué se puede borrar'); await visible(page.getByRole('heading', { name: 'Esto se puede borrar', exact: true }));
+  assert.equal(state.historyClears, 0, 'Preview does not delete history');
+  await click('Borrar este historial local');
+  await visible(page.getByText('Historial borrado: 2 tareas, 1 propuestas y 0 registros de consumo.', { exact: true }));
+  assert.equal(state.historyClears, 1, 'Only explicit deletion submits the reviewed preview');
+  console.log('✓ Local history cleanup preview and explicit confirm work while disconnected (mock only)');
+  assert.deepEqual(unmatched, [], 'Every non-session API must be intercepted'); assert.deepEqual(failures, [], 'No browser errors');
+  console.log('✓ ES/EN and 390px mobile layouts; no unexpected API calls or browser errors');
+} catch (error) {
+  await page.screenshot({ path: join(artifacts, 'failure.png'), fullPage: true }).catch(() => {});
+  console.error('Unmatched mock requests:', unmatched); throw error;
+} finally { await context.close(); await browser.close(); }

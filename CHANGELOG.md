@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0
+
+- Optional official Codex connection with masked account confirmation, explicit sharing previews, revocable permissions and observed subscription limits. Native execution is certified only for macOS and CLI 0.160.0 with ChatGPT plan authentication; Claude is deferred.
+- Contextual help for editable search criteria, evidence-backed job summaries, resume wording with exact-PDF review, and unapproved answer drafts. Ordinary searches remain usable without AI.
+- Optional future-job analysis for selected searches and facts, off by default, with local daily limits, manual priority, pause and no historical bulk regeneration.
+- Durable scoped queue, account-change invalidation, cancellation, stale-source checks and persisted results; no application retry after uncertain inference and no paid API fallback.
+- Additive migration 0010 preserves prior PDFs. Export omits connection context; backup restore revokes grants, pauses policies and interrupts unfinished work while retaining history.
+- ES/EN controls and privacy wording distinguish local storage from optional external processing. See [setup and limits](docs/operations/assistant.md) and [release evidence](docs/releases/v0.9.0-validation.md).
+
 ## 0.8.2
 
 - Open directly in Find jobs and keep three primary destinations: Find jobs, Saved jobs and My applications. Profile and tools contains the remaining screens, including the previous overview.

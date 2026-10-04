@@ -1,0 +1,130 @@
+import assert from 'node:assert/strict';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { readdir, readFile } from 'node:fs/promises';
+import { test } from 'node:test';
+import Fastify from 'fastify';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import * as schema from '@career/db';
+import { normalizeAiUsage } from '@career/domain';
+import { registerAiRunRoutes } from '../src/ai-run-routes.js';
+import { registerAiConnectionRoutes } from '../src/ai-connection-routes.js';
+import { aiAnswerCurrent, registerAiAnswerRoutes } from '../src/ai-answer-routes.js';
+import { createAiConnectionRepository } from '../src/ai/connection-store.js';
+import { createAiQueue } from '../src/ai/queue.js';
+import { AI_PROMPT_VERSION } from '../src/ai/prompts.js';
+import { exportAiData } from '../src/ai/export.js';
+
+const root = new URL('../../../', import.meta.url);
+const { Client, Pool } = createRequire(new URL('packages/db/package.json', root))('pg');
+const adminUrl = process.env.CAREER_V090_ROUTES_TEST_ADMIN_URL;
+const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
+test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recoverable', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl!);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname)); assert.equal(maintenance.pathname, '/postgres');
+  const name = `career_air_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let fixturePool: InstanceType<typeof Pool> | undefined; const app = Fastify({ logger: false });
+  try {
+    await admin.connect(); await admin.query(`CREATE DATABASE "${name}"`);
+    maintenance.pathname = `/${name}`; fixturePool = new Pool({ connectionString: maintenance.toString(), max: 5 });
+    for (const file of (await readdir(new URL('packages/db/migrations', root))).filter(file => /^\d{4}_.*\.sql$/.test(file)).sort()) {
+      for (const statement of (await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8')).split('--> statement-breakpoint').filter(text => text.trim())) await fixturePool.query(statement);
+    }
+    const database = drizzle(fixturePool, { schema }); const queue = createAiQueue(fixturePool);
+    const owner = randomUUID(); const other = randomUUID(); const fingerprint = 'a'.repeat(64);
+    await fixturePool.query('INSERT INTO workspaces(id) VALUES($1),($2)', [owner, other]);
+    const workspace = (request: { headers: Record<string, unknown> }) => request.headers['x-fixture-workspace'] === other ? other : owner;
+    const cancellations: string[] = [];
+    registerAiConnectionRoutes(app, workspace, { enabled: true, identitySalt: 'f'.repeat(32), repository: createAiConnectionRepository(database, queue),
+      inspect: async () => ({ status: 'SIGNED_IN', version: '0.160.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint, maskedIdentity: 'f***@example.test', plan: 'plus', usage: normalizeAiUsage({ provider: 'codex', source: 'NONE', observedAt: null, windows: [], costUsd: null }, Date.now()) }),
+    });
+    registerAiRunRoutes(app, workspace, { enabled: true, database, queue, cancelRun: id => cancellations.push(id) });
+    registerAiAnswerRoutes(app, workspace, database);
+    const request = { operation: 'SEARCH_DRAFT', locale: 'en', searchRequest: 'Customer support in Spain' };
+    assert.equal((await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request })).statusCode, 409);
+    const observed = (await app.inject({ method: 'POST', url: '/api/v1/ai/connections/codex/inspect' })).json();
+    const connection = await app.inject({ method: 'POST', url: '/api/v1/ai/connections/codex/authorize', payload: { observationId: observed.observation.id } });
+    assert.equal(connection.statusCode, 200); assert.equal(connection.json().connection.authorized, true);
+    assert.ok(!connection.body.includes(fingerprint), 'account fingerprint stays server-side');
+    const previewResponse = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request });
+    assert.equal(previewResponse.statusCode, 200, previewResponse.body);
+    const preview = previewResponse.json();
+    assert.deepEqual(preview.sources, { searchRequest: request.searchRequest, facts: [] });
+    const payload = { previewId: preview.previewId, idempotencyKey: randomUUID(), rememberPermission: true };
+    const submissions = await Promise.all([1, 2].map(() => app.inject({ method: 'POST', url: '/api/v1/ai/runs', payload })));
+    assert.equal(submissions[0]!.statusCode, 202, submissions[0]!.body); assert.equal(submissions[1]!.json().id, submissions[0]!.json().id);
+    const firstId = submissions[0]!.json().id;
+    const restarted = Fastify({ logger: false });
+    registerAiRunRoutes(restarted, workspace, { enabled: true, database, queue });
+    try {
+      const recovered = await restarted.inject({ method: 'POST', url: '/api/v1/ai/runs', payload });
+      assert.equal(recovered.statusCode, 202, recovered.body);
+      assert.equal(recovered.json().id, firstId, 'accepted request survives lost preview cache');
+      const conflicting = await restarted.inject({ method: 'POST', url: '/api/v1/ai/runs', payload: { ...payload, previewId: randomUUID() } });
+      assert.equal(conflicting.statusCode, 409);
+      assert.equal((await restarted.inject({ method: 'POST', url: '/api/v1/ai/runs', payload, headers: { 'x-fixture-workspace': other } })).statusCode, 409);
+    } finally { await restarted.close(); }
+    const claimed = await queue.claimNext({ workerId: 'fixture' }); assert.equal(claimed?.id, firstId);
+    const output = { schemaVersion: 1, operation: 'SEARCH_DRAFT', locale: 'en', criteria: { role: 'Customer support', company: null, location: 'Spain', workMode: 'any' }, unsupportedConstraints: [], clarifications: [] };
+    const done = await queue.finalize(firstId, claimed!.leaseToken!, { artifact: { schemaVersion: 1, promptVersion: AI_PROMPT_VERSION, locale: 'en', output, sources: {} }, verifySources: async () => true });
+    assert.ok(done);
+    const history = await app.inject({ method: 'GET', url: `/api/v1/ai/runs?operation=SEARCH_DRAFT&locale=en&searchRequestHash=${digest(request.searchRequest)}` });
+    assert.equal(history.json().runs[0].id, firstId); assert.equal(history.json().runs[0].artifactId, done.artifactId);
+    const artifact = await app.inject({ method: 'GET', url: `/api/v1/ai/artifacts/${done.artifactId}` });
+    assert.equal(artifact.statusCode, 200, artifact.body); assert.equal(artifact.json().state, 'PENDING_REVIEW');
+    assert.equal((await app.inject({ method: 'GET', url: `/api/v1/ai/artifacts/${done.artifactId}`, headers: { 'x-fixture-workspace': other } })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/artifacts/${done.artifactId}/dismiss`, payload: { expectedRevision: 98 } })).statusCode, 409);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/artifacts/${done.artifactId}/dismiss`, payload: { expectedRevision: 1 } })).statusCode, 200);
+    const preview2 = (await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: { ...request, searchRequest: 'Design' } })).json();
+    assert.equal(preview2.rememberedPermission, true);
+    await fixturePool.query('UPDATE ai_consents SET search_ids=$1 WHERE workspace_id=$2', [JSON.stringify([randomUUID()]), owner]);
+    const scopePreview = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request });
+    assert.equal(scopePreview.json().rememberedPermission, false, 'search-scoped automation permission does not authorize a manual action');
+    await fixturePool.query('UPDATE ai_consents SET search_ids=NULL WHERE workspace_id=$1', [owner]);
+    const run2 = (await app.inject({ method: 'POST', url: '/api/v1/ai/runs', payload: { previewId: preview2.previewId, idempotencyKey: randomUUID() } })).json();
+    assert.equal(run2.state, 'QUEUED');
+    const consents = (await app.inject({ method: 'GET', url: '/api/v1/ai/consents' })).json().consents;
+    assert.equal(consents.length, 1);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/consents/${consents[0].id}/revoke` })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'GET', url: `/api/v1/ai/runs/${run2.id}` })).json().state, 'CANCELLED');
+    const exported = await exportAiData(database, owner); const exportText = JSON.stringify(exported);
+    assert.equal(exported.connections[0]!.active, false); assert.ok(exported.consents[0]!.revokedAt);
+    assert.ok(!exportText.includes(fingerprint)); assert.ok(!exportText.includes('officialContextRef'));
+    assert.ok(!exportText.includes('leaseToken')); assert.equal(exported.artifacts.length, 1);
+    const profileId = randomUUID(); const factId = randomUUID(); const questionId = randomUUID();
+    await database.insert(schema.profileVersions).values({ id: profileId, workspaceId: owner, revision: 1, profile: { identity: { fullName: 'Fictional Applicant', email: 'fictional@example.test' } } });
+    await database.insert(schema.profileFacts).values({ id: factId, workspaceId: owner, profileVersionId: profileId, kind: 'achievement', statement: 'Handled 20 customer enquiries each day.', tags: [], source: 'USER_ENTERED', approvalStatus: 'USER_APPROVED' });
+    const expires = new Date(Date.now() + 86_400_000);
+    await database.insert(schema.answerVersions).values({ id: questionId, workspaceId: owner, semanticKey: 'fictional_experience', questionText: 'Describe your customer service experience.', jurisdiction: 'ES', questionScope: 'job_application', value: null, strategy: 'ASK_USER', approvalStatus: 'UNANSWERED', revision: 1, reviewAfter: expires });
+    const answerPreviewResponse = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: { operation: 'ANSWER_DRAFT', locale: 'en', questionId, selectedFactIds: [factId] } });
+    assert.equal(answerPreviewResponse.statusCode, 200, answerPreviewResponse.body);
+    const answerRunResponse = await app.inject({ method: 'POST', url: '/api/v1/ai/runs', payload: { previewId: answerPreviewResponse.json().previewId, idempotencyKey: randomUUID() } });
+    assert.equal(answerRunResponse.statusCode, 202, answerRunResponse.body);
+    const answerRun = await queue.claimNext({ workerId: 'answer-fixture' }); assert.ok(answerRun);
+    const proposed = 'I handled 20 customer enquiries each day.';
+    const completedAnswer = await queue.finalize(answerRun.id, answerRun.leaseToken!, { artifact: { schemaVersion: 1, promptVersion: AI_PROMPT_VERSION, locale: 'en', output: { schemaVersion: 1, operation: 'ANSWER_DRAFT', locale: 'en', questionId, result: { status: 'DRAFT', text: proposed, evidence: [{ factId, quote: 'Handled 20 customer enquiries each day.' }] } }, sources: {} }, verifySources: async () => true });
+    assert.ok(completedAnswer);
+    const copiedProfileId = randomUUID(); const copiedFactId = randomUUID();
+    const originalFact = (await database.select().from(schema.profileFacts)).find(row => row.id === factId)!;
+    await database.insert(schema.profileVersions).values({ id: copiedProfileId, workspaceId: owner, revision: 2, profile: { identity: { fullName: 'Fictional Applicant', email: 'fictional@example.test' }, preferences: { targetTitles: ['Support'] } } });
+    await database.insert(schema.profileFacts).values({ ...originalFact, id: copiedFactId, profileVersionId: copiedProfileId });
+    const copiedHistory = await app.inject({ method: 'GET', url: `/api/v1/ai/runs?operation=ANSWER_DRAFT&locale=en&questionId=${questionId}` });
+    assert.deepEqual(copiedHistory.json().runs[0].selectedFactIds, [copiedFactId], 'preference-only profile saves recover the same suggestion with current fact IDs');
+    const savedResponse = await app.inject({ method: 'POST', url: `/api/v1/ai/artifacts/${completedAnswer.artifactId}/answer`, payload: { expectedRevision: 1, text: proposed } });
+    assert.equal(savedResponse.statusCode, 201, savedResponse.body); const saved = savedResponse.json();
+    assert.equal(saved.approvalStatus, 'UNANSWERED'); assert.equal(saved.revision, 2); assert.equal(saved.reviewAfter, expires.toISOString());
+    assert.equal(saved.questionScope, 'job_application'); assert.equal(saved.jurisdiction, 'ES'); assert.equal(saved.aiProvenance.artifactId, completedAnswer.artifactId);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/artifacts/${completedAnswer.artifactId}/answer`, payload: { expectedRevision: 1, text: proposed } })).json().id, saved.id, 'ambiguous save retry reuses answer');
+    const storedAnswer = (await database.select().from(schema.answerVersions)).find(row => row.id === saved.id)!;
+    assert.equal(await aiAnswerCurrent(database, owner, storedAnswer), true);
+    await fixturePool.query('UPDATE profile_facts SET statement=$2 WHERE id=$1', [copiedFactId, 'Changed by fixture after suggestion.']);
+    assert.equal(await aiAnswerCurrent(database, owner, storedAnswer), false, 'changed source blocks AI answer approval');
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/connections/${connection.json().connection.id}/disconnect` })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/v1/ai/connections' })).json().connection.authorized, false);
+  } finally {
+    await app.close().catch(() => {}); await fixturePool?.end().catch(() => {});
+    await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => {}); await admin.end();
+  }
+});

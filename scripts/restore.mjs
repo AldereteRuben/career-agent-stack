@@ -28,6 +28,7 @@ import {
   runPgTool, safeMessage, sameServer, shown, tableCounts, withDatabase, writePrivateFile,
 } from './lib/backup-core.mjs';
 import { archiveRecovery, openArchive } from './lib/backup-verify.mjs';
+import { disconnectRestoredAi } from './lib/ai-restore.mjs';
 
 const DATABASE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 
@@ -249,6 +250,7 @@ async function restore(options) {
       const pending = await appClient.query(`select count(*)::int as n from assisted_attempts where status in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF')`);
       if (pending.rows[0].n !== 0) throw new RecoveryError({ es: 'Hay autorizaciones de navegador activas tras restaurar.', en: 'Active browser grants remain after restore.' });
     }
+    sanitised.ai = await disconnectRestoredAi(appClient);
     await appClient.query('commit');
 
     step('Comprobando recuentos, documentos y valores seguros…', 'Checking row counts, documents and safe defaults…');

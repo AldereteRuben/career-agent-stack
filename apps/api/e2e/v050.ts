@@ -49,9 +49,11 @@ export const v050Scenarios: Scenario[] = [{
   name: 'v050-settings-real-verified-backup',
   async run({ page, api, artifacts }) {
     await goTo(page, '/settings'); await setLocale(page, 'es');
+    const accepted = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/backups');
     await page.getByRole('button', { name: 'Crear copia de seguridad', exact: true }).click();
+    assert.ok((await accepted).ok(), 'The backup request is accepted before leaving the page');
     await goTo(page, '/'); await goTo(page, '/settings');
-    const job = await eventually(() => api.get<{ state: string; id: string }>('/backups/current'), (job) => job.state !== 'running', 'Backup completes', 90_000);
+    const job = await eventually(() => api.get<{ state: string; id: string }>('/backups/current'), (job) => job.state === 'ready' || job.state === 'failed', 'Backup completes', 90_000);
     assert.equal(job.state, 'ready', 'Real isolated database and PDF backup succeeds');
     await page.getByRole('link', { name: 'Descargar copia', exact: true }).waitFor();
     const bytes = await api.bytes(`/api/v1/backups/${job.id}/archive`);

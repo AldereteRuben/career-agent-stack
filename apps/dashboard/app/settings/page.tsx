@@ -1,6 +1,9 @@
 'use client';
 
 import { BackupPanel } from '@/components/backup-panel';
+import { AiConnectionPanel } from '@/components/ai/connection';
+import { AiAutomationPanel } from '@/components/ai/automation';
+import { AiHistoryPanel } from '@/components/ai/history';
 import { RELEASE_VERSION } from '@career/domain';
 
 
@@ -12,6 +15,45 @@ import { api, ApiError, errorMessage } from '@/lib/api';
 import { copy } from '@/lib/labels';
 
 type Capabilities = { release: string; available: string[]; unavailable: string[]; externalWrites: boolean; automaticSubmission: boolean };
+type AiPermission = { id: string; operation: string; dataCategories: string[]; searchIds: string[] | null; remembered: boolean; grantedAt: string };
+function AiPermissionsPanel({ connectionRevision }: { connectionRevision: number }) {
+  const { locale } = useLocale(); const c = copy(locale);
+  const [open, setOpen] = useState(false);
+  const [permissions, setPermissions] = useState<AiPermission[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [removed, setRemoved] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setLoading(true); setError('');
+    void api<{ consents: AiPermission[] }>('/ai/consents', { signal: controller.signal }).then(result => {
+      if (!controller.signal.aborted) setPermissions(result.consents.filter(permission => permission.remembered || !!permission.searchIds?.length));
+    }).catch(err => { if (!controller.signal.aborted) setError(errorMessage(err)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [open, revision, connectionRevision]);
+  const revoke = async (id: string) => {
+    if (busy) return;
+    setBusy(id); setError(''); setRemoved(false);
+    try {
+      await api(`/ai/consents/${encodeURIComponent(id)}/revoke`, { method: 'POST' });
+      setPermissions(current => current.filter(permission => permission.id !== id)); setRemoved(true);
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setBusy(null); }
+  };
+  const names: Record<string, string> = { SEARCH_DRAFT: c('Preparar búsquedas', 'Prepare searches'), JOB_ANALYSIS: c('Entender ofertas', 'Understand jobs'), RESUME_DRAFT: c('Sugerir textos para mi CV', 'Suggest resume wording'), ANSWER_DRAFT: c('Preparar respuestas', 'Prepare answers') };
+  const categories: Record<string, string> = { SEARCH_REQUEST: c('lo que buscas', 'your search request'), JOB_POSTING: c('texto de la oferta', 'job posting text'), APPROVED_FACTS: c('datos confirmados del perfil', 'confirmed profile details'), APPLICATION_QUESTION: c('pregunta de la solicitud', 'application question') };
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{c('Permisos de IA que guardaste', 'Saved AI permissions')}</summary><div className="form-stack">
+    <p>{c('Puedes retirar un permiso cuando quieras. Para usar esa ayuda de nuevo tendrás que autorizarla otra vez.', 'You can withdraw permission whenever you want. You will need to allow that help again before using it.')}</p>
+    {loading && <p role="status">{c('Consultando permisos…', 'Checking permissions…')}</p>}
+    {error && <Notice tone="error" actions={<Button type="button" variant="secondary" onClick={() => setRevision(value => value + 1)}>{c('Reintentar', 'Try again')}</Button>}>{error}</Notice>}
+    {removed && <Notice tone="success">{c('Permiso retirado.', 'Permission withdrawn.')}</Notice>}
+    {!loading && !error && permissions.length === 0 && <p>{c('No tienes permisos guardados para futuras tareas de IA.', 'You have no saved permissions for future AI tasks.')}</p>}
+    {permissions.map(permission => <div className="form-stack" key={permission.id}><h3>{names[permission.operation] ?? c('Ayuda con IA', 'AI assistance')}</h3><p>{permission.dataCategories.map(category => categories[category] ?? c('datos de la tarea', 'task details')).join(' · ')}</p>{!!permission.searchIds?.length && <p>{c(`Análisis automático autorizado para ${permission.searchIds.length} búsquedas.`, `Automatic analysis allowed for ${permission.searchIds.length} searches.`)}</p>}<div><Button type="button" variant="secondary" disabled={busy !== null || loading} onClick={() => void revoke(permission.id)}>{busy === permission.id ? c('Retirando permiso…', 'Withdrawing permission…') : c('Retirar permiso', 'Withdraw permission')}</Button></div></div>)}
+  </div></details>;
+}
 const labels: Record<string, string> = { 'saved-job-searches': 'Búsquedas automáticas por puesto o empresa', 'automatic-preparation': 'Preparación automática de candidaturas', 'supported-submission': 'Envío experimental autorizado en Lever', 'scheduled-discovery': 'Consulta periódica de empresas', 'new-jobs-inbox': 'Ofertas nuevas por revisar', 'manual-profile': 'Perfil y datos que confirmaste', 'fact-approval': 'Aprobación manual', 'answer-bank': 'Banco de respuestas', 'manual-job-import': 'Importación manual', 'approved-board-discovery': 'Descubrimiento por tableros aprobados', 'rule-based-matching': 'Encaje explicable', 'application-ledger': 'Seguimiento de solicitudes', 'reviewed-pdf-drafts': 'Borradores PDF revisables', 'json-export': 'Exportación JSON', 'local-backup-restore': 'Copia local y recuperación', 'ai-processing': 'Procesamiento con IA', 'browser-autofill': 'Autorrelleno en navegador', 'external-submission': 'Envío a empresas', 'email-oauth': 'Acceso al correo', 'interview-coach': 'Preparación de entrevistas', 'hosted-multi-tenancy': 'Alojamiento multiusuario' };
 export default function SettingsPage() {
   const { t, locale } = useLocale();
@@ -37,12 +79,19 @@ export default function SettingsPage() {
     finally { setExporting(false); }
   };
   const [caps, setCaps] = useState<Capabilities | null>(null); const [error, setError] = useState('');
+  const [aiConnectionRevision, setAiConnectionRevision] = useState(0);
   useEffect(() => { api<Capabilities>('/capabilities').then(setCaps).catch((err) => setError(errorMessage(err))); }, []);
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={c('TU ESPACIO', 'YOUR WORKSPACE')} title={c('Ajustes y privacidad', 'Settings and privacy')} description={c('Guarda una copia de tus datos y consulta cómo funciona tu espacio local.', 'Keep a copy of your data and see how your local workspace works.')}/>
+    <PageHeader eyebrow={c('TU ESPACIO', 'YOUR WORKSPACE')} title={c('Ajustes y privacidad', 'Settings and privacy')} description={c('Elige la ayuda que quieres usar, guarda una copia y controla tus datos.', 'Choose the help you want to use, keep a backup, and control your data.')}/>
     {error && <Notice tone="error">{error}</Notice>}
     {exportMessage && <Notice tone="success">{exportMessage}</Notice>}
     <div className="settings-grid"><div className="settings-main">
+      <section id="assistant" aria-label={c('Conexión y permisos de IA', 'AI connection and permissions')}><Card className="form-card">
+        <AiConnectionPanel onConnectionChange={() => setAiConnectionRevision(value => value + 1)}/>
+        <AiPermissionsPanel connectionRevision={aiConnectionRevision}/>
+        <AiAutomationPanel connectionRevision={aiConnectionRevision}/>
+        <AiHistoryPanel/>
+      </Card></section>
       <Card className="form-card"><h2>{c('Copia de seguridad para recuperar tu espacio', 'Back up your workspace for recovery')}</h2>
         <BackupPanel/>
         <details><summary>{c('Recuperar una copia y otras opciones', 'Restore a backup and other options')}</summary>

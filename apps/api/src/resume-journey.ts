@@ -4,6 +4,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db, applications, applicationEvents, assistedAttempts, documentVersions, jobs } from '@career/db';
 import { lockKey, profileLockKey } from './workspace-data.js';
 import { documentReadiness } from './document-reuse.js';
+import { lockJobIdentity } from './job-identity.js';
 
 const input = z.object({ documentId: z.string().uuid(), jobId: z.string().uuid().optional(), applicationId: z.string().uuid().optional() }).strict().refine((value) => Boolean(value.jobId) !== Boolean(value.applicationId));
 
@@ -13,7 +14,8 @@ export function registerResumeJourney(app: FastifyInstance, workspace: (request:
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_DOCUMENT_REQUEST' });
     const id = workspace(request); const body = parsed.data;
     const result = await db.transaction(async (tx) => {
-      // Match the assisted workflow's lock order: profile, then application.
+      // Match assisted review: job evidence, profile, then application.
+      await lockJobIdentity(tx, id);
       await lockKey(tx, profileLockKey(id));
       if (body.jobId) await lockKey(tx, `application:${id}:${body.jobId}`);
       const documents = await tx.select().from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.id, body.documentId))).limit(1);

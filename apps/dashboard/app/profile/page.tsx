@@ -1,6 +1,9 @@
 'use client';
 
 import { useErrorFocus } from '@/lib/disclosure-focus';
+import { AiAnswerDraft, canDraftExperienceAnswer } from '@/components/ai/answer-draft';
+import { useAiAvailable } from '@/components/ai/draft-action';
+import aiStyles from '@/components/ai/draft-action.module.css';
 
 import Link from 'next/link';
 import { ApplicationPreparationAction } from '@/components/application-preparation';
@@ -50,6 +53,10 @@ function CountryOptions({ current }: { current: string }) {
 
 function ProfileView() {
   const { locale } = useLocale(); const c = copy(locale);
+  const aiAvailable = useAiAvailable();
+  const [answersOpen, setAnswersOpen] = useState(false);
+  const [aiAnswerDirty, setAiAnswerDirty] = useState<Record<string, boolean>>({});
+  const answerForm = useRef<HTMLFormElement>(null);
   const params = useSearchParams(); const jobId = params.get('jobId'); const applicationId = params.get('applicationId');
   const returnTo = searchOrigin(params.get('returnTo'));
   const journeyParams = new URLSearchParams(); if (jobId) journeyParams.set('jobId', jobId); if (applicationId) journeyParams.set('applicationId', applicationId);
@@ -108,7 +115,7 @@ function ProfileView() {
     target.focus({ preventScroll: true });
   }, [loadState]);
   const leaveConfirmation = c('Tienes cambios sin guardar en tu perfil. ¿Salir y descartarlos?', 'You have unsaved changes on your profile. Leave and discard them?');
-  const hasDrafts = dirty || editing !== null || entryDirty || Boolean(question.trim() || answerValue.trim());
+  const hasDrafts = dirty || editing !== null || entryDirty || Boolean(question.trim() || answerValue.trim()) || Object.values(aiAnswerDirty).some(Boolean);
   useEffect(() => {
     if (!hasDrafts) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
@@ -156,7 +163,7 @@ function ProfileView() {
   const addAnswer = async (event: FormEvent) => {
     event.preventDefault();
     if (!semanticKey) { setError(c('Escribe la pregunta con letras o números.', 'Write the question using letters or numbers.')); return; }
-    const ok = await run('answer', () => api('/answers', { method: 'POST', body: JSON.stringify({ semanticKey, questionText: question.trim().slice(0, 500), jurisdiction, questionScope: 'job_application', value: answerValue.trim(), strategy: 'ASK_USER', approvalStatus: 'UNANSWERED' }) }), c('Respuesta guardada. Apruébala cuando hayas comprobado que es correcta.', 'Answer saved. Approve it once you have checked it is correct.'));
+    const ok = await run('answer', () => api('/answers', { method: 'POST', body: JSON.stringify({ semanticKey, questionText: question.trim().slice(0, 500), jurisdiction, questionScope: 'job_application', value: answerValue.trim() || null, strategy: 'ASK_USER', approvalStatus: 'UNANSWERED' }) }), answerValue.trim() ? c('Respuesta guardada. Apruébala cuando hayas comprobado que es correcta.', 'Answer saved. Approve it once you have checked it is correct.') : c('Pregunta guardada. Puedes responderla después o preparar un borrador si trata sobre tu experiencia.', 'Question saved. You can answer later or prepare a draft if it is about your experience.'));
     if (ok) { setQuestion(''); setAnswerValue(''); }
   };
   const reviewFact = (id: string, action: 'approve' | 'reject') => {
@@ -176,6 +183,11 @@ function ProfileView() {
     if (ok) setArchiving(null);
   };
   const reviewAnswer = (id: string) => void run(`answer:${id}`, () => api(`/answers/${id}/approve`, { method: 'POST' }), c('Respuesta aprobada por ti.', 'Answer approved by you.'));
+  const editAnswer = (answer: Answer) => {
+    if (question.trim() || answerValue.trim()) { setError(c('Guarda primero la pregunta que estás escribiendo. Su contenido se conserva.', 'First save the question you are writing. Its content is preserved.')); return; }
+    setQuestion(answer.questionText?.trim() || humanizeKey(answer.semanticKey)); setJurisdiction(answer.jurisdiction); setAnswerValue(answerText(answer.value));
+    answerForm.current?.querySelector<HTMLInputElement>('input')?.focus();
+  };
   const toggleMode = (mode: string) => { const modes = formRef.current.modes; updateForm({ modes: modes.includes(mode) ? modes.filter((value) => value !== mode) : [...modes, mode] }); };
   /** Fetches the latest revision without touching unsaved profile edits, so a conflicting save can simply be repeated. */
   const reloadLatest = async () => {
@@ -252,22 +264,24 @@ function ProfileView() {
         </div>) : loadState === 'ready' && <Empty title={c('Aún no hay datos de tu experiencia', 'No profile details yet')} detail={c('Empieza con un logro o una habilidad que puedas describir con claridad.', 'Start with an achievement or skill you can describe clearly.')}/>}</div>
       </Card>
 
-      <details className="optional-section"><summary>{c('Respuestas guardadas · opcional', 'Saved answers · optional')}</summary><p>{c('Guarda respuestas que quieras consultar al solicitar un empleo. Puedes dejar esta sección para después. No se rellenan automáticamente.', 'Save answers to refer to when applying. You can do this later. They are not filled in automatically.')}</p><Card className="form-card"><div className="form-heading"><div><span className="step-badge">03</span><div><h2>{c('Respuestas que dependen de ti', 'Answers only you can give')}</h2><p>{c('No inferimos permisos de trabajo, expectativas salariales ni datos sensibles.', 'We never infer work authorization, salary expectations, or sensitive data.')}</p></div></div></div>
-        <form onSubmit={(event) => void addAnswer(event)} className="form-stack" aria-busy={saving('answer')}>
+      <details className="optional-section" open={answersOpen} onToggle={event => setAnswersOpen(event.currentTarget.open)}><summary>{c('Respuestas guardadas · opcional', 'Saved answers · optional')}</summary><p>{c('Guarda preguntas o respuestas que quieras consultar al solicitar un empleo. Puedes dejar esta sección para después. No se rellenan automáticamente.', 'Save questions or answers to refer to when applying. You can do this later. They are not filled in automatically.')}</p><Card className="form-card"><div className="form-heading"><div><span className="step-badge">03</span><div><h2>{c('Respuestas que dependen de ti', 'Answers only you can give')}</h2><p>{c('No inferimos permisos de trabajo, expectativas salariales ni datos sensibles.', 'We never infer work authorization, salary expectations, or sensitive data.')}</p></div></div></div>
+        <form ref={answerForm} onSubmit={(event) => void addAnswer(event)} className="form-stack" aria-busy={saving('answer')}>
           <div className="form-grid">
             <Field disabled={locked || editing !== null} label={c('¿Qué te pregunta la solicitud?', 'What is the application asking?')} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder={c('Ejemplo: ¿Tienes permiso para trabajar en este país?', 'Example: Are you authorized to work in this country?')} required maxLength={500}/>
             <SelectField disabled={locked || editing !== null} label={c('País al que se refiere', 'Country it applies to')} value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} required>
               <option value="">{c('Elige un país…', 'Choose a country…')}</option>
               <CountryOptions current={jurisdiction}/>
             </SelectField>
-            <TextareaField disabled={locked || editing !== null} label={c('Tu respuesta', 'Your answer')} value={answerValue} onChange={(e) => setAnswerValue(e.target.value)} placeholder={c('Escribe solo lo que quieras guardar', 'Write only what you want to save')} required rows={3}/>
+            <TextareaField disabled={locked || editing !== null} label={c('Tu respuesta · puedes completarla después', 'Your answer · you can add it later')} value={answerValue} onChange={(e) => setAnswerValue(e.target.value)} placeholder={c('Escribe solo lo que quieras guardar', 'Write only what you want to save')} rows={3}/>
           </div>
           <div className="notice notice-warning">{c('La respuesta empieza como borrador. Si ya existe una para la misma pregunta y país, se guarda como nueva versión.', 'Your answer starts as a draft. If one already exists for the same question and country, this is saved as a new version.')}</div>
-          <div className="form-submit"><Button type="submit" disabled={locked || !question.trim() || !jurisdiction || !answerValue.trim()}>{saving('answer') ? c('Guardando…', 'Saving…') : c('Guardar para revisar', 'Save for review')}</Button></div>
+          {aiAvailable && <p className="field-hint">{c('Para redactar desde tu experiencia, puedes guardar por ejemplo: «Describe tu experiencia laboral relevante». Después elige los datos que quieras compartir con Codex.', 'To draft from your experience, you can save for example: “Describe your relevant work experience”. Then choose the details to share with Codex.')}</p>}
+          <div className="form-submit"><Button type="submit" disabled={locked || !question.trim() || !jurisdiction}>{saving('answer') ? c('Guardando…', 'Saving…') : answerValue.trim() ? c('Guardar para revisar', 'Save for review') : c('Guardar pregunta para después', 'Save question for later')}</Button></div>
         </form>
-        <div className="answer-list">{data?.answers.map((answer) => <div className="answer-row" key={answer.id}>
-          <div><strong>{answer.questionText?.trim() || humanizeKey(answer.semanticKey)}</strong><p>{countryName(answer.jurisdiction, locale)}{answer.revision && answer.revision > 1 ? ` · ${c('versión', 'version')} ${answer.revision}` : ''} · {answerText(answer.value) || c('Sin respuesta', 'No answer')}</p></div>
-          {answer.approvalStatus === 'USER_APPROVED' ? <Tag tone="green">{labelFor.answerApproval(answer.approvalStatus, locale).toUpperCase()}</Tag> : <Button variant="secondary" disabled={locked} onClick={() => reviewAnswer(answer.id)}>{saving(`answer:${answer.id}`) ? c('Guardando…', 'Saving…') : c('Aprobar respuesta', 'Approve answer')}</Button>}
+        <div className="answer-list">{data?.answers.map((answer) => <div className={`answer-row ${aiStyles.answerRow}`} key={answer.id}>
+          <div><strong>{answer.questionText?.trim() || humanizeKey(answer.semanticKey)}</strong><p>{countryName(answer.jurisdiction, locale)}{answer.revision && answer.revision > 1 ? ` · ${c('versión', 'version')} ${answer.revision}` : ''} · {answerText(answer.value) || c('Sin respuesta', 'No answer')}</p><Button type="button" variant="quiet" disabled={locked} onClick={() => editAnswer(answer)}>{answerText(answer.value) ? c('Editar mi respuesta', 'Edit my answer') : c('Responder por mi cuenta', 'Write my own answer')}</Button>
+          {aiAvailable && canDraftExperienceAnswer(answer.questionText ?? '') && <AiAnswerDraft questionId={answer.id} facts={data.facts.filter(fact => fact.approvalStatus === 'USER_APPROVED')} visible={answersOpen} disabled={locked} onManual={() => editAnswer(answer)} onDirtyChange={value => setAiAnswerDirty(previous => previous[answer.id] === value ? previous : { ...previous, [answer.id]: value })} onSaved={async () => { await load(); setMessage(c('Respuesta guardada. Revísala y apruébala cuando esté correcta.', 'Answer saved. Review and approve it when it is correct.')); }}/>}</div>
+          {answer.approvalStatus === 'USER_APPROVED' ? <Tag tone="green">{labelFor.answerApproval(answer.approvalStatus, locale).toUpperCase()}</Tag> : <Button variant="secondary" disabled={locked || !answerText(answer.value).trim()} onClick={() => reviewAnswer(answer.id)}>{saving(`answer:${answer.id}`) ? c('Guardando…', 'Saving…') : c('Aprobar respuesta', 'Approve answer')}</Button>}
         </div>)}</div>
       </Card></details>
     </div><aside className="profile-aside">
@@ -275,7 +289,7 @@ function ProfileView() {
         <p>{c(`${approvedFacts} ${approvedFacts === 1 ? 'texto listo' : 'textos listos'} para usar · ${pendingFacts} por confirmar`, `${approvedFacts} ${approvedFacts === 1 ? 'entry' : 'entries'} ready to use · ${pendingFacts} to confirm`)}</p>
         {loadState === 'ready' && !canPrepareCv && <p className="muted-label">{c('Para continuar: guarda tu nombre y correo y confirma una experiencia.', 'To continue: save your name and email and confirm one experience.')}</p>}
       </Card>
-      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Tú autorizas el uso de tus datos de contacto al preparar un formulario.', 'Your profile is saved on this device. You authorize using your contact details when preparing a form.')}</p><small>{c('Revisa tu candidatura y autoriza cada envío desde Mis solicitudes.', 'Review your application and authorize each submission from My applications.')}</small></Card>
+      <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Si autorizas una ayuda con IA, los datos que elijas se envían a OpenAI. Puedes comprobarlos antes de permitir cada tarea.', 'Your profile is saved on this device. If you allow AI assistance, the details you select are sent to OpenAI. You can check them before allowing each task.')}</p><small>{c('Revisa tu candidatura y autoriza cada envío desde Mis solicitudes.', 'Review your application and authorize each submission from My applications.')}</small></Card>
     </aside></div>
   </AppShell>;
 }

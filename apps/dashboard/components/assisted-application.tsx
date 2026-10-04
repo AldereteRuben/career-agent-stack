@@ -48,6 +48,7 @@ export function AssistedApplication({ applicationId, applicationState, recruitme
       ASSIST_PROFILE_REQUIRED: ['Guarda tu nombre y un correo válido en tu perfil.', 'Save your name and a valid email in your profile.'],
       ASSIST_DOCUMENT_REQUIRED: ['Genera y aprueba un CV con tu perfil actual.', 'Generate and approve a resume from your current profile.'],
       ASSIST_DOCUMENT_STALE: ['El CV ya no coincide con tus datos aprobados. Genera y revisa otra versión.', 'The resume no longer matches your confirmed profile details. Generate and review a new version.'],
+      ASSIST_DOCUMENT_JOB_MISMATCH: ['Este CV se preparó para otra oferta. Prepara y aprueba una versión para esta solicitud.', 'This resume was prepared for another job. Prepare and approve a version for this application.'],
       ASSIST_INPUTS_CHANGED: ['Los datos cambiaron. Cierra este intento y prepara una autorización nueva.', 'The data changed. Close this attempt and prepare fresh authorization.'],
       ASSIST_CONSENT_EXPIRED: ['La autorización caducó. Cancela este intento y prepara otro.', 'The authorization expired. Cancel this attempt and prepare another.'],
       ASSIST_CONSENT_ALREADY_USED: ['Esta autorización ya se usó. Actualiza el estado; no repitas el envío.', 'This authorization was already used. Refresh the status; do not repeat submission.'],

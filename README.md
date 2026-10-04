@@ -4,7 +4,7 @@ Your private workspace to find jobs automatically, prepare applications from you
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.8.2** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.8.2.md)
+**Current release: v0.9.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.9.0.md)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -21,7 +21,19 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
-No AI subscription or API key is required. The app prepares application drafts from approved profile facts and offers **experimental Lever assistance** in a visible browser. A separate, single-application authorization can attach the approved PDF and submit a recognized simple form. CAPTCHA, legal declarations, unsupported questions and unrecognized forms require manual completion. This is not unattended application sending. Email, AI processing and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
+No AI subscription or API key is required. The app prepares application drafts from approved profile facts and offers **experimental Lever assistance** in a visible browser. A separate, single-application authorization can attach the approved PDF and submit a recognized simple form. CAPTCHA, legal declarations, unsupported questions and unrecognized forms require manual completion. This is not unattended application sending. Email access and interview coaching are not implemented. Matching is evidence coverage, not a hiring probability or ATS score.
+
+## Optional help from Codex
+
+In **Profile and tools → Settings and privacy → Assistant**, connect the official Codex app using your own ChatGPT account. You can also connect while asking for help in a search, job, resume or saved question. Career Stack shows the exact selected text before sharing it. This consumes your plan allowance; no separate paid API fallback is used.
+
+- Turn a description of the job you want into editable search criteria. Unsupported filters remain visible for you to check.
+- Summarize a job and compare it with selected, confirmed experience.
+- Review suggested resume wording and its original sources, then generate and approve the exact PDF.
+- Draft an answer from confirmed facts; personal or legal details require your input.
+- After a manual job analysis, optionally authorize analysis of future jobs from selected searches. It starts off, processes at most five per pass and ten per UTC day, and can be paused without stopping job searches.
+
+Native AI execution is currently supported only on **macOS with Codex CLI 0.160.0** and ChatGPT plan authentication. Other versions or systems keep ordinary app features; this integration is not certified there. Disconnecting revokes Career Stack's access without signing you out of Codex elsewhere. Claude is deferred. [Setup, privacy and limits](docs/operations/assistant.md).
 
 ## Automatic job search
 

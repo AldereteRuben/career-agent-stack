@@ -76,6 +76,61 @@ describe('assisted routes with fictional data and a disposable database', { skip
     const duplicate=await post(`/applications/${f.application}/assist/prepare`,{documentId:f.doc}); assert.equal(duplicate.json().error,'ASSIST_ACTIVE_ATTEMPT');
     await post(`/assisted-attempts/${a.id}/cancel`,{});
   });
+  test('job evidence lock serializes assisted start and resume linking before currentness checks', async () => {
+    for (const operation of ['start', 'link'] as const) {
+      const f = await fixture(); const attempt = operation === 'start' ? await prepare(f.application, f.doc) : null;
+      const starts = browser.starts;
+      await sql.query('BEGIN');
+      await sql.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`job-identity:${workspace}`]);
+      const blocker = Number((await sql.query('SELECT pg_backend_pid() AS pid')).rows[0]!.pid);
+      let settled = false;
+      const response = (operation === 'start' ? start(attempt!) : post('/applications/with-resume', { applicationId: f.application, documentId: f.doc })).then(result => { settled = true; return result; });
+      try {
+        let waiting = false;
+        for (let n = 0; n < 100 && !settled; n++) {
+          waiting = (await sql.query('SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND $1::int=ANY(pg_blocking_pids(pid))', [blocker])).rows.length > 0;
+          if (waiting) break;
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.equal(waiting, true, `${operation} waits for the job evidence writer`);
+        assert.equal(settled, false);
+        await sql.query("UPDATE profile_facts SET approval_status='REJECTED' WHERE id=$1", [f.fact]);
+        await sql.query('COMMIT');
+        const result = await response;
+        assert.equal(result.json().error, operation === 'start' ? 'ASSIST_DOCUMENT_STALE' : 'PROFILE_CHANGED_REGENERATE_DOCUMENT');
+        assert.equal(browser.starts, starts);
+        assert.equal((await sql.query('SELECT document_id FROM applications WHERE id=$1', [f.application])).rows[0]!.document_id, null);
+      } finally {
+        await sql.query('ROLLBACK'); await response;
+        if (attempt) await post(`/assisted-attempts/${attempt.id}/cancel`, {});
+      }
+    }
+  });
+  test('an approved derived resume is usable only for its reviewed target job', async () => {
+    const f = await fixture(); const intendedJob = randomUUID(); const otherJob = randomUUID(); const snapshotId = randomUUID();
+    await sql.query("INSERT INTO jobs(id,workspace_id,title,company,availability) VALUES($1,$3,'QA','Synthetic','OPEN'),($2,$3,'Designer','Synthetic','OPEN')", [intendedJob, otherJob, workspace]);
+    await sql.query("INSERT INTO job_snapshots(id,workspace_id,job_id,title,description_text,snapshot_hash) VALUES($1,$2,$3,'QA','Build tests','synthetic')", [snapshotId, workspace, intendedJob]);
+    await sql.query('UPDATE applications SET job_id=$1 WHERE id=$2', [otherJob, f.application]);
+    const { db, documentVersions } = await import('@career/db'); const { eq } = await import('drizzle-orm');
+    const { createCurrentAiSnapshot, loadAiSourceRecords } = await import('../src/ai/source-reader.js');
+    const { buildAiResumeClaims } = await import('../src/ai-document-routes.js');
+    const { approveDerivedDocument } = await import('../src/document-reuse.js');
+    const snapshot = await createCurrentAiSnapshot(db, workspace, { operation: 'RESUME_DRAFT', locale: 'en', jobId: intendedJob, selectedFactIds: [f.fact] });
+    const basis = buildAiResumeClaims(randomUUID(), snapshot, { schemaVersion: 1, operation: 'RESUME_DRAFT', locale: 'en', proposals: [{ proposalKey: 'one', section: 'Experience', text: 'Fictional experience', sourceFactIds: [f.fact], changeExplanation: 'Same evidence', warnings: [] }], warnings: [] }, { expectedRevision: 1, name: 'Fictional CV', selections: [{ proposalKey: 'one', text: 'Fictional experience' }] }, await loadAiSourceRecords(db, workspace, snapshot));
+    await sql.query("UPDATE document_versions SET language='en',job_snapshot_id=$2,claims_contract_version=1,claims_basis=$3,claims=$4,approval_status='PENDING_REVIEW' WHERE id=$1", [f.doc, snapshotId, JSON.stringify(basis), JSON.stringify(basis.claims.map(claim => ({ text: claim.text, sourceFactIds: claim.sourceFactIds, approvalStatus: 'PENDING_REVIEW' })))]);
+    const document = (await db.select().from(documentVersions).where(eq(documentVersions.id, f.doc)))[0]!;
+    const reviewed = await approveDerivedDocument(db, workspace, document, { expectedPdfHash: document.sha256, expectedClaimTextHashes: basis.claims.map(claim => claim.textHash) });
+    assert.ok('basis' in reviewed);
+    await sql.query("UPDATE document_versions SET approval_status='USER_APPROVED',claims_basis=$2 WHERE id=$1", [f.doc, JSON.stringify(reviewed.basis)]);
+    const before = browser.starts;
+    const rejected = await post(`/applications/${f.application}/assist/prepare`, { documentId: f.doc });
+    assert.equal(rejected.json().error, 'ASSIST_DOCUMENT_JOB_MISMATCH'); assert.equal(browser.starts, before);
+    const listed = await app.inject({ url: `/api/v1/applications/${f.application}/assist` });
+    assert.equal(listed.json().documents.some((row: { id: string }) => row.id === f.doc), false);
+    await sql.query('UPDATE applications SET job_id=$1 WHERE id=$2', [intendedJob, f.application]);
+    const accepted = await prepare(f.application, f.doc); assert.equal(accepted.status, 'PREPARED');
+    await post(`/assisted-attempts/${accepted.id}/cancel`, {});
+  });
   test('explicit matching consent only; one-use start and handoff require separate confirmations', async () => {
     const f=await fixture(); const a=await prepare(f.application,f.doc);
     assert.equal((await post(`/assisted-attempts/${a.id}/start`,{consent:false,expectedDigest:a.digest})).statusCode,400);

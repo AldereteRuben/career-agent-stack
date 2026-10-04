@@ -16,15 +16,19 @@ import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie,
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
-import { documentReadiness } from './document-reuse.js';
+import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
+import { registerAiRuntime } from './ai/runtime.js';
+import { exportAiData } from './ai/export.js';
+import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
+const aiEnabled = config.CAREER_AI_ENABLED && process.platform === 'darwin';
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
 const localData = config.DATA_LOCAL_PATH;
@@ -71,7 +75,7 @@ app.get('/healthz', async (_request, reply) => {
   catch { return fail(reply, 503, 'DATABASE_UNAVAILABLE'); }
 });
 
-app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: true, externalWrites: true, email: false, ai: false } }));
+app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: true, externalWrites: true, email: false, ai: aiEnabled } }));
 app.post('/api/v1/session', async (request, reply) => {
   const body = request.body as { setupToken?: unknown } | null;
   if (typeof body?.setupToken !== 'string' || !body.setupToken || body.setupToken.length > 200) return fail(reply, 400, 'SETUP_TOKEN_REQUIRED');
@@ -228,14 +232,18 @@ app.post('/api/v1/answers', async (request, reply) => {
 app.post('/api/v1/answers/:id/approve', async (request, reply) => {
   const { id: answerId } = request.params as { id: string }; const id = workspace(request);
   const result = await db.transaction(async (tx) => {
+    await lockJobIdentity(tx, id);
+    await lockKey(tx, profileLockKey(id));
     const answer = (await tx.select().from(answerVersions).where(and(eq(answerVersions.id, answerId), eq(answerVersions.workspaceId, id))).limit(1))[0];
     if (!answer) return 'NOT_FOUND' as const;
     await lockKey(tx, answerLockKey(id, answer));
     const latest = await tx.select({ id: answerVersions.id }).from(answerVersions).where(and(eq(answerVersions.workspaceId, id), eq(answerVersions.semanticKey, answer.semanticKey), eq(answerVersions.jurisdiction, answer.jurisdiction), eq(answerVersions.questionScope, answer.questionScope))).orderBy(desc(answerVersions.revision)).limit(1);
     if (latest[0]?.id !== answer.id) return 'ANSWER_REVISION_STALE' as const;
+    if (!(await aiAnswerCurrent(tx, id, answer))) return 'AI_SOURCE_CHANGED' as const;
     return (await tx.update(answerVersions).set({ approvalStatus: 'USER_APPROVED' }).where(and(eq(answerVersions.id, answerId), eq(answerVersions.workspaceId, id))).returning())[0]!;
   });
   if (result === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND');
+  if (result === 'AI_SOURCE_CHANGED') return fail(reply, 409, 'AI_SOURCE_CHANGED');
   if (result === 'ANSWER_REVISION_STALE') return fail(reply, 409, 'ANSWER_REVISION_STALE', 'A newer version of this answer exists; approve the latest one.');
   return result;
 });
@@ -479,21 +487,24 @@ app.post('/api/v1/documents', async (request, reply) => {
   return reply.code(201).send({ ...documentView((await documentReadiness(db, id, [row]))[0]!), sizeBytes: rendered.size });
 });
 app.post('/api/v1/documents/:id/approve', async (request, reply) => {
-  const body = request.body as { confirmReviewed?: unknown } | null; if (body?.confirmReviewed !== true) return fail(reply, 400, 'EXPLICIT_REVIEW_REQUIRED');
+  const body = request.body as { confirmReviewed?: unknown; expectedPdfHash?: unknown; expectedClaimTextHashes?: unknown } | null; if (body?.confirmReviewed !== true) return fail(reply, 400, 'EXPLICIT_REVIEW_REQUIRED');
   const { id: documentId } = request.params as { id: string }; const id = workspace(request);
   // Same lock as profile saves and fact approval/rejection, so the source facts cannot change between this check and the approval.
   const result = await db.transaction(async (tx) => {
+    await lockJobIdentity(tx, id);
     await lockKey(tx, profileLockKey(id));
     const document = (await tx.select().from(documentVersions).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, id))).limit(1).for('update'))[0];
     if (!document) return 'NOT_FOUND' as const;
     if (document.approvalStatus !== 'PENDING_REVIEW') return 'DOCUMENT_ALREADY_REVIEWED' as const;
     // The PDF must still print exactly the current identity and approved facts; preference-only saves do not change it.
     if (!(await documentReadiness(tx, id, [document]))[0]?.reviewReady) return 'PROFILE_CHANGED_REGENERATE_DOCUMENT' as const;
+    const derived = document.claimsContractVersion === 1 ? await approveDerivedDocument(tx, id, document, body!) : null;
+    if (derived && 'error' in derived) return derived.error;
     const reviewedClaims = document.claims.map((claim) => ({ ...claim, approvalStatus: 'USER_REVIEWED' }));
-    return (await tx.update(documentVersions).set({ approvalStatus: 'USER_APPROVED', claims: reviewedClaims }).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, id), eq(documentVersions.approvalStatus, 'PENDING_REVIEW'))).returning())[0] ?? 'DOCUMENT_ALREADY_REVIEWED' as const;
+    return (await tx.update(documentVersions).set({ approvalStatus: 'USER_APPROVED', claims: reviewedClaims, ...(derived && 'basis' in derived ? { claimsBasis: derived.basis } : {}) }).where(and(eq(documentVersions.id, documentId), eq(documentVersions.workspaceId, id), eq(documentVersions.approvalStatus, 'PENDING_REVIEW'))).returning())[0] ?? 'DOCUMENT_ALREADY_REVIEWED' as const;
   });
   if (result === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND');
-  if (result === 'DOCUMENT_ALREADY_REVIEWED' || result === 'PROFILE_CHANGED_REGENERATE_DOCUMENT') return fail(reply, 409, result);
+  if (result === 'DOCUMENT_ALREADY_REVIEWED' || result === 'PROFILE_CHANGED_REGENERATE_DOCUMENT' || result === 'DOCUMENT_REVIEW_CHANGED') return fail(reply, 409, result);
   return documentView(result);
 });
 app.get('/api/v1/documents/:id/file', async (request, reply) => {
@@ -549,12 +560,13 @@ app.get('/api/v1/export', async (request, reply) => {
         ? rows.map((row) => ['QUEUED','RUNNING'].includes(row.status) ? {...row,status:'CANCELLED',next_fetch_at:null} : row)
         : rows;
   }
-  const data = scrubExport({ searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const assistant = await exportAiData(db, id);
+  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
 
-app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'scheduled-discovery', 'new-jobs-inbox', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill', 'saved-job-searches', 'automatic-preparation', 'supported-submission'], unavailable: ['ai-processing', 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: true, submissionScope: 'experimental-explicit-one-application-lever', realEmployerSubmissionVerified: false }));
+app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'scheduled-discovery', 'new-jobs-inbox', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill', 'saved-job-searches', 'automatic-preparation', 'supported-submission', ...(aiEnabled ? ['ai-processing'] : [])], unavailable: [...(aiEnabled ? [] : ['ai-processing']), 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: true, submissionScope: 'experimental-explicit-one-application-lever', realEmployerSubmissionVerified: false }));
 
 app.setErrorHandler((error, _request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');
@@ -575,6 +587,8 @@ app.addHook('onClose', stopDiscovery);
 
 const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;
+
+await registerAiRuntime(app, workspace, { enabled: aiEnabled, identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH });
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
 app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);

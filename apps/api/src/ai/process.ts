@@ -32,6 +32,8 @@ export type AiProcessOptions = {
   args: readonly string[];
   cwd: string;
   input?: string;
+  /** Internal duplex protocol. Its completion closes stdin; private messages never enter argv. */
+  interact?: (channel: AiProcessChannel) => Promise<void>;
   signal?: AbortSignal;
   timeoutMs?: number;
   /** Wait between SIGTERM and SIGKILL, and the longest wait for output pipes once the process has exited. */
@@ -42,6 +44,8 @@ export type AiProcessOptions = {
   /** Internal dependency for isolated tests; never accept this object over HTTP. */
   environment?: NodeJS.ProcessEnv;
 };
+
+export type AiProcessChannel = { write: (message: string) => Promise<void>; signal: AbortSignal };
 
 export type AiProcessResult = { stdout: string; exitCode: 0 };
 
@@ -77,6 +81,7 @@ export function runAiProcess(options: AiProcessOptions): Promise<AiProcessResult
   const killGraceMs = options.killGraceMs ?? 5_000;
   const maxOutputBytes = options.maxOutputBytes ?? 256 * 1024;
   if (!isAbsolute(options.executable) || !isAbsolute(options.cwd)
+      || (options.input !== undefined && options.interact !== undefined)
       || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000
       || !Number.isSafeInteger(killGraceMs) || killGraceMs < 1 || killGraceMs > 5_000
       || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > 1_048_576) {
@@ -106,6 +111,7 @@ export function runAiProcess(options: AiProcessOptions): Promise<AiProcessResult
     let bytes = 0;
     let stdout = '';
     let pendingLine = '';
+    const protocolController = new AbortController();
     const decoder = new StringDecoder('utf8');
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const later = (ms: number, action: () => void) => {
@@ -121,6 +127,7 @@ export function runAiProcess(options: AiProcessOptions): Promise<AiProcessResult
     const settle = (error: AiProcessError | null) => {
       if (settled) return;
       settled = true;
+      protocolController.abort();
       clearTimers();
       options.signal?.removeEventListener('abort', cancel);
       if (error) reject(error); else resolve({ stdout, exitCode: 0 });
@@ -134,6 +141,7 @@ export function runAiProcess(options: AiProcessOptions): Promise<AiProcessResult
     const stop = (code: AiProcessErrorCode) => {
       if (settled || failure) return;
       failure = new AiProcessError(code);
+      protocolController.abort();
       if (running()) {
         signal('SIGTERM');
         later(killGraceMs, () => { signal('SIGKILL'); later(killGraceMs, abandon); });
@@ -209,6 +217,20 @@ export function runAiProcess(options: AiProcessOptions): Promise<AiProcessResult
     });
     child.on('close', () => { pipesClosed = true; finish(); });
     if (options.signal?.aborted) cancel();
-    child.stdin.end(options.input ?? '');
+    if (options.interact) {
+      const write = (message: string): Promise<void> => new Promise((resolveWrite, rejectWrite) => {
+        if (failure || settled || protocolController.signal.aborted) { rejectWrite(new AiProcessError('AI_PROCESS_FAILED')); return; }
+        try {
+          child.stdin.write(message, (error) => {
+            if (error) { stop('AI_PROCESS_FAILED'); rejectWrite(new AiProcessError('AI_PROCESS_FAILED')); }
+            else resolveWrite();
+          });
+        } catch { stop('AI_PROCESS_FAILED'); rejectWrite(new AiProcessError('AI_PROCESS_FAILED')); }
+      });
+      void Promise.resolve().then(() => options.interact!({ write, signal: protocolController.signal })).then(
+        () => { if (!child.stdin.destroyed) child.stdin.end(); },
+        () => { stop('AI_INVALID_OUTPUT'); if (!child.stdin.destroyed) child.stdin.end(); },
+      );
+    } else child.stdin.end(options.input ?? '');
   });
 }

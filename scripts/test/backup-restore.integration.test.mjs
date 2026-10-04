@@ -165,6 +165,20 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     }
     await writeFile(join(filesDir, ws, 'orphan-render.pdf'), pdf('orphan, not referenced')); // must not be backed up
     await client.query(`insert into assisted_attempts(workspace_id, application_id, status, plan, digest, expires_at, consented_at) values ($1,$2,'HANDED_OFF','{}','test-digest',now()+interval '10 minutes',now())`,[ws,application]);
+    // Synthetic AI records prove restored backups cannot restart provider work or retain live grants.
+    const aiConnection = randomUUID(); const aiConsent = randomUUID(); const aiPolicy = randomUUID(); const account = sha('fictional-account');
+    await client.query(`insert into ai_connections(id,workspace_id,provider,account_fingerprint,state,active,official_context_ref) values($1,$2,'codex',$3,'CONNECTED',true,'fictional-context-marker')`, [aiConnection,ws,account]);
+    await client.query(`insert into ai_consents(id,workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,search_ids,notice_version,remembered) values($1,$2,$3,'codex',$4,1,1,'JOB_ANALYSIS','["JOB_POSTING"]',$5,'fixture',true)`, [aiConsent,ws,aiConnection,account,JSON.stringify([activeSearchId])]);
+    await client.query(`insert into ai_automation_policies(id,workspace_id,connection_id,consent_id,search_ids,active,paused) values($1,$2,$3,$4,$5,true,false)`, [aiPolicy,ws,aiConnection,aiConsent,JSON.stringify([activeSearchId])]);
+    for (const status of ['QUEUED','RUNNING','SUCCEEDED']) {
+      const runId = randomUUID(); const lease = randomUUID();
+      await client.query(`insert into ai_runs(id,workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,lease_token,lease_owner,lease_until) values($1,$2,$3,$4,'codex',1,1,$5,'JOB_ANALYSIS','MANUAL',$6,$6,$5,$5,'{"fictional":true}',$5,'{}',$7,'fixture',now()+interval '1 minute')`, [runId,ws,aiConnection,aiConsent,account,status,lease]);
+      if (status === 'RUNNING') await client.query(`insert into ai_account_leases(account_lock_key,workspace_id,run_id,lease_token,lease_owner,lease_until) values($1,$2,$3,$4,'fixture',now()+interval '1 minute')`, [account,ws,runId,lease]);
+      if (status === 'SUCCEEDED') await client.query(`insert into ai_artifacts(workspace_id,run_id,schema_version,prompt_version,locale,output,sources,state) values($1,$2,1,'fixture','en','{"fictional":"retained result"}','{"fictional":"retained evidence"}','ACCEPTED')`, [ws,runId]);
+    }
+    await client.query(`insert into ai_run_tombstones(workspace_id,run_id,consent_id,idempotency_hash,job_id,canonical_identity) values($1,$2,$3,$4,$5,$6)`, [ws,randomUUID(),aiConsent,sha('fictional-deleted-request'),jobId,sha('fictional-job-identity')]);
+    await client.query(`insert into ai_daily_budgets(workspace_id,control_day,automatic_reserved,manual_reserved,automatic_started) values($1,current_date,2,1,3)`, [ws]);
+    await client.query(`insert into ai_usage_snapshots(workspace_id,connection_id,availability,windows,source,observed_at) values($1,$2,'KNOWN','[{"usedPercent":15}]','PROVIDER_REPORTED',now())`, [ws,aiConnection]);
     await client.end();
 
     secrets.encryptionKey = randomBytes(32).toString('base64');
@@ -320,6 +334,19 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
 
     assert.equal((await query(database, 'select status from assisted_attempts')).rows[0].status, 'UNKNOWN');
     assert.equal((await query(sourceDb, 'select status from assisted_attempts')).rows[0].status, 'HANDED_OFF');
+    for (const table of ['ai_connections','ai_consents','ai_automation_policies','ai_runs','ai_artifacts','ai_account_leases','ai_daily_budgets','ai_usage_snapshots','ai_run_tombstones']) {
+      assert.deepEqual((await query(database, `select count(*)::int as n from ${table}`)).rows, (await query(sourceDb, `select count(*)::int as n from ${table}`)).rows, table);
+    }
+    assert.equal((await query(database, `select count(*)::int as n from ai_connections where active or official_context_ref is not null or state<>'UNAVAILABLE'`)).rows[0].n, 0);
+    assert.equal((await query(database, 'select count(*)::int as n from ai_consents where revoked_at is null')).rows[0].n, 0);
+    assert.equal((await query(database, 'select count(*)::int as n from ai_automation_policies where active or not paused')).rows[0].n, 0);
+    assert.deepEqual((await query(database, 'select status from ai_runs order by status')).rows.map(row => row.status), ['CANCELLED','INTERRUPTED','SUCCEEDED']);
+    assert.equal((await query(database, 'select run_id from ai_account_leases')).rows[0].run_id, null);
+    assert.deepEqual((await query(database, 'select automatic_reserved,manual_reserved,automatic_started from ai_daily_budgets')).rows[0], {automatic_reserved:0,manual_reserved:0,automatic_started:3});
+    assert.equal((await query(database, 'select availability from ai_usage_snapshots')).rows[0].availability, 'UNAVAILABLE');
+    assert.deepEqual((await query(database, 'select output,sources,state from ai_artifacts')).rows, (await query(sourceDb, 'select output,sources,state from ai_artifacts')).rows);
+    assert.deepEqual((await query(database, 'select * from ai_run_tombstones')).rows, (await query(sourceDb, 'select * from ai_run_tombstones')).rows, 'deleted work stays deduplicated after restore');
+    assert.equal((await query(sourceDb, 'select active from ai_connections')).rows[0].active, true, 'source connection is unchanged');
     // New installation folder.
     assert.equal(await mode(target), 0o700);
     assert.equal(await mode(join(target, '.env')), 0o600);

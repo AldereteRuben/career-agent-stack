@@ -109,7 +109,7 @@ Never delete `.env` to "reset" the installation: it holds the key that protects 
 
 ## No-AI operation
 
-The default is `AI_PROVIDER=none`. Profile editing, answer management, job discovery, ranking, application tracking, and export do not depend on an AI service. AI provider support is not implemented in v0.6.0.
+Profile editing, answer management, job discovery, ranking, application tracking, and export work without an AI account. v0.9.0 offers optional Codex integration on macOS with CLI 0.160.0. Nothing is shared until an account is connected and processing is authorized. `CAREER_AI_ENABLED=false` hides and disables execution; the legacy `AI_PROVIDER` setting no longer controls this feature. See [assistant setup and limits](assistant.md).
 
 ## Export
 
@@ -132,7 +132,7 @@ Backups and isolated restores are described in [backup-restore.md](backup-restor
 
 ## Feature boundaries
 
-Automatic read-only discovery is available after opt-in in Companies I follow; it runs while the API is running. See [automatic discovery](automatic-discovery.md). Experimental Lever contact autofill requires explicit consent in a visible browser. File upload, custom questions and submission remain manual. AI processing, mailbox access and interview coaching are unavailable. Application records entered manually are user-attested; an uncertain result must be reconciled before any independent repeat action.
+Automatic read-only discovery is available after opt-in in Companies I follow; it runs while the API is running. See [automatic discovery](automatic-discovery.md). Experimental Lever assistance requires explicit consent in a visible browser; supported simple submissions require separate authorization for one application. Unsupported forms remain manual. Optional Codex processing has separate sharing consent; mailbox access and interview coaching are unavailable. Application records entered manually are user-attested; an uncertain result must be reconciled before any independent repeat action.
 
 ## Inicio rápido (español)
 
@@ -144,6 +144,14 @@ Automatic read-only discovery is available after opt-in in Companies I follow; i
 - ¿Te pide un token? `pnpm start --copy-token` lo copia al portapapeles sin mostrarlo y lo borra de ahí a los 2 minutos; el archivo `.command` lo hace siempre. Si ya no tienes token, ejecuta antes `pnpm run reset:session`. Tus datos no cambian. Las sesiones ya abiertas siguen válidas hasta que caducan.
 - ¿Abrir una instalación restaurada? En otra copia del código (`git worktree add ../career-restored`): `CAREER_ENV_FILE=/ruta/restaurada/.env pnpm start --copy-token`. Nunca copies nada sobre el `.env` activo.
 - Los registros están en `data/logs/` (o en la carpeta de datos de `CAREER_ENV_FILE`).
+
+## Updating to v0.9.0 / Actualizar a v0.9.0
+
+Create a verified backup before updating. Stop the service, update the checkout and dependencies, then start it normally. Startup applies additive migration 0010, retaining existing profile facts, answers, searches and PDFs. AI starts disconnected and analysis automation stays off. No Codex account or installation is required for ordinary searches. Use the contextual help or Settings to opt in; [assistant setup](assistant.md) records the supported CLI version and operating system.
+
+A restored copy revokes assistant connections and sharing permissions, pauses analysis policies, and cancels or interrupts pending work. Historical suggestions remain readable. Reconnect and explicitly choose new automation settings if you want to resume. To roll back, restore the verified backup into a separate destination; do not run an old binary against the upgraded database.
+
+Crea un respaldo verificado antes de actualizar. Detén el servicio, actualiza código y dependencias y vuelve a iniciarlo. La migración aditiva 0010 conserva perfil, respuestas, búsquedas y PDF. La IA empieza desconectada y sin análisis automático. Una copia restaurada revoca conexiones y permisos, pausa automatizaciones y conserva las propuestas históricas; volver a procesar requiere autorización nueva.
 
 ## First use after updating to v0.8.2
 

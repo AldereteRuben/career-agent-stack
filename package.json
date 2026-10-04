@@ -1,6 +1,6 @@
 {
   "name": "career-agent-stack",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.10.0",
@@ -22,8 +22,8 @@
     "bootstrap": "node scripts/bootstrap.mjs",
     "runner": "node scripts/assisted-help.mjs",
     "test:unit": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/*.test.ts",
-    "test:ai": "pnpm --filter @career/api exec tsc --project test/tsconfig.ai.json && pnpm --filter @career/api exec tsx --test ../../packages/domain/test/ai.test.ts ../../packages/domain/test/ai-budget.test.ts ../../packages/domain/test/ai-documents.test.ts test/ai-process.test.ts && node --test scripts/test/ai-capability-probes.test.mjs scripts/test/codex-capability-probe.test.mjs",
-    "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs scripts/test/v040-migration.test.mjs scripts/test/v080-migration.test.mjs",
+    "test:ai": "pnpm --filter @career/api exec tsc --project test/tsconfig.ai.json && pnpm --filter @career/api exec tsx --test ../../packages/domain/test/ai.test.ts ../../packages/domain/test/ai-budget.test.ts ../../packages/domain/test/ai-documents.test.ts test/ai-*.test.ts && node --test scripts/test/ai-capability-probes.test.mjs scripts/test/codex-capability-probe.test.mjs scripts/test/ai-restore.test.mjs",
+    "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs scripts/test/v040-migration.test.mjs scripts/test/v080-migration.test.mjs scripts/test/v090-migration.test.mjs",
     "test:e2e": "pnpm run build:shared && pnpm --filter @career/api e2e",
     "test:evals": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/search-matching.test.ts ../../packages/domain/test/search-ranking.test.ts ../../packages/domain/test/search-release-probes.test.ts",
     "reset:session": "node scripts/reset-session.mjs",
@@ -41,6 +41,7 @@
     "test:preparation": "pnpm --filter @career/api exec tsx --test test/preparation*.test.ts",
     "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
     "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts",
+    "test:ai-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v090.mts",
     "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts"
   },
   "devDependencies": {

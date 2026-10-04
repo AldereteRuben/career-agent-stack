@@ -205,7 +205,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <Suspense fallback={<MainNav {...navProps} route={resolveRoute(pathname, null)}/>}><QueryAwareNav {...navProps}/></Suspense>
       <div className="sidebar-spacer"/>
-      <div className="local-card"><Icon name="shield" size={18}/><div><strong>{t("Solo en este equipo")}</strong><p>{t("Tú decides cuándo compartir datos.")}</p></div></div>
+      <div className="local-card"><Icon name="shield" size={18}/><div><strong>{locale === 'es' ? 'Guardado en tu equipo' : 'Saved on your device'}</strong><p>{locale === 'es' ? 'Tú eliges qué compartir con tu asistente y las empresas.' : 'You choose what to share with your assistant and employers.'}</p></div></div>
       <div className="profile-chip"><span className="avatar" aria-hidden="true">{t("T")}</span><span><strong>{t("Tu espacio")}</strong><small>{t("Sesión local")}</small></span><button type="button" className="signout" disabled={signingOut} onClick={() => void signOut()}>{signingOut ? (locale === 'es' ? 'Saliendo…' : 'Signing out…') : t("Salir")}</button></div>{sessionError && <Notice tone="error">{sessionError}</Notice>}
     </aside>
     {drawerOpen && <div className="mobile-scrim" aria-hidden="true" onClick={closeMenu}/>}
@@ -213,7 +213,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <button ref={menuButtonRef} type="button" className="mobile-menu" aria-expanded={drawerOpen} aria-controls="app-sidebar" onClick={() => setMenuOpen(true)}><Icon name="menu" size={22}/><span className="sr-only">{t("Abrir menú")}</span></button>
         <Suspense fallback={<Breadcrumbs locale={locale} route={resolveRoute(pathname, null)}/>}><QueryAwareBreadcrumbs pathname={pathname} locale={locale}/></Suspense>
-        <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{t("Local y privado")}</span></span><LanguageSwitch/></div>
+        <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{locale === 'es' ? 'Datos guardados localmente' : 'Data saved locally'}</span></span><LanguageSwitch/></div>
       </header>
       <main id="main-content" className="page-wrap" tabIndex={-1}>{children}</main>
       <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{RELEASE_VERSION}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
