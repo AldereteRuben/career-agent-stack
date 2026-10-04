@@ -11,6 +11,7 @@ import { Button, Card, Empty, Notice, Tag } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 import styles from './application-preparation.module.css';
+import { gapContinuation, queueActions } from './application-continuation';
 import type { Locale } from '@/lib/locale';
 
 type Preparation = {
@@ -38,14 +39,23 @@ const reasonText = (value: string, locale: Locale) => ({
 const factReason = (reason: string, locale: Locale) => reason.replace(/^(Coincide con el anuncio|Matches job wording):/, locale === 'es' ? 'Coincide con el anuncio:' : 'Matches job wording:');
 const answerProvenance = (value: string, locale: Locale) => value.replace(/Respuesta aprobada|Approved stored answer/g, locale === 'es' ? 'Respuesta aprobada' : 'Approved stored answer').replace(/revisión|revision/g, locale === 'es' ? 'revisión' : 'revision');
 
-function GapActions({ gaps, jobId, returnTo }: { gaps: string[]; jobId: string; returnTo?: string }) {
-  const { locale } = useLocale(); const es = locale === 'es';
-  const profile = gaps.some((gap) => ['PROFILE_REQUIRED', 'FULL_NAME_REQUIRED', 'EMAIL_REQUIRED'].includes(gap));
-  const experience = gaps.includes('RELEVANT_APPROVED_EVIDENCE_REQUIRED');
-  return <div className={styles.actions}>
-    {profile && <Link href={withSearchOrigin(`/profile?jobId=${jobId}#profile-details`, returnTo)}>{es ? 'Completar mis datos' : 'Complete my details'}</Link>}
-    {experience && <><Link href={withSearchOrigin(`/profile?jobId=${jobId}#experience`, returnTo)}>{es ? 'Añadir o confirmar experiencia' : 'Add or confirm experience'}</Link><Link href={withSearchOrigin(`/documents?jobId=${jobId}`, returnTo)}>{es ? 'Elegir experiencia manualmente' : 'Choose experience manually'}</Link></>}
-    {gaps.includes('JOB_TEXT_UNAVAILABLE') && <><Link href={withSearchOrigin(`/jobs/${jobId}#job-description`, returnTo)}>{es ? 'Revisar el texto de la oferta' : 'Review the job description'}</Link><Link href={withSearchOrigin(`/documents?jobId=${jobId}`, returnTo)}>{es ? 'Preparar CV manualmente' : 'Prepare resume manually'}</Link></>}
+type JourneyContext = { jobId: string; applicationId?: string | null; returnTo?: string };
+/** Links inside the preparation journey keep the job, its application and the listing the person came from. */
+const journeyHref = (path: string, { jobId, applicationId, returnTo }: JourneyContext, hash = '') => {
+  const params = new URLSearchParams({ jobId }); if (applicationId) params.set('applicationId', applicationId);
+  return withSearchOrigin(`${path}?${params}${hash}`, returnTo);
+};
+/** One primary continuation for missing details; choosing resume content by hand stays available behind a disclosure. */
+function GapActions({ gaps, ...context }: JourneyContext & { gaps: string[] }) {
+  const { locale } = useLocale(); const c = (es: string, en: string) => locale === 'es' ? es : en;
+  const next = gapContinuation(gaps);
+  const manual = gaps.includes('RELEVANT_APPROVED_EVIDENCE_REQUIRED') || gaps.includes('JOB_TEXT_UNAVAILABLE');
+  if (!next) return null;
+  return <div className={styles.next}>
+    {next === 'identity' ? <><p>{c('Te pediremos solo lo que falta y volverás a preparar esta solicitud.', 'We only ask for what is missing, then you return to preparing this application.')}</p><Link className="button button-primary" href={journeyHref('/profile/setup', context)}>{c('Completar lo que falta', 'Complete what is missing')}</Link></>
+      : next === 'experience' ? <><p>{c('Añade o confirma una experiencia relacionada; después podrás preparar el CV desde la misma página.', 'Add or confirm related experience; you can then prepare the resume from the same page.')}</p><Link className="button button-primary" href={journeyHref('/profile', context, '#experience')}>{c('Añadir experiencia para esta oferta', 'Add experience for this job')}</Link></>
+      : <Link className="button button-primary" href={withSearchOrigin(`/jobs/${context.jobId}#job-description`, context.returnTo)}>{c('Revisar el texto de la oferta', 'Review the job description')}</Link>}
+    {manual && <details className={styles.alternative}><summary>{c('Prefiero elegir el contenido del CV', 'I prefer to choose my resume content')}</summary><p>{c('Elige tú qué experiencia confirmada incluir.', 'Choose which confirmed experience to include yourself.')}</p><Link className="button button-secondary" href={journeyHref('/documents', context)}>{c('Elegir contenido del CV', 'Choose resume content')}</Link></details>}
   </div>;
 }
 const queueLabels: Record<string, [string, string]> = {
@@ -54,6 +64,18 @@ const queueLabels: Record<string, [string, string]> = {
   SUBMITTED: ['Enviada', 'Submitted'], CLOSED: ['Finalizada', 'Closed'], UNCERTAIN: ['Comprobar envío', 'Check submission'],
   IN_PROGRESS: ['Envío en curso', 'Submission in progress'], JOB_CLOSED: ['Oferta cerrada', 'Job closed'],
 };
+
+/** Renders the queue card actions decided by queueActions, keeping at most one primary. */
+function QueueActions({ item, busy, onRetry }: { item: Preparation; busy: string | null; onRetry: (jobId: string) => void }) {
+  const { locale } = useLocale(); const c = (es: string, en: string) => locale === 'es' ? es : en;
+  const reviewHref = `/documents?applicationId=${item.applicationId}&jobId=${item.jobId}&view=review&document=${item.documentId}&from=saved`;
+  const applicationHref = `/applications?id=${item.applicationId}`;
+  const links = { continue: [applicationHref, c('Continuar con la solicitud', 'Continue application')], approved: [reviewHref, c('Ver CV aprobado', 'View approved resume')], review: [reviewHref, c('Revisar documento', 'Review document')], update: [reviewHref, c('Actualizar o elegir CV', 'Update or choose resume')], check: [applicationHref, c('Comprobar el envío', 'Check the submission')], open: [applicationHref, c('Abrir solicitud', 'Open application')] } as const;
+  return <div className={styles.actions}>
+    {queueActions(item).map(({ kind, primary }) => <Link key={kind} className={`button ${primary ? 'button-primary' : 'button-secondary'}`} href={links[kind][0]}>{links[kind][1]}</Link>)}
+    {item.canPrepare && <Button variant="quiet" onClick={() => onRetry(item.jobId)} disabled={busy !== null}>{busy === item.jobId ? c('Reintentando…', 'Retrying…') : c('Volver a preparar', 'Prepare again')}</Button>}
+  </div>;
+}
 
 export function ApplicationQueue() {
   const { locale } = useLocale(); const c = (es: string, en: string) => locale === 'es' ? es : en;
@@ -70,13 +92,13 @@ export function ApplicationQueue() {
     {actionError && <Notice tone="error">{actionError}</Notice>}
     {error && <Notice tone="error">{error}<Button variant="secondary" onClick={() => void load()}>{c('Volver a intentar', 'Try again')}</Button></Notice>}
     {loading ? <p role="status">{c('Cargando…', 'Loading…')}</p> : error && visible.length === 0 ? null : visible.length === 0 ? <Empty title={c('No hay solicitudes pendientes de revisión', 'No applications waiting for review')} detail={c('Abre una oferta que te interese y pulsa Preparar mi solicitud. Aquí aparecerán los CV preparados y los datos que falten.', 'Open a job that interests you and choose Prepare my application. Prepared resumes and missing details appear here.')} action={<Link className="button button-secondary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>} /> : <div className={styles.queue}>{visible.map((item) => <Card key={item.applicationId ?? item.jobId} className={styles.card}>
-      <div className={styles.head}><div><span className="eyebrow">{item.company}</span><h2>{item.title}</h2></div><Tag tone={item.queueState === 'READY' || item.queueState === 'SUBMITTED' ? 'green' : item.needsAttention ? 'amber' : 'neutral'}>{queueLabels[item.queueState ?? 'NEEDS_DETAILS']?.[locale === 'es' ? 0 : 1]}</Tag></div>
+      <div className={styles.head}><span className="eyebrow">{item.company}</span><h2>{item.title}</h2><Tag tone={item.queueState === 'READY' || item.queueState === 'SUBMITTED' ? 'green' : item.needsAttention ? 'amber' : 'neutral'}>{queueLabels[item.queueState ?? 'NEEDS_DETAILS']?.[locale === 'es' ? 0 : 1]}</Tag></div>
       {item.queueState === 'UNCERTAIN' && <Notice tone="warning">{c('Abre la solicitud y comprueba el envío antes de intentar otra vez.', 'Open the application and check the submission before trying again.')}</Notice>}
       {item.reason && <Notice tone="warning">{reasonText(item.reason, locale)}</Notice>}
-      {item.gaps.length > 0 && <div><h3>{c('Pendiente', 'Needs attention')}</h3><ul>{item.gaps.map((gap) => <li key={gap}>{gapText(gap, locale)}</li>)}</ul><GapActions gaps={item.gaps} jobId={item.jobId}/></div>}
+      {item.gaps.length > 0 && <div><h3>{c('Pendiente', 'Needs attention')}</h3><ul>{item.gaps.map((gap) => <li key={gap}>{gapText(gap, locale)}</li>)}</ul><GapActions gaps={item.gaps} jobId={item.jobId} applicationId={item.applicationId}/></div>}
       {item.selectedFacts.length > 0 && <details><summary>{c('Ver experiencia utilizada', 'Show included experience')}</summary><div><h3>{c('Experiencia incluida', 'Included experience')}</h3><ul>{item.selectedFacts.map((fact) => <li key={fact.id}><strong>{fact.statement}</strong><small className={styles.reason}>{factReason(fact.reason, locale)}</small></li>)}</ul></div></details>}
       {item.answerSuggestions.length > 0 && <div><h3>{c('Respuestas aprobadas sugeridas', 'Approved answer suggestions')}</h3><ul>{item.answerSuggestions.map((answer) => <li key={answer.answerId}><strong>{answer.question}: </strong>{typeof answer.value === 'string' ? answer.value : JSON.stringify(answer.value)}<small className={styles.reason}>{answerProvenance(answer.provenance, locale)}</small></li>)}</ul></div>}
-      <div className={styles.actions}>{item.documentId && item.applicationId && item.needsAttention && !['UNCERTAIN', 'IN_PROGRESS'].includes(item.queueState ?? '') && <Link className="button button-primary" href={`/documents?applicationId=${item.applicationId}&jobId=${item.jobId}&view=review&document=${item.documentId}&from=saved`}>{item.queueState === 'STALE_DOCUMENT' ? c('Actualizar o elegir CV', 'Update or choose resume') : item.queueState === 'READY' ? c('Ver CV aprobado', 'View approved resume') : c('Revisar documento', 'Review document')}</Link>}{item.applicationId && <Link className="button button-secondary" href={`/applications?id=${item.applicationId}`}>{c('Abrir solicitud', 'Open application')}</Link>}{item.canPrepare && <Button variant="quiet" onClick={() => void retry(item.jobId)} disabled={busy !== null}>{busy === item.jobId ? c('Reintentando…', 'Retrying…') : c('Volver a preparar', 'Prepare again')}</Button>}</div>
+      <QueueActions item={item} busy={busy} onRetry={(jobId) => void retry(jobId)}/>
     </Card>)}</div>}
   </>;
 }
@@ -106,9 +128,9 @@ export function ApplicationPreparationAction({ jobId, applicationId, returnTo, d
     {disabled && <p role="status">{c('Guarda o descarta tus cambios antes de preparar la solicitud.', 'Save or discard your changes before preparing the application.')}</p>}
     <div ref={feedback} tabIndex={-1} className="preparation-feedback">{error && <Notice tone="error">{error}</Notice>}
     {result && <Card><p><Tag tone={result.status === 'PREPARED' ? 'green' : result.status === 'BLOCKED' ? 'red' : 'amber'}>{result.status === 'PREPARED' ? c('Preparada', 'Prepared') : result.status === 'BLOCKED' ? c('No se puede preparar todavía', 'Not ready to prepare yet') : c('Completa lo que falta', 'Complete missing details')}</Tag></p>
-      {result.gaps.length > 0 && <><ul>{result.gaps.map((gap) => <li key={gap}>{gapText(gap, locale)}</li>)}</ul><GapActions gaps={result.gaps} jobId={jobId} returnTo={returnTo}/></>}{result.reason && <p>{reasonText(result.reason, locale)}</p>}
+      {result.gaps.length > 0 && <><ul>{result.gaps.map((gap) => <li key={gap}>{gapText(gap, locale)}</li>)}</ul><GapActions gaps={result.gaps} jobId={jobId} applicationId={result.applicationId ?? applicationId} returnTo={returnTo}/></>}{result.reason && <p>{reasonText(result.reason, locale)}</p>}
       {result.selectedFacts.map((fact) => <p key={fact.id}><strong>{fact.statement}</strong><small className={styles.reason}>{factReason(fact.reason, locale)}</small></p>)}
-      <div className={styles.actions}>{result.documentId && result.applicationId && <Link className="button button-primary" href={withSearchOrigin(`/documents?applicationId=${result.applicationId}&jobId=${result.jobId}&view=review&document=${result.documentId}&from=saved`, returnTo)}>{c('Revisar documento', 'Review document')}</Link>}{result.applicationId && <Link className="button button-secondary" href={withSearchOrigin(`/applications?id=${result.applicationId}`, returnTo)}>{c('Abrir solicitud', 'Open application')}</Link>}</div>
+      <div className={styles.actions}>{result.documentId && result.applicationId && <Link className={`button ${gapContinuation(result.gaps) ? 'button-secondary' : 'button-primary'}`} href={withSearchOrigin(`/documents?applicationId=${result.applicationId}&jobId=${result.jobId}&view=review&document=${result.documentId}&from=saved`, returnTo)}>{c('Revisar documento', 'Review document')}</Link>}{result.applicationId && <Link className="button button-secondary" href={withSearchOrigin(`/applications?id=${result.applicationId}`, returnTo)}>{c('Abrir solicitud', 'Open application')}</Link>}</div>
     </Card>}</div>
   </section>;
 }
