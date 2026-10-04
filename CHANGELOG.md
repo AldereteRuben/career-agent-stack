@@ -4,6 +4,7 @@
 
 - Put job results first, keep searches visible as compact choices, and move management and portal detail into secondary controls.
 - Distinguish running, failed, limited, paused, first empty and already-reviewed searches; adjusting a search opens the correct edit flow.
+- Explain when an early repeat check can run again; an already-running check no longer reads as a revision conflict.
 - Share reviewed/saved/archived state across search results, found jobs and counts. Restoring a job keeps it reviewed; safe identity groups share decisions and conflicting groups stay separate.
 - Refresh deduplicated totals and each search count immediately after a decision, preserving result focus and background-arrival behavior.
 - Use Found jobs for the complete list and Saved for chosen jobs, with consistent ES/EN actions and keyboard-accessible filters.

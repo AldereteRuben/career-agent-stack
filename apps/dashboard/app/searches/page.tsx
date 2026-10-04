@@ -218,9 +218,16 @@ export default function SearchesPage() {
   };
   /** With several searches, "adjust" first asks which one; it never opens a create form (U05). */
   const openManage = () => { setManageOpen(true); requestAnimationFrame(() => manageButton.current?.focus()); };
-  const problem = (cause: unknown) => {
+  const problem = (cause: unknown, search?: Search) => {
+    if (cause instanceof ApiError && cause.code === 'SEARCH_REFRESH_ALREADY_RUNNING') return t('La consulta sigue en curso. Conservamos las ofertas visibles.', 'The check is still running. Visible jobs are kept.');
+    if (cause instanceof ApiError && cause.code === 'SEARCH_REFRESH_COOLDOWN') {
+      const next = nextCheckLabel(search?.nextRunAt ?? null, locale);
+      return next
+        ? t(`Podrás volver a consultar ${next}. Mientras tanto, puedes revisar las ofertas ya encontradas.`, `You can check again ${next}. Meanwhile, you can review jobs already found.`)
+        : t('Aún no se puede repetir esta consulta. Puedes revisar las ofertas encontradas mientras llega la próxima consulta automática.', 'This check cannot be repeated yet. You can review jobs already found while waiting for the next automatic check.');
+    }
     if (cause instanceof ApiError && cause.status === 409) return t('Esta búsqueda cambió en otra pestaña. Actualiza la lista y vuelve a aplicar tus cambios.', 'This search changed in another tab. Reload the list and apply your changes again.');
-    return cause instanceof ApiError && cause.code === 'SEARCH_REFRESH_ALREADY_RUNNING' ? t('La consulta sigue en curso. Conservamos las ofertas visibles.', 'The check is still running. Visible jobs are kept.') : errorMessage(cause);
+    return errorMessage(cause);
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setFormError(''); setCriteriaMissing(false); setInvalidField(null); setMessage('');
@@ -255,7 +262,7 @@ export default function SearchesPage() {
         setMessage('refresh');
       } else await api(`/job-searches/${search.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !search.enabled, expectedRevision: search.revision }) });
       await load(true);
-    } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
+    } catch (cause) { setError(problem(cause, search)); } finally { setBusy(''); }
   };
   const afterCardAction = async (job: SearchJob, done: keyof typeof actionMessages) => {
     pendingFocus.current = { id: job.id, index: Math.max(0, results.findIndex((item) => item.id === job.id)) };

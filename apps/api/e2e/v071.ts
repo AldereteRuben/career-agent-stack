@@ -64,11 +64,19 @@ export const v071Scenarios: Scenario[] = [
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         assert.equal(await role.inputValue(), 'Draft kept after failure');
         assert.equal(await page.locator('#search-form-error').isVisible(), true);
-        failSource = true;
         await page.getByRole('button', { name: /Gestionar búsquedas/ }).click();
         await page.getByRole('listitem').filter({ hasText: fixture.company }).getByRole('button', { name: 'Buscar ahora', exact: true }).click();
+        await page.getByText(/Podrás volver a consultar .*Mientras tanto, puedes revisar las ofertas ya encontradas/).waitFor();
+        assert.equal(await role.inputValue(), 'Draft kept after failure', 'A refresh cooldown preserves the separate search draft');
+        failSource = true;
+        // A failed background check updates its status without removing offers the person is reading.
+        // It is a local refresh, not a second portal check during the production cooldown.
+        await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        await page.getByText(/La última consulta no se pudo completar/).waitFor();
+        await page.getByRole('link', { name: fixture.title, exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Mostrar nuevas ofertas', exact: true }).click();
         await page.getByRole('heading', { name: 'No pudimos completar la última consulta', exact: true }).waitFor();
-        assert.equal(await page.getByText(/Revisa la escritura del puesto/).count(), 0, 'Provider errors do not ask the user to rewrite valid filters');
+        assert.equal(await page.getByText(/Todavía no encontramos ofertas con estos criterios|Para ver más, prueba a quitar la ubicación|Revisa la escritura del puesto/).count(), 0, 'Provider errors do not ask the user to rewrite valid filters');
         note('Fictional cached feed and intercepted local responses; idle polling, persistent validation, failed save and failed source recovery.');
       } finally {
         note(`Synthetic results endpoint was intercepted ${resultRouteHits} time(s); arrival injection ${addArrival ? 'was' : 'was not'} enabled.`);
