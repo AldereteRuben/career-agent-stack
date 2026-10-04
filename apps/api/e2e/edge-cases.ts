@@ -20,6 +20,8 @@ try {
   const pace = async () => { const at = Math.max(Date.now(), next); next = at + 600; await delay(Math.max(0, at - Date.now())); };
   await context.route('**/api/v1/**', async (route) => { await pace(); await route.continue(); });
   const page = await context.newPage(); page.setDefaultTimeout(20000);
+  // Match the full harness budget for routes compiled on demand by the disposable dev server.
+  page.setDefaultNavigationTimeout(45000);
   const api = apiClient(context, stack.uiUrl, pace);
   const only = (process.env.EDGE_ONLY ?? '').split(',').filter(Boolean);
   const run = async (name: string, fn: () => Promise<void>) => {
@@ -28,6 +30,7 @@ try {
     catch (error) { results.push({ name, passed: false, error: String(error) }); }
     console.log(JSON.stringify(results.at(-1)));
     await page.screenshot({ path: join(output, `${name}.png`), fullPage: false }).catch(() => {});
+    await page.unrouteAll({ behavior: 'wait' });
   };
   await signIn(page, stack.uiUrl, await stack.readToken()); await setLocale(page, 'es');
   const profile = await api.get<{ revision: number; profile: object }>('/profile');

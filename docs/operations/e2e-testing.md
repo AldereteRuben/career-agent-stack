@@ -60,7 +60,10 @@ Locators prefer roles, `href`s and form structure, and they match Spanish or Eng
 E2E_ONLY=same-name-pdf-creates-distinct-versions pnpm run test:e2e   # subset (sign-in always runs)
 E2E_HEADED=1 pnpm run test:e2e                                        # visible browser
 E2E_KEEP=1 pnpm run test:e2e                                          # keep DB, temp dirs and logs for debugging
+E2E_PRODUCTION=1 pnpm run test:e2e                                    # build and serve the disposable dashboard with next start
 ```
+
+`E2E_PRODUCTION=1` compiles only the private dashboard copy and runs the same scenarios against its production build. It preserves all database, token, port and cleanup isolation checks. Use it for release verification without development-server recompilation or error overlays; the default remains `next dev`. The option also applies to `test:edge-cases` and `test:search-ui`.
 
 With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_<run>`, the printed temporary directory, and `output/e2e-runs/<run>`.
 

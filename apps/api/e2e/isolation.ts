@@ -200,7 +200,7 @@ export async function createIsolatedStack() {
     if (await fingerprint(liveTokenPath) !== before.token) throw new IsolationError('The live sign-in token changed while the isolated API started.');
     log(`isolated API on ${apiUrl} uses ${databaseName} and a private data directory`);
 
-    // 5. Dashboard dev server from a temporary directory. Sources are copied; `.next` is private to the run.
+    // 5. Dashboard from a temporary directory. Sources are copied; `.next` is private to the run.
     const runsRoot = resolve(projectRoot, 'output/e2e-runs');
     const uiDir = resolve(runsRoot, runId, 'dashboard');
     await cloneDashboard(resolve(projectRoot, 'apps/dashboard'), uiDir);
@@ -214,12 +214,22 @@ export async function createIsolatedStack() {
     });
     const uiLog = join(logsDir, 'dashboard.log');
     const nextBin = resolve(projectRoot, 'apps/dashboard/node_modules/next/dist/bin/next');
-    const ui = await startChild('dashboard', process.execPath, [nextBin, 'dev', '--webpack', '--hostname', '127.0.0.1', '--port', String(uiPort)], uiDir, uiLog, childEnv({ API_BASE_URL: apiUrl, NEXT_TELEMETRY_DISABLED: '1' }));
+    const production = process.env.E2E_PRODUCTION === '1';
+    const dashboardEnv = childEnv({ API_BASE_URL: apiUrl, NEXT_TELEMETRY_DISABLED: '1', ...(production ? { NODE_ENV: 'production' } : {}) });
+    if (production) {
+      const buildLog = await open(uiLog, 'a', 0o600);
+      try {
+        execFileSync(process.execPath, [nextBin, 'build', '--webpack'], { cwd: uiDir, env: dashboardEnv, stdio: ['ignore', buildLog.fd, buildLog.fd], timeout: 240_000 });
+      } catch {
+        throw new Error(`Isolated dashboard production build failed.\n${await tailLog(uiLog)}`);
+      } finally { await buildLog.close(); }
+    }
+    const ui = await startChild('dashboard', process.execPath, [nextBin, ...(production ? ['start'] : ['dev', '--webpack']), '--hostname', '127.0.0.1', '--port', String(uiPort)], uiDir, uiLog, dashboardEnv);
     children.push({ name: 'dashboard', child: ui });
     await waitUntil('Isolated dashboard', () => httpOk(`${uiUrl}/login`), 240_000, ui, uiLog);
     await waitUntil('Dashboard proxy to the isolated API', () => httpOk(`${uiUrl}/api/v1/session`), 30_000, ui, uiLog);
     if (!(await lstat(join(uiDir, '.next')).then((info) => info.isDirectory() && !info.isSymbolicLink(), () => false))) throw new IsolationError('The dashboard dev server is not writing to its private .next directory.');
-    log(`isolated dashboard on ${uiUrl} (private .next in output/e2e-runs/${runId})`);
+    log(`isolated dashboard on ${uiUrl} (${production ? 'production build; ' : ''}private .next in output/e2e-runs/${runId})`);
 
     // Records written by the run carry this marker so the live database can be checked for leaks afterwards.
     const marker = `e2e-${runId}`;
