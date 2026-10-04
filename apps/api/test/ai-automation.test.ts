@@ -1,3 +1,4 @@
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -46,13 +47,14 @@ test('automatic analysis policies use only an isolated synthetic database',{skip
   const name=`career_aia_${randomBytes(6).toString('hex')}`;const admin=new Client({connectionString:maintenance.toString()});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let client:any;let pool:any;let created=false;
+  let closePool: (() => Promise<void>) | undefined;
   try{
     await admin.connect();await admin.query(`CREATE DATABASE "${name}"`);created=true;maintenance.pathname=`/${name}`;
     client=new Client({connectionString:maintenance.toString()});await client.connect();
     for(const file of (await readdir(new URL('packages/db/migrations',root))).filter(file=>/^\d{4}_.*\.sql$/.test(file)).sort()){
       for(const statement of (await readFile(new URL(`packages/db/migrations/${file}`,root),'utf8')).split('--> statement-breakpoint').filter(part=>part.trim()))await client.query(statement);
     }
-    pool=new Pool({connectionString:maintenance.toString(),max:5});
+    pool=new Pool({connectionString:maintenance.toString(),max:5});closePool=trackPgPoolCleanup(pool);
     const fixture=async()=>{
       const workspaceId=randomUUID(),connectionId=randomUUID(),consentId=randomUUID(),manualRunId=randomUUID(),profileId=randomUUID(),factId=randomUUID();
       const fingerprint=randomBytes(32).toString('hex');const queue=createAiQueue(pool);let current=new Date('2026-10-04T12:00:00.000Z');
@@ -187,7 +189,7 @@ test('automatic analysis policies use only an isolated synthetic database',{skip
       assert.equal((await client.query(`SELECT snapshot->'job'->>'jobId' AS job_id FROM ai_runs WHERE workspace_id=$1 AND origin='AUTOMATIC'`,[f.workspaceId])).rows[0].job_id,valid.id);await f.service.close();
     });
   }finally{
-    await pool?.end().catch(()=>undefined);await client?.end().catch(()=>undefined);
-    if(created)await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();
+    await closePool?.();await client?.end();
+    if(created)await admin.query(`DROP DATABASE "${name}"`);await admin.end();
   }
 });

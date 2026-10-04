@@ -1,3 +1,4 @@
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from 'node:fs/promises';
@@ -64,11 +65,12 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
   let client:any,pool:any;
   let renderFailure:unknown;
   const app=Fastify();let mutation:(()=>Promise<void>)|undefined;let renderCount=0;
+  let closePool: (() => Promise<void>) | undefined;
   try{
     await admin.connect();await admin.query(`CREATE DATABASE "${databaseName}"`);maintenance.pathname=`/${databaseName}`;
     client=new Client({connectionString:maintenance.toString()});await client.connect();
     for(const file of(await readdir(new URL('packages/db/migrations',root))).filter(file=>/^\d{4}_.*\.sql$/.test(file)).sort())for(const statement of(await readFile(new URL(`packages/db/migrations/${file}`,root),'utf8')).split('--> statement-breakpoint').filter(part=>part.trim()))await client.query(statement);
-    pool=new Pool({connectionString:maintenance.toString()});const database=drizzle(pool,{schema});let activeWorkspace='';
+    pool=new Pool({connectionString:maintenance.toString()});closePool=trackPgPoolCleanup(pool);const database=drizzle(pool,{schema});let activeWorkspace='';
     registerAiDocumentRoutes(app,()=>activeWorkspace,{database,storageRoot:directory,render:async input=>{
       renderCount++;assert.ok(!input.facts.some(fact=>fact.statement.includes('<script>')));
       if(process.env.CAREER_V090_PDF_TEST==='true'){try{
@@ -147,5 +149,5 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
       assert.deepEqual((await latestReusableAnswers(database,f.workspaceId)).map(answer=>answer.id),[manualId]);
       assert.equal((await client.query('SELECT approval_status FROM answer_versions WHERE id=$1',[answerId])).rows[0].approval_status,'USER_APPROVED','audit history remains unchanged');
     });
-  }finally{await app.close();await pool?.end().catch(()=>{});await client?.end().catch(()=>{});await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH(FORCE)`).catch(()=>{});await admin.end();await rm(directory,{recursive:true,force:true});}
+  }finally{await app.close();await closePool?.();await client?.end();await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);await admin.end();await rm(directory,{recursive:true,force:true});}
 });

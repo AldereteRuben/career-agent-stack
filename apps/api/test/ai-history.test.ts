@@ -1,3 +1,4 @@
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -36,12 +37,13 @@ test('history retention and explicit deletion use an isolated synthetic database
   const name=`career_aih_${randomBytes(6).toString('hex')}`;const admin=new Client({connectionString:maintenance.toString()});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let client:any,pool:any;let created=false;
+  let closePool: (() => Promise<void>) | undefined;
   try{
     await admin.connect();await admin.query(`CREATE DATABASE "${name}"`);created=true;maintenance.pathname=`/${name}`;client=new Client({connectionString:maintenance.toString()});await client.connect();
     for(const file of (await readdir(new URL('packages/db/migrations',root))).filter(file=>/^\d{4}_.*\.sql$/.test(file)).sort()){
       for(const statement of (await readFile(new URL(`packages/db/migrations/${file}`,root),'utf8')).split('--> statement-breakpoint').filter(part=>part.trim()))await client.query(statement);
     }
-    pool=new Pool({connectionString:maintenance.toString(),max:5});
+    pool=new Pool({connectionString:maintenance.toString(),max:5});closePool=trackPgPoolCleanup(pool);
     const fixture=async()=>{
       const workspaceId=randomUUID(),connectionId=randomUUID(),consentId=randomUUID(),fingerprint='a'.repeat(64);let current=new Date('2026-10-04T12:00:00Z');
       await client.query('INSERT INTO workspaces(id) VALUES($1)',[workspaceId]);
@@ -113,5 +115,5 @@ test('history retention and explicit deletion use an isolated synthetic database
       const f=await fixture();await assert.rejects(f.service.preview('bad'),{code:'INVALID_INPUT'});await assert.rejects(f.service.clear(f.workspaceId,{}),{code:'INVALID_INPUT'});
       const p=await f.service.preview(f.workspaceId);f.setNow(new Date(f.getNow().getTime()+300_000));await assert.rejects(f.service.clear(f.workspaceId,{previewId:p.previewId}),{code:'AI_PREVIEW_EXPIRED'});await f.service.close();
     });
-  }finally{await pool?.end();await client?.end();if(created)await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();}
+  }finally{await closePool?.();await client?.end();if(created)await admin.query(`DROP DATABASE "${name}"`);await admin.end();}
 });

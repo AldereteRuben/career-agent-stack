@@ -1,3 +1,4 @@
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -25,10 +26,10 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
   assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname)); assert.equal(maintenance.pathname, '/postgres');
   const name = `career_air_${randomBytes(5).toString('hex')}`;
   const admin = new Client({ connectionString: maintenance.toString() });
-  let fixturePool: InstanceType<typeof Pool> | undefined; const app = Fastify({ logger: false });
+  let fixturePool: InstanceType<typeof Pool> | undefined; let closePool: (() => Promise<void>) | undefined; const app = Fastify({ logger: false });
   try {
     await admin.connect(); await admin.query(`CREATE DATABASE "${name}"`);
-    maintenance.pathname = `/${name}`; fixturePool = new Pool({ connectionString: maintenance.toString(), max: 5 });
+    maintenance.pathname = `/${name}`; fixturePool = new Pool({ connectionString: maintenance.toString(), max: 5 }); closePool = trackPgPoolCleanup(fixturePool);
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter(file => /^\d{4}_.*\.sql$/.test(file)).sort()) {
       for (const statement of (await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8')).split('--> statement-breakpoint').filter(text => text.trim())) await fixturePool.query(statement);
     }
@@ -124,7 +125,7 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/connections/${connection.json().connection.id}/disconnect` })).statusCode, 200);
     assert.equal((await app.inject({ method: 'GET', url: '/api/v1/ai/connections' })).json().connection.authorized, false);
   } finally {
-    await app.close().catch(() => {}); await fixturePool?.end().catch(() => {});
-    await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => {}); await admin.end();
+    await app.close(); await closePool?.();
+    await admin.query(`DROP DATABASE IF EXISTS "${name}"`); await admin.end();
   }
 });

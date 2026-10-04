@@ -1,3 +1,4 @@
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -23,13 +24,14 @@ test('persistent queue against a disposable PostgreSQL database', { skip: !admin
   // pg is resolved through the existing DB package; no app connection/configuration is read.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let client:any; let pool:any;
+  let closePool: (() => Promise<void>) | undefined;
   try {
     await admin.connect(); await admin.query(`CREATE DATABASE "${name}"`);
     maintenance.pathname=`/${name}`; client=new Client({connectionString:maintenance.toString()}); await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations',root))).filter(f=>/^\d{4}_.*\.sql$/.test(f)).sort()) {
       for (const statement of (await readFile(new URL(`packages/db/migrations/${file}`,root),'utf8')).split('--> statement-breakpoint').filter(part=>part.trim())) await client.query(statement);
     }
-    pool=new Pool({connectionString:maintenance.toString(),max:8}); const queue=createAiQueue(pool);
+    pool=new Pool({connectionString:maintenance.toString(),max:8});closePool=trackPgPoolCleanup(pool); const queue=createAiQueue(pool);
     const reset=()=>client.query('TRUNCATE workspaces CASCADE');
     const state=async(id:string)=>(await client.query('SELECT * FROM ai_runs WHERE id=$1',[id])).rows[0];
     const fixture=async(options:{automatic?:boolean;accountKey?:string;remembered?:boolean;maximum?:number}={})=>{
@@ -185,7 +187,7 @@ test('persistent queue against a disposable PostgreSQL database', { skip: !admin
       assert.equal((await queue.claimNext({workerId:'a'}))?.id,manual.id);
     });
   } finally {
-    await pool?.end().catch(()=>{}); await client?.end().catch(()=>{});
-    await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(()=>{}); await admin.end();
+    await closePool?.(); await client?.end();
+    await admin.query(`DROP DATABASE IF EXISTS "${name}"`); await admin.end();
   }
 });

@@ -38,13 +38,14 @@ const code = (expected: string, dispatched?: string) => (error: unknown) => erro
   && error.code === expected && error.message === expected && (dispatched === undefined || error.dispatched === dispatched);
 
 test('executes one strictly configured task; private sources are stdin only and temp files are private and removed', async () => {
-  let directory = ''; let inspections = 0;
-  const result = await executeCodex(source(), fingerprint, salt, undefined, CODEX_DEFAULT_MODEL, deps({
+  let directory = ''; let inspections = 0; let mockFailure: unknown;
+  const execution = executeCodex(source(), fingerprint, salt, undefined, CODEX_DEFAULT_MODEL, deps({
     inspect: async () => { inspections++; return signedIn(); },
     environment: { HOME: '/synthetic/home', CODEX_HOME: '/synthetic/home/.codex', PATH: '/synthetic/bin',
       OPENAI_API_KEY: 'secret-key', OPENAI_BASE_URL: 'https://evil.invalid', CODEX_API_KEY: 'secret-key', NODE_OPTIONS: 'evil', HTTPS_PROXY: 'https://evil.invalid',
     },
     run: async options => {
+      try {
       directory = options.cwd;
       assert.equal(options.executable, '/synthetic/bin/codex');
       assert.ok(options.args.includes('--ignore-user-config'));
@@ -72,14 +73,22 @@ test('executes one strictly configured task; private sources are stdin only and 
       const instructions = await readFile(instructionsPath, 'utf8');
       assert.equal(instructions.includes('Remote QA jobs'), false);
       assert.ok(instructions.includes('Use only the supplied source data'));
-      assert.equal((await stat(instructionsPath)).mode & 0o777, 0o600);
+      const instructionsStat = await stat(instructionsPath);
+      assert.ok(instructionsStat.isFile());
+      // This test simulates the macOS adapter on every CI host. Windows stat mode bits do not describe POSIX permissions.
+      if (process.platform !== 'win32') assert.equal(instructionsStat.mode & 0o777, 0o600);
       const schemaPath = options.args[options.args.indexOf('--output-schema') + 1]!;
       const schema = JSON.parse(await readFile(schemaPath, 'utf8')) as Record<string, unknown>;
       assert.equal(schema.additionalProperties, false);
-      assert.equal((await stat(schemaPath)).mode & 0o777, 0o600);
+      const schemaStat = await stat(schemaPath);
+      assert.ok(schemaStat.isFile());
+      if (process.platform !== 'win32') assert.equal(schemaStat.mode & 0o777, 0o600);
       return emit(options);
+      } catch (error) { mockFailure = error; throw error; }
     },
   }));
+  // Production deliberately hides subprocess internals; preserve synthetic assertion diagnostics in this test.
+  const result = await execution.catch(error => { throw mockFailure ?? error; });
   assert.equal(inspections, 2);
   assert.deepEqual(result.output, output());
   assert.equal(result.inputContentHash, hashAiInputContent(source()));
