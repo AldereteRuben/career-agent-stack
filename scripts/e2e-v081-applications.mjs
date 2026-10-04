@@ -451,6 +451,7 @@ export async function checkApplicationUsability({ browser, uiUrl, cookies, artif
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 900 });
           await page.waitForFunction((expected) => document.documentElement.clientWidth <= expected, width);
+          if (width <= 850) await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);
           const report = await layoutReport(page, selector);
           if (!report.cards) run.layoutProblems.push(`${name} ${locale} ${width}px: no cards rendered for ${selector}`);
           if (report.scrollWidth > report.clientWidth + 1) run.layoutProblems.push(`${name} ${locale} ${width}px: horizontal overflow ${report.scrollWidth}>${report.clientWidth}`);

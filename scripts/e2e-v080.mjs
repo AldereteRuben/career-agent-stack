@@ -302,7 +302,7 @@ try {
   await page.getByRole('button', { name: /New search|Nueva búsqueda/, exact: true }).click();
   await page.getByLabel(/Role or keywords|Puesto o palabras clave/).fill('Service Designer');
   assert.equal(await page.getByLabel(/Work mode|Modalidad/).inputValue(), 'any', 'Modality is available in the first-use form');
-  await page.getByText(/When you save, Himalayas receives only the role|Al guardar, Himalayas recibe solo/).waitFor();
+  await page.getByText(/When you save, the remote-jobs site Himalayas receives only the role|Al guardar, el portal de empleo remoto Himalayas recibe solo/).waitFor();
   await page.getByText(/Portals, frequency and options|Portales, frecuencia y opciones/).click();
   assert.equal(await page.getByLabel(/Refresh frequency|Frecuencia de actualización/).inputValue(), '24');
   assert.equal(await page.getByRole('checkbox', { name: /Also prepare a resume|Preparar también un CV/ }).isChecked(), false);
