@@ -8,3 +8,6 @@ export * from './assisted.js';
 
 export * from './entries.js';
 export * from './version.js';
+export * from './ai.js';
+export * from './ai-documents.js';
+export * from './ai-budget.js';

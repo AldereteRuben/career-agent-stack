@@ -42,6 +42,8 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm --filter @career/api exec tsc --noEmit --project e2e/tsconfig.json
       - run: pnpm run test:unit
+      - name: Verify AI foundations with synthetic processes (no provider account)
+        run: pnpm run test:ai
       - run: pnpm run test:ui-logic
       - run: pnpm run test:sources
       - name: Verify automatic discovery with fictional sources
@@ -95,4 +97,6 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
       - run: pnpm run typecheck
       - run: pnpm run test:unit
+      - name: Verify AI foundations with synthetic processes (no provider account)
+        run: pnpm run test:ai
       - run: pnpm run test:ui-logic

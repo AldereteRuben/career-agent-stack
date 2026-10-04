@@ -22,6 +22,7 @@
     "bootstrap": "node scripts/bootstrap.mjs",
     "runner": "node scripts/assisted-help.mjs",
     "test:unit": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/*.test.ts",
+    "test:ai": "pnpm --filter @career/api exec tsc --project test/tsconfig.ai.json && pnpm --filter @career/api exec tsx --test ../../packages/domain/test/ai.test.ts ../../packages/domain/test/ai-budget.test.ts ../../packages/domain/test/ai-documents.test.ts test/ai-process.test.ts && node --test scripts/test/ai-capability-probes.test.mjs scripts/test/codex-capability-probe.test.mjs",
     "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs scripts/test/v040-migration.test.mjs scripts/test/v080-migration.test.mjs",
     "test:e2e": "pnpm run build:shared && pnpm --filter @career/api e2e",
     "test:evals": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/search-matching.test.ts ../../packages/domain/test/search-ranking.test.ts ../../packages/domain/test/search-release-probes.test.ts",
