@@ -11,7 +11,7 @@ type LocaleContextValue = { locale: Locale; setLocale: (locale: Locale) => void;
 const en: Record<string, string> = {
   'Ofertas encontradas': 'Found jobs', 'Todas tus ofertas': 'All your jobs',
   'Aún no hay ofertas': 'No jobs found yet',
-  'Quitar de guardadas': 'Unsave job', 'Añadida el': 'Added on',
+  'Quitar de guardadas': 'Unsave job',
   'Búsquedas automáticas por puesto o empresa': 'Automatic searches by role or company',
   'Preparación automática de candidaturas': 'Automatic application preparation',
   'Envío experimental autorizado en Lever': 'Experimental authorized Lever submission',
