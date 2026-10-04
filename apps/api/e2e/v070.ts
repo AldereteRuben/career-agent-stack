@@ -23,7 +23,7 @@ export const v070Scenario: Scenario = {
       await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
       await page.getByLabel('Puesto o palabras clave', { exact: true }).fill('Automation designer');
       await page.getByLabel('Empresa (opcional)', { exact: true }).fill(company);
-      await page.getByText('Fuentes y opciones', { exact: true }).click();
+      await page.getByText('Portales, frecuencia y opciones', { exact: true }).click();
       await page.getByLabel('Modalidad', { exact: true }).selectOption('remote');
       await page.getByRole('checkbox', { name: 'Himalayas', exact: true }).uncheck(); // Only the two seeded fictional caches.
       await page.getByRole('checkbox', { name: /Preparar también un CV/ }).check();
@@ -52,7 +52,8 @@ export const v070Scenario: Scenario = {
         }
         await page.screenshot({ path: join(artifacts, `v070-search-${locale}.png`), fullPage: true });
       }
-      const searchCard = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: `Automation designer · ${company}`, exact: true }) });
+      await page.getByRole('button', { name: /Manage searches/ }).click();
+      const searchCard = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: `Automation designer · ${company}`, exact: true }) });
       await searchCard.getByRole('button', { name: 'Pause', exact: true }).click();
       await eventually(async () => (await db.query<{ enabled: boolean }>('select enabled from saved_job_searches where id=$1', [search.id])).rows[0]!.enabled, (enabled) => !enabled, 'Pause is persisted');
       await searchCard.getByRole('button', { name: 'Edit', exact: true }).click();

@@ -104,7 +104,7 @@ export const v040Scenarios: Scenario[] = [
       const first = await api.post<{ id: string }>('/jobs/import', { company, title: 'Favorite designer', jobUrl: `https://example.com/${marker}/favorite` });
       await api.post('/jobs/import', { company, title: 'Other role', jobUrl: `https://example.com/${marker}/other` });
       await page.goto(new URL(`/jobs?q=${encodeURIComponent(company)}`, page.url()).toString()); await setLocale(page, 'es');
-      await page.locator('.job-card').filter({ hasText: 'Favorite designer' }).getByRole('button', { name: 'Añadir a favoritas', exact: true }).click();
+      await page.locator('.job-card').filter({ hasText: 'Favorite designer' }).getByRole('button', { name: 'Guardar oferta', exact: true }).click();
       await page.getByLabel('Mostrar ofertas', { exact: true }).selectOption('favorites');
       await eventually(() => page.locator('.job-card').count(), (count) => count === 1, 'Favorites filter');
       await page.reload(); await page.getByRole('link', { name: 'Favorite designer', exact: true }).waitFor();

@@ -2,7 +2,9 @@
 .card { display: grid; gap: 16px; padding: 20px; min-width: 0; overflow-wrap: anywhere; }
 .head { display: grid; justify-items: start; gap: 8px; min-width: 0; }
 .actions { display: flex; align-items: center; justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
-.next { display: grid; gap: 10px; justify-items: start; }
+.next { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: start; min-width: 0; max-width: 100%; }
+.next > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.next > a { box-sizing: border-box; white-space: normal; }
 .next > p { margin: 0; color: var(--muted); max-width: 70ch; }
 .card h2 { margin: 4px 0 0; }
 .card h3 { margin: 0 0 8px; font-size: 1rem; }

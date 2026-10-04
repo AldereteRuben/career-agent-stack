@@ -4,6 +4,8 @@ import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
+import type { Search } from '@/components/search-types';
+import { searchHealth, summarize } from '@/components/lib/search-status';
 import { useCallback, useEffect, useState } from 'react';
 import { api, errorMessage, formatDate } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
@@ -29,7 +31,7 @@ type Summary = {
 type ProfileCheck = 'fullName' | 'email' | 'country' | 'targetTitles' | 'workModes' | 'approvedFact';
 type InboxJob = { id: string; title: string; company: string; location: string | null; searchScore?: number | null; searchReasons?: string[]; sources?: Array<{ provider: string; url: string }> };
 type SearchInbox = { total: number; items: InboxJob[] };
-type HomeSearch = { id: string; enabled: boolean; nextRunAt: string | null; lastRunStatus: string | null; latestRun?: { status: string; finishedAt: string | null; error: string | null; sources: Array<{ status: string; error: string | null }> } | null };
+type HomeSearch = Search;
 type HomeDocument = { id: string; approvalStatus: string; reviewRequired?: boolean };
 
 /** Order matches the profile checklist in @career/domain. */
@@ -104,13 +106,11 @@ export default function HomePage() {
 
   const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers', 'preferences'].includes(step.key));
 
-  const inProgress = searches.some((search) => {
-    const status = search.latestRun?.status ?? search.lastRunStatus ?? '';
-    return ['QUEUED', 'RUNNING'].includes(status) || (status === 'PARTIAL' && search.latestRun?.finishedAt === null);
-  });
+  const searchSummary = summarize(searches);
+  const inProgress = searchSummary.active.length > 0;
   const inboxCount = inbox?.total ?? 0;
-  const sourceError = searches.some((search) => ['FAILED', 'INTERRUPTED'].includes(search.latestRun?.status ?? search.lastRunStatus ?? '') || Boolean(search.latestRun?.error) || search.latestRun?.sources.some((source) => ['FAILED', 'ERROR'].includes(source.status.toUpperCase()) || Boolean(source.error)));
-  const nextSearchAt = searches.filter((search) => search.enabled && search.nextRunAt).map((search) => search.nextRunAt!).sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  const sourceError = searchSummary.failed.length > 0 || searchSummary.limited.some((search) => searchHealth(search).failedProviders.length > 0);
+  const nextSearchAt = searchSummary.nextRunAt;
   const pausedSearches = searches.filter((search) => !search.enabled).length;
   const inboxReady = Boolean(inbox || searches.length || inboxError);
   const dailyAction = pendingResumes > 0

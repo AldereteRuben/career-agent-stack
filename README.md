@@ -4,7 +4,7 @@ Your private workspace to find jobs automatically, prepare applications from you
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.8.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.8.0.md)
+**Current release: v0.8.1** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.8.1.md)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -16,7 +16,7 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 - Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
 - Keep reusable answers with their question and country context.
 - Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
-- Search jobs by title or company, filter favorites and availability, archive or restore offers, and see explainable matching.
+- Search jobs by title or company, filter saved jobs and availability, archive or restore offers, and see explainable matching.
 - Generate versioned resumes with English or Spanish headings, zoom the PDF preview, and reuse earlier content without altering previous PDFs.
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
@@ -27,7 +27,7 @@ No AI subscription or API key is required. The app prepares application drafts f
 
 1. Open **Find jobs**. Enter a role or company; country and work mode are optional. A profile is not required to search.
 2. Save. The search appears immediately and checks sources in the background, then daily while the local service is running. Advanced options offer a 6, 12 or 24 hour interval.
-3. Use **All searches** or a search card; review **New**, **All**, **Saved** or **Archived** jobs. Results explain their match, geographic uncertainty, source and available dates. New arrivals wait behind an update notice while you read.
+3. Use **All my searches** or a visible search button; review **New**, **All**, **Saved** or **Archived** jobs. Results explain their match, geographic uncertainty, source and available dates. New arrivals wait behind an update notice while you read.
 4. Open an offer to prepare an application. Optional automatic preparation is off by default for new searches; enhanced searches allow at most five attempts per pass and ten per day. Related or geographically uncertain matches require review.
 5. Keep the local service running. Closing the browser tab is fine; a sleeping or powered-off computer cannot search.
 
@@ -37,7 +37,7 @@ Existing searches retain their sources and matching rules until you opt into enh
 
 ## Assisted applications
 
-Open **Prepared applications** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
+Open **My applications → To review** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 ## Start here
 
@@ -76,11 +76,11 @@ After initial setup, macOS users can double-click **Start Career Agent Stack.com
 ### 4. Take your first steps
 
 1. Choose **English** or **Español** using the language button.
-2. From **Home**, open **Getting started**. Save your name and email; job preferences can wait.
-3. Follow the guide to add and confirm one experience, then prepare and review your first PDF. You can return to the guide at any time; it uses your saved progress.
-4. Open **Find jobs** and save a role or company search. You can also add a job manually in **Saved jobs**.
-5. Open the job and choose **Prepare a resume for this job**. Follow the steps to complete your profile, choose PDF content and language, and review the preview.
-6. Approve the resume, then choose **Continue with this application**. The reviewed version stays linked to it. Record progress and notes in **My applications**. Lever assistance has separate consent; unsupported forms continue manually on the employer’s website.
+2. Open **Find jobs**, enter a role or company and select **Search and save**. A profile or resume is not required.
+3. Results appear automatically. Use **Save job** for jobs you want to keep; find them under **Saved**. **Manage searches** lets you edit or pause a search.
+4. Open a job and select **Prepare my application**. If details are missing, the guide asks for what is needed and keeps the job you chose.
+5. Review and approve the prepared resume, then **Continue application**. The approved PDF remains linked to it.
+6. Track progress in **My applications**. Lever assistance requires separate authorization; unsupported forms continue on the employer’s website. You can add a job manually in **Found jobs**.
 
 Resume preparation keeps its name, language and content selection separately for each job in the current tab, so you can return after editing your profile. These temporary drafts are cleared on sign-out and may be lost when closing the tab; generate a PDF to save a version. If selected profile details change, the app asks you to review the selection again. Returning from a job to its list keeps your search and filters.
 

@@ -5,6 +5,8 @@
 // The dashboard APIs used by this flow are deterministic route fixtures; only sign-in and health
 // checks reach the explicitly supplied isolated stack. The script never starts or touches 3000/3001.
 import assert from 'node:assert/strict';
+import { checkSearchUsability } from './e2e-v081-searches.mjs';
+import { checkApplicationUsability } from './e2e-v081-applications.mjs';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
@@ -136,6 +138,30 @@ try {
   await realPage.getByRole('link', { name: 'T08 Cached Product Designer' }).waitFor();
   await realPage.screenshot({ path: join(artifacts, 'cached-provider-result.png'), fullPage: true });
   console.log(`✓ Real cached-provider create/progress/results · ${[...observedStatuses].join(' → ')} · screenshot ${join(artifacts, 'cached-provider-result.png')}`);
+  // Real API semantics: a review in one search immediately changes every surface.
+  const jobId = realResults.items[0].id;
+  const post = async (path, data = {}) => {
+    const response = await realRequest.post(new URL(`/api/v1${path}`, ui).toString(), { headers: { Origin: ui.origin }, data });
+    assert.ok(response.ok(), `Mutation ${path} failed with ${response.status()}`);
+  };
+  const get = async (path) => {
+    const response = await realRequest.get(new URL(`/api/v1${path}`, ui).toString());
+    assert.ok(response.ok(), `Read ${path} failed with ${response.status()}`); return response.json();
+  };
+  await post(`/job-searches/${createdPayload.search.id}/results/${jobId}/review`);
+  assert.equal((await get('/jobs?scope=new&paged=true')).total, 0);
+  assert.equal((await get('/job-searches/results?view=new')).total, 0);
+  assert.equal((await get('/discovery')).unreadCount, 0);
+  assert.ok((await get(`/jobs/${jobId}`)).job.seenAt);
+  assert.ok((await get('/summary')).recentJobs.find((item) => item.id === jobId).seenAt);
+  assert.equal((await get('/job-searches')).searches.find((item) => item.id === createdPayload.search.id).lastNewCount, 0);
+  for (const decision of ['SHORTLISTED', 'ARCHIVED', 'UNREVIEWED']) {
+    await post(`/jobs/${jobId}/shortlist`, { decision });
+    assert.equal((await get('/jobs?scope=new&paged=true')).total, 0, 'Restoring keeps a job reviewed');
+    assert.equal((await get('/job-searches/results?view=new')).total, 0);
+  }
+  assert.ok((await get('/jobs?scope=active&paged=true')).items.some((item) => item.id === jobId));
+  console.log('✓ Real API review, save, archive and restore stay consistent across job/search lists, summary and discovery');
   const sessionCookies = await realContext.cookies(ui.toString());
   await realContext.close();
 
@@ -150,7 +176,7 @@ try {
   await page.route('**/api/v1/documents', (route) => responseJson(route, [{ id: 'doc-pending', name: 'Resume to review', revision: 1, approvalStatus: 'PENDING_REVIEW', reviewRequired: true }]));
   await page.route('**/api/v1/job-searches**', async (route) => {
     const request = route.request(); const url = new URL(request.url()); const path = url.pathname;
-    if (request.method() === 'GET' && path === '/api/v1/job-searches') return responseJson(route, { searches, coverage: {} });
+    if (request.method() === 'GET' && path === '/api/v1/job-searches') return responseJson(route, { searches: searches.map((search) => search.id === ids.legacy ? { ...search, lastNewCount: jobSeenAt ? 0 : 1 } : search), coverage: {} });
     if (request.method() === 'GET' && (path === '/api/v1/job-searches/results' || /\/api\/v1\/job-searches\/[^/]+\/results$/.test(path))) {
       const view = url.searchParams.get('view') ?? 'all';
       const singleSearch = searches.find((search) => path.includes(search.id));
@@ -187,32 +213,35 @@ try {
 
   await page.goto(new URL('/', ui).toString());
   await setLocale(page, 'es');
-  await page.getByText(/TU BANDEJA DE HOY|TODAY’S JOB INBOX/i).waitFor();
+  await page.getByText(/TU SIGUIENTE PASO|YOUR NEXT STEP/i).waitFor();
   await page.getByText('1 CV pendientes de revisión', { exact: true }).waitFor();
   await page.getByRole('link', { name: /Review resumes|Revisar CV/i }).waitFor();
   await page.screenshot({ path: join(artifacts, 'home-inbox-es.png'), fullPage: true });
   await page.goto(new URL('/searches?search=all&view=new', ui).toString());
-  await page.locator('#saved-searches-title').waitFor();
-  await page.getByText(/4 (búsquedas guardadas|saved searches)/i).first().waitFor();
+  await page.locator('#search-results-title').waitFor();
+  await page.getByRole('button', { name: /Gestionar búsquedas \(4\)|Manage searches \(4\)/ }).waitFor();
   await page.getByRole('link', { name: /Product Designer/ }).waitFor();
-  await page.getByText(/Checking your sources|Buscando en tus fuentes/).waitFor();
-  await page.getByText(/Source response complete|Respuesta de la fuente completa/).waitFor();
+  await page.getByText(/Checking job portals now|Consultando los portales ahora/).waitFor();
+  await page.getByText(/Details by portal|Detalles por portal/, { exact: true }).click();
+  await page.getByText(/Complete response|Respuesta completa/).first().waitFor();
   await page.getByText(/Can be checked again|Puede volver a consultarse/).waitFor();
   const appLink = page.locator('a[href^="/applications?id="]').first();
   await appLink.waitFor();
   assert.match(await appLink.getAttribute('href'), /returnTo=.*search%3Dall/);
-  await page.getByText(/Submission in progress|Envío en curso/).waitFor();
-  await page.getByText(/Waiting for review|Pendiente de revisión/).waitFor();
+  await page.getByText(/Submission in progress|Envío en curso/).first().waitFor();
+  await page.getByText(/Waiting for review|Pendiente de revisión/).first().waitFor();
   await page.getByText(/This job has records with different decisions or applications|Esta oferta tiene registros con decisiones o candidaturas diferentes/).waitFor();
+  await page.locator('#search-result-list details summary').first().click();
   await page.getByText(/Checked|Comprobada/).first().waitFor();
-  const legacyRefresh = page.getByRole('listitem').filter({ hasText: 'Legacy QA' }).getByRole('button', { name: /Refresh results|Actualizar resultados/ });
+  await page.getByRole('button', { name: /Manage searches|Gestionar búsquedas/ }).click();
+  const legacyRefresh = page.getByRole('listitem').filter({ hasText: 'Legacy QA' }).getByRole('button', { name: /Check now|Buscar ahora/ });
   assert.equal(await legacyRefresh.isEnabled(), true, 'Legacy PARTIAL without a finished run is not indefinitely in flight');
-  const partialRefresh = page.getByRole('listitem').filter({ hasText: 'Service Designer' }).getByRole('button', { name: /Refresh results|Actualizar resultados/ });
+  const partialRefresh = page.getByRole('listitem').filter({ hasText: 'Service Designer' }).getByRole('button', { name: /Check now|Buscar ahora/ });
   assert.equal(await partialRefresh.isEnabled(), false, 'An unfinished PARTIAL run stays in flight until it has finished');
-  const pausedRefresh = page.getByRole('listitem').filter({ hasText: 'Paused Designer' }).getByRole('button', { name: /Refresh results|Actualizar resultados/ });
+  const pausedRefresh = page.getByRole('listitem').filter({ hasText: 'Paused Designer' }).getByRole('button', { name: /Check now|Buscar ahora/ });
   assert.equal(await pausedRefresh.isEnabled(), true, 'Paused searches can refresh results');
   await pausedRefresh.click();
-  const scheduledRefresh = page.getByRole('listitem').filter({ hasText: 'Failed Analyst' }).getByRole('button', { name: /Refresh results|Actualizar resultados/ });
+  const scheduledRefresh = page.getByRole('listitem').filter({ hasText: 'Failed Analyst' }).getByRole('button', { name: /Check now|Buscar ahora/ });
   await waitEnabled(scheduledRefresh, 'A future schedule is not a provider cooldown');
   await scheduledRefresh.click();
   assert.equal(refreshRequests, 2);
@@ -228,19 +257,20 @@ try {
   await page.getByRole('button', { name: /Show new jobs|Mostrar nuevas ofertas/ }).click();
   await page.getByRole('link', { name: 'Design role 21', exact: true }).waitFor();
 
-  await page.getByRole('button', { name: 'Legacy QA', exact: true }).click();
-  await page.getByRole('button', { name: /Mark reviewed|Marcar revisada/, exact: true }).click();
-  await page.getByRole('heading', { name: /You are up to date|Estás al día/ }).waitFor();
+  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Legacy QA/ }).click();
+  await page.locator('#search-result-list details summary').first().click();
+  await page.getByRole('button', { name: /Mark as reviewed|Marcar como revisada/, exact: true }).click();
+  await page.getByRole('heading', { name: /No new jobs to review|No hay ofertas nuevas por revisar/ }).waitFor();
   assert.ok(jobSeenAt, 'Per-search review should be sent only after the person marks the result reviewed');
 
-  await page.getByRole('button', { name: /Paused Designer/ }).click();
-  await page.getByRole('heading', { name: 'This search is paused' }).waitFor().catch(async () => page.getByRole('heading', { name: 'Esta búsqueda está en pausa' }).waitFor());
+  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Paused Designer/ }).click();
+  await page.getByRole('heading', { name: /^(Search paused|Búsqueda en pausa)$/ }).waitFor();
   await page.getByRole('button', { name: /Resume search|Reanudar búsqueda/ }).waitFor();
-  await page.getByRole('button', { name: /Failed Analyst/ }).focus();
+  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Failed Analyst/ }).focus();
   await page.keyboard.press('Enter');
-  await page.getByRole('heading', { name: /Matching jobs.*Failed Analyst|Ofertas encontradas.*Failed Analyst/ }).waitFor();
-  await page.getByRole('heading', { name: /A source did not respond|Una fuente no respondió/ }).waitFor();
-  await page.getByRole('button', { name: /^(Edit search|Editar búsqueda)$/ }).click();
+  await page.locator('#search-results-title').filter({ hasText: 'Failed Analyst' }).waitFor();
+  await page.getByRole('heading', { name: /Could not complete the latest check|No pudimos completar la última consulta/ }).waitFor();
+  await page.locator('#search-results').getByRole('button', { name: /^(Edit|Editar)$/ }).first().click();
   const prepConsent = page.getByRole('checkbox', { name: /Also prepare a resume|Preparar también un CV/ });
   assert.equal(await prepConsent.isChecked(), true);
   await page.getByLabel(/Role or keywords|Puesto o palabras clave/).fill('Changed Analyst');
@@ -250,7 +280,7 @@ try {
   assert.equal(patchBodies.at(-1).autoPrepare, true, 'Preparation can continue only after the person opts in again');
 
   const legacyCard = page.getByRole('listitem').filter({ hasText: 'Legacy QA' });
-  await legacyCard.getByRole('button', { name: 'Legacy QA', exact: true }).click();
+  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Legacy QA/ }).click();
   await legacyCard.getByRole('button', { name: /^(Edit|Editar)$/ }).click();
   const consent = page.getByRole('checkbox', { name: /Use improved matching and newer sources|Probar coincidencias mejoradas y fuentes nuevas/ });
   assert.equal(await consent.isChecked(), false, 'Legacy search upgrade must require an explicit opt-in');
@@ -258,7 +288,7 @@ try {
   assert.equal(patchBodies.at(-1).matcherVersion, undefined, 'Editing a legacy search without consent must preserve its matcher version');
   assert.equal(searches.find((search) => search.id === ids.legacy).matcherVersion, 1);
 
-  await legacyCard.getByRole('button', { name: 'Legacy QA', exact: true }).click();
+  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Legacy QA/ }).click();
   await legacyCard.getByRole('button', { name: /^(Edit|Editar)$/ }).click();
   await page.getByRole('checkbox', { name: /Use improved matching and newer sources|Probar coincidencias mejoradas y fuentes nuevas/ }).check();
   const himalayas = page.getByRole('checkbox', { name: 'Himalayas', exact: true });
@@ -272,8 +302,8 @@ try {
   await page.getByRole('button', { name: /New search|Nueva búsqueda/, exact: true }).click();
   await page.getByLabel(/Role or keywords|Puesto o palabras clave/).fill('Service Designer');
   assert.equal(await page.getByLabel(/Work mode|Modalidad/).inputValue(), 'any', 'Modality is available in the first-use form');
-  await page.getByText(/When saved, Himalayas receives only your role|Al guardar, Himalayas recibe solo/).waitFor();
-  await page.getByText(/Sources and options|Fuentes y opciones/).click();
+  await page.getByText(/When you save, Himalayas receives only the role|Al guardar, Himalayas recibe solo/).waitFor();
+  await page.getByText(/Portals, frequency and options|Portales, frecuencia y opciones/).click();
   assert.equal(await page.getByLabel(/Refresh frequency|Frecuencia de actualización/).inputValue(), '24');
   assert.equal(await page.getByRole('checkbox', { name: /Also prepare a resume|Preparar también un CV/ }).isChecked(), false);
   await page.getByRole('button', { name: /Search and save|Buscar y guardar/, exact: true }).click();
@@ -303,15 +333,18 @@ try {
   assert.ok(textZoom.scrollWidth <= textZoom.clientWidth + 1, `Search page must reflow without horizontal overflow at 200% text size: ${JSON.stringify(textZoom)}`);
   await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
   await setLocale(page, 'en');
-  await page.locator('#saved-searches-title').waitFor();
-  await page.getByText('Search saved. You can review jobs while the search continues.', { exact: true }).waitFor();
-  assert.equal(await page.getByText('Búsqueda guardada. Puedes revisar las ofertas mientras continúa la consulta.', { exact: true }).count(), 0);
+  await page.locator('#search-results-title').waitFor();
+  await page.getByText('Search saved. Jobs will appear here as soon as the portals respond.', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Búsqueda guardada. Las ofertas aparecerán aquí en cuanto respondan los portales.', { exact: true }).count(), 0);
   for (const width of viewportWidths) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1), false, `English search page must not overflow horizontally at ${width}px`);
     if (width === 320) await page.screenshot({ path: join(artifacts, 'searches-mobile-en.png'), fullPage: true });
     if (width === 320 || width === 1440) await page.screenshot({ path: join(artifacts, `searches-${width}-en.png`) });
   }
+  await checkSearchUsability({ browser, uiUrl: ui.origin, cookies: sessionCookies, artifacts });
+  const applicationChecks = await checkApplicationUsability({ browser, uiUrl: ui.origin, cookies: sessionCookies, artifacts });
+  console.log('✓ v0.8.1 guided application checks', JSON.stringify(applicationChecks));
   assert.deepEqual(browserErrors, [], `Unexpected browser errors: ${browserErrors.join(' | ')}`);
   console.log(`✓ Home inbox, search states, review, v1 consent, v2 defaults, consent retry, keyboard, ES/EN, widths ${viewportWidths.join('/')}px and 200% text size · screenshots ${artifacts}`);
 } finally {

@@ -1,2 +1,2 @@
 /** Product release displayed by the API and dashboard. */
-export const RELEASE_VERSION = 'v0.8.0';
+export const RELEASE_VERSION = 'v0.8.1';

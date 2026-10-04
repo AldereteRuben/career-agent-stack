@@ -4,7 +4,7 @@ Tu espacio privado para buscar ofertas automáticamente, preparar candidaturas c
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.8.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.8.0.md)
+**Versión actual: v0.8.1** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.8.1.md)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -15,7 +15,7 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 
 - Completar experiencia laboral y formación con fechas editables; corregir, archivar y confirmar los datos que se usan en tu CV.
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
-- Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive y Arbeitnow. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
+- Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive, Arbeitnow e Himalayas. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
 - Generar, visualizar, revisar y descargar versiones de tu CV. Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
@@ -25,16 +25,16 @@ No necesitas una suscripción de IA ni una clave de API. La app prepara candidat
 
 ## Preparar una candidatura
 
-Abre una oferta y elige **Preparar CV para esta vacante**. Los pasos **Tu perfil → Preparar CV → Revisar y solicitar** conservan la oferta mientras completas tus datos. Elige el idioma del PDF, revisa su vista previa con zoom y aprueba la versión. **Continuar con esta solicitud** guarda el CV elegido en ella; podrás descargarlo o cambiarlo antes del envío.
+Abre una oferta y elige **Preparar mi solicitud**. La app selecciona experiencia confirmada para preparar un CV. Si faltan datos, la guía te ayuda a completarlos conservando la oferta. Revisa y aprueba el PDF; después elige **Continuar con la solicitud**. El CV aprobado sigue vinculado a ella y podrás consultarlo antes del envío.
 
-En las ofertas puedes buscar por puesto o empresa, filtrar favoritas y disponibilidad, y archivar o restaurar las que quieras. El idioma del PDF cambia encabezados y etiquetas de fechas: tus descripciones no se traducen automáticamente.
+En las ofertas puedes buscar por puesto o empresa, filtrar guardadas y disponibilidad, y archivar o restaurar las que quieras. El idioma del PDF cambia encabezados y etiquetas de fechas: tus descripciones no se traducen automáticamente.
 
 ## Búsqueda automática de ofertas
 
 1. Abre **Buscar empleo**. Indica un puesto o una empresa; país y modalidad son opcionales. No necesitas completar tu perfil para buscar.
 2. Guarda. La búsqueda aparece inmediatamente y consulta en segundo plano; después vuelve a consultar cada día mientras el servicio local esté encendido. Las opciones avanzadas permiten intervalos de 6, 12 o 24 horas.
-3. Usa **Todas las búsquedas** o la tarjeta de una búsqueda. Revisa ofertas **Nuevas**, **Todas**, **Guardadas** o **Archivadas**, con motivos de coincidencia, datos geográficos pendientes, fuente y fechas disponibles. Las nuevas llegadas esperan tras un aviso mientras lees.
-4. Abre una oferta para preparar la candidatura. La preparación automática es opcional y empieza desactivada en búsquedas nuevas; las búsquedas mejoradas permiten cinco intentos por pasada y diez al día. Los puestos relacionados o con restricciones geográficas desconocidas requieren revisión.
+3. Usa **Todas mis búsquedas** o el botón visible de una búsqueda. Revisa ofertas **Nuevas**, **Todas**, **Guardadas** o **Archivadas**, con motivos de coincidencia, datos geográficos pendientes, fuente y fechas disponibles. Las nuevas llegadas esperan tras un aviso mientras lees.
+4. Abre una oferta para preparar la candidatura. La preparación automática es opcional y empieza desactivada en búsquedas nuevas; las búsquedas mejoradas permiten cinco intentos por consulta y diez al día. Los puestos relacionados o con restricciones geográficas desconocidas requieren revisión.
 5. Mantén el servicio local encendido. Puedes cerrar la pestaña; un equipo suspendido o apagado no puede buscar.
 
 Las fuentes son **Remotive**, **Arbeitnow**, **Himalayas** y las ofertas locales de empresas que has confirmado. La cobertura varía por país y profesión, y puede ser parcial. Himalayas recibe puesto, empresa y país reconocido; buscar nunca transmite tu CV ni tus datos de contacto. Su caché dura 24 horas, con un máximo de tres páginas por consulta y 100 peticiones diarias por instalación. Remotive/Arbeitnow conservan su caché compartida de seis horas. Actualizar resultados locales respeta estas esperas.
@@ -82,11 +82,11 @@ Después de la preparación inicial, en macOS puedes abrir **Start Career Agent 
 ### 4. Primer recorrido
 
 1. Elige **Español** o **English** con el botón de idioma.
-2. Desde **Inicio**, abre **Guía para empezar**. Guarda tu nombre y correo; las preferencias de empleo pueden esperar.
-3. Sigue la guía para añadir y confirmar una experiencia y preparar y revisar tu primer PDF. Puedes volver cuando quieras: el progreso se calcula con lo que has guardado.
-4. En **Buscar empleo**, guarda tu primera búsqueda. También puedes añadir una oferta manualmente desde **Ofertas guardadas**.
-5. Abre la oferta y elige **Preparar CV para esta vacante**. Completa tu perfil, selecciona el contenido y el idioma del PDF y revisa la vista previa.
-6. Aprueba el CV y pulsa **Continuar con esta solicitud**. El CV queda vinculado a ella. En **Mis solicitudes**, registra avances y notas; la asistencia de Lever requiere una autorización separada y los formularios no compatibles se completan manualmente en la web de la empresa.
+2. Abre **Buscar empleo**, indica un puesto o una empresa y pulsa **Buscar y guardar**. No necesitas perfil ni CV para empezar.
+3. Las ofertas aparecen automáticamente. Pulsa **Guardar oferta** en las que te interesen; las encontrarás en **Guardadas**. **Gestionar búsquedas** permite editar o pausar.
+4. Abre una oferta y pulsa **Preparar mi solicitud**. Si faltan datos, la guía pide lo necesario y conserva la oferta elegida.
+5. Revisa y aprueba el CV preparado; después pulsa **Continuar con la solicitud**. El PDF aprobado sigue vinculado a ella.
+6. Lleva el seguimiento en **Mis solicitudes**. Lever requiere autorización separada; los formularios no compatibles se completan en la web de la empresa. Puedes añadir ofertas a mano en **Ofertas encontradas**.
 
 La preparación del CV conserva nombre, idioma y selección por oferta en esta pestaña, para que puedas volver después de editar tu perfil. Es temporal: se borra al cerrar sesión y puede perderse al cerrar la pestaña; genera el PDF para guardar una versión. Si cambian los datos seleccionados, la app te pide revisarlos. Al volver de una oferta a la lista, se conservan la búsqueda y los filtros.
 

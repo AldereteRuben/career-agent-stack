@@ -23,9 +23,9 @@ const successMessages = {
 const actionMessages = {
   saved: ['Oferta guardada.', 'Job saved.'],
   unsaved: ['Oferta quitada de guardadas.', 'Job removed from saved.'],
-  archived: ['Oferta descartada. Puedes recuperarla en Descartadas.', 'Job discarded. You can restore it from Discarded.'],
+  archived: ['Oferta archivada. Puedes recuperarla en Archivadas.', 'Job archived. You can restore it from Archived.'],
   restored: ['Oferta recuperada.', 'Job restored.'],
-  reviewed: ['Marcada como vista.', 'Marked as seen.'],
+  reviewed: ['Marcada como revisada.', 'Marked as reviewed.'],
 } as const;
 
 const defaultProviders: ProviderId[] = ['remotive', 'arbeitnow', 'himalayas'];
@@ -283,7 +283,7 @@ export default function SearchesPage() {
   const changeSort = (next: SearchSort) => { void choose(selectedId, view, next, 0, true, false); };
 
   const filters: Array<{ id: SearchView; es: string; en: string }> = [
-    { id: 'new', es: 'Nuevas', en: 'New' }, { id: 'all', es: 'Todas', en: 'All' }, { id: 'saved', es: 'Guardadas', en: 'Saved' }, { id: 'archived', es: 'Descartadas', en: 'Discarded' },
+    { id: 'new', es: 'Nuevas', en: 'New' }, { id: 'all', es: 'Todas', en: 'All' }, { id: 'saved', es: 'Guardadas', en: 'Saved' }, { id: 'archived', es: 'Archivadas', en: 'Archived' },
   ];
   const scopeUnread = selectedSearch ? selectedSearch.lastNewCount : unreadTotal;
   const pageCount = Math.ceil(total / 20);
@@ -296,7 +296,7 @@ export default function SearchesPage() {
   const count = (n: number, one: [string, string], many: [string, string]) => `${n} ${n === 1 ? t(...one) : t(...many)}`;
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} description={searches.length ? t('Ofertas nuevas de tus búsquedas, actualizadas automáticamente.', 'New jobs from your searches, updated automatically.') : t('Dinos qué trabajo buscas y te traemos ofertas automáticamente.', 'Tell us what job you want and we will bring you jobs automatically.')} action={searches.length > 0 ? <div className={styles.actions}>{!formOpen && <Button variant="secondary" disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button>}<a href="/jobs?scope=favorites" className="button button-quiet">{t('Ver guardadas', 'View saved')}</a></div> : undefined} />
+    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} description={searches.length ? undefined : t('Dinos qué trabajo buscas y te traemos ofertas automáticamente.', 'Tell us what job you want and we will bring you jobs automatically.')} action={searches.length > 0 ? <div className={styles.actions}>{!formOpen && <Button variant="secondary" disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button>}<a href="/jobs?scope=favorites" className="button button-quiet">{t('Ver guardadas', 'View saved')}</a></div> : undefined} />
     {busy === 'form' && <Notice>{editing ? t('Guardando cambios…', 'Saving changes…') : t('Guardando la búsqueda…', 'Saving your search…')}</Notice>}
     {loadError && <Notice tone={listFailed ? 'error' : 'warning'} actions={listFailed ? <Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button> : undefined}>{loadError}</Notice>}
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}
@@ -309,11 +309,11 @@ export default function SearchesPage() {
         <SearchStatus scope={scope} single={Boolean(selectedSearch) || searches.length === 1} locale={locale} t={t} sourceName={sourceName} dateTime={dateTime} busy={busy !== ''} onRetry={(search) => void runAction(search, 'refresh')} />
         <div className={styles.scopeBar}>
           <div className={styles.scopeField}>
-            <label htmlFor="search-scope">{t('Ofertas de', 'Jobs from')}</label>
-            <select id="search-scope" value={selectedId || 'all'} onChange={(event) => void choose(event.target.value === 'all' ? '' : event.target.value, view, sort, 0, true, false)}>
-              <option value="all">{t('Todas mis búsquedas', 'All my searches')}{unreadTotal ? ` (${count(unreadTotal, ['nueva', 'new'], ['nuevas', 'new'])})` : ''}</option>
-              {searches.map((search) => <option key={search.id} value={search.id}>{searchName(search, anyRole)}{search.lastNewCount ? ` (${count(search.lastNewCount, ['nueva', 'new'], ['nuevas', 'new'])})` : ''}{search.enabled ? '' : t(' · en pausa', ' · paused')}</option>)}
-            </select>
+            <span id="search-scope-label">{t('Tus búsquedas', 'Your searches')}</span>
+            <div className={styles.scopeChoices} role="group" aria-labelledby="search-scope-label">
+              <button type="button" aria-pressed={!selectedId} onClick={() => void choose('', view, sort, 0, true, false)}>{t('Todas mis búsquedas', 'All my searches')}{unreadTotal ? ` (${unreadTotal})` : ''}</button>
+              {searches.map((search) => <button key={search.id} type="button" aria-pressed={selectedId === search.id} onClick={() => void choose(search.id, view, sort, 0, true, false)}>{searchName(search, anyRole)}{search.lastNewCount ? ` (${search.lastNewCount})` : ''}{search.enabled ? '' : t(' · en pausa', ' · paused')}</button>)}
+            </div>
           </div>
           <div className={styles.actions}>
             {selectedSearch && <><Button variant="quiet" disabled={busy !== ''} onClick={() => beginEdit(selectedSearch)}>{t('Editar', 'Edit')}</Button><Button variant="quiet" disabled={busy !== ''} onClick={() => void runAction(selectedSearch, 'toggle')}>{selectedSearch.enabled ? t('Pausar', 'Pause') : t('Reanudar', 'Resume')}</Button></>}

@@ -65,8 +65,9 @@ export const v071Scenarios: Scenario[] = [
         assert.equal(await role.inputValue(), 'Draft kept after failure');
         assert.equal(await page.locator('#search-form-error').isVisible(), true);
         failSource = true;
-        await page.getByRole('button', { name: 'Actualizar', exact: true }).click();
-        await page.getByRole('heading', { name: 'Una fuente no respondió', exact: true }).waitFor();
+        await page.getByRole('button', { name: /Gestionar búsquedas/ }).click();
+        await page.getByRole('listitem').filter({ hasText: fixture.company }).getByRole('button', { name: 'Buscar ahora', exact: true }).click();
+        await page.getByRole('heading', { name: 'No pudimos completar la última consulta', exact: true }).waitFor();
         assert.equal(await page.getByText(/Revisa la escritura del puesto/).count(), 0, 'Provider errors do not ask the user to rewrite valid filters');
         note('Fictional cached feed and intercepted local responses; idle polling, persistent validation, failed save and failed source recovery.');
       } finally {

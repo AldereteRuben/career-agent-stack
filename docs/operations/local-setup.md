@@ -13,7 +13,7 @@ With Docker instead of Homebrew PostgreSQL, open Docker Desktop and skip the fir
 
 ## First run
 
-The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postgresql@17 && brew services start postgresql@17`). Docker Compose is a fallback that bootstrap uses only when nothing answers on the database port and Docker is running; it was not available on the machine where v0.2 was verified. Linux works with the same commands but has not been verified; Windows is not supported.
+The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postgresql@17 && brew services start postgresql@17`). Docker Compose is a fallback that bootstrap uses only when nothing answers on the database port and Docker is running; it was not available on the machine where v0.2 was verified. CI checks builds on Linux and Windows; complete installation and browser journeys on those systems have not been verified.
 
 1. Use Node.js 24.x and pnpm 11 (`.node-version` is read by fnm; the `.command` launcher also asks nvm for it).
 2. Run `node scripts/bootstrap.mjs` (or `pnpm run bootstrap`, or just double-click `Start Career Agent Stack.command`, which runs it when `.env` is missing). It is safe to repeat and resumes after a failure:
@@ -25,9 +25,9 @@ The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postg
 
    If any step fails, there is no `.env`, so nothing points at a half-prepared database. The message says what to fix in Spanish and English; re-running continues from `.env.pending` with the same keys, database name and ports. Roles and databases the run already created carry its mark and are reused; a role or database with the same name that it did **not** create is refused, never reused.
 3. Run `pnpm start` (or double-click `Start Career Agent Stack.command`). On first sign-in, use the token in `data/setup-token` (the `.command` file copies it to the clipboard). The token is consumed once.
-4. Create a user-approved career profile and add a board. Verify the company association and the provider's public read API before enabling it.
+4. Open **Find jobs** and save a role or company search. Searching needs no profile. Open a matching job and choose **Prepare my application** when you are ready; the guide asks for missing details. Following individual company boards is optional.
 
-No board is enabled by bootstrap or demo seeding. An empty board registry means discovery is not configured, not that no relevant jobs exist.
+No board is enabled by bootstrap or demo seeding. An empty board registry only means no individual companies are followed. Role and company searches have their own settings in **Find jobs**.
 
 ### Bootstrap options
 

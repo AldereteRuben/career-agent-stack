@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1
+
+- Put job results first, keep searches visible as compact choices, and move management and portal detail into secondary controls.
+- Distinguish running, failed, limited, paused, first empty and already-reviewed searches; adjusting a search opens the correct edit flow.
+- Share reviewed/saved/archived state across search results, found jobs and counts. Restoring a job keeps it reviewed; safe identity groups share decisions and conflicting groups stay separate.
+- Refresh deduplicated totals and each search count immediately after a decision, preserving result focus and background-arrival behavior.
+- Use Found jobs for the complete list and Saved for chosen jobs, with consistent ES/EN actions and keyboard-accessible filters.
+- Guide missing profile details with the job context preserved. Approved resumes continue toward the application; tracking and PDF inspection stay available as secondary actions.
+- Improve card spacing and mobile result visibility, and add isolated regression coverage for these paths.
+- Upgrade and verified limits: [v0.8.1](docs/releases/v0.8.1.md). No new migration or source.
+
 ## 0.8.0
 
 - Save searches promptly and process persisted, revision-bound runs in the background, with per-source progress and recovery.

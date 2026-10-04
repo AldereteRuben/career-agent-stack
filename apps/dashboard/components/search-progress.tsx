@@ -23,7 +23,7 @@ export function SearchStatus({ scope, single, locale, t, sourceName, dateTime, b
     ? t('Consultando los portales ahora. Las ofertas aparecerán aquí en cuanto respondan.', 'Checking job portals now. Jobs will appear here as soon as they respond.')
     : summary.allPaused
       ? t(single ? 'Búsqueda en pausa: no buscaremos ofertas nuevas hasta que la reanudes.' : 'Búsquedas en pausa: no buscaremos ofertas nuevas hasta que reanudes alguna.', single ? 'Search paused: we will not look for new jobs until you resume it.' : 'Searches paused: we will not look for new jobs until you resume one.')
-      : next ? t(`Buscando por ti · próxima consulta ${next}`, `Searching for you · next check ${next}`) : t('Buscando por ti automáticamente', 'Searching for you automatically');
+      : next ? t(`Búsqueda automática activa · próxima consulta ${next}`, `Automatic search on · next check ${next}`) : t('Búsqueda automática activa', 'Automatic search on');
   const failedRetry = single && summary.failed.length === 1 && onRetry ? summary.failed[0] : undefined;
   const partialFailures = scope.flatMap((search) => { const health = searchHealth(search); return health.state === 'limited' ? health.failedProviders : []; });
   const limitedCoverage = summary.limited.some((search) => { const health = searchHealth(search); return health.limitedProviders.length > 0 || !health.failedProviders.length; });
@@ -31,7 +31,7 @@ export function SearchStatus({ scope, single, locale, t, sourceName, dateTime, b
   const withDetails = scope.filter((search) => search.latestRun?.sources?.length || search.latestRun?.error || search.lastError);
   return <section className={styles.statusBar} aria-label={t('Estado de la búsqueda automática', 'Automatic search status')}>
     <p className={styles.statusHeadline} role="status">{headline}</p>
-    {!summary.allPaused && <p className={styles.statusHint}>{t('Puedes cerrar esta pestaña: seguiremos buscando mientras Career Stack siga en marcha en este ordenador.', 'You can close this tab: we keep searching while Career Stack keeps running on this computer.')}</p>}
+    {!summary.allPaused && <p className={styles.statusHint}>{t('Puedes cerrar la pestaña. Deja Career Stack funcionando en tu equipo.', 'You can close this tab. Keep Career Stack running on your computer.')}</p>}
     {summary.failed.length > 0 && <p className={styles.statusProblem}>
       {single ? t('La última consulta no se pudo completar.', 'The latest check could not be completed.') : t(`No se pudo completar la última consulta de: ${names(summary.failed)}.`, `The latest check could not be completed for: ${names(summary.failed)}.`)}
       {failedSources && <>{' '}{t(`Sin respuesta de: ${failedSources}.`, `No response from: ${failedSources}.`)}</>}
@@ -84,12 +84,12 @@ export function SearchEmptyState({ kind, matchesTotal, nextCheck, busy, t, onRet
   const copy: Record<EmptyKind, [string, string]> = {
     loadError: [t('No pudimos cargar los resultados', 'Could not load results'), t('Vuelve a intentarlo. Esto no inicia otra consulta a los portales.', 'Try again. This does not start a new portal check.')],
     noSaved: [t('Aún no has guardado ofertas', 'No saved jobs yet'), t('Pulsa Guardar en las ofertas que te interesen y las encontrarás aquí.', 'Select Save on jobs that interest you and you will find them here.')],
-    noArchived: [t('No hay ofertas descartadas', 'No discarded jobs'), t('Las ofertas que descartes aparecerán aquí y podrás recuperarlas.', 'Jobs you discard appear here so you can restore them.')],
+    noArchived: [t('No hay ofertas archivadas', 'No archived jobs'), t('Las ofertas que archives aparecerán aquí y podrás recuperarlas.', 'Jobs you archive appear here so you can restore them.')],
     searching: [t('Estamos buscando ofertas', 'Searching for jobs'), t('Las ofertas aparecerán aquí en cuanto respondan los portales. Puedes cerrar esta pestaña mientras tanto.', 'Jobs will appear here as soon as the portals respond. You can close this tab meanwhile.')],
     paused: [t('Búsqueda en pausa', 'Search paused'), t('No buscaremos ofertas nuevas hasta que la reanudes.', 'We will not look for new jobs until you resume it.')],
     failed: [t('No pudimos completar la última consulta', 'Could not complete the latest check'), [next('Lo intentaremos de nuevo', 'We will try again'), matchesTotal ? t(`Las ${matchesTotal} ofertas ya encontradas siguen en Todas.`, `The ${matchesTotal} jobs already found are still in All.`) : ''].filter(Boolean).join(' ') || t('Puedes reintentarlo ahora.', 'You can try again now.')],
     pending: [t('Tu primera consulta está a punto de empezar', 'Your first check is about to start'), t('Las ofertas aparecerán aquí en cuanto respondan los portales.', 'Jobs will appear here as soon as the portals respond.')],
-    noMatches: [t('Todavía no hay coincidencias', 'No matches yet'), [t('Los portales no tienen ahora ofertas que encajen con esta búsqueda.', 'The portals have no jobs that fit this search right now.'), next('Volveremos a buscar', 'We will check again'), t('Para ver más, prueba a quitar la ubicación o incluir puestos relacionados.', 'To see more, try removing the location or including related roles.')].filter(Boolean).join(' ')],
+    noMatches: [t('Todavía no hay coincidencias', 'No matches yet'), [t('Todavía no encontramos ofertas con estos criterios.', 'We have not found jobs matching these criteria yet.'), next('Volveremos a buscar', 'We will check again'), t('Para ver más, prueba a quitar la ubicación o incluir puestos relacionados.', 'To see more, try removing the location or including related roles.')].filter(Boolean).join(' ')],
     caughtUp: [t('No hay ofertas nuevas por revisar', 'No new jobs to review'), [t(`Ya viste ${matchesTotal === 1 ? 'la oferta encontrada; sigue' : `las ${matchesTotal} ofertas encontradas; siguen`} en Todas.`, `You have seen ${matchesTotal === 1 ? 'the job found; it is' : `the ${matchesTotal} jobs found; they are`} still in All.`), next('Próxima consulta', 'Next check')].filter(Boolean).join(' ')],
     unknown: [t('No hay ofertas que mostrar', 'No jobs to show'), t('Prueba con otro filtro o vuelve más tarde.', 'Try another filter or come back later.')],
   };

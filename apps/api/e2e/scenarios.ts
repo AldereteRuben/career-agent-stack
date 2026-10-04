@@ -61,7 +61,7 @@ export const scenarios: Scenario[] = [
     async run({ page, uiUrl, token }) {
       await signIn(page, uiUrl, await token());
       await setLocale(page, 'es');
-      await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Ofertas guardadas/i }).waitFor();
+      await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Ofertas encontradas/i }).waitFor();
       await setLocale(page, 'en');
       await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Jobs/i }).waitFor();
       await page.waitForFunction(() => document.title === 'Career Stack · Your career space');

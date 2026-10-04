@@ -43,7 +43,7 @@ export function SearchResultCard({ job, returnTo, view, busy, t, sourceName, onS
     <div className={styles.resultActions}>
       <Link className="button" href={applicationHref ?? jobHref} aria-describedby={titleId}>{applicationHref ? applicationLabel : t('Ver oferta', 'View job')}</Link>
       {!archived && <Button variant="secondary" disabled={busy} aria-pressed={saved} aria-describedby={titleId} onClick={saved ? onUnsave : onSave}>{saved ? t('Quitar de guardadas', 'Unsave job') : t('Guardar oferta', 'Save job')}</Button>}
-      <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onArchive}>{archived ? t('Recuperar', 'Restore') : t('Descartar', 'Discard')}</Button>
+      <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onArchive}>{archived ? t('Recuperar', 'Restore') : t('Archivar', 'Archive')}</Button>
     </div>
     <details className={styles.moreReasons}>
       <summary aria-describedby={titleId}>{t('Más detalles', 'More details')}</summary>
@@ -55,7 +55,7 @@ export function SearchResultCard({ job, returnTo, view, busy, t, sourceName, onS
         {checked.map((source) => <small key={`checked:${source.provider}:${source.url}`}>{t('Comprobada', 'Checked')} · {sourceName(source.provider)} · {formatDate(source.fetchedAt!, spanish)}</small>)}
         {(job.duplicateCount ?? 0) > 1 && <small>{t(`Publicada en ${job.duplicateCount} sitios; la mostramos una vez.`, `Listed in ${job.duplicateCount} places; shown once.`)}</small>}
         <div className={styles.actions}>
-          {canReview && <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onReview}>{t('Marcar como vista', 'Mark as seen')}</Button>}
+          {canReview && <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onReview}>{t('Marcar como revisada', 'Mark as reviewed')}</Button>}
           {job.canonicalUrl && <a className="button button-quiet" href={job.canonicalUrl} target="_blank" rel="noopener noreferrer">{t('Anuncio original', 'Original listing')}</a>}
         </div>
       </div>

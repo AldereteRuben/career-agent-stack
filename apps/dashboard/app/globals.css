@@ -3263,7 +3263,7 @@ main:focus {
 .preparation-action { padding: 20px; margin-block: 20px; }
 .preparation-action > h2 { margin: 0 0 8px; }
 .preparation-action > p { color: var(--muted); max-width: 75ch; }
-.preparation-action > .card { margin-top: 16px; padding: 16px; }
+.preparation-action > .card, .preparation-feedback > .card { margin-top: 16px; padding: 16px; }
 
 .fit-explanation > summary { cursor: pointer; font-weight: 600; padding-block: 8px; }
 .fit-explanation[open] > summary { margin-bottom: 16px; }
