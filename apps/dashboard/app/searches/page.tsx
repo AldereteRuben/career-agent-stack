@@ -68,6 +68,13 @@ type ResultsPayload = { items: SearchJob[]; total: number; resultVersion?: strin
 /** `quiet` applies fresh results without a loading state (after a card action); `poll` never moves a list the person is reading. */
 type LoadMode = 'foreground' | 'poll' | 'quiet';
 const viewPath = (search: string) => search ? `/job-searches/${encodeURIComponent(search)}/results` : '/job-searches/results';
+/** Opens every closed disclosure around a field before focusing it, so focus never lands on a hidden control. */
+function revealAndFocus(id: string) {
+  const element = document.getElementById(id); if (!element) return false;
+  for (let details = element.parentElement?.closest('details'); details; details = details.parentElement?.closest('details')) details.open = true;
+  element.focus(); return document.activeElement === element;
+}
+const fieldElementId = (field: string) => field === 'providers' ? 'search-provider-remotive' : `search-${field}`;
 
 export default function SearchesPage() {
   const { locale } = useLocale(); const es = locale === 'es';
@@ -95,6 +102,9 @@ export default function SearchesPage() {
   const searchesRef = useRef<Search[]>([]); const resultVersionRef = useRef<string | number | undefined>(undefined); const totalRef = useRef(0); const resultItemsRef = useRef<SearchJob[]>([]); const resultViewRef = useRef('');
   const errorFocus = useErrorFocus(error);
   const selectedSearch = searches.find((search) => search.id === selectedId);
+  /** With exactly one saved search there is nothing to choose between; its controls sit by the results. */
+  const sole = searches.length === 1 ? searches[0] : undefined;
+  const current = selectedSearch ?? sole;
   const scope = selectedSearch ? [selectedSearch] : searches;
   const summary = summarize(searches);
   const anyRunning = summary.active.length > 0;
@@ -185,7 +195,7 @@ export default function SearchesPage() {
   useEffect(() => { if (formOpen && focusForm.current) { titleRef.current?.focus(); focusForm.current = false; } }, [formOpen, editing]);
   useEffect(() => {
     if (!formError) return;
-    document.getElementById(invalidField ? `search-${invalidField}` : criteriaMissing ? 'search-role' : 'search-form-error')?.focus();
+    if (!revealAndFocus(invalidField ? fieldElementId(invalidField) : criteriaMissing ? 'search-role' : 'search-form-error')) document.getElementById('search-form-error')?.focus();
   }, [formError, criteriaMissing, invalidField]);
   // After a card action, keep keyboard focus on the same job, or on the job that took its place.
   useEffect(() => {
@@ -231,10 +241,10 @@ export default function SearchesPage() {
   };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setFormError(''); setCriteriaMissing(false); setInvalidField(null); setMessage('');
-    if (!draft.role.trim() && !draft.company.trim()) { setCriteriaMissing(true); setFormError(t('Indica un puesto, una empresa o ambos.', 'Enter a role, a company, or both.')); document.getElementById('search-role')?.focus(); return; }
+    if (!draft.role.trim() && !draft.company.trim()) { setCriteriaMissing(true); setFormError(t('Escribe un puesto o, en «Añadir empresa o modalidad», una empresa.', 'Enter a role or, under “Add company or work mode”, a company.')); revealAndFocus('search-role'); return; }
     const tooLong = (['role', 'company', 'location'] as const).find((field) => draft[field].trim().length > 200);
-    if (tooLong) { setInvalidField(tooLong); setFormError(t('Usa un máximo de 200 caracteres en cada campo.', 'Use at most 200 characters in each field.')); document.getElementById(`search-${tooLong}`)?.focus(); return; }
-    if (!draft.providerIds.length) { setFormError(t('Elige al menos un portal de empleo.', 'Choose at least one job portal.')); return; }
+    if (tooLong) { setInvalidField(tooLong); setFormError(t('Usa un máximo de 200 caracteres en cada campo.', 'Use at most 200 characters in each field.')); revealAndFocus(`search-${tooLong}`); return; }
+    if (!draft.providerIds.length) { setInvalidField('providers'); setFormError(t('Elige al menos un portal de empleo.', 'Choose at least one job portal.')); revealAndFocus(fieldElementId('providers')); return; }
     setBusy('form');
     const body: Record<string, unknown> = { role: draft.role.trim() || null, company: draft.company.trim() || null, location: draft.location.trim() || null, workMode: draft.workMode, frequencyHours: draft.frequencyHours, enabled: draft.enabled, autoPrepare: draft.autoPrepare, language: locale };
     if (!editing || !editSearch || editSearch.matcherVersion === 2 || draft.improveMatching) {
@@ -249,9 +259,10 @@ export default function SearchesPage() {
     }
     try {
       const response = await api<{ search: Search; runId?: string; refresh: null }>(editing ? `/job-searches/${editing}` : '/job-searches', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
-      const id = response.search.id; formDraft.update({ payload: '' }); setMessage('searchSaved');
-      // Land on this search's jobs (U07): offers first, management stays secondary.
-      await load(false, { search: id, view: 'new', sort: 'relevance', offset: 0 }); resultsTitle.current?.focus();
+      const id = response.search.id; setMessage('searchSaved');
+      // Land on this search's jobs (U07): offers first, management stays secondary. The draft is cleared after the
+      // list arrives so a first search never flashes an empty form; a retry before then reuses the idempotency key.
+      await load(false, { search: id, view: 'new', sort: 'relevance', offset: 0 }); formDraft.update({ payload: '' }); resultsTitle.current?.focus();
     } catch (cause) { setFormError(problem(cause)); } finally { setBusy(''); }
   };
   const runAction = async (search: Search, action: 'refresh' | 'toggle') => {
@@ -303,18 +314,17 @@ export default function SearchesPage() {
   const count = (n: number, one: [string, string], many: [string, string]) => `${n} ${n === 1 ? t(...one) : t(...many)}`;
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} description={searches.length ? undefined : t('Dinos qué trabajo buscas y te traemos ofertas automáticamente.', 'Tell us what job you want and we will bring you jobs automatically.')} action={searches.length > 0 ? <div className={styles.actions}>{!formOpen && <Button variant="secondary" disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button>}<a href="/jobs?scope=favorites" className="button button-quiet">{t('Ver guardadas', 'View saved')}</a></div> : undefined} />
-    {busy === 'form' && <Notice>{editing ? t('Guardando cambios…', 'Saving changes…') : t('Guardando la búsqueda…', 'Saving your search…')}</Notice>}
+    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} action={searches.length > 0 && !formOpen ? <div className={styles.actions}><Button variant="secondary" disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button></div> : undefined} />
+    {busy === 'form' && <Notice>{editing ? t('Guardando cambios…', 'Saving changes…') : t('Guardando la búsqueda y empezando a buscar…', 'Saving your search and starting to look…')}</Notice>}
     {loadError && <Notice tone={listFailed ? 'error' : 'warning'} actions={listFailed ? <Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button> : undefined}>{loadError}</Notice>}
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}
     {message && <Notice tone="success">{t(successMessages[message][0], successMessages[message][1])}</Notice>}
     <div className={styles.layout}>
-      {(formOpen || firstUse) && <SearchForm draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t} />}
+      {(formOpen || firstUse) && <SearchForm key={editing || 'new'} defaultProviders={defaultProviders} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t} />}
       {loading && <Notice>{t('Cargando tus búsquedas…', 'Loading your searches…')}</Notice>}
       {listFailed && <Card className={styles.emptyResults}><Empty title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
       {searches.length > 0 && <section className={styles.results} id="search-results" aria-labelledby="search-results-title">
-        <SearchStatus scope={scope} single={Boolean(selectedSearch) || searches.length === 1} locale={locale} t={t} sourceName={sourceName} dateTime={dateTime} busy={busy !== ''} onRetry={(search) => void runAction(search, 'refresh')} />
-        <div className={styles.scopeBar}>
+        {searches.length > 1 && <div className={styles.scopeBar}>
           <div className={styles.scopeField}>
             <span id="search-scope-label">{t('Tus búsquedas', 'Your searches')}</span>
             <div className={styles.scopeChoices} role="group" aria-labelledby="search-scope-label">
@@ -326,16 +336,22 @@ export default function SearchesPage() {
             {selectedSearch && <><Button variant="quiet" disabled={busy !== ''} onClick={() => beginEdit(selectedSearch)}>{t('Editar', 'Edit')}</Button><Button variant="quiet" disabled={busy !== ''} onClick={() => void runAction(selectedSearch, 'toggle')}>{selectedSearch.enabled ? t('Pausar', 'Pause') : t('Reanudar', 'Resume')}</Button></>}
             <button ref={manageButton} type="button" className="button button-quiet" aria-expanded={manageOpen} aria-controls="manage-searches" onClick={() => setManageOpen(!manageOpen)}>{t(`Gestionar búsquedas (${searches.length})`, `Manage searches (${searches.length})`)}</button>
           </div>
-        </div>
-        {manageOpen && <div id="manage-searches" className={styles.managePanel}>
+        </div>}
+        {manageOpen && searches.length > 1 && <div id="manage-searches" className={styles.managePanel}>
           <h2 className="sr-only">{t('Tus búsquedas', 'Your searches')}</h2>
           <ul className={styles.manageList}>{searches.map((search) => <SearchCard key={search.id} search={search} selected={selectedId === search.id} disabled={busy !== '' || resultLoading} locale={locale} onSelect={() => void choose(search.id, view, sort, 0)} onEdit={() => beginEdit(search)} onToggle={() => void runAction(search, 'toggle')} onRefresh={() => void runAction(search, 'refresh')} t={t} modeLabel={modeLabel} />)}</ul>
         </div>}
         <div className={styles.resultsHead}>
-          <h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{selectedSearch ? searchName(selectedSearch, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2>
+          <h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{current ? searchName(current, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2>
           <div className={styles.sortControl}><label htmlFor="search-sort">{t('Ordenar', 'Sort')}</label><select id="search-sort" value={sort} onChange={(event) => changeSort(event.target.value as SearchSort)}><option value="relevance">{t('Mejor coincidencia', 'Best match')}</option><option value="recent">{t('Más recientes', 'Most recent')}</option></select></div>
         </div>
+        {sole && <div className={styles.soleActions} data-search-actions="single">
+          {/* One saved search: no selector to choose between, but it stays editable and pausable here. */}
+          <Button variant="quiet" disabled={busy !== ''} aria-describedby="search-results-title" onClick={() => beginEdit(sole)}>{t('Editar', 'Edit')}</Button>
+          <Button variant="quiet" disabled={busy !== ''} aria-describedby="search-results-title" onClick={() => void runAction(sole, 'toggle')}>{sole.enabled ? t('Pausar', 'Pause') : t('Reanudar', 'Resume')}</Button>
+        </div>}
         <div className={styles.filterTabs} role="group" aria-label={t('Mostrar ofertas', 'Show jobs')}>{filters.map((filter) => <button key={filter.id} type="button" aria-pressed={view === filter.id} aria-controls="search-result-list" onClick={() => changeView(filter.id)}>{t(filter.es, filter.en)}{filter.id === 'new' && scopeUnread ? <span className={styles.filterCount}> {scopeUnread}</span> : null}</button>)}</div>
+        <SearchStatus scope={scope} single={Boolean(selectedSearch) || searches.length === 1} locale={locale} t={t} sourceName={sourceName} dateTime={dateTime} busy={busy !== ''} onRetry={(search) => void runAction(search, 'refresh')} />
         {pendingArrivals && <Notice tone="info" actions={<Button variant="secondary" onClick={showArrivals}>{t('Mostrar nuevas ofertas', 'Show new jobs')}</Button>}>{t('Hay ofertas nuevas. Tu página y posición siguen como estaban.', 'New jobs are available. Your page and position are unchanged.')}</Notice>}
         <p className={styles.resultCount} role="status">{resultLoading ? t('Cargando ofertas…', 'Loading jobs…') : count(total, ['oferta', 'job'], ['ofertas', 'jobs'])}{!resultLoading && actionMessage ? ` · ${t(actionMessages[actionMessage][0], actionMessages[actionMessage][1])}` : ''}</p>
         <div id="search-result-list" ref={resultList} className={styles.resultList} aria-busy={resultLoading}>

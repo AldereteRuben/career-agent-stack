@@ -107,3 +107,14 @@
 .scopeChoices button { min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #fff); color: var(--ink); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .scopeChoices button[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft, #eef2ff); color: var(--blue); font-weight: 650; }
 .scopeChoices button:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+/* One saved search: its own edit/pause controls next to the results instead of a one-option selector. */
+.soleActions { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: -6px; min-width: 0; }
+.soleActions > * { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.moreOptions { min-width: 0; }
+.moreOptions > summary { width: fit-content; max-width: 100%; min-height: 44px; display: flex; align-items: center; box-sizing: border-box; overflow-wrap: anywhere; }
+.moreOptions > summary::before { content: '+'; display: inline-block; width: 1.2em; font-weight: 700; color: var(--blue-dark); flex: 0 0 auto; }
+.moreOptions[open] > summary::before { content: '−'; }
+.moreOptions > summary::-webkit-details-marker { display: none; }
+.moreOptions > summary { list-style: none; }
+.moreOptions > summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
