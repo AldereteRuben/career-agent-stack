@@ -2,6 +2,10 @@
 
 Keep the interface bilingual (Spanish and English), usable with keyboard and on mobile, and use operating-system-neutral instructions unless a step is platform specific.
 
+## Commit messages
+
+Preserve contributor authorship. Do not append co-author or generator attribution for automated tools, assistants or models to commit messages. Apply this rule to delegated workers as well.
+
 ## Completing a version
 
 When the user authorizes a release, finish the full release sequence:
