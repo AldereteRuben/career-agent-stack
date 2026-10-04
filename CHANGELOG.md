@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.2
+
+- Protect application updates from stale tabs and resume drafts from unconfirmed replacement.
+- Paginate and search the application tracker; open records by ID independently of the current page, including histories above 500 records.
+- Hide preparation actions for terminal hiring stages, retry temporary session-check outages without redirecting to login, and reject oversized search criteria without truncation.
+- Add isolated edge-case regressions covering conflicts, draft replacement, large histories, recovery, and ES/EN mobile behavior.
+
+- Preserve profile input and anchor focus during asynchronous loading; avoid unnecessary draft replacement prompts after PDF generation.
+- Verification and existing limits: [v0.7.2](docs/releases/v0.7.2.md). No new migration or external source.
+
 ## 0.7.1
 
 - Keeps browser tab metadata in the selected language and removes a vulnerable transitive esbuild version from the migration tooling.

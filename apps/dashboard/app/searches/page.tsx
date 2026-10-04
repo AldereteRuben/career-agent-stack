@@ -49,8 +49,9 @@ export default function SearchesPage() {
   const setEditing = (editing: string) => formDraft.update((stored) => ({ payload: JSON.stringify({ ...readForm(stored.payload), editing }) }));
   const setFormOpen = (open: boolean) => formDraft.update((stored) => ({ payload: JSON.stringify({ ...readForm(stored.payload), open }) }));
   const [formError, setFormError] = useState(''); const [criteriaMissing, setCriteriaMissing] = useState(false);
+  const [invalidField, setInvalidField] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false); const [loadError, setLoadError] = useState('');
-  useEffect(() => { if (formError) document.getElementById(criteriaMissing ? 'search-role' : 'search-form-error')?.focus(); }, [formError, criteriaMissing]);
+  useEffect(() => { if (formError) document.getElementById(invalidField ? `search-${invalidField}` : criteriaMissing ? 'search-role' : 'search-form-error')?.focus(); }, [formError, criteriaMissing, invalidField]);
   const [resultLoading, setResultLoading] = useState(false);
   const [feeds, setFeeds] = useState<Feed[]>([]); const [resultsError, setResultsError] = useState(false);
   const [total, setTotal] = useState(0); const [offset, setOffset] = useState(0);
@@ -122,8 +123,10 @@ export default function SearchesPage() {
   const modeLabel = (mode: Search['workMode']) => ({ any: t('Cualquier modalidad', 'Any work mode'), remote: t('En remoto', 'Remote'), hybrid: t('Híbrida', 'Hybrid'), onsite: t('Presencial', 'On-site') })[mode];
 
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); setError(''); setFormError(''); setCriteriaMissing(false); setMessage('');
+    event.preventDefault(); setError(''); setFormError(''); setCriteriaMissing(false); setInvalidField(null); setMessage('');
     if (!draft.role.trim() && !draft.company.trim()) { setCriteriaMissing(true); setFormError(t('Indica un puesto, una empresa o ambos.', 'Enter a role, a company, or both.')); document.getElementById('search-role')?.focus(); return; }
+    const tooLong = (['role', 'company', 'location'] as const).find((field) => draft[field].trim().length > 200);
+    if (tooLong) { setInvalidField(tooLong); setFormError(t('Usa un máximo de 200 caracteres en cada campo de búsqueda.', 'Use at most 200 characters in each search field.')); document.getElementById(`search-${tooLong}`)?.focus(); return; }
     setBusy(editing || 'create');
     const body = { role: draft.role.trim() || null, company: draft.company.trim() || null, location: draft.location.trim() || null, workMode: draft.workMode, frequencyHours: draft.frequencyHours, enabled: draft.enabled, autoPrepare: draft.autoPrepare, language: locale };
     try {
@@ -156,12 +159,12 @@ export default function SearchesPage() {
       {(formOpen || (!loading && !listFailed && searches.length === 0)) && <section className={styles.formColumn} aria-labelledby="search-form-title">
         <Card className={styles.formCard}>
           <h2 id="search-form-title" ref={formTitle} tabIndex={-1}>{t(editing ? 'Editar búsqueda' : '¿Qué trabajo buscas?', editing ? 'Edit search' : 'What job are you looking for?')}</h2>
-          <p className={styles.intro}>{t('Indica un puesto, una empresa o ambos. No necesitas completar tu perfil.', 'Enter a role, a company, or both. You do not need to complete your profile.')}</p>
+          <p className={styles.intro}>{t('Indica un puesto, una empresa o ambos (máximo 200 caracteres por campo). No necesitas completar tu perfil.', 'Enter a role, a company, or both (up to 200 characters per field). You do not need to complete your profile.')}</p>
           <form onSubmit={(event) => void submit(event)} className={styles.form}>
             {formError && <div id="search-form-error" tabIndex={-1} className={styles.formError}><Notice tone="error">{formError}</Notice></div>}
-            <Field disabled={busy !== '' || !formDraft.ready} id="search-role" name="role" aria-invalid={criteriaMissing || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Puesto o palabras clave', 'Role or keywords')} value={draft.role} onChange={(event) => { setCriteriaMissing(false); setFormError(''); setDraft({ ...draft, role: event.target.value }); }} placeholder={t('Ej.: Product Designer', 'e.g. product designer')} hint={t('Se buscan estas palabras en el título. Prueba también el puesto en inglés.', 'These words are matched in job titles. Try the title used in the listings.')}/>
-            <Field disabled={busy !== '' || !formDraft.ready} label={t('Empresa (opcional)', 'Company (optional)')} value={draft.company} onChange={(event) => { setCriteriaMissing(false); setFormError(''); setDraft({ ...draft, company: event.target.value }); }} placeholder={t('Ej.: Northwind', 'e.g. Northwind')}/>
-            <Field disabled={busy !== '' || !formDraft.ready} label={t('Ubicación (opcional)', 'Location (optional)')} value={draft.location} onChange={(event) => setDraft({ ...draft, location: event.target.value })} placeholder={t('Ej.: Berlín o España', 'e.g. Berlin or Spain')}/>
+            <Field disabled={busy !== '' || !formDraft.ready} id="search-role" name="role" aria-invalid={criteriaMissing || draft.role.trim().length > 200 || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Puesto o palabras clave', 'Role or keywords')} value={draft.role} onChange={(event) => { setCriteriaMissing(false); setFormError(''); setDraft({ ...draft, role: event.target.value }); }} placeholder={t('Ej.: Product Designer', 'e.g. product designer')} hint={t('Se buscan estas palabras en el título. Prueba también el puesto en inglés.', 'These words are matched in job titles. Try the title used in the listings.')}/>
+            <Field disabled={busy !== '' || !formDraft.ready} id="search-company" aria-invalid={draft.company.trim().length > 200 || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Empresa (opcional)', 'Company (optional)')} value={draft.company} onChange={(event) => { setCriteriaMissing(false); setFormError(''); setDraft({ ...draft, company: event.target.value }); }} placeholder={t('Ej.: Northwind', 'e.g. Northwind')}/>
+            <Field disabled={busy !== '' || !formDraft.ready} id="search-location" aria-invalid={draft.location.trim().length > 200 || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Ubicación (opcional)', 'Location (optional)')} value={draft.location} onChange={(event) => { setFormError(''); setDraft({ ...draft, location: event.target.value }); }} placeholder={t('Ej.: Berlín o España', 'e.g. Berlin or Spain')}/>
             <details className={styles.moreOptions} key={editing || 'new'} open={editing ? true : undefined}><summary>{t('Más opciones: modalidad y automatización', 'More options: work mode and automation')}</summary><div className={styles.form}>
             <SelectField disabled={busy !== '' || !formDraft.ready} label={t('Modalidad', 'Work mode')} value={draft.workMode} onChange={(event) => setDraft({ ...draft, workMode: event.target.value as Draft['workMode'] })}><option value="any">{t('Cualquiera', 'Any')}</option><option value="remote">{t('En remoto', 'Remote')}</option><option value="hybrid">{t('Híbrida', 'Hybrid')}</option><option value="onsite">{t('Presencial', 'On-site')}</option></SelectField>
             <SelectField disabled={busy !== '' || !formDraft.ready} label={t('Frecuencia de actualización', 'Refresh frequency')} value={draft.frequencyHours} onChange={(event) => setDraft({ ...draft, frequencyHours: Number(event.target.value) as Draft['frequencyHours'] })}><option value={6}>{t('Cada 6 horas', 'Every 6 hours')}</option><option value={12}>{t('Cada 12 horas', 'Every 12 hours')}</option><option value={24}>{t('Cada 24 horas', 'Every 24 hours')}</option></SelectField>

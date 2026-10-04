@@ -158,6 +158,8 @@ function DocumentsView() {
     try {
       const doc = await api<Document>('/documents', { method: 'POST', body: JSON.stringify({ name: documentName.trim(), factIds: selected, locale: pdfLocale, ...(jobId ? { jobId } : {}) }) });
       setDocuments((current) => [doc, ...current.filter((item) => item.id !== doc.id)]);
+      // Keep the saved values explicit, so editing this same version is not mistaken for replacing another draft.
+      draft.update({ name: doc.name, named: 'yes', language: doc.language ?? pdfLocale, facts: JSON.stringify(selected) });
       setMessage(c('Versión generada. Léela completa antes de aprobarla.', 'Version generated. Read it in full before approving it.'));
       void openPreview(doc.id);
     } catch (err) {
@@ -208,7 +210,9 @@ function DocumentsView() {
       }
       const ids = (doc.reusableFactIds ?? doc.claims.flatMap((claim) => claim.sourceFactIds)).filter((id) => facts.some((fact) => fact.id === id));
       const value = { name: doc.name, named: 'yes', language: doc.language ?? pdfLocale, facts: JSON.stringify(ids) };
-      if (!draft.copyTo(`resume:${applicationId || targetJobId || 'base'}`, value)) {
+      const copied = draft.copyTo(`resume:${applicationId || targetJobId || 'base'}`, value, () => window.confirm(c('Ya tienes un CV en edición para este destino. ¿Reemplazar su nombre, idioma y experiencias con esta versión? Cancelar conserva tu borrador.', 'You already have a resume draft for this destination. Replace its name, language, and experiences with this version? Cancel keeps your draft.')));
+      if (copied === 'cancelled') return;
+      if (!copied) {
         setError(c('No pudimos conservar la selección al cambiar de oferta. Vuelve a intentarlo antes de continuar.', 'We could not keep the selection while switching jobs. Try again before continuing.')); return;
       }
       const params = new URLSearchParams(searchParams.toString());

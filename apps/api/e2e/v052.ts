@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, hasHorizontalOverflow, setLocale } from './ui.js';
 
 type Profile = { revision: number; profile: Record<string, unknown> };
 type Resume = { id: string; name: string; reviewReady: boolean; jobId: string; reusableFactIds: string[]; sha256: string };
@@ -20,7 +20,7 @@ export const v052Scenario: Scenario = {
     const goto = async (path: string) => { await page.goto(new URL(path, page.url()).toString()); await page.getByRole('heading', { level: 1 }).waitFor(); };
     await goto('/documents?view=saved'); await setLocale(page, 'es');
     const card = () => page.locator('.document-card').filter({ hasText: doc.name });
-    await card().getByRole('button', { name: 'Usar como base', exact: true }).click();
+    await clickWithResumeReplacement(page, card().getByRole('button', { name: 'Usar como base', exact: true }));
     await page.waitForURL((url) => url.searchParams.get('jobId') === job.id && url.searchParams.get('view') === 'prepare');
     await eventually(() => page.getByLabel('¿Para qué oferta?', { exact: true }).inputValue(), (value) => value === job.id, 'Original job restored');
     await eventually(() => page.locator('.fact-pick input:checked').count(), (value) => value === 1, 'Selection transferred to job draft');
@@ -29,7 +29,7 @@ export const v052Scenario: Scenario = {
     await eventually(() => page.getByLabel('Nombre de la versión', { exact: true }).inputValue(), (value) => value === doc.name, 'Copied draft survives reload');
     await eventually(() => page.locator('.fact-pick input:checked').count(), (value) => value === 1, 'Recovered selection finishes loading');
     await goto(`/documents?view=saved&applicationId=${application.id}`);
-    await card().getByRole('button', { name: 'Usar como base', exact: true }).click();
+    await clickWithResumeReplacement(page, card().getByRole('button', { name: 'Usar como base', exact: true }));
     await page.waitForURL((url) => url.searchParams.get('view') === 'prepare' && url.searchParams.get('jobId') === other.id);
     assert.equal(new URL(page.url()).searchParams.get('applicationId'), application.id);
     await eventually(() => page.getByLabel('¿Para qué oferta?', { exact: true }).inputValue(), (value) => value === other.id, 'Explicit application job retained');
@@ -73,7 +73,7 @@ export const v052Scenario: Scenario = {
       await eventually(() => hasHorizontalOverflow(page), (value) => !value, 'Stale notice fits the mobile viewport');
       await update.scrollIntoViewIfNeeded();
       await page.screenshot({ animations: 'disabled', path: join(artifacts, `v052-stale-mobile-${locale}.png`) });
-      await update.click();
+      await clickWithResumeReplacement(page, update);
       await page.getByRole('heading', { name: locale === 'es' ? 'Preparar una versión' : 'Prepare a version', exact: true }).waitFor();
       await eventually(() => page.locator('.fact-pick input:checked').count(), (value) => value === 1, 'Current copied facts are recovered');
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -93,7 +93,7 @@ export const v052Scenario: Scenario = {
     await page.route(`**/api/v1/jobs/${job.id}`, (route) => route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"JOB_NOT_FOUND"}' }));
     try {
       await goto('/documents?view=saved');
-      await card().getByRole('button', { name: 'Usar como base', exact: true }).click();
+      await clickWithResumeReplacement(page, card().getByRole('button', { name: 'Usar como base', exact: true }));
       await page.getByText('La oferta original ya no está disponible. Recuperamos el contenido; elige otra oferta o prepara un CV general.', { exact: true }).waitFor();
       await page.waitForURL((url) => url.searchParams.get('view') === 'prepare' && !url.searchParams.has('jobId'));
       assert.equal(await page.getByLabel('Idioma del PDF', { exact: true }).inputValue(), 'en');

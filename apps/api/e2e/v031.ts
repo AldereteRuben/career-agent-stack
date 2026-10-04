@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { eventually, goTo, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, goTo, setLocale } from './ui.js';
 
 type Fact = { id: string; statement: string; approvalStatus: string };
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Fact[] };
@@ -31,7 +31,7 @@ export const patchScenarios: Scenario[] = [
       assert.notEqual(after.reusableFactIds[0], fact.id, 'Copied facts have fresh row ids');
       await goTo(page, '/documents');
       await page.getByRole('button', { name: /^CV guardados/ }).click();
-      await page.locator('.document-card').filter({ hasText: doc.name }).getByRole('button', { name: 'Usar como base', exact: true }).click();
+      await clickWithResumeReplacement(page, page.locator('.document-card').filter({ hasText: doc.name }).getByRole('button', { name: 'Usar como base', exact: true }));
       assert.equal(await page.locator('.fact-pick input:checked').count(), 1);
       assert.equal(await page.locator('.notice[role=alert]').count(), 0);
 

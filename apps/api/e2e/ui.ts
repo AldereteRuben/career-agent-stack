@@ -2,7 +2,7 @@
 // where possible, by role, href or form structure instead of exact text or CSS classes.
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { APIRequestContext, BrowserContext, Locator, Page } from 'playwright';
+import type { APIRequestContext, BrowserContext, Dialog, Locator, Page } from 'playwright';
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -101,3 +101,17 @@ export function apiClient(context: BrowserContext, uiUrl: string, pace: () => Pr
   };
 }
 export type ApiClient = ReturnType<typeof apiClient>;
+
+/** Explicitly choose replacement in legacy reuse flows; cancellation has its own edge-case regression. */
+export async function clickWithResumeReplacement(page: Page, button: Locator) {
+  const accept = async (dialog: Dialog) => {
+    assert.match(dialog.message(), /Ya tienes un CV en edición|You already have a resume draft/);
+    await dialog.accept();
+  };
+  page.on('dialog', accept);
+  try {
+    await button.click();
+    // Reuse may fetch a missing job before asking to replace the destination draft.
+    await page.getByRole('heading', { name: /^(Preparar una versión|Prepare a version)$/ }).waitFor();
+  } finally { page.off('dialog', accept); }
+}

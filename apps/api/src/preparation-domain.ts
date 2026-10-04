@@ -1,3 +1,4 @@
+import { isApplicationClosedForPreparation } from '@career/domain';
 import { createHash } from 'node:crypto';
 
 type Fact = { id: string; kind: string; statement: string; tags: string[]; approvalStatus: string };
@@ -54,7 +55,7 @@ export function preparationGaps(input: { profileExists: boolean; fullName: strin
 export function applicationPreparationBlockReason(application: { state: string; recruitmentStage: string; documentId: string | null } | null, generatedDocumentId?: string | null) {
   if (!application) return null;
   if (application.documentId && application.documentId !== generatedDocumentId) return 'USER_SELECTED_DOCUMENT_PRESERVED';
-  if (['CONFIRMED', 'UNKNOWN', 'IN_PROGRESS', 'CANCELLED'].includes(application.state) || ['HIRED', 'REJECTED', 'WITHDRAWN'].includes(application.recruitmentStage)) return 'APPLICATION_CLOSED_OR_UNCERTAIN';
+  if (isApplicationClosedForPreparation(application) || ['UNKNOWN', 'IN_PROGRESS'].includes(application.state)) return 'APPLICATION_CLOSED_OR_UNCERTAIN';
   return null;
 }
 

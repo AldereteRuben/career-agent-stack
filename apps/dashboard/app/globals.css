@@ -3290,3 +3290,8 @@ main:focus {
 .preparation-feedback:empty { display: none; }
 
 .action-error { scroll-margin-top: 6rem; }
+
+/* Tracker controls remain compact with large histories and narrow windows. */
+.tracker-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 16px; }
+.tracker-filter .field { flex: 1 1 240px; min-width: 0; }
+.tracker-pagination { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px; }

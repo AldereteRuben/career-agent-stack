@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   answerSchema, applicationUpdateSchema, classifyRecruitmentStageChange, computeJobMatch, containsTerm, documentFileName, documentLanguage, extractKnownSkills,
-  factCoversRequirement, hasTargetTitlesPreference, isActiveApplication, locationCompatibility, normalizeLocaleTag, profileCompletion, readPreferences, resumeLabels, resumeSectionName, titleAlignment,
+  isApplicationClosedForPreparation, factCoversRequirement, hasTargetTitlesPreference, isActiveApplication, locationCompatibility, normalizeLocaleTag, profileCompletion, readPreferences, resumeLabels, resumeSectionName, titleAlignment,
   type CandidateEvidence, type MatchingContext,
 } from '../src/index.js';
 
@@ -159,5 +159,16 @@ describe('post-review follow-up', () => {
     assert.equal(locationCompatibility('Remote: Spain or United States only', es).compatible, null);
     assert.equal(locationCompatibility('Remote - Worldwide', { country: 'ES', workModes: ['On-site'] }).compatible, null);
     assert.equal(locationCompatibility('Madrid, Spain', { country: 'España' }).compatible, true);
+  });
+});
+
+
+describe('preparation availability', () => {
+  it('blocks every terminal stage regardless of the application delivery state', () => {
+    for (const recruitmentStage of ['REJECTED', 'WITHDRAWN', 'HIRED']) {
+      for (const state of ['DRAFT', 'PREPARING', 'REVIEW_REQUIRED', 'READY']) assert.equal(isApplicationClosedForPreparation({ state, recruitmentStage }), true);
+    }
+    for (const state of ['CONFIRMED', 'CANCELLED']) assert.equal(isApplicationClosedForPreparation({ state, recruitmentStage: 'NO_RESPONSE' }), true);
+    assert.equal(isApplicationClosedForPreparation({ state: 'DRAFT', recruitmentStage: 'NO_RESPONSE' }), false);
   });
 });

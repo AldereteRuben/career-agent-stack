@@ -145,8 +145,12 @@ Automatic read-only discovery is available after opt-in in Companies I follow; i
 - ¿Abrir una instalación restaurada? En otra copia del código (`git worktree add ../career-restored`): `CAREER_ENV_FILE=/ruta/restaurada/.env pnpm start --copy-token`. Nunca copies nada sobre el `.env` activo.
 - Los registros están en `data/logs/` (o en la carpeta de datos de `CAREER_ENV_FILE`).
 
-## First use after updating to v0.7.1
+## First use after updating to v0.7.2
 
 Open **Find jobs**, enter a role or company and save the search. The local service repeats it at the chosen interval. Open a matching job and choose **Prepare my application**. Complete only the missing profile details, confirm your experience and review the generated PDF. The profile and manual resume builder remain available as optional paths. Unsupported forms continue on the original job page; saving or preparing does not submit anything.
 
 ES: abre **Buscar empleo**, indica un puesto o una empresa y guarda la búsqueda. Desde una oferta, pulsa **Preparar mi solicitud**. Completa los datos que falten, confirma tu experiencia y revisa el PDF. La consulta periódica necesita el servicio local encendido; puedes cerrar la pestaña.
+
+The v0.7.2 update requires no new configuration or data migration. Restart the local service after updating. Application history now has search and pages of 25 records; existing direct links remain valid. Reusing a saved resume asks before replacing a different draft.
+
+ES: v0.7.2 no requiere configuración ni migraciones nuevas. Reinicia el servicio local después de actualizar. El historial permite buscar y recorrer páginas de 25 solicitudes; los enlaces existentes siguen funcionando. Reutilizar un CV guardado pide confirmación antes de reemplazar un borrador diferente.

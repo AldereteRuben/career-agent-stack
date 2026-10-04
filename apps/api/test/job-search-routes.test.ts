@@ -48,6 +48,21 @@ describe('saved job searches with a disposable database and cached fictional fee
   };
   const payload = (patch: Record<string, unknown> = {}) => ({ role: 'designer', company: null, location: 'Spain', workMode: 'remote', frequencyHours: 12, enabled: true, autoPrepare: false, language: 'en', ...patch });
 
+  test('rejects oversized criteria on create and edit without truncating or changing the search', async () => {
+    const app = server();
+    try {
+      const created = await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload({ role: 'a'.repeat(200), enabled: false }) });
+      assert.equal(created.statusCode, 201); const id = created.json().search.id;
+      for (const field of ['role', 'company', 'location']) {
+        const oversized = { [field]: 'b'.repeat(201) };
+        assert.equal((await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload({ ...oversized, enabled: false }) })).statusCode, 400);
+        assert.equal((await app.inject({ method: 'PATCH', url: `/api/v1/job-searches/${id}`, payload: oversized })).statusCode, 400);
+      }
+      const rows = (await app.inject('/api/v1/job-searches')).json().searches;
+      assert.equal(rows.length, 1); assert.equal(rows[0].role, 'a'.repeat(200));
+    } finally { await app.close(); }
+  });
+
   test('role-only create accepts null optional fields, uses cached feeds, and preserves archive/seen state', async () => {
     const app = server();
     try {

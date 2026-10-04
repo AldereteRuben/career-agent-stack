@@ -37,3 +37,7 @@ export const terminalRecruitmentStages = ['REJECTED', 'WITHDRAWN', 'HIRED'] as c
 /** Applications that still count as active in the tracker: not cancelled and not in a terminal recruitment stage. */
 export const isActiveApplication = (application: { state: ApplicationState; recruitmentStage: RecruitmentStage }) =>
   application.state !== 'CANCELLED' && !(terminalRecruitmentStages as readonly RecruitmentStage[]).includes(application.recruitmentStage);
+
+/** Submitted or terminal applications cannot start a new preparation or assisted form. */
+export const isApplicationClosedForPreparation = (application: { state: string; recruitmentStage: string }) =>
+  ['CONFIRMED', 'CANCELLED'].includes(application.state) || (terminalRecruitmentStages as readonly string[]).includes(application.recruitmentStage);

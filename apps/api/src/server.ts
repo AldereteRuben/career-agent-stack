@@ -339,7 +339,22 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 registerResumeJourney(app, workspace);
 registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
-app.get('/api/v1/applications', async (request) => db.select().from(applications).where(eq(applications.workspaceId, workspace(request))).orderBy(desc(applications.updatedAt)).limit(500));
+app.get('/api/v1/applications', async (request, reply) => {
+  const query = request.query as { offset?: string; limit?: string; q?: string };
+  const scoped = eq(applications.workspaceId, workspace(request));
+  // Preserve the existing array contract for internal clients. The tracker requests pages explicitly.
+  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select().from(applications).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
+  const offset = Number(query.offset ?? 0); const limit = Number(query.limit ?? 25);
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || typeof (query.q ?? '') !== 'string' || (query.q?.length ?? 0) > 200) return fail(reply, 400, 'INVALID_INPUT');
+  const term = query.q?.trim() ?? '';
+  const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+  const where = and(scoped, term ? or(ilike(applications.company, pattern), ilike(applications.role, pattern)) : undefined);
+  const counts = await db.select({ total: sql<number>`count(*)::int` }).from(applications).where(where);
+  const total = counts[0]?.total ?? 0;
+  const pageOffset = Math.min(offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
+  const items = await db.select().from(applications).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
+  return { items, total, offset: pageOffset, limit };
+});
 app.post('/api/v1/applications', async (request, reply) => {
   const parsed = parseBody(applicationSchema, request.body, reply); if (!parsed) return;
   if (parsed.state !== 'DRAFT' && (parsed.state !== 'CONFIRMED' || parsed.confirmationEvidence !== 'USER_ATTESTATION')) return fail(reply, 400, 'APPLICATION_CREATION_STATE_UNSUPPORTED');

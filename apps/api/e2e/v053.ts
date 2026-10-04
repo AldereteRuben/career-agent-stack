@@ -166,6 +166,8 @@ export const v053Scenarios: Scenario[] = [
       const confirmed = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Confirmed landing ${marker}` });
       await api.post(`/profile/facts/${confirmed.id}/approve`);
       await api.post('/profile/facts', { kind: 'achievement', statement: `Pending landing ${marker}` });
+      // The home details are expanded once a job is saved; do not depend on earlier scenarios creating one.
+      await api.post('/jobs/import', { title: 'Landing fixture', company: `Landing ${marker}`, jobUrl: `https://example.com/${marker}/landing` });
       for (const [width, height] of [[390, 844], [1440, 1000]] as const) {
         await page.setViewportSize({ width, height });
         for (const locale of ['es', 'en'] as const) {

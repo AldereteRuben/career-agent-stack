@@ -8,9 +8,9 @@ import Link from 'next/link';
 import { clearSessionDrafts } from '@/lib/session-draft';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
-import { api, errorMessage } from '@/lib/api';
+import { api, ApiError, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
-import { Icon, Notice } from './ui';
+import { Button, Icon, Notice } from './ui';
 
 const links = [
   { href: '/', label: 'Inicio', icon: 'home', hint: 'Qué hacer ahora' },
@@ -40,9 +40,21 @@ function useMediaQuery(query: string) {
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function WorkspaceGate({ children }: { children: ReactNode }) {
-  const { t } = useLocale();
-  const router = useRouter(); const [state, setState] = useState<'loading' | 'ready'>('loading');
-  useEffect(() => { api<{ authenticated: boolean }>('/session').then((session) => { if (!session.authenticated) router.replace('/login'); else setState('ready'); }).catch(() => router.replace('/login')); }, [router]);
+  const { t, locale } = useLocale();
+  const router = useRouter(); const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ authenticated: boolean }>('/session', { signal: controller.signal }).then((session) => {
+      if (controller.signal.aborted) return;
+      if (!session.authenticated) router.replace('/login'); else setState('ready');
+    }).catch((err) => {
+      if (controller.signal.aborted) return;
+      if (err instanceof ApiError && err.status === 401) router.replace('/login'); else setState('error');
+    });
+    return () => controller.abort();
+  }, [router, attempt]);
+  if (state === 'error') return <div className="loading-screen"><BrandMark/><p role="alert">{locale === 'es' ? 'No pudimos conectar con tu espacio. Comprueba que el servicio local esté encendido y vuelve a intentarlo.' : 'We could not connect to your workspace. Check that the local service is running and try again.'}</p><Button onClick={() => { setState('loading'); setAttempt((value) => value + 1); }}>{locale === 'es' ? 'Reintentar conexión' : 'Retry connection'}</Button></div>;
   if (state === 'loading') return <div className="loading-screen" role="status"><BrandMark/><p>{t("Abriendo tu espacio privado…")}</p></div>;
   return <>{children}</>;
 }

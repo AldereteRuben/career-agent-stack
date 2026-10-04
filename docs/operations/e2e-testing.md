@@ -75,8 +75,12 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 ## Last local verification
 
-2026-10-03: v0.5.3 passed all 26 scenarios in run `cf1b28916f06` against a disposable database, from a fresh worktree whose `.env` names only an empty local sentinel database. This includes notices at 320/390 px, linked-resume review, landing on saved profile details and preference-only profile saves, in ES/EN. The 123 domain/source/backup/integration/assisted checks, `pnpm run build` and the clean-install smoke also passed. Native Windows launch/stop and full Linux/WSL installation remain outside this validation.
+2026-10-04: v0.7.2 passed **31/31** general scenarios in run `a6d2b5fffef5` and **10/10** edge-case scenarios in `673200ebdc68`. Both used disposable databases and isolated dashboard/API processes; teardown and workspace-isolation checks passed. The 175 domain/source/discovery/search/backup/integration/preparation/assisted checks also passed without skips. Native Windows launch/stop and full Linux/WSL installation remain outside this local validation. See [v0.7.2 release verification](../releases/v0.7.2.md).
 
 ## v0.3 assisted applications
 
 The `assisted-application-preparation` scenario checks the actual isolated API, consent preview, EN/ES, cancellation and mobile width. It does not open or fill a real ATS. `pnpm run test:assisted` separately exercises synthetic Chromium forms and (with `CAREER_ASSIST_TEST_ADMIN_URL`) a disposable database. See [assisted applications](assisted-applications.md).
+
+## Edge-case regression suite
+
+Run `pnpm test:edge-cases` for the 2026-10-04 regression cases. It uses the same disposable stack and accepts `E2E_ADMIN_DATABASE_URL` as above. It covers concurrent application changes, terminal hiring stages, cancelling and confirming resume-draft replacement (including another destination), search-length validation, a 501-record tracker, pagination and search, detail-load recovery, temporary session-check outages, and English mobile layouts. Fictional provider caches prevent external job-feed requests. Screenshots and results are saved under `output/playwright/<run>/edge-cases/` and are excluded from Git.

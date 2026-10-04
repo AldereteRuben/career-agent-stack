@@ -15,7 +15,7 @@ function parseInput(value: unknown, partial = false): Partial<JobSearchInput> | 
     if (!(key in body) && partial) continue;
     const entry = body[key];
     if (entry === null) result[key] = null;
-    else if (typeof entry === 'string') result[key] = entry.trim() ? entry.trim().slice(0, key === 'role' || key === 'company' ? 200 : 200) : null;
+    else if (typeof entry === 'string' && entry.trim().length <= 200) result[key] = entry.trim() || null;
     else return null;
   }
   if ('workMode' in body || !partial) {

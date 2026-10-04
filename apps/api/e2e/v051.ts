@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
 
 type Profile = { revision: number; profile: Record<string, unknown> };
 type Resume = { id: string; language: string | null; sha256: string; reviewReady: boolean };
@@ -32,7 +32,8 @@ export const v051Last: Scenario = {
   name: 'v051-resume-continuity-preferences-and-form-focus',
   async run({ page, api, marker, artifacts }) {
     const profile = await api.get<Profile>('/profile');
-    await api.put('/profile', { expectedRevision: profile.revision, profile: profile.profile });
+    // Make older approved PDFs stale explicitly; this scenario must not depend on prior scenarios changing identity.
+    await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: `UX Review ${marker}`, email: 'ux-review@example.test' } } });
     const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Usability ${marker}`, tags: [] });
     await api.post(`/profile/facts/${fact.id}/approve`);
     const doc = await api.post<Resume>('/documents', { name: `UX resume ${marker}`, locale: 'es', factIds: [fact.id] });
@@ -50,7 +51,7 @@ export const v051Last: Scenario = {
     const card = page.locator('.document-card').filter({ hasText: `UX resume ${marker}` });
     assert.ok((await card.innerText()).includes('Español'));
     await card.getByRole('button', { name: 'Revisar y aprobar', exact: true }).click();
-    await page.getByRole('button', { name: 'Cambiar contenido del CV', exact: true }).click();
+    await clickWithResumeReplacement(page, page.getByRole('button', { name: 'Cambiar contenido del CV', exact: true }));
     await page.getByRole('heading', { name: 'Preparar una versión', exact: true }).waitFor();
     assert.equal(await page.getByLabel('Nombre de la versión', { exact: true }).inputValue(), `UX resume ${marker}`);
     assert.equal(await page.getByLabel('Idioma del PDF', { exact: true }).inputValue(), 'es');

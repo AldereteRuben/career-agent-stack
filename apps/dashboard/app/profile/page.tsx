@@ -80,15 +80,18 @@ function ProfileView() {
    * Reloads the profile, facts and answers. Profile fields are only overwritten when the user has no unsaved edits,
    * on the initial load, or after a successful save whose submitted snapshot is still exactly what is in the form.
    */
+  const profileRequest = useRef(0);
   const load = useCallback(async (options: { replaceForm?: boolean; savedSnapshot?: ProfileForm } = {}) => {
+    const ticket = ++profileRequest.current;
     try {
       const profile = await api<Profile>('/profile');
+      if (ticket !== profileRequest.current) return;
       setData(profile); setLoadState('ready'); setConflict(false);
       const savedUnchanged = options.savedSnapshot !== undefined && formRef.current === options.savedSnapshot;
       if (options.replaceForm || savedUnchanged || !dirtyRef.current) { const next = formFromProfile(profile); formRef.current = next; setFormState(next); dirtyRef.current = false; setDirty(false); }
-    } catch (err) { setLoadState((current) => current === 'ready' ? 'ready' : 'error'); setError(errorMessage(err)); }
+    } catch (err) { if (ticket === profileRequest.current) { setLoadState((current) => current === 'ready' ? 'ready' : 'error'); setError(errorMessage(err)); } }
   }, []);
-  useEffect(() => { void load({ replaceForm: true }); }, [load]);
+  useEffect(() => { void load({ replaceForm: true }); return () => { profileRequest.current++; }; }, [load]);
   // Links such as /profile#saved-experience-heading arrive before the sections exist. Land on the requested section once,
   // when the first load has rendered it; later reloads after saves never move the reader's position or focus.
   const landed = useRef(false);
@@ -187,7 +190,7 @@ function ProfileView() {
   const saving = (key: string) => busy === key;
   const locked = busy !== null || loadState !== 'ready';
 
-  return <WorkspaceGate><AppShell>
+  return <AppShell>
     <PageHeader eyebrow={c('PREPARA TU INFORMACIÓN', 'PREPARE YOUR DETAILS')} title={c('Mi perfil', 'My profile')} description={c('Empieza por tu nombre y correo. Después añade una experiencia que quieras incluir en tu CV.', 'Start with your name and email. Then add an experience you want to include in your resume.')}/>
     <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile" returnTo={returnTo}/>
     {loadState === 'ready' && <nav className="profile-shortcuts" aria-label={c('Secciones de tu perfil', 'Profile sections')}>
@@ -274,7 +277,7 @@ function ProfileView() {
       </Card>
       <Card className="aside-card aside-privacy"><div className="card-icon mint"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Tú autorizas el uso de tus datos de contacto al preparar un formulario.', 'Your profile is saved on this device. You authorize using your contact details when preparing a form.')}</p><small>{c('Revisa tu candidatura y autoriza cada envío desde Mis solicitudes.', 'Review your application and authorize each submission from My applications.')}</small></Card>
     </aside></div>
-  </AppShell></WorkspaceGate>;
+  </AppShell>;
 }
 
-export default function ProfilePage() { return <Suspense><ProfileView/></Suspense>; }
+export default function ProfilePage() { return <WorkspaceGate><Suspense><ProfileView/></Suspense></WorkspaceGate>; }

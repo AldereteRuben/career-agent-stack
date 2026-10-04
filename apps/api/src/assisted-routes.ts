@@ -5,7 +5,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, applications, applicationEvents, assistedAttempts, documentVersions } from '@career/db';
-import { activeAssistedStates, assistedPrepareSchema, assistedConsentSchema, assistedSubmitConsentSchema, assistedHandoffSchema, assistedResolutionSchema, leverApplicationUrl, readIdentity, documentFileName, type AssistedPlan } from '@career/domain';
+import { isApplicationClosedForPreparation, activeAssistedStates, assistedPrepareSchema, assistedConsentSchema, assistedSubmitConsentSchema, assistedHandoffSchema, assistedResolutionSchema, leverApplicationUrl, readIdentity, documentFileName, type AssistedPlan } from '@career/domain';
 import { latestProfile, lockKey, profileLockKey, type Tx } from './workspace-data.js';
 import { AssistedBrowser } from './assisted-browser.js';
 import { config } from './config.js';
@@ -15,7 +15,7 @@ type SubmissionPermit = { state: string; digest?: string; claimedAt?: string; co
 const resultObject = (value: Attempt['result']) => (value ?? {}) as Record<string, unknown> & { submissionPermit?: SubmissionPermit };
 const digest = (plan: AssistedPlan) => createHash('sha256').update(JSON.stringify(plan)).digest('hex');
 const fail = (code: string): never => { throw new Error(code); };
-const terminalApplication = (state: string, stage: string) => ['CONFIRMED', 'CANCELLED'].includes(state) || ['HIRED', 'REJECTED', 'WITHDRAWN'].includes(stage);
+const terminalApplication = (state: string, stage: string) => isApplicationClosedForPreparation({ state, recruitmentStage: stage });
 
 export async function registerAssistedRoutes(app: FastifyInstance, workspace: (request: FastifyRequest) => string, browser = new AssistedBrowser()) {
   // A restart never resumes a grant or a browser action. Uncertain runs require human reconciliation.

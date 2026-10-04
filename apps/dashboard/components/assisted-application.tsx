@@ -1,5 +1,7 @@
 'use client';
 
+import { isApplicationClosedForPreparation } from '@career/domain';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { withSearchOrigin } from '@/lib/search-origin';
@@ -9,10 +11,10 @@ import { useLocale } from '@/lib/i18n';
 import { copy } from '@/lib/labels';
 
 type Attempt = { id: string; status: string; digest: string; expiresAt: string; plan: { url: string; documentId: string; documentName: string; documentSha256: string; fields: { name: string; email: string; phone: string; org: string } }; result: { reason?: string; filled?: string[]; receipt?: string; submissionPermit?: { state: string } }; createdAt: string };
-type Data = { supported: boolean; url: string | null; identity: { fullName: string; email: string }; application: { canonicalUrl?: string | null; state: string; documentId: string | null; jobId: string | null }; documents: Array<{ id: string; name: string; revision: number; assistReady: boolean }>; attempts: Attempt[] };
+type Data = { supported: boolean; url: string | null; identity: { fullName: string; email: string }; application: { canonicalUrl?: string | null; state: string; recruitmentStage: string; documentId: string | null; jobId: string | null }; documents: Array<{ id: string; name: string; revision: number; assistReady: boolean }>; attempts: Attempt[] };
 const activeStates = ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN'];
 
-export function AssistedApplication({ applicationId, applicationState, returnTo, onChanged }: { applicationId: string; applicationState?: string; returnTo?: string; onChanged: () => void }) {
+export function AssistedApplication({ applicationId, applicationState, recruitmentStage, returnTo, onChanged }: { applicationId: string; applicationState?: string; recruitmentStage?: string; returnTo?: string; onChanged: () => void }) {
   const { locale } = useLocale(); const c = copy(locale);
   const [data, setData] = useState<Data | null>(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const [documentId, setDocumentId] = useState(''); const [phone, setPhone] = useState(''); const [organization, setOrganization] = useState('');
@@ -29,7 +31,7 @@ export function AssistedApplication({ applicationId, applicationState, returnTo,
   useEffect(() => {
     alive.current = true; const controller = new AbortController(); void load(controller.signal);
     return () => { alive.current = false; controller.abort(); };
-  }, [load, applicationState]);
+  }, [load, applicationState, recruitmentStage]);
   useEffect(() => {
     if (!attemptId) return;
     const controller = new AbortController();
@@ -82,7 +84,7 @@ export function AssistedApplication({ applicationId, applicationState, returnTo,
   const availableDocuments = data?.documents.filter((doc) => doc.assistReady) ?? [];
   const selectedDocument = availableDocuments.some((doc) => doc.id === documentId) ? documentId : availableDocuments.find((doc) => doc.id === data?.application.documentId)?.id ?? availableDocuments[0]?.id ?? '';
   const hasOutdatedDocuments = data?.documents.some((doc) => !doc.assistReady);
-  if (data && !attempt && ['CONFIRMED', 'CANCELLED'].includes(applicationState ?? data.application.state)) return <section className="assist-panel"><h3>{c('Sigue la respuesta de la empresa', 'Track the employer’s response')}</h3><p>{c('Esta solicitud ya está enviada o cerrada. Puedes actualizar su seguimiento y añadir notas abajo.', 'This application is already submitted or closed. You can update its progress and add notes below.')}</p></section>;
+  if (data && !attempt && isApplicationClosedForPreparation({ state: applicationState ?? data.application.state, recruitmentStage: recruitmentStage ?? data.application.recruitmentStage })) return <section className="assist-panel"><h3>{c('Sigue la respuesta de la empresa', 'Track the employer’s response')}</h3><p>{c('Esta solicitud ya está enviada o cerrada. Puedes actualizar su seguimiento y añadir notas abajo.', 'This application is already submitted or closed. You can update its progress and add notes below.')}</p></section>;
   return <section className="assist-panel" aria-labelledby={`assist-title-${applicationId}`} aria-busy={busy}>
     <div className="panel-heading"><div><div className="eyebrow">{data?.supported ? c('SOLICITUD ASISTIDA · LEVER', 'ASSISTED APPLICATION · LEVER') : c('SIGUIENTE PASO', 'NEXT STEP')}</div><h3 id={`assist-title-${applicationId}`}>{data?.supported ? c('Prepara el formulario, conserva el control', 'Prepare the form, stay in control') : c('Continúa en la página de la empresa', 'Continue on the employer’s page')}</h3></div><Button variant="quiet" disabled={busy} onClick={() => { setError(''); void load(); }}>{c('Actualizar', 'Refresh')}</Button></div>
     {error && <Notice tone="error">{error}</Notice>}
