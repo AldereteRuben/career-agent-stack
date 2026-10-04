@@ -108,7 +108,7 @@ function SetupGuide() {
         </>}
       </Card>}
       <p className="muted-label">{c('Las empresas que sigues y las respuestas guardadas son opcionales. No necesitas configurarlas para crear tu CV.', 'Followed companies and saved answers are optional. You do not need to set them up to create your resume.')}</p>
-      {jobId ? <Link href={withSearchOrigin(`/jobs/${jobId}`, returnTo)}>{c('Volver a la oferta', 'Back to the job')}</Link> : <Link href="/">{c('Volver a Inicio', 'Back to Home')}</Link>}
+      {jobId ? <Link href={withSearchOrigin(`/jobs/${jobId}`, returnTo)}>{c('Volver a la oferta', 'Back to the job')}</Link> : <Link href="/searches">{c('Volver a Buscar empleo', 'Back to Find jobs')}</Link>}
     </div>
   </AppShell>;
 }

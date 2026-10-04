@@ -94,7 +94,7 @@ export default function JobDetailPage() {
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando oferta…', 'Loading job…')}</Notice>}
     {loadState === 'error' && !job && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar esta oferta.', 'We could not load this job.')}</Notice>}
-    {job && <><div className="job-detail-header"><PageHeader eyebrow={job.company.toUpperCase()} title={job.title} description={`${c('Añadida el', 'Added on')} ${formatDate(job.createdAt)}`}/></div>
+    {job && <><div className="job-detail-header"><PageHeader eyebrow={job.company.toUpperCase()} title={job.title} description={`${c('Añadida el', 'Added on')} ${formatDate(job.createdAt)}`} action={<Button variant="secondary" disabled={busy !== null || job.shortlistDecision === 'ARCHIVED'} aria-pressed={job.shortlistDecision === 'SHORTLISTED'} onClick={() => void updateShortlist()}>{busy === 'shortlist' ? c('Guardando…', 'Saving…') : job.shortlistDecision === 'SHORTLISTED' ? c('Quitar de guardadas', 'Unsave job') : c('Guardar oferta', 'Save job')}</Button>}/></div>
       <ul className={styles.summary} aria-label={c('Datos principales de la oferta', 'Key job details')}>
         <li>{c('Empresa', 'Company')}: <strong>{job.company}</strong></li>
         <li>{c('Ubicación', 'Location')}: <strong>{job.location ?? c('Por confirmar', 'To be confirmed')}</strong></li>
@@ -124,18 +124,13 @@ export default function JobDetailPage() {
           </div> : <Notice>{c('Esta oferta se valoró antes de que existiera el detalle del encaje. Se actualizará en la próxima revisión.', 'This job was assessed before match details were available. They will appear after the next update.')}</Notice>}
           {[...(job.match?.notes ?? []), ...job.reasons].length > 0 && <ul>{[...new Set([...(job.match?.notes ?? []), ...job.reasons])].map((code) => <li key={code}>{labelFor.matchCode(code, locale)}</li>)}</ul>}
         </div></details>
-      </div><aside className="detail-aside"><Card className={styles.later}><h2>{c('¿Aún no decides?', 'Not ready to decide?')}</h2><p>{job.shortlistDecision === 'ARCHIVED' ? c('Esta oferta está archivada. Restáurala para volver a verla en tus listas.', 'This job is archived. Restore it to see it in your lists again.') : c('Guárdala para encontrarla en Guardadas, o archívala si no te interesa.', 'Save it to find it under Saved jobs, or archive it if it does not interest you.')}</p><div className={styles.laterActions}>
-        <Button variant="secondary" disabled={busy !== null || job.shortlistDecision === 'ARCHIVED'} aria-pressed={job.shortlistDecision === 'SHORTLISTED'} onClick={() => void updateShortlist()}>{busy === 'shortlist' ? c('Guardando…', 'Saving…') : job.shortlistDecision === 'SHORTLISTED' ? c('Quitar de guardadas', 'Unsave job') : c('Guardar oferta', 'Save job')}</Button>
+      </div><aside className="detail-aside"><Card className={styles.later}><h2>{c('Más acciones', 'More actions')}</h2><p>{job.shortlistDecision === 'ARCHIVED' ? c('Esta oferta está archivada. Restáurala para volver a verla en tus listas.', 'This job is archived. Restore it to see it in your lists again.') : c('Puedes archivar la oferta o llevar el seguimiento sin preparar un CV.', 'You can archive the job or track it without preparing a resume.')}</p><div className={styles.laterActions}>
         {!existing && <Button variant="quiet" onClick={() => void makeApplication()} disabled={busy !== null}>{busy === 'application' ? c('Creando…', 'Creating…') : c('Solo anotar seguimiento', 'Only track this job')}</Button>}
         <Button variant="quiet" disabled={busy !== null} onClick={() => void archive()}>{job.shortlistDecision === 'ARCHIVED' ? c('Restaurar oferta', 'Restore job') : c('Archivar oferta', 'Archive job')}</Button>
-      </div></Card><Card className="detail-facts"><h3>{c('Lo que sabemos', 'What we know')}</h3><dl>
-        <div><dt>{c('Empresa', 'Company')}</dt><dd>{job.company}</dd></div>
-        <div><dt>{c('Ubicación', 'Location')}</dt><dd>{job.location ?? c('Por confirmar', 'To be confirmed')}</dd></div>
-        <div><dt>{c('Disponibilidad', 'Availability')}</dt><dd>{labelFor.availability(job.availability, locale)}</dd></div>
-        <div><dt>{c('Requisitos para postular', 'Requirements to apply')}</dt><dd><Tag tone={job.eligibility === 'PASS' ? 'green' : job.eligibility === 'FAIL' ? 'red' : 'amber'}>{labelFor.eligibility(job.eligibility, locale)}</Tag></dd></div>
+      </div></Card><details className={`card ${styles.fit}`}><summary>{c('Más datos de la oferta', 'More job details')}</summary><div className={`detail-facts ${styles.fitBody}`}><dl>
         <div><dt>{c('Información disponible para comparar', 'Information available to compare')}</dt><dd>{job.evidenceCoverage ?? 0}%</dd></div>
         {source && <><div><dt>{c('Fuente', 'Source')}</dt><dd>{source.provider} · {labelFor.region(source.region, locale)}</dd></div><div><dt>{c('Vista por última vez', 'Last seen')}</dt><dd>{formatDate(source.lastSeenAt)}</dd></div><div><dt>{c('Publicada por la fuente', 'Posted by the source')}</dt><dd>{formatDate(source.sourcePostedAt)}</dd></div></>}
-      </dl></Card><Card className="source-card"><div className="card-icon mint"><Icon name="shield" size={17}/></div><h3>{c('Ir a la oferta original', 'Go to the original post')}</h3><p>{c('El enlace solo se abre cuando tú lo eliges. Career Stack no carga páginas de empleo al guardar una URL.', 'The link only opens when you choose to. Career Stack does not load job pages when you save a URL.')}</p>{(source?.applyUrl ?? job.canonicalUrl) && <a className="button button-secondary" target="_blank" rel="noopener noreferrer" href={source?.applyUrl ?? job.canonicalUrl ?? undefined}>{c('Abrir enlace oficial', 'Open official link')} <Icon name="arrow" size={14}/></a>}</Card></aside></div>
+      </dl></div></details></aside></div>
     </>}
   </AppShell></WorkspaceGate>;
 }

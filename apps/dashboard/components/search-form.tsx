@@ -79,7 +79,7 @@ export function SearchForm(props: Props) {
       <p className={styles.intro}>{editing
         ? t('Los cambios se aplican a esta búsqueda; no se crea otra.', 'Changes apply to this search; no new search is created.')
         : draft.enabled
-          ? t(`Buscaremos ofertas ahora y repetiremos la búsqueda cada ${draft.frequencyHours} horas mientras Career Stack siga en marcha en este ordenador, aunque cierres el navegador. No necesitas perfil ni CV.`, `We will look for jobs now and repeat the search every ${draft.frequencyHours} hours while Career Stack keeps running on this computer, even if you close the browser. No profile or resume needed.`)
+          ? t(`Buscaremos ahora y cada ${draft.frequencyHours} horas. Puedes cerrar el navegador; deja Career Stack funcionando en tu equipo. Empieza sin perfil ni CV.`, `We search now and every ${draft.frequencyHours} hours. You can close the browser; keep Career Stack running on your computer. No profile or resume needed.`)
           : t('Esta búsqueda se guardará en pausa: no buscaremos ofertas hasta que la reanudes.', 'This search will be saved paused: we will not look for jobs until you resume it.')}</p>
       {props.storageFailed && (draft.role || draft.company || draft.location) && <Notice tone="warning">{t('No se pudo conservar el borrador. Guárdalo antes de salir.', 'The draft could not be kept. Save it before leaving.')}</Notice>}
       <form onSubmit={onSubmit} className={styles.form} data-search-form={editing ? 'edit' : 'create'}>
@@ -95,7 +95,7 @@ export function SearchForm(props: Props) {
           </div>
         </details>
         <details id="search-options" className={styles.moreOptions} open={optionsOpen} onToggle={(event) => setOptionsOpen(event.currentTarget.open)}>
-          <summary>{t('Portales, frecuencia y opciones', 'Portals, frequency and options')}</summary>
+          <summary>{t('Opciones de búsqueda', 'Search options')}</summary>
           <div className={styles.form}>
             {oldMatcher && <label className={styles.check}><input type="checkbox" disabled={disabled} checked={draft.improveMatching} onChange={(event) => update({ ...draft, improveMatching: event.target.checked, matcherVersion: event.target.checked ? 2 : 1 }, 'matcherVersion')} /><span>{t('Probar coincidencias mejoradas y fuentes nuevas', 'Use improved matching and newer sources')}<small>{t('La búsqueda antigua conserva sus reglas y fuentes hasta que marques esta opción.', 'This search keeps its old matching rules and sources unless you choose this option.')}</small></span></label>}
             {(!oldMatcher || draft.improveMatching) && <fieldset className={styles.providerFieldset} disabled={disabled}>
@@ -111,8 +111,8 @@ export function SearchForm(props: Props) {
         </details>
         {editing && <p className={styles.automationHint}>{draft.enabled ? t(`Se repetirá cada ${draft.frequencyHours} horas mientras Career Stack siga en marcha en este ordenador.`, `It repeats every ${draft.frequencyHours} hours while Career Stack keeps running on this computer.`) : t('Esta búsqueda quedará en pausa.', 'This search will stay paused.')}</p>}
         <p id="search-sharing" className={styles.automationHint} role="note">{sendsQuery
-          ? t('Al buscar, descargamos ofertas públicas de portales de empleo y las filtramos en este ordenador. Un portal de empleo en remoto recibe lo que escribas (puesto, empresa o país) para buscar; nunca tu CV ni tus datos de contacto. Puedes quitarlo en «Portales, frecuencia y opciones».', 'To search, we download public listings from job portals and filter them on this computer. One remote-jobs portal receives what you enter (role, company or country) to search; never your resume or contact details. You can remove it under “Portals, frequency and options”.')
-          : t('Al buscar, descargamos ofertas públicas de portales de empleo y las filtramos en este ordenador; los portales no reciben lo que escribes ni tu CV.', 'To search, we download public listings from job portals and filter them on this computer; the portals do not receive what you enter or your resume.')}</p>
+          ? t('Compartimos los criterios de búsqueda con un portal de empleo. Tu CV y tus datos de contacto no se comparten. Puedes elegir los portales en Opciones de búsqueda.', 'We share your search criteria with a job portal. Your resume and contact details are not shared. Choose portals under Search options.')
+          : t('Esta búsqueda no comparte lo que escribes, tu CV ni tus datos de contacto con los portales.', 'This search does not share what you enter, your resume or your contact details with job portals.')}</p>
         <div className={styles.actions}><Button type="submit" disabled={disabled}>{busy ? t(editing ? 'Guardando…' : 'Buscando…', editing ? 'Saving…' : 'Searching…') : t(editing ? 'Guardar cambios' : 'Buscar ofertas', editing ? 'Save changes' : 'Find jobs')}</Button>{props.hasSearches && <Button type="button" variant="quiet" disabled={disabled} onClick={onDismissDraft}>{editing ? t('Cancelar edición', 'Cancel editing') : t('Descartar borrador', 'Discard draft')}</Button>}</div>
       </form>
     </Card>

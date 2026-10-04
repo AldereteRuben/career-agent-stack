@@ -1,3 +1,4 @@
+import { v082Scenario } from './v082.js';
 import { v071Scenarios } from './v071.js';
 import { v070Scenario } from './v070.js';
 import { v061Scenario } from './v061.js';
@@ -61,9 +62,11 @@ export const scenarios: Scenario[] = [
     async run({ page, uiUrl, token }) {
       await signIn(page, uiUrl, await token());
       await setLocale(page, 'es');
-      await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Ofertas encontradas/i }).waitFor();
+      await page.waitForURL((url) => url.pathname === '/searches');
+      await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Guardadas/i }).waitFor();
+      assert.equal(await mainNavigation(page).getByRole('link').count(), 3, 'Three primary destinations keep the first menu focused');
       await setLocale(page, 'en');
-      await mainNavigation(page).locator('a[href="/jobs"]').filter({ hasText: /Jobs/i }).waitFor();
+      await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Saved jobs/i }).waitFor();
       await page.waitForFunction(() => document.title === 'Career Stack · Your career space');
       await setLocale(page, 'es');
       await page.waitForFunction(() => document.title === 'Career Stack · Tu espacio de carrera');
@@ -474,6 +477,7 @@ scenarios.splice(1, 0, v050Scenarios[0]!);
 scenarios.push(v050Scenarios[1]!);
 
 scenarios.splice(1, 0, v051First);
+scenarios.splice(1, 0, v082Scenario);
 // v053 leaves current approved PDFs behind; v052's printed-name change then restores the guide state v051Last expects.
 scenarios.push(...v053Scenarios);
 scenarios.push(v052Scenario);

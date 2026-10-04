@@ -4,7 +4,7 @@ Your private workspace to find jobs automatically, prepare applications from you
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.8.1** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.8.1.md)
+**Current release: v0.8.2** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.8.2.md)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -25,9 +25,9 @@ No AI subscription or API key is required. The app prepares application drafts f
 
 ## Automatic job search
 
-1. Open **Find jobs**. Enter a role or company; country and work mode are optional. A profile is not required to search.
-2. Save. The search appears immediately and checks sources in the background, then daily while the local service is running. Advanced options offer a 6, 12 or 24 hour interval.
-3. Use **All my searches** or a visible search button; review **New**, **All**, **Saved** or **Archived** jobs. Results explain their match, geographic uncertainty, source and available dates. New arrivals wait behind an update notice while you read.
+1. The app opens directly in **Find jobs**. Enter a role and, optionally, a country or location. **Add company or work mode** reveals those optional filters. No profile or resume is required.
+2. Choose **Find jobs**. Results appear automatically after the first check; the search repeats daily while the local service is running. **Search options** lets you choose sources and a 6, 12 or 24 hour interval.
+3. With one search, **Edit** and **Pause** are immediately available. With several, use **All my searches**, a visible search button or **Manage searches**. Review **New**, **All**, **Saved** or **Archived** jobs. New arrivals wait behind an update notice while you read.
 4. Open an offer to prepare an application. Optional automatic preparation is off by default for new searches; enhanced searches allow at most five attempts per pass and ten per day. Related or geographically uncertain matches require review.
 5. Keep the local service running. Closing the browser tab is fine; a sleeping or powered-off computer cannot search.
 
@@ -76,11 +76,13 @@ After initial setup, macOS users can double-click **Start Career Agent Stack.com
 ### 4. Take your first steps
 
 1. Choose **English** or **Español** using the language button.
-2. Open **Find jobs**, enter a role or company and select **Search and save**. A profile or resume is not required.
-3. Results appear automatically. Use **Save job** for jobs you want to keep; find them under **Saved**. **Manage searches** lets you edit or pause a search.
+2. In **Find jobs**, enter a role and select **Find jobs**. Location and other filters are optional.
+3. Results appear automatically. Use **Save job** for jobs you want to keep; find them under **Saved jobs**. You can edit or pause your search from the results screen.
 4. Open a job and select **Prepare my application**. If details are missing, the guide asks for what is needed and keeps the job you chose.
 5. Review and approve the prepared resume, then **Continue application**. The approved PDF remains linked to it.
-6. Track progress in **My applications**. Lever assistance requires separate authorization; unsupported forms continue on the employer’s website. You can add a job manually in **Found jobs**.
+6. Track progress in **My applications**. Lever assistance requires separate authorization; unsupported forms continue on the employer’s website. You can add a job manually in **Profile and tools → All jobs**.
+
+The main menu has three destinations: **Find jobs**, **Saved jobs** and **My applications**. Open **Profile and tools** for your profile, resumes, all found jobs, followed companies, settings and the overview. A job shows its description first; **Fit with your profile (optional)** opens the detailed analysis.
 
 Resume preparation keeps its name, language and content selection separately for each job in the current tab, so you can return after editing your profile. These temporary drafts are cleared on sign-out and may be lost when closing the tab; generate a PDF to save a version. If selected profile details change, the app asks you to review the selection again. Returning from a job to its list keeps your search and filters.
 
@@ -133,7 +135,7 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 
 ## Back up your work
 
-In **Settings and privacy**, choose **Create backup**, then download both the verified archive and its recovery key. Download them before restarting the app or creating another copy; local originals remain in `data/backups/<id>/` (keys in its `keys/` folder). This screen does not restore backups or automatically delete old copies.
+In **Profile and tools → Settings and privacy**, choose **Create backup**, then download both the verified archive and its recovery key. Download them before restarting the app or creating another copy; local originals remain in `data/backups/<id>/` (keys in its `keys/` folder). This screen does not restore backups or automatically delete old copies.
 
 Alternatively, on macOS double-click **Backup Career Agent Stack.command**, or run `pnpm run backup`. Wait for successful verification, then keep the archive and its separate key file in private storage. PostgreSQL client tools (`pg_dump` and `pg_restore`, version 17 or compatible with your server) are required; see the [recovery guide](docs/operations/backup-restore.md) for installation and restore instructions.
 

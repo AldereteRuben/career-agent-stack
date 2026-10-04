@@ -45,7 +45,7 @@ export const v071Scenarios: Scenario[] = [
         await page.goto(new URL(`/searches?search=${search.id}`, page.url()).toString());
         await page.getByRole('link', { name: fixture.title, exact: true }).waitFor();
         await page.getByRole('button', { name: 'Nueva búsqueda', exact: true }).click();
-        await page.getByRole('button', { name: 'Buscar y guardar', exact: true }).click();
+        await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
         const role = page.getByLabel('Puesto o palabras clave', { exact: true });
         assert.equal(await role.evaluate((node) => node === document.activeElement), true);
         assert.equal(await role.getAttribute('aria-invalid'), 'true');
@@ -59,21 +59,20 @@ export const v071Scenarios: Scenario[] = [
         await page.getByRole('button', { name: 'Mostrar nuevas ofertas', exact: true }).click();
         await page.getByRole('link', { name: arrival, exact: true }).waitFor();
         await role.fill('Draft kept after failure'); failSave = true;
-        await page.getByRole('button', { name: 'Buscar y guardar', exact: true }).click();
+        await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
         await page.waitForFunction(() => document.activeElement?.id === 'search-form-error');
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         assert.equal(await role.inputValue(), 'Draft kept after failure');
         assert.equal(await page.locator('#search-form-error').isVisible(), true);
-        await page.getByRole('button', { name: /Gestionar búsquedas/ }).click();
-        await page.getByRole('listitem').filter({ hasText: fixture.company }).getByRole('button', { name: 'Buscar ahora', exact: true }).click();
-        await page.getByText(/Podrás volver a consultar .*Mientras tanto, puedes revisar las ofertas ya encontradas/).waitFor();
-        assert.equal(await role.inputValue(), 'Draft kept after failure', 'A refresh cooldown preserves the separate search draft');
         failSource = true;
         // A failed background check updates its status without removing offers the person is reading.
         // It is a local refresh, not a second portal check during the production cooldown.
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         await page.getByText(/La última consulta no se pudo completar/).waitFor();
         await page.getByRole('link', { name: fixture.title, exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Reintentar ahora', exact: true }).click();
+        await page.getByText(/Podrás volver a consultar .*Mientras tanto, puedes revisar las ofertas ya encontradas/).waitFor();
+        assert.equal(await role.inputValue(), 'Draft kept after failure', 'A refresh cooldown preserves the separate search draft');
         await page.getByRole('button', { name: 'Mostrar nuevas ofertas', exact: true }).click();
         await page.getByRole('heading', { name: 'No pudimos completar la última consulta', exact: true }).waitFor();
         assert.equal(await page.getByText(/Todavía no encontramos ofertas con estos criterios|Para ver más, prueba a quitar la ubicación|Revisa la escritura del puesto/).count(), 0, 'Provider errors do not ask the user to rewrite valid filters');

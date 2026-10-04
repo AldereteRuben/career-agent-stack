@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+import { eventually, hasHorizontalOverflow, revealField, setLocale } from './ui.js';
 
 /** All feed entries and profile details are fictional, confined to the harness database. */
 export const v070Scenario: Scenario = {
@@ -22,12 +22,13 @@ export const v070Scenario: Scenario = {
       await page.goto(new URL('/searches', page.url()).toString());
       await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
       await page.getByLabel('Puesto o palabras clave', { exact: true }).fill('Automation designer');
-      await page.getByLabel('Empresa (opcional)', { exact: true }).fill(company);
-      await page.getByText('Portales, frecuencia y opciones', { exact: true }).click();
+      const companyField = page.getByLabel('Empresa (opcional)', { exact: true });
+      await revealField(companyField); await companyField.fill(company);
+      await revealField(page.locator('#search-provider-himalayas'));
       await page.getByLabel('Modalidad', { exact: true }).selectOption('remote');
       await page.getByRole('checkbox', { name: 'Himalayas', exact: true }).uncheck(); // Only the two seeded fictional caches.
       await page.getByRole('checkbox', { name: /Preparar también un CV/ }).check();
-      await page.getByRole('button', { name: /Buscar y guardar/ }).click();
+      await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
       await page.getByRole('link', { name: title, exact: true }).waitFor({ timeout: 60000 });
       const search = (await db.query<{ id: string; enabled: boolean }>('select id, enabled from saved_job_searches where workspace_id=$1 and company=$2', [workspace, company])).rows[0]!;
       assert.equal(search.enabled, true);
@@ -52,11 +53,10 @@ export const v070Scenario: Scenario = {
         }
         await page.screenshot({ path: join(artifacts, `v070-search-${locale}.png`), fullPage: true });
       }
-      await page.getByRole('button', { name: /Manage searches/ }).click();
-      const searchCard = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: `Automation designer · ${company}`, exact: true }) });
-      await searchCard.getByRole('button', { name: 'Pause', exact: true }).click();
+      await page.locator('[data-search-actions="single"]').getByRole('button', { name: 'Pause', exact: true }).click();
       await eventually(async () => (await db.query<{ enabled: boolean }>('select enabled from saved_job_searches where id=$1', [search.id])).rows[0]!.enabled, (enabled) => !enabled, 'Pause is persisted');
-      await searchCard.getByRole('button', { name: 'Edit', exact: true }).click();
+      await page.locator('[data-search-actions="single"]').getByRole('button', { name: 'Edit', exact: true }).click();
+      await revealField(page.getByLabel('Refresh frequency', { exact: true }));
       await page.getByLabel('Refresh frequency', { exact: true }).selectOption('24');
       await page.getByRole('button', { name: 'Save changes', exact: true }).click();
       await eventually(async () => (await db.query<{ frequency_hours: number }>('select frequency_hours from saved_job_searches where id=$1', [search.id])).rows[0]!.frequency_hours, (hours) => hours === 24, 'Edited frequency persists');
@@ -71,7 +71,8 @@ export const v070Scenario: Scenario = {
       await page.goto(new URL(`/jobs/${jobId}`, page.url()).toString());
       await page.getByRole('link', { name: 'Remotive', exact: true }).waitFor();
       assert.equal(await page.locator('.detail-main > section').first().locator('#job-description').count(), 1, 'The job description precedes fit analysis');
-      assert.equal(await page.locator('.fit-explanation').getAttribute('open'), null, 'Detailed scoring does not bury the job description');
+      const fit = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: 'Fit with your profile (optional)' }) });
+      assert.equal(await fit.getAttribute('open'), null, 'Detailed scoring does not bury the job description');
       const description = await page.locator('.description-text').innerText();
       assert.doesNotMatch(description, /<\/?(?:p|li|ul)>/);
       assert.match(description, /• Fictional requirement/);

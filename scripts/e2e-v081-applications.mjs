@@ -220,6 +220,9 @@ export async function checkApplicationUsability({ browser, uiUrl, cookies, artif
     const useLocale = (locale) => context.addCookies([{ name: 'locale', value: locale, url: ui.origin, sameSite: 'Lax' }]);
     const openPage = async (label) => {
       const page = await context.newPage(); page.setDefaultTimeout(10_000);
+      // The disposable Next dev server compiles a route on its first visit.
+      // Keep interaction assertions short while allowing the same cold navigation budget as the E2E harness.
+      page.setDefaultNavigationTimeout(45_000);
       page.on('pageerror', (error) => run.pageErrors.push(`${label}: ${error.message}`));
       return page;
     };
@@ -478,6 +481,19 @@ export async function checkApplicationUsability({ browser, uiUrl, cookies, artif
         await queueCard(queue, jobs[ids.closedJob].title).waitFor();
         await check(queue, 'queue', queueCards, locale);
         await check(job, 'job-preparation', jobCards, locale);
+        const save = job.getByRole('button', { name: locale === 'es' ? 'Quitar de guardadas' : 'Unsave job', exact: true });
+        const description = job.locator('#job-description');
+        assert.equal(await save.count(), 1, 'A job has one save decision');
+        assert.ok((await save.boundingBox()).y < (await description.boundingBox()).y, 'Save is available before reading the description, including on mobile');
+        for (const name of [locale === 'es' ? 'Encaje con tu perfil (opcional)' : 'Fit with your profile (optional)', locale === 'es' ? 'Más datos de la oferta' : 'More job details']) {
+          const summary = job.locator('summary').filter({ hasText: name });
+          const disclosure = summary.locator('..');
+          assert.equal(await disclosure.getAttribute('open'), null, 'Secondary analysis and metadata start closed');
+          await summary.focus(); await job.keyboard.press('Enter');
+          assert.notEqual(await disclosure.getAttribute('open'), null, 'Secondary details open with the keyboard');
+          await job.keyboard.press('Enter');
+          assert.equal(await disclosure.getAttribute('open'), null);
+        }
         await queue.setViewportSize({ width: 320, height: 900 });
         await queue.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
         const zoomed = await layoutReport(queue, queueCards);

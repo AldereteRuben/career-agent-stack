@@ -12,7 +12,7 @@ export const any = (...phrases: string[]) => new RegExp(phrases.map(escape).join
 export const locales = ['es', 'en'] as const;
 export type Locale = (typeof locales)[number];
 
-export const routes = ['/', '/jobs', '/applications', '/profile', '/documents', '/boards', '/settings'] as const;
+export const routes = ['/', '/overview', '/jobs', '/jobs?scope=favorites', '/applications', '/profile', '/documents', '/boards', '/settings'] as const;
 
 export async function currentLocale(page: Page): Promise<string> {
   return ((await page.locator('html').getAttribute('lang')) ?? '').slice(0, 2).toLowerCase();
@@ -32,7 +32,8 @@ export function mainNavigation(page: Page): Locator {
 
 /** Navigates through the main navigation by href, so renamed labels do not break the test. */
 export async function goTo(page: Page, href: string) {
-  if (new URL(page.url()).pathname === href || (page.viewportSize()?.width ?? 1440) <= 850) {
+  const target = new URL(href === '/' ? '/searches' : href, page.url());
+  if (new URL(page.url()).pathname === target.pathname || (page.viewportSize()?.width ?? 1440) <= 850) {
     await page.goto(new URL(href, page.url()).toString());
     await page.getByRole('heading', { level: 1 }).first().waitFor();
     return;
@@ -40,8 +41,16 @@ export async function goTo(page: Page, href: string) {
   const link = mainNavigation(page).locator(`a[href="${href}"]`).first();
   if (await link.isVisible().catch(() => false)) await link.click();
   else await page.goto(new URL(href, page.url()).toString());
-  await page.waitForURL((url) => url.pathname === href);
+  await page.waitForURL((url) => url.pathname === target.pathname && [...target.searchParams].every(([key, value]) => url.searchParams.get(key) === value));
   await page.getByRole('heading', { level: 1 }).first().waitFor();
+}
+
+/** Open native disclosures through their summaries before using an optional field. */
+export async function revealField(field: Locator) {
+  for (const details of await field.locator('xpath=ancestor::details').all()) {
+    if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+  }
+  await field.waitFor({ state: 'visible' });
 }
 
 export async function signIn(page: Page, uiUrl: string, token: string) {

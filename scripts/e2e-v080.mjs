@@ -211,7 +211,7 @@ try {
     return responseJson(route, { id: ids.job, shortlistDecision: selectedJobDecision });
   });
 
-  await page.goto(new URL('/', ui).toString());
+  await page.goto(new URL('/overview', ui).toString());
   await setLocale(page, 'es');
   await page.getByText(/TU SIGUIENTE PASO|YOUR NEXT STEP/i).waitFor();
   await page.getByText('1 CV pendientes de revisión', { exact: true }).waitFor();
@@ -301,16 +301,17 @@ try {
 
   await page.getByRole('button', { name: /New search|Nueva búsqueda/, exact: true }).click();
   await page.getByLabel(/Role or keywords|Puesto o palabras clave/).fill('Service Designer');
-  assert.equal(await page.getByLabel(/Work mode|Modalidad/).inputValue(), 'any', 'Modality is available in the first-use form');
-  await page.getByText(/When you save, the remote-jobs site Himalayas receives only the role|Al guardar, el portal de empleo remoto Himalayas recibe solo/).waitFor();
-  await page.getByText(/Portals, frequency and options|Portales, frecuencia y opciones/).click();
+  assert.equal(await page.getByLabel(/Work mode|Modalidad/).inputValue(), 'any', 'Optional modality retains its default value');
+  await page.locator('#search-sharing').waitFor();
+  assert.match(await page.locator('#search-sharing').innerText(), /no se comparten|are not shared/);
+  await page.locator('#search-options > summary').click();
   assert.equal(await page.getByLabel(/Refresh frequency|Frecuencia de actualización/).inputValue(), '24');
   assert.equal(await page.getByRole('checkbox', { name: /Also prepare a resume|Preparar también un CV/ }).isChecked(), false);
-  await page.getByRole('button', { name: /Search and save|Buscar y guardar/, exact: true }).click();
+  await page.getByRole('button', { name: /Find jobs|Buscar ofertas/, exact: true }).click();
   const roleAfterLostReply = await page.getByLabel(/Role or keywords|Puesto o palabras clave/).inputValue();
   assert.equal(roleAfterLostReply, 'Service Designer', 'A lost create response must preserve the draft for retry');
   assert.equal(createRequests, 1);
-  await page.getByRole('button', { name: /Search and save|Buscar y guardar/, exact: true }).click();
+  await page.getByRole('button', { name: /Find jobs|Buscar ofertas/, exact: true }).click();
   assert.equal(createRequests, 2);
   assert.equal(saveBodies[1].idempotencyKey, saveBodies[0].idempotencyKey, 'Create retry reuses the same idempotency key');
   assert.equal(saveBody.matcherVersion, 2);
@@ -334,8 +335,8 @@ try {
   await page.evaluate(() => { document.documentElement.style.fontSize = ''; });
   await setLocale(page, 'en');
   await page.locator('#search-results-title').waitFor();
-  await page.getByText('Search saved. Jobs will appear here as soon as the portals respond.', { exact: true }).waitFor();
-  assert.equal(await page.getByText('Búsqueda guardada. Las ofertas aparecerán aquí en cuanto respondan los portales.', { exact: true }).count(), 0);
+  await page.getByText('Search saved.', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Búsqueda guardada.', { exact: true }).count(), 0);
   for (const width of viewportWidths) {
     await page.setViewportSize({ width, height: 900 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1), false, `English search page must not overflow horizontally at ${width}px`);

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2
+
+- Open directly in Find jobs and keep three primary destinations: Find jobs, Saved jobs and My applications. Profile and tools contains the remaining screens, including the previous overview.
+- Start a search with a role and optional location. Reveal company, work mode, sources and frequency only when needed; restored nondefault criteria stay visible.
+- Check immediately and repeat daily by default while the local service runs, without requiring a profile or resume. Source choices, permissions and automatic preparation defaults are unchanged.
+- Offer Edit and Pause directly for one search; retain visible search choices and management for multiple searches.
+- Keep Save job near the job title, show the description before optional fit analysis, and guide application preparation in context.
+- Use scope-specific job titles and useful empty states; manual import and tracking remain available as secondary actions.
+- Cover first-use ES/EN flows, keyboard navigation, mobile layouts and existing search/application regressions in isolated browser tests.
+- Upgrade and verification: [v0.8.2](docs/releases/v0.8.2.md). No new migration or source.
+
 ## 0.8.1
 
 - Put job results first, keep searches visible as compact choices, and move management and portal detail into secondary controls.

@@ -25,7 +25,7 @@ The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postg
 
    If any step fails, there is no `.env`, so nothing points at a half-prepared database. The message says what to fix in Spanish and English; re-running continues from `.env.pending` with the same keys, database name and ports. Roles and databases the run already created carry its mark and are reused; a role or database with the same name that it did **not** create is refused, never reused.
 3. Run `pnpm start` (or double-click `Start Career Agent Stack.command`). On first sign-in, use the token in `data/setup-token` (the `.command` file copies it to the clipboard). The token is consumed once.
-4. Open **Find jobs** and save a role or company search. Searching needs no profile. Open a matching job and choose **Prepare my application** when you are ready; the guide asks for missing details. Following individual company boards is optional.
+4. The app opens in **Find jobs**. Enter a role and select **Find jobs**; location is optional, and **Add company or work mode** reveals other criteria. Searching needs no profile. Save interesting offers in **Saved jobs** or choose **Prepare my application**; the guide asks for missing details. Profiles, resumes and optional company boards are under **Profile and tools**.
 
 No board is enabled by bootstrap or demo seeding. An empty board registry only means no individual companies are followed. Role and company searches have their own settings in **Find jobs**.
 
@@ -85,7 +85,7 @@ Messages are printed in Spanish and English. Spanish comes first when the system
 
 ### Known limits
 
-- The `.command` file is macOS-only (zsh). From Finder it loads fnm or nvm, refuses a Node other than 24 with a clear message (Homebrew's `node` may be a newer major), and on failure waits for Enter so the message stays readable. On Linux or Windows, run `pnpm start`.
+- The `.command` file is macOS-only (zsh). From Finder it loads fnm or nvm, refuses a Node other than 24 with a clear message (Homebrew's `node` may be a newer major), and on failure waits for Enter so the message stays readable. The CLI launcher relies on Unix process tools: native Windows startup is unsupported; Linux/WSL installation has not been verified end to end.
 - Rebuild detection compares modification times. After an unusual checkout, if the app looks outdated, run `pnpm run stop`, then `pnpm run build`, then `pnpm start`.
 - A port taken by another program is reported, not freed. Use `lsof -nP -iTCP:<port> -sTCP:LISTEN` to see what is using it.
 - Neither bootstrap nor the launcher installs PostgreSQL or creates a cluster. Bootstrap creates only this installation's own role and database, and only through an administrator that can connect.
@@ -145,15 +145,19 @@ Automatic read-only discovery is available after opt-in in Companies I follow; i
 - ¿Abrir una instalación restaurada? En otra copia del código (`git worktree add ../career-restored`): `CAREER_ENV_FILE=/ruta/restaurada/.env pnpm start --copy-token`. Nunca copies nada sobre el `.env` activo.
 - Los registros están en `data/logs/` (o en la carpeta de datos de `CAREER_ENV_FILE`).
 
-## First use after updating to v0.7.2
+## First use after updating to v0.8.2
 
-Open **Find jobs**, enter a role or company and save the search. The local service repeats it at the chosen interval. Open a matching job and choose **Prepare my application**. Complete only the missing profile details, confirm your experience and review the generated PDF. The profile and manual resume builder remain available as optional paths. Unsupported forms continue on the original job page; saving or preparing does not submit anything.
+The app opens directly in **Find jobs**, with two initial fields: role and optional location. Choose **Find jobs** to check now and repeat daily while Career Stack runs on your computer. Company and work mode are under **Add company or work mode**; sources, frequency and preparation settings are under **Search options**. Restored nondefault criteria reveal their controls so they are not applied invisibly.
 
-ES: abre **Buscar empleo**, indica un puesto o una empresa y guarda la búsqueda. Desde una oferta, pulsa **Preparar mi solicitud**. Completa los datos que falten, confirma tu experiencia y revisa el PDF. La consulta periódica necesita el servicio local encendido; puedes cerrar la pestaña.
+The main menu has **Find jobs**, **Saved jobs** and **My applications**. **Profile and tools** contains the profile, resumes, all jobs, followed companies, settings and the previous overview. Existing direct links still work. A job offers **Save job** near its title and a guided application action; detailed fit analysis is optional.
 
-The v0.7.2 update requires no new configuration or data migration. Restart the local service after updating. Application history now has search and pages of 25 records; existing direct links remain valid. Reusing a saved resume asks before replacing a different draft.
+ES: la app abre en **Buscar empleo**. Indica un puesto, añade ubicación si quieres y pulsa **Buscar ofertas**. Consultará ahora y cada día mientras Career Stack siga funcionando en tu equipo. Empresa y modalidad están en **Añadir empresa o modalidad**; portales, frecuencia y preparación en **Opciones de búsqueda**. Los filtros no predeterminados recuperados de un borrador se muestran para que puedas revisarlos.
 
-ES: v0.7.2 no requiere configuración ni migraciones nuevas. Reinicia el servicio local después de actualizar. El historial permite buscar y recorrer páginas de 25 solicitudes; los enlaces existentes siguen funcionando. Reutilizar un CV guardado pide confirmación antes de reemplazar un borrador diferente.
+ES: el menú principal contiene **Buscar empleo**, **Guardadas** y **Mis solicitudes**. **Perfil y herramientas** reúne perfil, CV, todas las ofertas, empresas seguidas, ajustes y resumen. Los enlaces anteriores siguen funcionando. Guarda una oferta junto a su título o continúa con la preparación guiada; el análisis de encaje es opcional.
+
+Updating from v0.8.0 or v0.8.1 requires no new configuration or data migration. Restart the local service after updating. Existing searches keep their sources, schedule and permissions; no application is submitted by searching or saving a job.
+
+ES: actualizar desde v0.8.0 o v0.8.1 no requiere configuración ni migraciones nuevas. Reinicia el servicio local después de actualizar. Las búsquedas conservan sus fuentes, frecuencia y permisos; buscar o guardar una oferta no envía solicitudes.
 
 ## Updating to v0.8.0 / Actualizar a v0.8.0
 

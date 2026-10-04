@@ -53,7 +53,6 @@
 
 .later {
   padding: 16px 20px;
-  margin-bottom: 20px;
 }
 
 .later > h2 {
@@ -73,10 +72,7 @@
 }
 
 .fit > summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+  display: list-item;
   padding: 16px 19px;
   cursor: pointer;
   font-weight: 600;
@@ -84,6 +80,8 @@
 }
 
 .fit > summary small {
+  display: block;
+  margin-top: 4px;
   color: var(--muted);
   font-weight: 400;
 }

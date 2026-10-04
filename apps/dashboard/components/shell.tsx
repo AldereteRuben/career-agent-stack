@@ -251,8 +251,9 @@ function MainNav({ locale, route, toolsOpen, onToggleTools, onRevealTools, onNav
     const active = route.active === link.key;
     return <Link key={link.key} href={link.href} onClick={onNavigate} aria-current={active ? 'page' : undefined} className={`nav-link ${compact ? 'nav-link-compact' : ''} ${active ? 'nav-active' : ''}`}><Icon name={link.icon} size={20}/><span className="nav-copy"><span>{say(link.label)}</span>{link.hint && <small>{say(link.hint)}</small>}</span></Link>;
   };
-  return <nav className="main-nav" aria-label={t("Navegación principal")}>
+  return <><nav className="main-nav" aria-label={t("Navegación principal")}>
     {primaryLinks.map((link) => item(link))}
+    </nav>
     <div className="nav-tools">
       <button type="button" className={`nav-tools-toggle ${toolsActive ? 'nav-tools-current' : ''}`} aria-expanded={toolsOpen} aria-controls={toolsId} onClick={onToggleTools}>
         <Icon name="settings" size={20}/><span className="nav-copy"><span>{say(toolsLabel)}</span></span><span className="nav-tools-chevron" aria-hidden="true"><Icon name="arrow" size={16}/></span>
@@ -261,7 +262,7 @@ function MainNav({ locale, route, toolsOpen, onToggleTools, onRevealTools, onNav
         {secondaryLinks.map((link) => item(link, true))}
       </div>
     </div>
-  </nav>;
+  </>;
 }
 
 export function PageHeader({ eyebrow, title, description, action }: { eyebrow: string; title: ReactNode; description?: string; action?: ReactNode }) {

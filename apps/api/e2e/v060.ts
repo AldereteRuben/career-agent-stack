@@ -46,7 +46,7 @@ export const v060Scenario: Scenario = {
         await goTo(page, `/jobs/${job.id}`); await page.getByRole('heading', { name: jobTitle(marker), exact: true }).waitFor();
         await db.query('update jobs set seen_at = null where id = $1', [job.id]);
       }
-      await page.setViewportSize({ width: 1280, height: 900 }); await goTo(page, '/');
+      await page.setViewportSize({ width: 1280, height: 900 }); await goTo(page, '/overview');
       await page.locator('.discovery-panel').getByRole('heading').waitFor();
       assert.equal(await hasHorizontalOverflow(page), false);
       note('Real API, persisted opt-in/pause, new-job review, ES/EN, 320/390px. Fictional DB rows; source execution is verified separately with injected feeds.');

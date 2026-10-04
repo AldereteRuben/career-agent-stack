@@ -17,7 +17,7 @@ import { useLocale } from '@/lib/i18n';
 import styles from './searches.module.css';
 
 const successMessages = {
-  searchSaved: ['Búsqueda guardada. Las ofertas aparecerán aquí en cuanto respondan los portales.', 'Search saved. Jobs will appear here as soon as the portals respond.'],
+  searchSaved: ['Búsqueda guardada.', 'Search saved.'],
   refresh: ['Consulta solicitada. Algunos portales pueden devolver datos recientes guardados.', 'Check requested. Some portals may return recently saved results.'],
 } as const;
 const actionMessages = {

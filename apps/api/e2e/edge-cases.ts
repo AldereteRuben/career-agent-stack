@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createIsolatedStack, projectRoot } from './isolation.js';
-import { signIn, setLocale, apiClient, hasHorizontalOverflow, eventually as waitFor } from './ui.js';
+import { signIn, setLocale, apiClient, hasHorizontalOverflow, revealField, eventually as waitFor } from './ui.js';
 
 type Application = { id: string; version: number; recruitmentStage: string };
 const stack = await createIsolatedStack();
@@ -128,14 +128,14 @@ try {
   await run('search-length-rejected-without-losing-input', async () => {
     await page.goto('/searches');
     const role = page.getByLabel('Puesto o palabras clave', { exact: true }); await role.fill('a'.repeat(201));
-    await page.getByRole('button', { name: 'Buscar y guardar', exact: true }).click();
+    await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
     await page.locator('#search-form-error').waitFor();
     assert.match(await page.locator('#search-form-error').innerText(), /200/);
     assert.equal(await role.inputValue(), 'a'.repeat(201)); assert.equal(await role.getAttribute('aria-invalid'), 'true');
     assert.equal(await role.evaluate((element) => element === document.activeElement), true);
     await role.fill('a'.repeat(200));
     const created = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith('/job-searches'));
-    await page.getByRole('button', { name: 'Buscar y guardar', exact: true }).click();
+    await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
     const response = await created; assert.equal(response.status(), 201); assert.equal((await response.json()).search.role.length, 200);
   });
 
@@ -189,8 +189,9 @@ try {
     const newSearch = page.getByRole('button', { name: 'New search', exact: true });
     await page.getByRole('heading', { level: 1 }).waitFor();
     await newSearch.waitFor(); await newSearch.click();
-    const company = page.getByLabel('Company (optional)', { exact: true }); await company.fill('b'.repeat(201));
-    await page.getByRole('button', { name: 'Search and save', exact: true }).click();
+    const company = page.getByLabel('Company (optional)', { exact: true });
+    await revealField(company); await company.fill('b'.repeat(201));
+    await page.getByRole('button', { name: 'Find jobs', exact: true }).click();
     await page.locator('#search-form-error').waitFor(); assert.match(await page.locator('#search-form-error').innerText(), /200 characters/);
     assert.equal(await hasHorizontalOverflow(page), false);
   });
