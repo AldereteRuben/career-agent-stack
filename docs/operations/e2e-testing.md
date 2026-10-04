@@ -75,7 +75,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 ## Last local verification
 
-2026-10-04: v0.7.2 passed **31/31** general scenarios in run `a6d2b5fffef5` and **10/10** edge-case scenarios in `673200ebdc68`. Both used disposable databases and isolated dashboard/API processes; teardown and workspace-isolation checks passed. The 175 domain/source/discovery/search/backup/integration/preparation/assisted checks also passed without skips. Native Windows launch/stop and full Linux/WSL installation remain outside this local validation. See [v0.7.2 release verification](../releases/v0.7.2.md).
+2026-10-04: v0.8.0 passed **31/31** general scenarios in run `c7fb6b4421e6` and **10/10** edge cases in `5b1711b7ec7d`, after adding a deterministic late-response regression. Disposable-stack teardown and isolation checks passed. The 241 domain/source/discovery/search/backup/integration/preparation/assisted checks also passed without skips. The additional v0.8 UI harness covers real cached execution plus mocked failure states, ES/EN, five viewport widths and 200% text scaling. Native Windows launch/stop, full Linux/WSL installation and a new-user study remain outside this local validation. See [v0.8.0 validation and limits](../releases/v0.8.0-validation.md).
 
 ## v0.3 assisted applications
 
@@ -84,3 +84,11 @@ The `assisted-application-preparation` scenario checks the actual isolated API, 
 ## Edge-case regression suite
 
 Run `pnpm test:edge-cases` for the 2026-10-04 regression cases. It uses the same disposable stack and accepts `E2E_ADMIN_DATABASE_URL` as above. It covers concurrent application changes, terminal hiring stages, cancelling and confirming resume-draft replacement (including another destination), search-length validation, a 501-record tracker, pagination and search, detail-load recovery, temporary session-check outages, and English mobile layouts. Fictional provider caches prevent external job-feed requests. Screenshots and results are saved under `output/playwright/<run>/edge-cases/` and are excluded from Git.
+
+## v0.8 search workflow
+
+Run `pnpm test:search-ui` with the same local maintenance connection. The wrapper creates and removes its own isolated stack. It checks a real API create → queued execution → persisted result using a fictional provider cache, then exercises deterministic browser fixtures for source states, editing, consent, navigation, pagination, language and responsive layouts. Screenshots remain under `output/playwright/v080-<run>/`, outside Git. The browser fixtures do not measure the availability or relevance of live internet listings.
+
+`pnpm test:searches` covers the source adapters, persistent runs, identity, database filters and preparation limits. Set `CAREER_JOB_SEARCH_TEST_ADMIN_URL` to a loopback maintenance database to run its database suites; without that connection those suites are skipped. `pnpm test:evals` runs the synthetic matching/ranking regression corpus without a database. Final release results and their limits are recorded in [v0.8.0 validation](../releases/v0.8.0-validation.md).
+
+ES: `pnpm test:search-ui` comprueba el recorrido de búsqueda en una instalación desechable. Usa ofertas ficticias y conserva las capturas fuera de Git. `pnpm test:searches` comprueba fuentes, recuperación, filtros y límites; `pnpm test:evals` ejecuta los casos sintéticos de relevancia. Estas pruebas no representan una evaluación con personas nuevas ni de todo el mercado laboral.

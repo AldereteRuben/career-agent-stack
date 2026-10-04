@@ -1,3 +1,4 @@
+import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '@career/db/schema';
 import { createHash } from 'node:crypto';
@@ -39,6 +40,7 @@ export async function refreshBoard(id: string, boardId: string, automatic = fals
       const sourceReport = await readSource(board);
       const discovered = sourceReport.jobs;
       const result = await executor.transaction(async (tx) => {
+        await lockJobIdentity(tx,id);
         // Context and existing identities are loaded once per refresh instead of once per discovered job.
         const context = await loadMatchingContext(tx, id);
         const existingByExternalId = await occurrencesForBoard(tx, id, board);
@@ -52,7 +54,7 @@ export async function refreshBoard(id: string, boardId: string, automatic = fals
         for (const item of discovered) {
           if (!item.externalId || !item.title || !item.jobUrl) continue;
           const existing = existingByExternalId.get(item.externalId);
-          let jobId = existing?.jobId ?? candidateByKey.get(`${item.title}\n${item.jobUrl}`)?.id;
+          let jobId = existing?.jobId ?? await findJobIdentity(tx,id,item.jobUrl) ?? candidateByKey.get(`${item.title}\n${item.jobUrl}`)?.id;
           const snapshotHash = createHash('sha256').update(`${item.title}\n${item.description ?? ''}`).digest('hex');
           const scored = applyMatch({ discoveredAt: null, seenAt: null, id: jobId ?? '', workspaceId: id, company: board.companyName, title: item.title, location: item.location, canonicalUrl: item.jobUrl, availability: 'OPEN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: [], createdAt: now, updatedAt: now }, item.description, context);
           const scores = { fitScore: scored.fitScore, evidenceCoverage: scored.evidenceCoverage, eligibility: scored.eligibility, reasons: scored.reasons };
@@ -62,6 +64,7 @@ export async function refreshBoard(id: string, boardId: string, automatic = fals
           } else {
             await tx.update(jobs).set({ title: item.title, location: item.location, availability: 'OPEN', ...scores, updatedAt: now }).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))); updated++;
           }
+          await bindJobIdentity(tx,id,jobId,item.jobUrl);
           let occurrenceId = existing?.id;
           if (existing) {
             await tx.update(jobOccurrences).set({ lastSeenAt: now, sourceUpdatedAt: item.updatedAt ? new Date(item.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: item.raw, jobUrl: item.jobUrl, applyUrl: item.applyUrl }).where(eq(jobOccurrences.id, existing.id));

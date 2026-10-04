@@ -1,3 +1,4 @@
+import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -49,7 +50,7 @@ function backoff(now: number, failures: number, retryAt = 0): number {
   return Math.max(now + delay, retryAt);
 }
 
-async function loadProviderFeed(provider: JobSearchProvider, reader: FeedReader): Promise<Feed> {
+export async function loadProviderFeed(provider: JobSearchProvider, reader: FeedReader): Promise<Feed> {
   const connection = await pool.connect(); const executor = drizzle(connection, { schema }); const lockId = `job-search-provider:${provider}`; let locked = false; let destroy = false;
   try {
     locked = (await connection.query<{ acquired: boolean }>('select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired', [lockId])).rows[0]?.acquired ?? false;
@@ -114,6 +115,7 @@ export async function refreshSavedJobSearch(workspaceId: string, searchId: strin
     }
     const allJobs = PROVIDER_IDS.flatMap((provider) => (feeds[provider]?.jobs ?? []).map((job) => ({ provider, job })));
     const result = await executor.transaction(async (tx) => {
+      await lockJobIdentity(tx,workspaceId);
       const latest = (await tx.select().from(savedJobSearches).where(and(eq(savedJobSearches.id, searchId), eq(savedJobSearches.workspaceId, workspaceId))).limit(1))[0];
       if (!latest?.enabled && options.automatic) {
         await tx.update(savedJobSearches).set({ lastRunAt: new Date(), lastRunStatus: 'PAUSED', lastError: null, nextRunAt: null, updatedAt: new Date() }).where(eq(savedJobSearches.id, searchId));
@@ -136,6 +138,10 @@ export async function refreshSavedJobSearch(workspaceId: string, searchId: strin
         let source = sourceByExternal.get(`${provider}:${item.externalId}`);
         let jobRow = source ? jobById.get(source.jobId) : jobByUrl.get(item.url);
         if (!jobRow) {
+          const known = await findJobIdentity(tx,workspaceId,item.url);
+          if (known) jobRow=(await tx.select().from(jobs).where(and(eq(jobs.workspaceId,workspaceId),eq(jobs.id,known))))[0];
+        }
+        if (!jobRow) {
           const inserted = await tx.insert(jobs).values({ workspaceId, discoveredAt: now, company: item.company, title: item.title, location: item.location, canonicalUrl: item.url, availability: 'OPEN' }).returning();
           jobRow = inserted[0]; added++;
           if (item.description) {
@@ -145,6 +151,7 @@ export async function refreshSavedJobSearch(workspaceId: string, searchId: strin
           jobByUrl.set(item.url, jobRow!);
         }
         if (!jobRow) continue;
+        await bindJobIdentity(tx,workspaceId,jobRow.id,item.url);
         const currentHash = item.description ? createHash('sha256').update(`${item.title}\n${item.description}`).digest('hex') : null;
         if (jobRow.title !== item.title || jobRow.company !== item.company || jobRow.location !== item.location || jobRow.canonicalUrl !== item.url) {
           await tx.update(jobs).set({ title: item.title, company: item.company, location: item.location, canonicalUrl: item.url, updatedAt: now }).where(and(eq(jobs.id, jobRow.id), eq(jobs.workspaceId, workspaceId)));
@@ -194,7 +201,7 @@ export async function runJobSearchTick(onPrepare?: OnPrepare): Promise<void> {
   if (onPrepare) await processPendingJobPreparations(onPrepare, 5);
   const now = new Date();
   const due = await db.select({ id: savedJobSearches.id, workspaceId: savedJobSearches.workspaceId }).from(savedJobSearches)
-    .where(and(eq(savedJobSearches.enabled, true), or(isNull(savedJobSearches.nextRunAt), sql`${savedJobSearches.nextRunAt} <= ${now}`)))
+    .where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.enabled, true), or(isNull(savedJobSearches.nextRunAt), sql`${savedJobSearches.nextRunAt} <= ${now}`)))
     .orderBy(asc(savedJobSearches.nextRunAt), savedJobSearches.id).limit(1);
   const search = due[0]; if (!search) return;
   try { await refreshSavedJobSearch(search.workspaceId, search.id, { automatic: true }); }
@@ -209,7 +216,7 @@ export async function processPendingJobPreparations(onPrepare: OnPrepare, batchS
     .from(savedJobSearchMatches)
     .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
     .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
-    .where(and(eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`))
+    .where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`))
     .orderBy(asc(savedJobSearchMatches.autoPrepareNextAttemptAt), asc(savedJobSearchMatches.matchedAt)).limit(limit);
   let attempted = 0; let prepared = 0; let failed = 0;
   for (const candidate of candidates) {
@@ -243,7 +250,7 @@ export async function processPendingJobPreparations(onPrepare: OnPrepare, batchS
   return { attempted, prepared, failed };
 }
 
-export type JobSearchSourceInfo = { provider: JobSearchProvider; name: string; url: string; postedAt: Date | null };
+export type JobSearchSourceInfo = { provider: JobSearchProvider | 'himalayas'; name: string; url: string; postedAt: Date | null };
 /** Source attribution for existing jobs list/detail handlers; keys are job IDs from this workspace only. */
 export async function getJobSearchSources(workspaceId: string, jobIds: string[]): Promise<Record<string, JobSearchSourceInfo[]>> {
   const result: Record<string, JobSearchSourceInfo[]> = {};
@@ -252,9 +259,9 @@ export async function getJobSearchSources(workspaceId: string, jobIds: string[])
   const rows = await db.select({ jobId: jobSearchSources.jobId, provider: jobSearchSources.provider, url: jobSearchSources.sourceUrl, postedAt: jobSearchSources.postedAt }).from(jobSearchSources)
     .where(and(eq(jobSearchSources.workspaceId, workspaceId), inArray(jobSearchSources.jobId, jobIds)));
   for (const row of rows) {
-    if (row.provider !== 'remotive' && row.provider !== 'arbeitnow') continue;
+    if (row.provider !== 'remotive' && row.provider !== 'arbeitnow' && row.provider !== 'himalayas') continue;
     result[row.jobId] ??= [];
-    if (!result[row.jobId]!.some((source) => source.provider === row.provider && source.url === row.url)) result[row.jobId]!.push({ provider: row.provider, name: PROVIDERS[row.provider].name, url: row.url, postedAt: row.postedAt });
+    if (!result[row.jobId]!.some((source) => source.provider === row.provider && source.url === row.url)) result[row.jobId]!.push({ provider: row.provider, name: row.provider === 'himalayas' ? 'Himalayas' : PROVIDERS[row.provider].name, url: row.url, postedAt: row.postedAt });
   }
   return result;
 }
@@ -262,9 +269,16 @@ export async function getJobSearchSources(workspaceId: string, jobIds: string[])
 /** Recover abandoned RUNNING reservations conservatively, then schedule persisted due work. */
 export function startJobSearchWorker(onError: (error: unknown) => void, onPrepare?: OnPrepare) {
   let stopped = false; let timer: ReturnType<typeof setTimeout>; let current: Promise<void> = Promise.resolve();
-  const recover = db.update(savedJobSearches).set({ lastRunStatus: 'INTERRUPTED', nextRunAt: sql`now() + (${savedJobSearches.frequencyHours} * interval '1 hour')`, updatedAt: new Date() }).where(and(eq(savedJobSearches.lastRunStatus, 'RUNNING'), sql`${savedJobSearches.lastRunAt} < now() - interval '2 minutes'`)).then(() => undefined);
+  const recover = db.update(savedJobSearches).set({ lastRunStatus: 'INTERRUPTED', nextRunAt: sql`now() + (${savedJobSearches.frequencyHours} * interval '1 hour')`, updatedAt: new Date() }).where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.lastRunStatus, 'RUNNING'), sql`${savedJobSearches.lastRunAt} < now() - interval '2 minutes'`)).then(() => undefined);
+  let maintenanceAt = 0;
   const tick = () => {
-    current = recover.then(() => runJobSearchTick(onPrepare)).catch(onError).finally(() => { if (!stopped) { timer = setTimeout(tick, 5_000); timer.unref(); } });
+    current = recover.then(async () => {
+      const v2 = await import('./search-execution.js');
+      await v2.runSearchExecutionTick();
+      if (onPrepare) await v2.processV2Preparations(onPrepare);
+      await runJobSearchTick(onPrepare);
+      if (Date.now() > maintenanceAt) { await v2.maintainSearchData(); maintenanceAt = Date.now() + 60_000; }
+    }).catch(onError).finally(() => { if (!stopped) { timer = setTimeout(tick, 5_000); timer.unref(); } });
   };
   timer = setTimeout(tick, 1_000); timer.unref();
   return async () => { stopped = true; clearTimeout(timer); await current; };

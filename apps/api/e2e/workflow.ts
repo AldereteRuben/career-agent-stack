@@ -33,7 +33,8 @@ async function runScenarios(stack: IsolatedStack, artifacts: string): Promise<Re
       nextRequest = start + 600;
       await new Promise((resolve) => setTimeout(resolve, Math.max(0, start - Date.now())));
     };
-    await context.route('**/api/v1/**', async (route) => { await pace(); await route.continue(); });
+    // Fallback lets scenario-specific page routes fulfill intercepted API fixtures after global pacing.
+    await context.route('**/api/v1/**', async (route) => { await pace(); await route.fallback(); });
     context.setDefaultTimeout(30_000);
     context.setDefaultNavigationTimeout(45_000);
     const page = await context.newPage();

@@ -1,0 +1,1298 @@
+[
+  {
+    "id": "quality-01",
+    "split": "train",
+    "family": "quality",
+    "role": "QA engineer",
+    "title": "Quality Assurance Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-02",
+    "split": "train",
+    "family": "quality",
+    "role": "quality assurance engineer",
+    "title": "SDET",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-03",
+    "split": "train",
+    "family": "quality",
+    "role": "SDET",
+    "title": "Software Development Engineer in Test",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-04",
+    "split": "train",
+    "family": "quality",
+    "role": "ingeniero de pruebas",
+    "title": "Software Test Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-05",
+    "split": "train",
+    "family": "quality",
+    "role": "tester de software",
+    "title": "Ingeniera QA",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-06",
+    "split": "train",
+    "family": "quality",
+    "role": "software test engineer",
+    "title": "Quality Assurance Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-07",
+    "split": "train",
+    "family": "quality",
+    "role": "QA",
+    "title": "Test Automation Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-08",
+    "split": "train",
+    "family": "quality",
+    "role": "test automation engineer",
+    "title": "QA Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-09",
+    "split": "train",
+    "family": "quality",
+    "role": "QA engineer",
+    "title": "Backend Developer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-10",
+    "split": "train",
+    "family": "quality",
+    "role": "quality assurance",
+    "title": "Customer Support Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-11",
+    "split": "train",
+    "family": "quality",
+    "role": "SDET",
+    "title": "Senior Software Engineer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-12",
+    "split": "train",
+    "family": "quality",
+    "role": "ingeniero de pruebas",
+    "title": "Diseñador de producto",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-13",
+    "split": "train",
+    "family": "quality",
+    "role": "QA engineer",
+    "title": "QA Automation Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-14",
+    "split": "holdout",
+    "family": "quality",
+    "role": "Quality Assurance Engineer",
+    "title": "QA Analyst",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-15",
+    "split": "holdout",
+    "family": "quality",
+    "role": "ingeniera QA",
+    "title": "Quality Assurance Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-16",
+    "split": "holdout",
+    "family": "quality",
+    "role": "software test engineer",
+    "title": "SDET",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-17",
+    "split": "holdout",
+    "family": "quality",
+    "role": "quality assurance engineer",
+    "title": "Test Automation Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-18",
+    "split": "holdout",
+    "family": "quality",
+    "role": "QA engineer",
+    "title": "Javascript Developer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-19",
+    "split": "holdout",
+    "family": "quality",
+    "role": "QA",
+    "title": "Marketing Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "quality-20",
+    "split": "holdout",
+    "family": "quality",
+    "role": "test automation engineer",
+    "title": "Product Designer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "development-01",
+    "split": "train",
+    "family": "development",
+    "role": "software engineer",
+    "title": "Software Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-02",
+    "split": "train",
+    "family": "development",
+    "role": "software developer",
+    "title": "Ingeniero de software",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-03",
+    "split": "train",
+    "family": "development",
+    "role": "desarrollador de software",
+    "title": "Software Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-04",
+    "split": "train",
+    "family": "development",
+    "role": "ingeniera de software",
+    "title": "Software Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-05",
+    "split": "train",
+    "family": "development",
+    "role": "software engineer",
+    "title": "Senior Software Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-06",
+    "split": "train",
+    "family": "development",
+    "role": "software developer",
+    "title": "Backend Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-07",
+    "split": "train",
+    "family": "development",
+    "role": "software engineer",
+    "title": "Full Stack Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-08",
+    "split": "train",
+    "family": "development",
+    "role": "desarrollador de software",
+    "title": "Desarrolladora web",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-09",
+    "split": "train",
+    "family": "development",
+    "role": "software engineer",
+    "title": "Product Designer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "development-10",
+    "split": "train",
+    "family": "development",
+    "role": "software developer",
+    "title": "Customer Support Agent",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "development-11",
+    "split": "train",
+    "family": "development",
+    "role": "programador",
+    "title": "Marketing Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "development-12",
+    "split": "train",
+    "family": "development",
+    "role": "software engineer",
+    "title": "Office Administrator",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "development-13",
+    "split": "train",
+    "family": "development",
+    "role": "ingeniero de software",
+    "title": "Staff Software Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-14",
+    "split": "holdout",
+    "family": "development",
+    "role": "software developer",
+    "title": "Frontend Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-15",
+    "split": "holdout",
+    "family": "development",
+    "role": "software engineer",
+    "title": "Desarrollador de software",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-16",
+    "split": "holdout",
+    "family": "development",
+    "role": "desarrollador de software",
+    "title": "Software Engineer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-17",
+    "split": "holdout",
+    "family": "development",
+    "role": "software developer",
+    "title": "Full Stack Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-18",
+    "split": "holdout",
+    "family": "development",
+    "role": "ingeniera de software",
+    "title": "Backend Developer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "development-19",
+    "split": "holdout",
+    "family": "development",
+    "role": "software engineer",
+    "title": "QA Engineer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "development-20",
+    "split": "holdout",
+    "family": "development",
+    "role": "software developer",
+    "title": "Product Manager",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "design-01",
+    "split": "train",
+    "family": "design",
+    "role": "product designer",
+    "title": "Diseñador de producto",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-02",
+    "split": "train",
+    "family": "design",
+    "role": "UX designer",
+    "title": "Diseñadora UX",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-03",
+    "split": "train",
+    "family": "design",
+    "role": "diseñador UX",
+    "title": "UX Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-04",
+    "split": "train",
+    "family": "design",
+    "role": "diseñadora de producto",
+    "title": "Product Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-05",
+    "split": "train",
+    "family": "design",
+    "role": "product designer",
+    "title": "Senior Product Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-06",
+    "split": "train",
+    "family": "design",
+    "role": "UX designer",
+    "title": "Product Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-07",
+    "split": "train",
+    "family": "design",
+    "role": "product designer",
+    "title": "UI Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-08",
+    "split": "train",
+    "family": "design",
+    "role": "diseñador de producto",
+    "title": "Service Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-09",
+    "split": "train",
+    "family": "design",
+    "role": "product designer",
+    "title": "Product Manager",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "design-10",
+    "split": "train",
+    "family": "design",
+    "role": "UX designer",
+    "title": "Frontend Developer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "design-11",
+    "split": "train",
+    "family": "design",
+    "role": "diseñador UX",
+    "title": "Especialista en marketing digital",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "design-12",
+    "split": "train",
+    "family": "design",
+    "role": "product designer",
+    "title": "Customer Support Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "design-13",
+    "split": "train",
+    "family": "design",
+    "role": "UX designer",
+    "title": "Interaction Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-14",
+    "split": "holdout",
+    "family": "design",
+    "role": "product designer",
+    "title": "Diseñadora de producto",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-15",
+    "split": "holdout",
+    "family": "design",
+    "role": "product designer",
+    "title": "Diseñador de producto",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-16",
+    "split": "holdout",
+    "family": "design",
+    "role": "UX designer",
+    "title": "Product Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-17",
+    "split": "holdout",
+    "family": "design",
+    "role": "diseñadora UX",
+    "title": "Interaction Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-18",
+    "split": "holdout",
+    "family": "design",
+    "role": "product designer",
+    "title": "UI Designer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "design-19",
+    "split": "holdout",
+    "family": "design",
+    "role": "product designer",
+    "title": "Project Manager",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "design-20",
+    "split": "holdout",
+    "family": "design",
+    "role": "diseñadora de producto",
+    "title": "Asistente administrativa",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "support-01",
+    "split": "train",
+    "family": "support",
+    "role": "customer support",
+    "title": "Soporte al cliente",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-02",
+    "split": "train",
+    "family": "support",
+    "role": "customer service representative",
+    "title": "Agente de atención al cliente",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-03",
+    "split": "train",
+    "family": "support",
+    "role": "customer support specialist",
+    "title": "Customer Service Agent",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-04",
+    "split": "train",
+    "family": "support",
+    "role": "soporte al cliente",
+    "title": "Customer Support Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-05",
+    "split": "train",
+    "family": "support",
+    "role": "agente de atención al cliente",
+    "title": "Customer Service Representative",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-06",
+    "split": "train",
+    "family": "support",
+    "role": "customer service agent",
+    "title": "Especialista de soporte al cliente",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-07",
+    "split": "train",
+    "family": "support",
+    "role": "customer support",
+    "title": "Technical Support Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-08",
+    "split": "train",
+    "family": "support",
+    "role": "customer service representative",
+    "title": "Help Desk Analyst",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-09",
+    "split": "train",
+    "family": "support",
+    "role": "customer support",
+    "title": "Software Engineer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "support-10",
+    "split": "train",
+    "family": "support",
+    "role": "customer service",
+    "title": "Digital Marketing Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "support-11",
+    "split": "train",
+    "family": "support",
+    "role": "soporte al cliente",
+    "title": "Asistente administrativo",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "support-12",
+    "split": "train",
+    "family": "support",
+    "role": "customer support",
+    "title": "Product Designer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "support-13",
+    "split": "train",
+    "family": "support",
+    "role": "customer support specialist",
+    "title": "Technical Support",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-14",
+    "split": "holdout",
+    "family": "support",
+    "role": "soporte al cliente",
+    "title": "Customer Service Agent",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-15",
+    "split": "holdout",
+    "family": "support",
+    "role": "customer support",
+    "title": "Agente de atención al cliente",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-16",
+    "split": "holdout",
+    "family": "support",
+    "role": "customer service representative",
+    "title": "Customer Support",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-17",
+    "split": "holdout",
+    "family": "support",
+    "role": "customer service agent",
+    "title": "Technical Support Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-18",
+    "split": "holdout",
+    "family": "support",
+    "role": "especialista de soporte al cliente",
+    "title": "Customer Service Representative",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "support-19",
+    "split": "holdout",
+    "family": "support",
+    "role": "customer support",
+    "title": "Quality Assurance Engineer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "support-20",
+    "split": "holdout",
+    "family": "support",
+    "role": "agente de atención al cliente",
+    "title": "Growth Marketer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-01",
+    "split": "train",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Especialista en marketing digital",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-02",
+    "split": "train",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "Digital Marketing Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-03",
+    "split": "train",
+    "family": "marketing",
+    "role": "especialista de marketing",
+    "title": "Marketing Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-04",
+    "split": "train",
+    "family": "marketing",
+    "role": "especialista en marketing digital",
+    "title": "Marketing Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-05",
+    "split": "train",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Senior Digital Marketing Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-06",
+    "split": "train",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "Especialista en marketing",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-07",
+    "split": "train",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "SEO Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-08",
+    "split": "train",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "Growth Marketer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-09",
+    "split": "train",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Product Designer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-10",
+    "split": "train",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "Administrative Assistant",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-11",
+    "split": "train",
+    "family": "marketing",
+    "role": "especialista de marketing",
+    "title": "Customer Support Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-12",
+    "split": "train",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "Software Developer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-13",
+    "split": "train",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Paid Media Specialist",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-14",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "especialista en marketing digital",
+    "title": "Content Marketer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-15",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Especialista de marketing",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-16",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "Especialista en marketing digital",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-17",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Content Marketer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-18",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "especialista de marketing",
+    "title": "Growth Marketer",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-19",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "marketing specialist",
+    "title": "QA Engineer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "marketing-20",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "digital marketing specialist",
+    "title": "Office Administrator",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-01",
+    "split": "train",
+    "family": "administration",
+    "role": "administrative assistant",
+    "title": "Asistente administrativo",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-02",
+    "split": "train",
+    "family": "administration",
+    "role": "office administrator",
+    "title": "Auxiliar administrativa",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-03",
+    "split": "train",
+    "family": "administration",
+    "role": "administrative coordinator",
+    "title": "Coordinadora administrativa",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-04",
+    "split": "train",
+    "family": "administration",
+    "role": "asistente administrativa",
+    "title": "Administrative Assistant",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-05",
+    "split": "train",
+    "family": "administration",
+    "role": "auxiliar administrativo",
+    "title": "Office Administrator",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-06",
+    "split": "train",
+    "family": "administration",
+    "role": "administrative assistant",
+    "title": "Senior Administrative Assistant",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-07",
+    "split": "train",
+    "family": "administration",
+    "role": "office administrator",
+    "title": "Administrative Coordinator",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-08",
+    "split": "train",
+    "family": "administration",
+    "role": "coordinador administrativo",
+    "title": "Administrative Assistant",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-09",
+    "split": "train",
+    "family": "administration",
+    "role": "administrative assistant",
+    "title": "Office Manager",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-10",
+    "split": "train",
+    "family": "administration",
+    "role": "office administrator",
+    "title": "Software Engineer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-11",
+    "split": "train",
+    "family": "administration",
+    "role": "asistente administrativo",
+    "title": "Customer Support Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-12",
+    "split": "train",
+    "family": "administration",
+    "role": "administrative coordinator",
+    "title": "Marketing Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-13",
+    "split": "train",
+    "family": "administration",
+    "role": "asistente administrativo",
+    "title": "Auxiliar administrativa",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-14",
+    "split": "holdout",
+    "family": "administration",
+    "role": "administrative assistant",
+    "title": "Asistente administrativa",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-15",
+    "split": "holdout",
+    "family": "administration",
+    "role": "administrative assistant",
+    "title": "Office Administrator",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-16",
+    "split": "holdout",
+    "family": "administration",
+    "role": "asistente administrativa",
+    "title": "Administrative Coordinator",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-17",
+    "split": "holdout",
+    "family": "administration",
+    "role": "office administrator",
+    "title": "Executive Assistant",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-18",
+    "split": "holdout",
+    "family": "administration",
+    "role": "administrative assistant",
+    "title": "Recepcionista",
+    "relevant": true,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-19",
+    "split": "holdout",
+    "family": "administration",
+    "role": "asistente administrativo",
+    "title": "Product Designer",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "administration-20",
+    "split": "holdout",
+    "family": "administration",
+    "role": "office administrator",
+    "title": "Digital Marketing Specialist",
+    "relevant": false,
+    "includeRelated": true
+  },
+  {
+    "id": "adversarial-01",
+    "split": "holdout",
+    "family": "quality",
+    "role": "QA Engineer",
+    "title": "SDET",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-02",
+    "split": "holdout",
+    "family": "quality",
+    "role": "QA",
+    "title": "Software Development Engineer in Test",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-03",
+    "split": "holdout",
+    "family": "quality",
+    "role": "SDET",
+    "title": "QA Engineer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-04",
+    "split": "holdout",
+    "family": "quality",
+    "role": "Senior QA Engineer",
+    "title": "Junior QA Engineer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-05",
+    "split": "holdout",
+    "family": "development",
+    "role": "Java",
+    "title": "JavaScript Engineer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-06",
+    "split": "holdout",
+    "family": "development",
+    "role": "C++ Developer",
+    "title": "C# Developer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-07",
+    "split": "holdout",
+    "family": "development",
+    "role": "Senior Software Engineer",
+    "title": "Junior Software Developer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-08",
+    "split": "holdout",
+    "family": "development",
+    "role": "Senior Software Engineer",
+    "title": "Software Engineer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-09",
+    "split": "holdout",
+    "family": "design",
+    "role": "Product Designer",
+    "title": "UX Designer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-10",
+    "split": "holdout",
+    "family": "design",
+    "role": "UX Designer",
+    "title": "Product Designer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-11",
+    "split": "holdout",
+    "family": "design",
+    "role": "Product Designer",
+    "title": "Graphic Designer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-12",
+    "split": "holdout",
+    "family": "design",
+    "role": "Product Designer",
+    "title": "Product Manager",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-13",
+    "split": "holdout",
+    "family": "support",
+    "role": "Customer Support",
+    "title": "Technical Support Specialist",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-14",
+    "split": "holdout",
+    "family": "support",
+    "role": "Customer Service Agent",
+    "title": "Help Desk Analyst",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-15",
+    "split": "holdout",
+    "family": "support",
+    "role": "Customer Support",
+    "title": "Software Support Engineer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-16",
+    "split": "holdout",
+    "family": "support",
+    "role": "Customer Support",
+    "title": "Medical Office Administrator",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-17",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "Marketing Specialist",
+    "title": "Digital Marketing Specialist",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-18",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "Digital Marketing Specialist",
+    "title": "Growth Marketer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-19",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "Marketing Specialist",
+    "title": "Content Marketer",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-20",
+    "split": "holdout",
+    "family": "marketing",
+    "role": "Digital Marketing Specialist",
+    "title": "Marketing Manager",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-21",
+    "split": "holdout",
+    "family": "administration",
+    "role": "Administrative Assistant",
+    "title": "Office Manager",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-22",
+    "split": "holdout",
+    "family": "administration",
+    "role": "Asistente administrativo",
+    "title": "Executive Assistant",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-23",
+    "split": "holdout",
+    "family": "administration",
+    "role": "Office Administrator",
+    "title": "Administrative Assistant",
+    "relevant": false,
+    "includeRelated": false
+  },
+  {
+    "id": "adversarial-24",
+    "split": "holdout",
+    "family": "administration",
+    "role": "Administrative Coordinator",
+    "title": "Receptionist",
+    "relevant": false,
+    "includeRelated": false
+  }
+]

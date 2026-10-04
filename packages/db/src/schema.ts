@@ -1,4 +1,4 @@
-import { boolean, check, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, check, date, primaryKey, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const providerEnum = pgEnum('provider_id', ['greenhouse', 'lever', 'ashby']);
@@ -86,6 +86,9 @@ export const searchProfiles = pgTable('search_profiles', {
 });
 
 export const savedJobSearches = pgTable('saved_job_searches', {
+  revision: integer('revision').notNull().default(1), matcherVersion: integer('matcher_version').notNull().default(1),
+  providerIds: jsonb('provider_ids').$type<string[]>().notNull().default(['remotive', 'arbeitnow']), includeRelated: boolean('include_related').notNull().default(false),
+  idempotencyKey: varchar('idempotency_key', { length: 100 }),
   id: uuid('id').defaultRandom().primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   role: varchar('role', { length: 200 }), company: varchar('company', { length: 200 }),
@@ -135,3 +138,47 @@ export const assistedAttempts = pgTable('assisted_attempts', {
   uniqueIndex('assisted_attempts_one_active_uq').on(t.workspaceId, t.applicationId).where(sql`${t.status} in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN')`),
   check('assisted_attempts_status_check', sql`${t.status} in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN', 'CONFIRMED', 'NOT_SUBMITTED', 'CANCELLED', 'INVALIDATED', 'FAILED')`),
 ]);
+
+
+/** Persisted background searches. Public query caches are separate from personal result/review state. */
+export const searchRuns = pgTable('search_runs', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), searchId: uuid('search_id').notNull(),
+  revision: integer('revision').notNull(), criteria: jsonb('criteria').$type<Record<string, unknown>>().notNull(),
+  status: varchar('status',{length:16}).notNull().default('QUEUED'), manual: boolean('manual').notNull().default(false),
+  owner: uuid('owner'), leaseUntil: timestamp('lease_until',{withTimezone:true}), error: varchar('error',{length:80}),
+  createdAt: created(), startedAt: timestamp('started_at',{withTimezone:true}), finishedAt: timestamp('finished_at',{withTimezone:true}),
+},t=>[unique().on(t.workspaceId,t.id),foreignKey({columns:[t.workspaceId,t.searchId],foreignColumns:[savedJobSearches.workspaceId,savedJobSearches.id]}).onDelete('cascade'),
+  uniqueIndex('search_active_run_uq').on(t.workspaceId,t.searchId,t.revision).where(sql`${t.finishedAt} is null`), index('search_runs_queue_idx').on(t.status,t.leaseUntil,t.createdAt)]);
+export const searchRunSources = pgTable('search_run_sources', {
+  workspaceId:uuid('workspace_id').notNull(),runId:uuid('run_id').notNull(),provider:varchar('provider',{length:24}).notNull(),
+  status:varchar('status',{length:16}).notNull().default('QUEUED'),coverage:varchar('coverage',{length:16}),
+  fetchedAt:timestamp('fetched_at',{withTimezone:true}),nextFetchAt:timestamp('next_fetch_at',{withTimezone:true}),error:varchar('error',{length:80}),found:integer('found').notNull().default(0),
+},t=>[primaryKey({columns:[t.workspaceId,t.runId,t.provider]}),foreignKey({columns:[t.workspaceId,t.runId],foreignColumns:[searchRuns.workspaceId,searchRuns.id]}).onDelete('cascade')]);
+export const searchQueryCache = pgTable('search_query_cache', {
+  provider:varchar('provider',{length:24}).notNull(),queryHash:varchar('query_hash',{length:64}).notNull(),payload:jsonb('payload').$type<Record<string,unknown>[]>().notNull().default([]),
+  coverage:varchar('coverage',{length:16}).notNull().default('BOUNDED'),fetchedAt:timestamp('fetched_at',{withTimezone:true}),nextFetchAt:timestamp('next_fetch_at',{withTimezone:true}),
+  lastUsedAt:timestamp('last_used_at',{withTimezone:true}).notNull().defaultNow(),error:varchar('error',{length:80}),failures:integer('failures').notNull().default(0),
+},t=>[primaryKey({columns:[t.provider,t.queryHash]})]);
+export const searchProviderBudget = pgTable('search_provider_budget', {
+  provider:varchar('provider',{length:24}).notNull(),day:date('day').notNull(),requests:integer('requests').notNull().default(0),
+},t=>[primaryKey({columns:[t.provider,t.day]})]);
+export const searchRunResults = pgTable('search_run_results', {
+  workspaceId:uuid('workspace_id').notNull(),runId:uuid('run_id').notNull(),searchId:uuid('search_id').notNull(),jobId:uuid('job_id').notNull(),
+  score:integer('score').notNull(),reasons:jsonb('reasons').$type<string[]>().notNull().default([]),locationStatus:varchar('location_status',{length:32}).notNull(),
+  unknownLocation:boolean('unknown_location').notNull().default(false),postedAt:timestamp('posted_at',{withTimezone:true}),sources:jsonb('sources').$type<Record<string,unknown>[]>().notNull().default([]),
+},t=>[primaryKey({columns:[t.workspaceId,t.runId,t.jobId]}),
+  foreignKey({columns:[t.workspaceId,t.runId],foreignColumns:[searchRuns.workspaceId,searchRuns.id]}).onDelete('cascade'),
+  foreignKey({columns:[t.workspaceId,t.searchId],foreignColumns:[savedJobSearches.workspaceId,savedJobSearches.id]}).onDelete('cascade'),
+  foreignKey({columns:[t.workspaceId,t.jobId],foreignColumns:[jobs.workspaceId,jobs.id]}).onDelete('cascade'),index('search_run_results_rank_idx').on(t.workspaceId,t.searchId,t.runId,t.score.desc(),t.jobId)]);
+export const searchJobReviews = pgTable('search_job_reviews', {
+  workspaceId:uuid('workspace_id').notNull(),searchId:uuid('search_id').notNull(),jobId:uuid('job_id').notNull(),
+  firstMatchedAt:timestamp('first_matched_at',{withTimezone:true}).notNull().defaultNow(),seenAt:timestamp('seen_at',{withTimezone:true}),
+},t=>[primaryKey({columns:[t.workspaceId,t.searchId,t.jobId]}),
+  foreignKey({columns:[t.workspaceId,t.searchId],foreignColumns:[savedJobSearches.workspaceId,savedJobSearches.id]}).onDelete('cascade'),
+  foreignKey({columns:[t.workspaceId,t.jobId],foreignColumns:[jobs.workspaceId,jobs.id]}).onDelete('cascade')]);
+export const jobIdentityMembers = pgTable('job_identity_members', {
+  workspaceId:uuid('workspace_id').notNull(),jobId:uuid('job_id').notNull(),identityKey:varchar('identity_key',{length:64}).notNull(),evidence:jsonb('evidence').$type<Record<string,unknown>>().notNull(),
+},t=>[primaryKey({columns:[t.workspaceId,t.jobId]}),foreignKey({columns:[t.workspaceId,t.jobId],foreignColumns:[jobs.workspaceId,jobs.id]}).onDelete('cascade'),index('job_identity_group_idx').on(t.workspaceId,t.identityKey)]);
+export const searchPreparationBudget = pgTable('search_preparation_budget', {
+  workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}),day:date('day').notNull(),attempted:integer('attempted').notNull().default(0),
+},t=>[primaryKey({columns:[t.workspaceId,t.day]})]);

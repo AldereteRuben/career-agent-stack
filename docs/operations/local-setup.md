@@ -154,3 +154,9 @@ ES: abre **Buscar empleo**, indica un puesto o una empresa y guarda la búsqueda
 The v0.7.2 update requires no new configuration or data migration. Restart the local service after updating. Application history now has search and pages of 25 records; existing direct links remain valid. Reusing a saved resume asks before replacing a different draft.
 
 ES: v0.7.2 no requiere configuración ni migraciones nuevas. Reinicia el servicio local después de actualizar. El historial permite buscar y recorrer páginas de 25 solicitudes; los enlaces existentes siguen funcionando. Reutilizar un CV guardado pide confirmación antes de reemplazar un borrador diferente.
+
+## Updating to v0.8.0 / Actualizar a v0.8.0
+
+Create and verify a backup with `pnpm backup` before starting the updated installation. `pnpm start` applies additive migration 0009. Existing searches keep their original rules and sources; choose enhanced matching to opt in. A restored backup disables schedules, preparation and pending search runs. Recover an older installation from its verified backup into a separate destination; running the old binary against the new schema is not a rollback.
+
+Crea y verifica una copia con `pnpm backup` antes de iniciar la actualización. `pnpm start` aplica la migración aditiva 0009. Las búsquedas existentes conservan reglas y fuentes; puedes aceptar las mejoras desde su edición. Una copia restaurada desactiva agendas, preparación y ejecuciones pendientes. Para recuperar una instalación anterior, restaura su respaldo en un destino separado; usar el binario anterior con el esquema nuevo no revierte la migración.

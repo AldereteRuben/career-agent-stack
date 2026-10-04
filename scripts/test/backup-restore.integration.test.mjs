@@ -68,6 +68,12 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   const secrets = {};
   const databases = new Set();
   const sourceDb = `${tag}_src`;
+  let workspaceId;
+  let activeSearchId;
+  let activeRunId;
+  let reviewAt;
+  let identityKey;
+  let jobId;
   let envFile;
   let filesDir;
   let backupDir;
@@ -118,7 +124,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     // Fictional data. Boards are ENABLED and APPROVED here so the restore has to switch them off.
     filesDir = join(work, 'source-install', 'data', 'files');
     await mkdir(filesDir, { recursive: true, mode: 0o700 });
-    const ws = (await client.query(`insert into workspaces (name) values ('Ficticia · Ada Example') returning id`)).rows[0].id;
+    const ws = workspaceId = (await client.query(`insert into workspaces (name) values ('Ficticia · Ada Example') returning id`)).rows[0].id;
     const profile = (await client.query(`insert into profile_versions (workspace_id, revision, profile) values ($1, 1, '{"identity":{"fullName":"Ada Example"}}') returning id`, [ws])).rows[0].id;
     await client.query(`insert into profile_facts (workspace_id, profile_version_id, kind, statement, approval_status) values ($1, $2, 'skill', 'Builds fictional test fixtures', 'USER_APPROVED'), ($1, $2, 'role', 'Example Engineer at Nowhere Ltd', 'SUGGESTED')`, [ws, profile]);
     const board = (await client.query(`insert into boards (workspace_id, provider, tenant, region, company_name, company_domain, careers_url, permission_status, enabled) values ($1, 'greenhouse', 'fictional-co', 'global', 'Fictional Co', 'fictional.example.test', 'https://fictional.example.test/jobs', 'APPROVED_FOR_SCOPE', true) returning id`, [ws])).rows[0].id;
@@ -127,9 +133,25 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     await client.query('update workspaces set discovery_enabled = true where id = $1', [ws]);
     await client.query(`insert into search_profiles (workspace_id, name, enabled) values ($1, 'Fictional search', true)`, [ws]);
     await client.query(`insert into saved_job_searches (workspace_id, role, enabled, auto_prepare) values ($1, 'Fictional engineer', true, true)`, [ws]);
-    const job = (await client.query(`insert into jobs (workspace_id, company, title) values ($1, 'Fictional Co', 'Example Engineer') returning id`, [ws])).rows[0].id;
+    activeSearchId = (await client.query(`insert into saved_job_searches (workspace_id, role, enabled, auto_prepare, matcher_version, provider_ids, include_related, idempotency_key)
+      values ($1, 'Fictional QA Engineer', true, true, 2, '["remotive","arbeitnow","himalayas"]', false, 'restore-fixture-search-001') returning id`, [ws])).rows[0].id;
+    const job = jobId = (await client.query(`insert into jobs (workspace_id, company, title, shortlist_decision) values ($1, 'Fictional Co', 'Example Engineer', 'SHORTLISTED') returning id`, [ws])).rows[0].id;
     const snapshot = (await client.query(`insert into job_snapshots (workspace_id, job_id, title, snapshot_hash) values ($1, $2, 'Example Engineer', $3) returning id`, [ws, job, sha('Example Engineer')])).rows[0].id;
     const application = (await client.query(`insert into applications (workspace_id, job_id, company, role, state) values ($1, $2, 'Fictional Co', 'Example Engineer', 'IN_PROGRESS') returning id`, [ws, job])).rows[0].id;
+    activeRunId = randomUUID(); identityKey = sha('verified-canonical-job-identity');
+    reviewAt = '2026-09-15T10:20:30.000Z';
+    await client.query(`insert into search_runs (id, workspace_id, search_id, revision, criteria, status, manual, owner, lease_until, started_at)
+      values ($1,$2,$3,1,'{"matcherVersion":2,"role":"Fictional QA Engineer"}','RUNNING',false,$4,now()+interval '2 minutes',now())`, [activeRunId, ws, activeSearchId, randomUUID()]);
+    await client.query(`insert into search_run_sources (workspace_id, run_id, provider, status, coverage)
+      values ($1,$2,'himalayas','RUNNING','BOUNDED')`, [ws, activeRunId]);
+    await client.query(`insert into search_runs (workspace_id,search_id,revision,criteria,status,owner,finished_at)
+      values ($1,$2,1,'{}','SUCCEEDED',$3,now()-interval '1 day')`, [ws,activeSearchId,randomUUID()]);
+    await client.query(`insert into search_run_results (workspace_id,run_id,search_id,job_id,score,reasons,location_status,unknown_location,sources)
+      values ($1,$2,$3,$4,82,'["ROLE_EXACT","LOCATION_UNKNOWN"]','unknown',true,'[{"provider":"himalayas","name":"Himalayas","url":"https://himalayas.app/jobs/fictional-1","postedAt":null}]')`, [ws, activeRunId, activeSearchId, job]);
+    await client.query(`insert into search_job_reviews (workspace_id,search_id,job_id,first_matched_at,seen_at) values ($1,$2,$3,$4,$4)`, [ws, activeSearchId, job, reviewAt]);
+    await client.query(`insert into job_identity_members (workspace_id,job_id,identity_key,evidence) values ($1,$2,$3,$4::jsonb)`, [ws, job, identityKey, JSON.stringify({ type: 'canonical-url', url: 'https://fictional.example.test/jobs/example' })]);
+    await client.query(`insert into saved_job_search_matches (workspace_id,search_id,job_id,auto_prepare_attempts,auto_prepare_error,auto_prepare_next_attempt_at)
+      values ($1,$2,$3,1,'PREPARING',now()+interval '10 minutes')`, [ws, activeSearchId, job]);
     await client.query(`insert into application_events (workspace_id, application_id, event_type, aggregate_version) values ($1, $2, 'CREATED', 1)`, [ws, application]);
     for (const [index, text] of ['Ada Example - CV (ficticio)', 'Ada Example - Cover letter', 'Ada Example - CV v2'].entries()) {
       const id = randomUUID();
@@ -268,7 +290,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(sourceDb, 'select count(*)::int as n from boards where enabled')).rows[0].n, sourceBefore);
     assert.equal(sourceBefore, 1);
     // Same data, safe defaults.
-    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions']) {
+    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
       assert.deepEqual((await query(database, `select count(*)::int as n from ${table}`)).rows, (await query(sourceDb, `select count(*)::int as n from ${table}`)).rows, table);
     }
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
@@ -276,6 +298,23 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(database, 'select count(*)::int as n from workspaces where discovery_enabled')).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from search_profiles where enabled')).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from saved_job_searches where enabled or auto_prepare')).rows[0].n, 0);
+    const restoredSearch = (await query(database, 'select id,matcher_version,provider_ids,include_related,enabled,auto_prepare from saved_job_searches where id=$1', [activeSearchId])).rows[0];
+    assert.equal(restoredSearch.matcher_version, 2); assert.deepEqual(restoredSearch.provider_ids, ['remotive','arbeitnow','himalayas']);
+    assert.equal(restoredSearch.include_related, false); assert.equal(restoredSearch.enabled, false); assert.equal(restoredSearch.auto_prepare, false);
+    assert.equal((await query(database, `select count(*)::int as n from saved_job_search_matches m join saved_job_searches s on s.workspace_id=m.workspace_id and s.id=m.search_id where m.auto_prepared_at is null and m.auto_prepare_next_attempt_at is not null and s.enabled and s.auto_prepare`)).rows[0].n, 0, 'restored preparation queue is inactive');
+    const restoredRun = (await query(database, 'select id,status,finished_at,owner,lease_until,manual from search_runs where id=$1', [activeRunId])).rows[0];
+    assert.equal(restoredRun.status, 'CANCELLED'); assert.ok(restoredRun.finished_at); assert.equal(restoredRun.owner, null); assert.equal(restoredRun.lease_until, null); assert.equal(restoredRun.manual, false);
+    const restoredSource = (await query(database, 'select provider,status,found from search_run_sources where workspace_id=$1 and run_id=$2', [workspaceId, activeRunId])).rows[0];
+    assert.equal(restoredSource.provider, 'himalayas'); assert.equal(restoredSource.found, 0); assert.equal(restoredSource.status, 'CANCELLED');
+    const finishedRun = (await query(database,'select status,owner,lease_until from search_runs where workspace_id=$1 and id<>$2',[workspaceId,activeRunId])).rows[0];
+    assert.equal(finishedRun.status,'SUCCEEDED'); assert.equal(finishedRun.owner,null); assert.equal(finishedRun.lease_until,null);
+    assert.equal((await query(database, 'select count(*)::int as n from search_run_results where workspace_id=$1 and run_id=$2 and score=82', [workspaceId, activeRunId])).rows[0].n, 1, 'materialized result survives restore');
+    const restoredReview = (await query(database, 'select seen_at from search_job_reviews where workspace_id=$1 and search_id=$2 and job_id=$3', [workspaceId, activeSearchId, jobId])).rows[0];
+    assert.equal(restoredReview.seen_at.toISOString(), reviewAt);
+    const restoredIdentity = (await query(database, 'select identity_key,evidence from job_identity_members where workspace_id=$1 and job_id=$2', [workspaceId, jobId])).rows[0];
+    assert.equal(restoredIdentity.identity_key, identityKey); assert.equal(restoredIdentity.evidence.type, 'canonical-url');
+    assert.equal((await query(database, 'select shortlist_decision from jobs where workspace_id=$1 and id=$2', [workspaceId, jobId])).rows[0].shortlist_decision, 'SHORTLISTED', 'historical decision survives restore');
+    assert.equal((await query(sourceDb, 'select status from search_runs where id=$1', [activeRunId])).rows[0].status, 'RUNNING', 'restore leaves source run untouched');
     assert.equal((await query(database, 'select count(*)::int as n from drizzle.__drizzle_migrations')).rows[0].n, (await repoMigrations()).length);
     assert.equal((await query(database, `select statement from profile_facts where kind = 'skill'`)).rows[0].statement, 'Builds fictional test fixtures');
 

@@ -58,3 +58,17 @@ The existing employer-board schedule remains independent of saved role/company s
 `pnpm run test:discovery` uses a newly created disposable PostgreSQL database and fictional injected source feeds. Set `CAREER_DISCOVERY_TEST_ADMIN_URL` to a loopback maintenance database (postgres/template1), never the real application database. The suite checks defaults, locking/cooldown, pause/resume, permissions, repeated and partial reads, durable retries, restart state and workspace scoping.
 
 `pnpm run test:e2e` uses the existing isolated stack. The v060 scenario exercises real activation/pause endpoints, persistence on reload, the new-job filter, explicit review, English/Spanish and mobile layouts. Company schedules are held in the future, so this browser scenario never contacts real employers. Provider parsing and network limits have separate synthetic tests. These checks do not claim real-employer submission coverage.
+
+## v0.8 enhanced searches / Búsquedas mejoradas
+
+New searches use versioned matching and a persistent queue. Saving returns before external sources or PDF generation finish. Each run records the criteria revision, lease owner and per-source progress. Editing or pausing fences older results; interrupted reservations can be reclaimed. Source caches and provider request budgets survive a restart.
+
+Las búsquedas nuevas usan reglas versionadas y una cola persistida. Guardar responde antes de esperar a las fuentes o generar PDFs. Cada ejecución conserva revisión, reserva y progreso por fuente. Editar o pausar invalida publicaciones anteriores; las reservas vencidas pueden recuperarse. Reiniciar conserva cachés y presupuestos.
+
+Himalayas uses one bounded canonical query, preserving explicit role modifiers, and at most three pages. Known Spanish/English equivalent role phrases can share a provider query; the original full criteria are checked locally. Query caches last 24 hours, unused entries expire after seven days, and detailed operational history is retained for thirty days while preserving the latest useful published results. Confirmed company boards are read from local snapshots; this does not grant access to unconfirmed companies or schedule duplicate provider reads.
+
+Himalayas usa una consulta canónica acotada y hasta tres páginas, conservando los modificadores del puesto. Las equivalencias conocidas ES/EN pueden compartir consulta; los criterios originales completos se comprueban localmente. Su caché dura 24 horas y las entradas sin uso caducan tras siete días. La actividad detallada se conserva treinta días, manteniendo los últimos resultados útiles. Las empresas confirmadas se leen desde sus datos locales; esto no autoriza empresas sin confirmar ni duplica consultas externas.
+
+Review state belongs to each search. Saving/archiving belongs to the underlying job. Strong duplicates may share an action only when historical decisions/applications are unambiguous. Historical IDs, PDFs and application records are preserved. Failed or bounded feeds never close missing listings.
+
+La revisión pertenece a cada búsqueda; guardar o archivar pertenece a la oferta. Las repeticiones con identidad fuerte solo comparten acciones si no hay decisiones o candidaturas históricas contradictorias. Los IDs, PDFs y solicitudes se conservan. Una fuente fallida o limitada nunca cierra ofertas ausentes.

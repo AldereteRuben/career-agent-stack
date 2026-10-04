@@ -23,8 +23,9 @@ export const v070Scenario: Scenario = {
       await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
       await page.getByLabel('Puesto o palabras clave', { exact: true }).fill('Automation designer');
       await page.getByLabel('Empresa (opcional)', { exact: true }).fill(company);
-      await page.getByText('Más opciones: modalidad y automatización', { exact: true }).click();
+      await page.getByText('Fuentes y opciones', { exact: true }).click();
       await page.getByLabel('Modalidad', { exact: true }).selectOption('remote');
+      await page.getByRole('checkbox', { name: 'Himalayas', exact: true }).uncheck(); // Only the two seeded fictional caches.
       await page.getByRole('checkbox', { name: /Preparar también un CV/ }).check();
       await page.getByRole('button', { name: /Buscar y guardar/ }).click();
       await page.getByRole('link', { name: title, exact: true }).waitFor({ timeout: 60000 });
@@ -51,10 +52,10 @@ export const v070Scenario: Scenario = {
         }
         await page.screenshot({ path: join(artifacts, `v070-search-${locale}.png`), fullPage: true });
       }
-      await page.getByText('Settings and activity for this search', { exact: false }).click();
-      await page.getByRole('button', { name: 'Pause', exact: true }).click();
+      const searchCard = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: `Automation designer · ${company}`, exact: true }) });
+      await searchCard.getByRole('button', { name: 'Pause', exact: true }).click();
       await eventually(async () => (await db.query<{ enabled: boolean }>('select enabled from saved_job_searches where id=$1', [search.id])).rows[0]!.enabled, (enabled) => !enabled, 'Pause is persisted');
-      await page.getByRole('button', { name: 'Edit', exact: true }).click();
+      await searchCard.getByRole('button', { name: 'Edit', exact: true }).click();
       await page.getByLabel('Refresh frequency', { exact: true }).selectOption('24');
       await page.getByRole('button', { name: 'Save changes', exact: true }).click();
       await eventually(async () => (await db.query<{ frequency_hours: number }>('select frequency_hours from saved_job_searches where id=$1', [search.id])).rows[0]!.frequency_hours, (hours) => hours === 24, 'Edited frequency persists');

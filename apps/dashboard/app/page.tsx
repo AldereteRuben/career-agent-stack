@@ -27,6 +27,10 @@ type Summary = {
 };
 
 type ProfileCheck = 'fullName' | 'email' | 'country' | 'targetTitles' | 'workModes' | 'approvedFact';
+type InboxJob = { id: string; title: string; company: string; location: string | null; searchScore?: number | null; searchReasons?: string[]; sources?: Array<{ provider: string; url: string }> };
+type SearchInbox = { total: number; items: InboxJob[] };
+type HomeSearch = { id: string; enabled: boolean; nextRunAt: string | null; lastRunStatus: string | null; latestRun?: { status: string; finishedAt: string | null; error: string | null; sources: Array<{ status: string; error: string | null }> } | null };
+type HomeDocument = { id: string; approvalStatus: string; reviewRequired?: boolean };
 
 /** Order matches the profile checklist in @career/domain. */
 const profileChecks: Array<{ key: ProfileCheck; es: string; en: string }> = [
@@ -42,14 +46,30 @@ type NextStep = { key: string; href: string; title: string; detail: string; icon
 
 const stateTone = (state: string): 'green' | 'amber' | 'red' | 'blue' | 'neutral' =>
   state === 'CONFIRMED' ? 'green' : state === 'REVIEW_REQUIRED' ? 'amber' : state === 'CANCELLED' ? 'red' : state === 'READY' || state === 'IN_PROGRESS' ? 'blue' : 'neutral';
+const dateTime = (value: string, locale: string) => new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 
 export default function HomePage() {
   const { t, locale } = useLocale();
   const c = copy(locale);
   const [summary, setSummary] = useState<Summary | null>(null); const [error, setError] = useState('');
   const load = useCallback(async () => { try { setSummary(await api<Summary>('/summary')); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
+  const [inbox, setInbox] = useState<SearchInbox | null>(null); const [searches, setSearches] = useState<HomeSearch[]>([]); const [pendingResumes, setPendingResumes] = useState(0); const [inboxError, setInboxError] = useState('');
+  const loadInbox = useCallback(async () => {
+    const [results, searchList, documents] = await Promise.allSettled([
+      api<SearchInbox>('/job-searches/results?view=new&sort=relevance&offset=0&limit=3'),
+      api<{ searches: HomeSearch[] }>('/job-searches'),
+      api<HomeDocument[]>('/documents'),
+    ]);
+    if (results.status === 'fulfilled') setInbox(results.value);
+    if (searchList.status === 'fulfilled') setSearches(searchList.value.searches);
+    if (documents.status === 'fulfilled') setPendingResumes(documents.value.filter((document) => document.reviewRequired ?? document.approvalStatus === 'PENDING_REVIEW').length);
+    const failed = [results, searchList, documents].some((result) => result.status === 'rejected');
+    setInboxError(failed ? errorMessage((results.status === 'rejected' && results.reason) || (searchList.status === 'rejected' && searchList.reason) || (documents.status === 'rejected' && documents.reason)) : '');
+  }, []);
   useEffect(() => { void load(); }, [load]);
-  useLocalRefresh(load);
+  useEffect(() => { void loadInbox(); }, [loadInbox]);
+  const refreshHome = useCallback(async () => { await Promise.all([load(), loadInbox()]); }, [load, loadInbox]);
+  useLocalRefresh(refreshHome);
 
   const counts = summary?.applicationCounts ?? {};
   const totalApplications = Object.values(counts).reduce((sum, count) => sum + count, 0);
@@ -82,6 +102,32 @@ export default function HomePage() {
 
   const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers', 'preferences'].includes(step.key));
 
+  const inProgress = searches.some((search) => {
+    const status = search.latestRun?.status ?? search.lastRunStatus ?? '';
+    return ['QUEUED', 'RUNNING'].includes(status) || (status === 'PARTIAL' && search.latestRun?.finishedAt === null);
+  });
+  const inboxCount = inbox?.total ?? 0;
+  const sourceError = searches.some((search) => ['FAILED'].includes(search.latestRun?.status ?? search.lastRunStatus ?? '') || (search.latestRun?.status === 'PARTIAL' && Boolean(search.latestRun.finishedAt)) || search.latestRun?.sources.some((source) => ['FAILED', 'ERROR'].includes(source.status.toUpperCase())));
+  const nextSearchAt = searches.filter((search) => search.enabled && search.nextRunAt).map((search) => search.nextRunAt!).sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  const pausedSearches = searches.filter((search) => !search.enabled).length;
+  const inboxReady = Boolean(inbox || searches.length || inboxError);
+  const dailyAction = pendingResumes > 0
+    ? { href: '/documents?view=saved', title: pendingResumes === 1 ? c('Revisa 1 CV preparado', 'Review 1 prepared resume') : c(`Revisa ${pendingResumes} CV preparados`, `Review ${pendingResumes} prepared resumes`), detail: c('Lee el CV y aprueba la versión que quieras conservar.', 'Read the resume and approve the version you want to keep.'), button: c('Revisar CV', 'Review resumes') }
+    : inbox && inbox.total > 0
+      ? { href: '/searches?search=all&view=new', title: inbox.total === 1 ? c('Tienes 1 oferta nueva', 'You have 1 new job') : c(`Tienes ${inbox.total} ofertas nuevas`, `You have ${inbox.total} new jobs`), detail: c('Revisa las novedades; tu búsqueda y los enlaces a las fuentes se conservan.', 'Review new arrivals; your search context and source links are preserved.'), button: c('Revisar ofertas nuevas', 'Review new jobs') }
+      : inProgress
+        ? { href: '/searches?search=all&view=new', title: c('Tus fuentes siguen buscando', 'Your sources are still searching'), detail: c('Las ofertas aparecerán aquí cuando lleguen. No indicamos cero resultados mientras la consulta sigue en curso.', 'New jobs will appear here as sources respond. We do not show an empty result while a search is still running.'), button: c('Ver progreso', 'View progress') }
+        : sourceError
+          ? { href: '/searches?search=all&view=all', title: c('Una fuente no respondió', 'A job source did not respond'), detail: c('Conservamos las ofertas anteriores. Revisa los errores y la cobertura de cada búsqueda.', 'Previous jobs are preserved. Check each search for source errors and coverage.'), button: c('Revisar búsquedas', 'Review searches') }
+          : searches.length > 0 && pausedSearches === searches.length
+            ? { href: '/searches?search=all&view=all', title: c('Tus búsquedas están en pausa', 'Your searches are paused'), detail: c(`${pausedSearches} búsqueda${pausedSearches === 1 ? '' : 's'} pausada${pausedSearches === 1 ? '' : 's'}. Puedes reanudarlas desde sus tarjetas.`, `${pausedSearches} paused search${pausedSearches === 1 ? '' : 'es'}. You can resume them from their cards.`), button: c('Ver búsquedas', 'Open searches') }
+            : searches.length > 0 && inbox?.total === 0
+              ? { href: '/searches?search=all&view=all', title: c('Estás al día', 'You are up to date'), detail: nextSearchAt ? c(`Próxima consulta: ${dateTime(nextSearchAt, locale)}.`, `Next search: ${dateTime(nextSearchAt, locale)}.`) : c('No hay novedades pendientes en tus búsquedas.', 'There are no unread arrivals in your searches.'), button: c('Ver todas las ofertas', 'View all jobs') }
+              : primaryStep
+                ? { href: primaryStep.href, title: primaryStep.title, detail: primaryStep.detail, button: primaryStep.href === '/searches' ? c('Buscar ofertas', 'Find jobs') : primaryStep.href.startsWith('/profile') ? c('Completar perfil', 'Complete profile') : c('Continuar', 'Continue') }
+                : { href: '/searches', title: c('Tu búsqueda, hoy', 'Your search today'), detail: c('Guarda una búsqueda para empezar a recibir ofertas.', 'Save a search to start receiving jobs.'), button: c('Crear búsqueda', 'Create a search') };
+  const returnToInbox = '/searches?search=all&view=new&sort=relevance&offset=0';
+
   const metrics = [
     { key: 'jobs', label: c('Ofertas guardadas', 'Saved jobs'), value: summary?.totalJobs, href: '/jobs' },
     { key: 'active', label: c('Solicitudes activas', 'Active applications'), value: summary?.activeApplications, href: '/applications' },
@@ -98,12 +144,26 @@ export default function HomePage() {
     />
     {error && <Notice tone="error">{error}</Notice>}
 
-    {summary && <Card className="getting-started">
-      <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
-      <h2>{primaryStep?.title ?? c('Elige una oferta que te interese', 'Choose a job you are interested in')}</h2>
-      <p>{primaryStep?.detail ?? c('Abre una oferta guardada para preparar tu CV o empezar a seguir tu solicitud.', 'Open a saved job to prepare your resume or start tracking your application.')}</p>
-      <ButtonLink href={primaryStep?.href ?? '/jobs'}>{primaryStep?.key === 'choose-job' ? c('Ver mis ofertas encontradas', 'View my matching jobs') : primaryStep?.key === 'adjust-search' ? c('Revisar mi búsqueda', 'Review my search') : primaryStep?.href === '/searches' ? c('Crear mi búsqueda', 'Create my search') : primaryStep?.href === '/start' ? c('Completar mis datos', 'Complete my details') : primaryStep?.href.startsWith('/profile') ? c('Continuar con mi perfil', 'Continue with my profile') : primaryStep?.href === '/applications' ? c('Revisar mis solicitudes', 'Review my applications') : c('Ir a mis ofertas', 'Go to my saved jobs')} <Icon name="arrow" size={18}/></ButtonLink>
+    {(summary || inboxReady) && <Card className="getting-started">
+      <div className="eyebrow">{c('TU BANDEJA DE HOY', 'TODAY’S JOB INBOX')}</div>
+      <h2>{dailyAction.title}</h2>
+      <p>{dailyAction.detail}</p>
+      <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
+      <div role="status" aria-live="polite" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 18 }}>
+        <span><strong>{inbox?.total ?? '—'}</strong> {c('ofertas nuevas por revisar', 'new jobs to review')}</span>
+        <span><strong>{pendingResumes}</strong> {c('CV pendientes de revisión', 'resumes waiting for review')}</span>
+      </div>
+      {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos de la bandeja. Puedes abrir tus búsquedas para comprobar el estado.', 'We could not update all inbox details. Open your searches to check their status.')}</p>}
+      {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')} style={{ marginTop: 18 }}>
+        {inbox.items.slice(0, 3).map((job) => <li key={job.id}><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(returnToInbox)}`} className="list-row">
+          <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
+          <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
+          <Icon name="arrow" size={18}/>
+        </Link>{job.sources?.[0] && <small>{c('Fuente: ', 'Source: ')}<a href={job.sources[0].url} target="_blank" rel="noopener noreferrer">{job.sources[0].provider}</a></small>}</li>)}
+      </ul> : inbox && inbox.total === 0 && searches.length > 0 && <p className="muted-label">{inProgress ? c('Las consultas siguen en curso; todavía no mostramos un estado vacío.', 'Searches are still running, so we are not showing an empty state.') : sourceError ? c('Conservamos las ofertas anteriores mientras revisas el estado de las fuentes.', 'Previous jobs are preserved while you check source status.') : searches.every((search) => !search.enabled) ? c('Las consultas automáticas están pausadas. Puedes reanudarlas desde una tarjeta de búsqueda.', 'Automatic searches are paused. You can resume one from its search card.') : c('Estás al día. Mostramos la próxima consulta en tu lista de búsquedas.', 'You are up to date. Your next scheduled check appears on the search list.')}</p>}
       <p className="muted-label">{c('Puedes buscar empleo sin completar tu perfil. Tus datos confirmados se necesitan para preparar candidaturas.', 'You can search for jobs before completing your profile. Confirmed details are needed to prepare applications.')}</p>
+      {inboxCount > 3 && <Link href="/searches?search=all&view=new" className="text-link">{c(`Ver las ${inboxCount} ofertas nuevas`, `See all ${inboxCount} new jobs`)} <Icon name="arrow" size={16}/></Link>}
+      {pendingResumes > 0 && inbox && inbox.total > 0 && <Link href="/searches?search=all&view=new" className="text-link" style={{ display: 'block', marginTop: 10 }}>{c('También hay ofertas nuevas por revisar', 'There are also new jobs to review')} <Icon name="arrow" size={16}/></Link>}
     </Card>}
     <section className="search-guide" aria-labelledby="search-guide-heading">
       <h2 id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</h2>

@@ -4,7 +4,7 @@ Your private workspace to find jobs automatically, prepare applications from you
 
 **English** · [Español](README.es.md)
 
-**Current release: v0.7.2** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.7.2.md)
+**Current release: v0.8.0** · [Changelog](CHANGELOG.md) · [Verification and limits](docs/releases/v0.8.0.md)
 
 Access help: on macOS, open `Start Career Agent Stack.command` and paste the copied sign-in code. If it was already used, open `Recover Career Agent Stack.command` to create and copy a new code. This preserves workspace data and existing sessions. From a terminal on a supported installation, use `pnpm start --recover-session --copy-token`.
 
@@ -15,7 +15,7 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 
 - Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
 - Keep reusable answers with their question and country context.
-- Save searches by role or company and automatically discover matches from Remotive and Arbeitnow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
+- Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter favorites and availability, archive or restore offers, and see explainable matching.
 - Generate versioned resumes with English or Spanish headings, zoom the PDF preview, and reuse earlier content without altering previous PDFs.
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
@@ -25,13 +25,15 @@ No AI subscription or API key is required. The app prepares application drafts f
 
 ## Automatic job search
 
-1. Open **Find jobs**. Enter a role, a company, or both; location and work mode are optional.
-2. Save the search and choose a 6, 12 or 24 hour interval. You can edit or pause it later.
-3. Integrated sources are **Remotive** and **Arbeitnow**. No employer links or API keys are required. Coverage is partial: remote and mainly European jobs; Remotive delays its public feed by 24 hours. Each result links to its source.
-4. Optionally enable **Prepare documents for new matches**. The app selects confirmed experience and generates drafts in **Prepared applications**. Missing details produce actionable review items.
-5. Keep the local service running. You can close the browser tab; a sleeping or powered-off computer cannot search.
+1. Open **Find jobs**. Enter a role or company; country and work mode are optional. A profile is not required to search.
+2. Save. The search appears immediately and checks sources in the background, then daily while the local service is running. Advanced options offer a 6, 12 or 24 hour interval.
+3. Use **All searches** or a search card; review **New**, **All**, **Saved** or **Archived** jobs. Results explain their match, geographic uncertainty, source and available dates. New arrivals wait behind an update notice while you read.
+4. Open an offer to prepare an application. Optional automatic preparation is off by default for new searches; enhanced searches allow at most five attempts per pass and ten per day. Related or geographically uncertain matches require review.
+5. Keep the local service running. Closing the browser tab is fine; a sleeping or powered-off computer cannot search.
 
-Sources share cached results for six hours to avoid repeat requests. **Refresh now** reuses current results instead of forcing unlimited upstream calls. Restored searches are paused with automatic preparation disabled. Greenhouse, Lever and Ashby companies you already follow retain their separate schedule. See [operation and limits](docs/operations/automatic-discovery.md).
+Sources are **Remotive**, **Arbeitnow**, **Himalayas** and locally stored jobs from companies you have confirmed. Coverage varies by country/profession and can be partial. Himalayas receives role, company and recognized country criteria; it never receives your resume or contact details for a search. Its cache lasts 24 hours with at most three pages per query and 100 upstream requests per day for the installation. Remotive/Arbeitnow retain their six-hour shared caches. A local refresh respects these waits and does not force new upstream requests.
+
+Existing searches retain their sources and matching rules until you opt into enhanced matching. Restored searches stay paused with automatic preparation disabled. Following companies keeps its independent schedule; searches reuse those local results. [Operation and limits](docs/operations/automatic-discovery.md) · [Himalayas contract](docs/operations/himalayas-source.md).
 
 ## Assisted applications
 
@@ -149,7 +151,7 @@ pnpm run test:e2e
 pnpm run test:sources # deterministic adapter tests; no network
 ```
 
-E2E tests use a disposable database, private services, and fictional data. They require a local database role that can create databases, or an `E2E_ADMIN_DATABASE_URL`; see [E2E setup and isolation](docs/operations/e2e-testing.md). Read-only checks verify that the live workspace was not modified. `pnpm run test:backup` checks the archive format without a database. `pnpm run test:integration` tests backup and restore with disposable databases when `CAREER_BACKUP_TEST_ADMIN_URL` is set; otherwise that suite is skipped. `pnpm run test:setup` exercises a clean installation using a local administrator. `pnpm run test:assisted` covers the new workflow; its database suite requires `CAREER_ASSIST_TEST_ADMIN_URL`. The `runner` command explains where to authorize from the UI. `test:evals` remains unavailable.
+E2E tests use a disposable database, private services, and fictional data. They require a local database role that can create databases, or an `E2E_ADMIN_DATABASE_URL`; see [E2E setup and isolation](docs/operations/e2e-testing.md). Read-only checks verify that the live workspace was not modified. `pnpm run test:backup` checks the archive format without a database. `pnpm run test:integration` tests backup and restore with disposable databases when `CAREER_BACKUP_TEST_ADMIN_URL` is set; otherwise that suite is skipped. `pnpm run test:setup` exercises a clean installation using a local administrator. `pnpm run test:assisted` covers the new workflow; its database suite requires `CAREER_ASSIST_TEST_ADMIN_URL`. The `runner` command explains where to authorize from the UI. `pnpm run test:evals` runs the synthetic search matching and ranking regression cases; these are deterministic checks, not an independent evaluation of real-world relevance.
 
 For provider compatibility and the real public feeds checked, see [source validation](docs/operations/source-validation.md). `pnpm run verify:sources --live` explicitly enables a fresh read-only check of those public feeds. It does not enable sources in your workspace.
 

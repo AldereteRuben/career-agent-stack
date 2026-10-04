@@ -4,7 +4,7 @@ Tu espacio privado para buscar ofertas automáticamente, preparar candidaturas c
 
 [English](README.md) · **Español**
 
-**Versión actual: v0.7.2** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.7.2.md)
+**Versión actual: v0.8.0** · [Cambios](CHANGELOG.md) · [Verificación y límites](docs/releases/v0.8.0.md)
 
 Ayuda de acceso: en macOS, abre `Start Career Agent Stack.command` y pega el código copiado. Si ya lo usaste, abre `Recover Career Agent Stack.command` para crear y copiar uno nuevo. Conserva tus datos y las sesiones abiertas. Desde una terminal en una instalación compatible, utiliza `pnpm start --recover-session --copy-token`.
 
@@ -31,13 +31,15 @@ En las ofertas puedes buscar por puesto o empresa, filtrar favoritas y disponibi
 
 ## Búsqueda automática de ofertas
 
-1. Abre **Buscar empleo**. Indica un puesto, una empresa o ambos; ubicación y modalidad son opcionales.
-2. Guarda tu búsqueda y elige cada 6, 12 o 24 horas. Puedes editarla o pausarla después.
-3. Las fuentes integradas son **Remotive** y **Arbeitnow**. No necesitas enlaces de empresas ni claves. Su cobertura es parcial: ofertas remotas y principalmente europeas; Remotive retrasa su catálogo público 24 horas. Cada resultado enlaza a su fuente.
-4. Opcionalmente activa **Preparar documentos para nuevas coincidencias**. La app selecciona experiencia confirmada y genera candidaturas para revisar en **Candidaturas preparadas**. Si faltan datos, indica qué completar.
-5. Mantén el servicio local encendido. Puedes cerrar la pestaña; el equipo suspendido o apagado no puede buscar.
+1. Abre **Buscar empleo**. Indica un puesto o una empresa; país y modalidad son opcionales. No necesitas completar tu perfil para buscar.
+2. Guarda. La búsqueda aparece inmediatamente y consulta en segundo plano; después vuelve a consultar cada día mientras el servicio local esté encendido. Las opciones avanzadas permiten intervalos de 6, 12 o 24 horas.
+3. Usa **Todas las búsquedas** o la tarjeta de una búsqueda. Revisa ofertas **Nuevas**, **Todas**, **Guardadas** o **Archivadas**, con motivos de coincidencia, datos geográficos pendientes, fuente y fechas disponibles. Las nuevas llegadas esperan tras un aviso mientras lees.
+4. Abre una oferta para preparar la candidatura. La preparación automática es opcional y empieza desactivada en búsquedas nuevas; las búsquedas mejoradas permiten cinco intentos por pasada y diez al día. Los puestos relacionados o con restricciones geográficas desconocidas requieren revisión.
+5. Mantén el servicio local encendido. Puedes cerrar la pestaña; un equipo suspendido o apagado no puede buscar.
 
-Las fuentes comparten resultados durante seis horas para evitar consultas repetidas. **Actualizar ahora** reutiliza esos resultados cuando todavía están vigentes; no fuerza peticiones ilimitadas. Las búsquedas restauradas desde una copia quedan pausadas y sin preparación automática. Las empresas de Greenhouse, Lever y Ashby que ya sigues conservan su programación independiente. [Funcionamiento y límites](docs/operations/automatic-discovery.md).
+Las fuentes son **Remotive**, **Arbeitnow**, **Himalayas** y las ofertas locales de empresas que has confirmado. La cobertura varía por país y profesión, y puede ser parcial. Himalayas recibe puesto, empresa y país reconocido; buscar nunca transmite tu CV ni tus datos de contacto. Su caché dura 24 horas, con un máximo de tres páginas por consulta y 100 peticiones diarias por instalación. Remotive/Arbeitnow conservan su caché compartida de seis horas. Actualizar resultados locales respeta estas esperas.
+
+Las búsquedas existentes conservan sus fuentes y reglas hasta que aceptes las mejoras. Las restauradas quedan pausadas y sin preparación automática. Las empresas seguidas mantienen su propia agenda; las búsquedas reutilizan esos resultados locales. [Funcionamiento y límites](docs/operations/automatic-discovery.md) · [Contrato de Himalayas](docs/operations/himalayas-source.md).
 
 ## Solicitudes asistidas
 
@@ -155,7 +157,7 @@ pnpm run test:e2e
 pnpm run test:sources # pruebas de adaptadores, sin red
 ```
 
-Las pruebas E2E usan servicios privados, datos ficticios y una base desechable. Necesitan un usuario local que pueda crear bases de datos o `E2E_ADMIN_DATABASE_URL`. Consulta la [guía E2E](docs/operations/e2e-testing.md). Se realizan comprobaciones de solo lectura para verificar que el espacio real no cambió. `pnpm run test:backup` comprueba archivos de copia sin base de datos. `pnpm run test:integration` comprueba copia y restauración con bases desechables si defines `CAREER_BACKUP_TEST_ADMIN_URL`; sin esa variable, la suite se omite. `pnpm run test:setup` recorre una instalación limpia con un administrador local. `pnpm run test:assisted` comprueba el nuevo flujo; su suite de base de datos requiere `CAREER_ASSIST_TEST_ADMIN_URL`. `runner` explica dónde autorizar desde la interfaz. `test:evals` sigue pendiente.
+Las pruebas E2E usan servicios privados, datos ficticios y una base desechable. Necesitan un usuario local que pueda crear bases de datos o `E2E_ADMIN_DATABASE_URL`. Consulta la [guía E2E](docs/operations/e2e-testing.md). Se realizan comprobaciones de solo lectura para verificar que el espacio real no cambió. `pnpm run test:backup` comprueba archivos de copia sin base de datos. `pnpm run test:integration` comprueba copia y restauración con bases desechables si defines `CAREER_BACKUP_TEST_ADMIN_URL`; sin esa variable, la suite se omite. `pnpm run test:setup` recorre una instalación limpia con un administrador local. `pnpm run test:assisted` comprueba el nuevo flujo; su suite de base de datos requiere `CAREER_ASSIST_TEST_ADMIN_URL`. `runner` explica dónde autorizar desde la interfaz. `pnpm run test:evals` ejecuta los casos sintéticos de coincidencia y orden de búsquedas; son comprobaciones deterministas, no una evaluación independiente de relevancia real.
 
 Consulta los proveedores y las fuentes públicas reales comprobadas en la [validación de fuentes](docs/operations/source-validation.md). `pnpm run verify:sources --live` habilita explícitamente una nueva comprobación de solo lectura; no activa fuentes en tu espacio.
 

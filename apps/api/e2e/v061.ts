@@ -64,19 +64,44 @@ export const v061Scenario: Scenario = {
         const filter = `Inbox ${marker} ${locale}`;
         for (let i = 0; i < 25; i++) await db.query("insert into jobs(id,workspace_id,company,title,canonical_url,availability,discovered_at) values($1,$2,$3,$4,$5,'OPEN',now())", [randomUUID(), workspace, filter, `${filter} ${i}`, `https://example.test/${marker}/${locale}/${i}`]);
         await page.goto(new URL(`/jobs?scope=new&q=${encodeURIComponent(filter)}&availability=OPEN&page=2`, page.url()).toString());
-        await page.locator('.job-card h2 a').first().click();
+        const jobLink = page.locator('.job-card h2 a').first();
+        const detailId = new URL((await jobLink.getAttribute('href'))!, page.url()).pathname.split('/').pop()!;
+        const detailPattern = `**/api/v1/jobs/${detailId}`;
+        let detailReads = 0;
+        let finishDelayedRead!: () => void;
+        const delayedRead = new Promise<void>((resolve) => { finishDelayedRead = resolve; });
+        // React development mode starts two initial reads. Return the first snapshot late,
+        // after a successful mutation, to make stale-read overwrites reproducible.
+        await page.route(detailPattern, async (route) => {
+          detailReads += 1;
+          if (detailReads !== 1) return route.continue();
+          try {
+            const response = await route.fetch();
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+            await route.fulfill({ response });
+          } finally { finishDelayedRead(); }
+        });
+        await jobLink.click();
         let failReview = true;
         await page.route('**/api/v1/jobs/*/seen', async (route) => failReview ? route.fulfill({ status: 500, json: { error: 'INTERNAL_ERROR' } }) : route.continue());
         try {
           const review = page.getByRole('button', { name: c('Marcar como revisada', 'Mark as reviewed'), exact: true });
           await review.click(); await page.locator('main').getByRole('alert').waitFor();
           await eventually(() => review.isEnabled(), Boolean, 'Failed review can be retried');
-          failReview = false; await review.click();
+          failReview = false;
+          const retryResponse = page.waitForResponse((response) => response.url().endsWith('/seen') && response.request().method() === 'POST');
+          await review.click();
+          const response = await retryResponse;
+          assert.equal(response.status(), 200, `Review retry returned ${response.status()}`);
+          note(`${locale}: review retry reached API and returned 200`);
+          await delayedRead;
+          assert.ok(detailReads >= 2, 'The regression fixture exercised overlapping initial reads');
+          assert.ok((await db.query('select seen_at from jobs where id=$1', [detailId])).rows[0]?.seen_at, 'Successful review persisted');
           const continuation = page.getByRole('link', { name: c('Volver a la lista de ofertas', 'Back to the job list'), exact: true });
           await eventually(() => continuation.evaluate((node) => node === document.activeElement), Boolean, 'Review keeps a useful keyboard continuation');
           assert.equal(await page.locator('main').getByRole('alert').count(), 0, 'Successful retry clears the previous error');
           await continuation.click();
-        } finally { await page.unroute('**/api/v1/jobs/*/seen'); }
+        } finally { await page.unroute('**/api/v1/jobs/*/seen'); await page.unroute(detailPattern); }
         await page.waitForURL((url) => url.pathname === '/jobs' && !url.searchParams.has('page'));
         assert.equal(new URL(page.url()).searchParams.get('scope'), 'new'); assert.equal(new URL(page.url()).searchParams.get('q'), filter); assert.equal(new URL(page.url()).searchParams.get('availability'), 'OPEN');
         await eventually(() => page.locator('.job-card').count(), (count) => count === 24, 'All remaining jobs are accessible');

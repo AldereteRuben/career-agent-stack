@@ -1,6 +1,6 @@
 {
   "name": "career-agent-stack",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.10.0",
@@ -22,9 +22,9 @@
     "bootstrap": "node scripts/bootstrap.mjs",
     "runner": "node scripts/assisted-help.mjs",
     "test:unit": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/*.test.ts",
-    "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs scripts/test/v040-migration.test.mjs",
+    "test:integration": "node --test --test-concurrency=1 scripts/test/backup-restore.integration.test.mjs scripts/test/v040-migration.test.mjs scripts/test/v080-migration.test.mjs",
     "test:e2e": "pnpm run build:shared && pnpm --filter @career/api e2e",
-    "test:evals": "node scripts/unsupported.mjs 'AI and ranking evaluations'",
+    "test:evals": "pnpm --filter @career/api exec tsx --test ../../packages/domain/test/search-matching.test.ts ../../packages/domain/test/search-ranking.test.ts ../../packages/domain/test/search-release-probes.test.ts",
     "reset:session": "node scripts/reset-session.mjs",
     "seed:demo": "pnpm --filter @career/api seed:demo",
     "backup": "node scripts/backup.mjs",
@@ -36,9 +36,10 @@
     "test:setup": "node scripts/test/setup-smoke.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
-    "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts",
+    "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts test/himalayas-source.test.ts test/search-execution.test.ts test/search-results.test.ts test/job-identity.test.ts",
     "test:preparation": "pnpm --filter @career/api exec tsx --test test/preparation*.test.ts",
-    "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts"
+    "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
+    "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -11,16 +11,21 @@ export const v071Scenarios: Scenario[] = [
       const fixture = { externalId: `ux-${marker}`, title: `Usability designer ${marker}`, company: `UX ${marker}`, location: 'Spain', workMode: 'remote', url: `https://remotive.com/remote-jobs/design/ux-${marker}`, description: 'Design accessible forms and test automation.', postedAt: null, raw: {} };
       for (const provider of ['remotive', 'arbeitnow']) await db.query("insert into job_search_provider_cache(provider,payload,fetched_at,next_fetch_at) values($1,$2::jsonb,now(),now()+interval '24 hours') on conflict(provider) do update set payload=excluded.payload,fetched_at=excluded.fetched_at,next_fetch_at=excluded.next_fetch_at,last_error=null", [provider, JSON.stringify(provider === 'remotive' ? [fixture] : [])]);
       const { search } = await api.post<{ search: { id: string } }>('/job-searches', { role: 'Usability designer', company: fixture.company, location: null, enabled: true, frequencyHours: 24, autoPrepare: false, workMode: 'any', language: 'es' });
-      const resultSnapshot = await api.get<{ items: Array<Record<string, unknown>>; total: number }>(`/job-searches/${search.id}/results?offset=0`);
+      const resultSnapshot = await api.get<{ items: Array<Record<string, unknown>>; total: number; resultVersion?: string }>(`/job-searches/${search.id}/results?offset=0`);
       const searchSnapshot = await api.get<{ searches: Array<{ id: string; lastRunStatus: string; lastRunAt: string | null }> }>('/job-searches');
       assert.ok(resultSnapshot.items.length, 'The fictional feed produces a real persisted result');
       const arrival = `New arrival ${marker}`;
-      let addArrival = false; let failSave = false; let failSource = false;
+      let addArrival = false; let failSave = false; let failSource = false; let resultRouteHits = 0;
       const resultsRoute = `**/api/v1/job-searches/${search.id}/results?*`;
       await page.route(resultsRoute, async (route) => {
+        resultRouteHits += 1;
         const body = structuredClone(resultSnapshot);
         if (failSource) { body.items = []; body.total = 0; }
-        else if (addArrival && body.items.length) { body.items.push({ ...body.items[0], id: `arrival-${marker}`, title: arrival }); body.total++; }
+        else if (addArrival && body.items.length) {
+          body.items.push({ ...body.items[0], id: `arrival-${marker}`, title: arrival }); body.total++;
+          // A synthetic new row advances the result snapshot as a real persisted arrival does.
+          body.resultVersion = `${body.resultVersion}:arrival`;
+        }
         await route.fulfill({ json: body });
       });
       await page.route('**/api/v1/job-searches', async (route) => {
@@ -34,6 +39,9 @@ export const v071Scenarios: Scenario[] = [
       });
       try {
         await setLocale(page, 'es');
+        // This scenario validates the empty required-field flow; remove any draft intentionally persisted by
+        // earlier scenarios so the form is blank and the creation action remains visible.
+        await page.evaluate(() => sessionStorage.removeItem('career:draft:v1:saved-search-form'));
         await page.goto(new URL(`/searches?search=${search.id}`, page.url()).toString());
         await page.getByRole('link', { name: fixture.title, exact: true }).waitFor();
         await page.getByRole('button', { name: 'Nueva búsqueda', exact: true }).click();
@@ -44,9 +52,12 @@ export const v071Scenarios: Scenario[] = [
         await page.locator('form #search-form-error').waitFor();
         addArrival = true;
         // Exercise the real idle polling interval, without a click, navigation or visibility event.
-        await page.getByRole('link', { name: arrival, exact: true }).waitFor({ timeout: 45000 });
+        await page.getByRole('button', { name: 'Mostrar nuevas ofertas', exact: true }).waitFor({ timeout: 45000 });
+        assert.equal(await page.getByRole('link', { name: arrival, exact: true }).count(), 0, 'New rows wait while the current page is being read');
         assert.equal(await role.evaluate((node) => node === document.activeElement), true, 'Background arrival preserves input focus');
         assert.equal(await page.locator('#search-form-error').isVisible(), true, 'Background success does not erase validation');
+        await page.getByRole('button', { name: 'Mostrar nuevas ofertas', exact: true }).click();
+        await page.getByRole('link', { name: arrival, exact: true }).waitFor();
         await role.fill('Draft kept after failure'); failSave = true;
         await page.getByRole('button', { name: 'Buscar y guardar', exact: true }).click();
         await page.waitForFunction(() => document.activeElement?.id === 'search-form-error');
@@ -54,11 +65,12 @@ export const v071Scenarios: Scenario[] = [
         assert.equal(await role.inputValue(), 'Draft kept after failure');
         assert.equal(await page.locator('#search-form-error').isVisible(), true);
         failSource = true;
-        await page.getByRole('button', { name: 'Actualizar resultados', exact: true }).click();
-        await page.getByRole('heading', { name: 'No pudimos completar la búsqueda', exact: true }).waitFor();
+        await page.getByRole('button', { name: 'Actualizar', exact: true }).click();
+        await page.getByRole('heading', { name: 'Una fuente no respondió', exact: true }).waitFor();
         assert.equal(await page.getByText(/Revisa la escritura del puesto/).count(), 0, 'Provider errors do not ask the user to rewrite valid filters');
         note('Fictional cached feed and intercepted local responses; idle polling, persistent validation, failed save and failed source recovery.');
       } finally {
+        note(`Synthetic results endpoint was intercepted ${resultRouteHits} time(s); arrival injection ${addArrival ? 'was' : 'was not'} enabled.`);
         // Wait for any final poll response before leaving the scenario.
         await page.unrouteAll({ behavior: 'wait' });
         await api.patch(`/job-searches/${search.id}`, { enabled: false });

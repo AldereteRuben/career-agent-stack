@@ -238,6 +238,12 @@ async function restore(options) {
     if (await hasTable(appClient, 'public.saved_job_searches')) {
       await appClient.query('update saved_job_searches set enabled = false, auto_prepare = false, updated_at = now()');
     }
+    if (await hasTable(appClient, 'public.search_runs')) {
+      await appClient.query("update search_runs set status=case when finished_at IS NULL then 'CANCELLED' else status end,finished_at=coalesce(finished_at,now()),owner=NULL,lease_until=NULL,manual=false");
+      if (await hasTable(appClient, 'public.search_run_sources')) {
+        await appClient.query("update search_run_sources set status='CANCELLED',next_fetch_at=NULL where status in ('QUEUED','RUNNING')");
+      }
+    }
     if (await hasTable(appClient, 'public.assisted_attempts')) {
       await appClient.query(`update assisted_attempts set status = case when status = 'PREPARED' then 'INVALIDATED' else 'UNKNOWN' end, updated_at = now(), result = result || '{"reason":"ASSIST_RESTORED_REQUIRES_REVIEW"}'::jsonb where status in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF')`);
       const pending = await appClient.query(`select count(*)::int as n from assisted_attempts where status in ('PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF')`);

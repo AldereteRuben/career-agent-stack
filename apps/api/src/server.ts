@@ -1,3 +1,4 @@
+import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { RELEASE_VERSION } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
@@ -297,7 +298,7 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const [snapshots, occurrences, applicationsForJob, searchSources] = await Promise.all([
     db.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), eq(jobSnapshots.jobId, jobId))).orderBy(desc(jobSnapshots.fetchedAt)),
     db.select().from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), eq(jobOccurrences.jobId, jobId))),
-    db.select().from(applications).where(and(eq(applications.workspaceId, id), eq(applications.jobId, jobId))).orderBy(desc(applications.updatedAt)),
+    db.select().from(applications).where(and(eq(applications.workspaceId, id), or(eq(applications.jobId, jobId), sql`${applications.jobId} IN(SELECT m.job_id FROM job_identity_members m JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key WHERE target.workspace_id=${id} AND target.job_id=${jobId}::uuid)`))).orderBy(desc(applications.updatedAt)),
     db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), eq(jobSearchSources.jobId, jobId))),
   ]);
   const [scored] = await scoreJobs(db, id, [job]);
@@ -318,10 +319,12 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
     await lockKey(tx, `discovery:${id}`);
+    await lockJobIdentity(tx,id);
     await lockKey(tx, `job-url:${id}:${jobUrl}`);
-    const duplicate = (await tx.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.workspaceId, id), eq(jobs.canonicalUrl, jobUrl))).limit(1))[0];
-    if (duplicate) return { duplicateId: duplicate.id };
+    const duplicateId = await findJobIdentity(tx,id,jobUrl);
+    if (duplicateId) return { duplicateId };
     const job = (await tx.insert(jobs).values({ workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', fitScore: scored.fitScore, evidenceCoverage: scored.evidenceCoverage, eligibility: scored.eligibility, reasons: scored.reasons }).returning())[0]!;
+    await bindJobIdentity(tx,id,job.id,jobUrl);
     await tx.insert(jobSnapshots).values({ workspaceId: id, jobId: job.id, title: parsed.title, descriptionText: parsed.description, snapshotHash: createHash('sha256').update(`${parsed.title}\n${parsed.description ?? ''}`).digest('hex') });
     return { ...job, provisional: scored.provisional, match: scored.match };
   });
@@ -332,8 +335,18 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   const body = request.body as { decision?: unknown } | null;
   if (!['SHORTLISTED', 'SKIPPED', 'ARCHIVED', 'UNREVIEWED'].includes(String(body?.decision))) return fail(reply, 400, 'INVALID_SHORTLIST_DECISION');
   const { id: jobId } = request.params as { id: string };
-  const updated = await db.update(jobs).set({ shortlistDecision: body!.decision as 'SHORTLISTED' | 'SKIPPED' | 'ARCHIVED' | 'UNREVIEWED', updatedAt: new Date() }).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, workspace(request)))).returning();
-  return updated[0] ? updated[0] : fail(reply, 404, 'NOT_FOUND');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return fail(reply,404,'NOT_FOUND');
+  const workspaceId=workspace(request);
+  return db.transaction(async (tx) => {
+    await lockJobIdentity(tx,workspaceId);
+    await tx.execute(sql`UPDATE jobs SET shortlist_decision=${String(body!.decision)},updated_at=now() WHERE workspace_id=${workspaceId} AND
+      (id=${jobId}::uuid OR id IN(SELECT b.job_id FROM job_identity_members a JOIN job_identity_members b ON b.workspace_id=a.workspace_id AND b.identity_key=a.identity_key WHERE a.workspace_id=${workspaceId} AND a.job_id=${jobId}::uuid
+      AND NOT EXISTS(SELECT 1 FROM job_identity_members c JOIN jobs cj ON cj.workspace_id=c.workspace_id AND cj.id=c.job_id
+        LEFT JOIN applications ca ON ca.workspace_id=c.workspace_id AND ca.job_id=c.job_id
+        WHERE c.workspace_id=a.workspace_id AND c.identity_key=a.identity_key GROUP BY c.identity_key HAVING count(DISTINCT cj.shortlist_decision)>1 OR count(DISTINCT ca.id)>1)))`);
+    const updated=(await tx.select().from(jobs).where(and(eq(jobs.workspaceId,workspaceId),eq(jobs.id,jobId))))[0];
+    return updated ?? fail(reply,404,'NOT_FOUND');
+  });
 });
 
 registerResumeJourney(app, workspace);
@@ -533,7 +546,16 @@ app.get('/api/v1/export', async (request, reply) => {
     if (totalArtifactBytes > 30_000_000) return fail(reply, 413, 'EXPORT_ARTIFACT_LIMIT', 'Export the PDF files separately, then create a new workspace export.');
     artifacts.push({ documentId: document.id, sha256: digest, contentBase64: content.toString('base64') });
   }
-  const data = scrubExport({ workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const searchState: Record<string,unknown> = {};
+  for (const table of ['search_job_reviews','job_identity_members','search_run_results','search_run_sources','search_runs']) {
+    const rows=(await pool.query(`SELECT * FROM ${table} WHERE workspace_id=$1`,[id])).rows;
+    searchState[table]=table==='search_runs'
+      ? rows.map((row) => ({...omit(row,'owner','lease_until'),status:row.finished_at?row.status:'CANCELLED',finished_at:row.finished_at ?? new Date().toISOString(),manual:false}))
+      : table==='search_run_sources'
+        ? rows.map((row) => ['QUEUED','RUNNING'].includes(row.status) ? {...row,status:'CANCELLED',next_fetch_at:null} : row)
+        : rows;
+  }
+  const data = scrubExport({ searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });

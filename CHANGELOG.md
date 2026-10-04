@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+
+- Save searches promptly and process persisted, revision-bound runs in the background, with per-source progress and recovery.
+- Add bounded Himalayas search and confirmed-company results; preserve existing source choices until opt-in.
+- Explain bilingual role matching and location uncertainty, group strong job identities without deleting history, and retain review state per search.
+- Add a daily inbox, visible search cards, saved/archived filters and stable background-arrival notices.
+- Show first results automatically and prevent late detail reads from reverting a successful job review.
+- Limit enhanced automatic preparation and protect existing applications; restored automation remains paused.
+- Verification and limits: [v0.8.0](docs/releases/v0.8.0.md).
+
 ## 0.7.2
 
 - Protect application updates from stale tabs and resume drafts from unconfirmed replacement.

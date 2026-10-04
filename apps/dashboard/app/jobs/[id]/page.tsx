@@ -25,12 +25,24 @@ export default function JobDetailPage() {
   const [data, setData] = useState<Detail | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
   const reviewContinuation = useRef<HTMLAnchorElement>(null); const focusAfterReview = useRef(false);
+  const loadVersion = useRef(0);
   const load = useCallback(async () => {
-    try { setData(await api<Detail>(`/jobs/${id}`)); setLoadState('ready'); }
-    catch (err) { setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); }
+    const version = ++loadVersion.current;
+    try {
+      const next = await api<Detail>(`/jobs/${id}`);
+      if (version !== loadVersion.current) return;
+      setData(next); setLoadState('ready');
+    } catch (err) {
+      if (version !== loadVersion.current) return;
+      setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error');
+    }
   }, [id]);
-  useEffect(() => { void load(); }, [load]);
-  const job = data?.job; const snapshot = data?.snapshots[0]; const source = data?.sources[0];
+  useEffect(() => {
+    setData(null); setError(''); setMessage(''); setLoadState('loading');
+    void load();
+    return () => { loadVersion.current += 1; };
+  }, [load]);
+  const job = data?.job.id === id ? data.job : undefined; const snapshot = data?.snapshots[0]; const source = data?.sources[0];
   const existing = data?.applications.find((application) => application.state !== 'CANCELLED') ?? data?.applications[0];
 
   useEffect(() => {
@@ -38,6 +50,8 @@ export default function JobDetailPage() {
   }, [job?.seenAt]);
   const markReviewed = async (trigger: HTMLButtonElement) => {
     if (!job || busy) return;
+    // A late initial read must never replace the result of this mutation.
+    loadVersion.current += 1;
     setBusy('seen'); setError(''); setMessage('');
     try {
       await api(`/jobs/${job.id}/seen`, { method: 'POST', body: '{}' });
@@ -84,7 +98,7 @@ export default function JobDetailPage() {
       {job.discoveredAt && !job.seenAt && <Notice actions={<Button variant="secondary" disabled={busy !== null} onClick={(event) => void markReviewed(event.currentTarget)}>{busy === 'seen' ? c('Guardando…', 'Saving…') : c('Marcar como revisada', 'Mark as reviewed')}</Button>}>{c('Oferta nueva · pendiente de revisar.', 'New job · waiting for your review.')}</Notice>}
       {job.discoveredAt && job.seenAt && <Notice tone="success" actions={<Link ref={reviewContinuation} href={backHref} className="button button-secondary">{c('Volver a la lista de ofertas', 'Back to the job list')}</Link>}>{job.shortlistDecision === 'ARCHIVED' ? c('Oferta revisada. Sigue guardada en Archivadas.', 'Job reviewed. It is still saved under Archived.') : c('Oferta revisada. Sigue guardada en Activas.', 'Job reviewed. It is still saved under Active.')}</Notice>}
       <div className="job-detail-meta">{existing && <p>{c('Ya sigues esta oferta', 'You are already tracking this job')}: {labelFor.applicationState(existing.state, locale)}{existing.recruitmentStage ? ` · ${applicationStage(existing.recruitmentStage, existing.state, locale)}` : ''}.</p>}
-      {Boolean(data.searchSources?.length) && <p>{c('Fuente de la oferta: ', 'Job source: ')}{data.searchSources?.map((item, index) => <span key={item.url}>{index ? ' · ' : ''}<a href={item.url} target="_blank" rel="noopener noreferrer">{item.provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}</a></span>)}{data.searchSources?.some((item) => item.provider === 'remotive') && <> {c('Remotive publica su catálogo gratuito con 24 horas de retraso.', 'Remotive publishes its free feed with a 24-hour delay.')}</>}</p>}</div>
+      {Boolean(data?.searchSources?.length) && <p>{c('Fuente de la oferta: ', 'Job source: ')}{data?.searchSources?.map((item, index) => <span key={item.url}>{index ? ' · ' : ''}<a href={item.url} target="_blank" rel="noopener noreferrer">{item.provider === 'remotive' ? 'Remotive' : item.provider === 'himalayas' ? 'Himalayas' : 'Arbeitnow'}</a></span>)}{data?.searchSources?.some((item) => item.provider === 'remotive') && <> {c('Remotive publica su catálogo gratuito con 24 horas de retraso.', 'Remotive publishes its free feed with a 24-hour delay.')}</>}</p>}</div>
       {(!existing || ['DRAFT', 'PREPARING', 'REVIEW_REQUIRED', 'READY'].includes(existing.state)) && <ApplicationPreparationAction returnTo={returnTo} jobId={job.id} applicationId={existing?.id}/>}
       <div className="detail-layout"><div className="detail-main">
         <Card className="detail-description"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('EL PUESTO', 'THE JOB')}</div><h2 id="job-description" className="focus-heading" tabIndex={-1}>{c('Descripción guardada', 'Saved description')}</h2></div>{source && <Tag tone="blue">{source.provider.toUpperCase()}</Tag>}</div>{snapshot?.descriptionText ? <div className="description-text">{snapshot.descriptionText}</div> : <div className="notice notice-warning">{c('Esta fuente no incluyó descripción. No suponemos requisitos que no aparecen en los datos.', 'This source did not include a description. We do not assume requirements that are not in the data.')}</div>}</Card>

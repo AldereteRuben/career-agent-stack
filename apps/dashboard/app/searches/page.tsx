@@ -1,9 +1,13 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
-import { Button, Card, Empty, Field, Notice, SelectField, Tag } from '@/components/ui';
+import { Button, Card, Empty, Notice } from '@/components/ui';
+import { SearchCard } from '@/components/search-card';
+import { SearchForm } from '@/components/search-form';
+import { SearchEmptyState, SearchProgress } from '@/components/search-progress';
+import { SearchResultCard } from '@/components/search-result-card';
+import { searchInFlight, type ProviderId, type Search, type SearchDraft, type SearchJob, type SearchSort, type SearchView } from '@/components/search-types';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { useErrorFocus } from '@/lib/disclosure-focus';
 import { useLocalRefresh } from '@/lib/local-refresh';
@@ -11,207 +15,257 @@ import { useSessionDraft } from '@/lib/session-draft';
 import { useLocale } from '@/lib/i18n';
 import styles from './searches.module.css';
 
-type Search = { id: string; role: string | null; company: string | null; location: string | null; workMode: 'any' | 'remote' | 'hybrid' | 'onsite'; frequencyHours: 6 | 12 | 24; enabled: boolean; autoPrepare: boolean; language: 'en' | 'es'; lastRunAt: string | null; nextRunAt: string | null; lastRunStatus: string | null; lastResultCount: number; lastNewCount: number; lastError: string | null };
-type SearchJob = { id: string; company: string; title: string; location: string | null; canonicalUrl: string | null; seenAt: string | null; shortlistDecision: string; matchedAt: string; unknownLocation: boolean; autoPreparedAt?: string | null; autoPrepareError?: string | null; sources: Array<{ provider: string; url: string; postedAt: string | null }> };
-type Feed = { provider: string; listings: number; coverage: string; fetchedAt: string | null; lastError: string | null };
-type Draft = { role: string; company: string; location: string; workMode: Search['workMode']; frequencyHours: Search['frequencyHours']; enabled: boolean; autoPrepare: boolean };
-const emptyDraft = (): Draft => ({ role: '', company: '', location: '', workMode: 'any', frequencyHours: 12, enabled: true, autoPrepare: false });
+const successMessages = {
+  searchSaved: ['Búsqueda guardada. Puedes revisar las ofertas mientras continúa la consulta.', 'Search saved. You can review jobs while the search continues.'],
+  refresh: ['Actualización solicitada. Las fuentes pueden devolver datos en caché.', 'Refresh requested. Sources may return cached results.'],
+  saved: ['Oferta guardada.', 'Job saved.'],
+  archived: ['Oferta archivada. Puedes restaurarla en Archivadas.', 'Job archived. You can restore it from Archived.'],
+  restored: ['Oferta restaurada.', 'Job restored.'],
+  reviewed: ['Marcada como revisada.', 'Marked as reviewed.'],
+} as const;
 
-type SearchFormState = { draft: Draft; editing: string; open: boolean };
-const initialForm = (): SearchFormState => ({ draft: emptyDraft(), editing: '', open: false });
-function readForm(payload: string): SearchFormState {
+const defaultProviders: ProviderId[] = ['remotive', 'arbeitnow', 'himalayas'];
+const emptyDraft = (): SearchDraft => ({ role: '', company: '', location: '', workMode: 'any', frequencyHours: 24, enabled: true, autoPrepare: false, providerIds: defaultProviders, matcherVersion: 2, includeRelated: false, improveMatching: false });
+type FormState = { draft: SearchDraft; editing: string; open: boolean; idempotencyKey: string };
+const initialForm = (): FormState => ({ draft: emptyDraft(), editing: '', open: false, idempotencyKey: '' });
+function readForm(payload: string): FormState {
   try {
-    const value = JSON.parse(payload) as SearchFormState;
-    const d = value.draft;
+    const value = JSON.parse(payload) as Partial<FormState>;
+    const d = value.draft as Partial<SearchDraft> | undefined;
     if (typeof value.editing === 'string' && typeof value.open === 'boolean' && d &&
       ['role', 'company', 'location'].every((key) => typeof d[key as 'role'] === 'string') &&
-      ['any', 'remote', 'hybrid', 'onsite'].includes(d.workMode) && [6, 12, 24].includes(d.frequencyHours) &&
-      typeof d.enabled === 'boolean' && typeof d.autoPrepare === 'boolean') return value;
-  } catch { /* An invalid draft is not restored. */ }
+      ['any', 'remote', 'hybrid', 'onsite'].includes(d.workMode ?? '') && [6, 12, 24].includes(d.frequencyHours ?? -1) &&
+      typeof d.enabled === 'boolean' && typeof d.autoPrepare === 'boolean') {
+      return { ...value as FormState, idempotencyKey: typeof value.idempotencyKey === 'string' ? value.idempotencyKey : '', draft: { ...emptyDraft(), ...d, providerIds: Array.isArray(d.providerIds) ? d.providerIds : defaultProviders } };
+    }
+  } catch { /* Ignore malformed draft data. */ }
   return initialForm();
 }
-const contextHref = (id: string, offset: number) => `/searches?${new URLSearchParams({ search: id, offset: String(offset) })}`;
-// Navigation context is per tab and uses the same logout-cleared namespace as drafts.
-const searchContextKey = 'career:draft:v1:saved-search-view';
+const views: SearchView[] = ['new', 'all', 'saved', 'archived'];
+const sorts: SearchSort[] = ['relevance', 'recent'];
+const searchInProgress = (search: Search) => searchInFlight(search);
+const contextKey = 'career:draft:v1:saved-search-view';
 const pageOffset = (value: unknown) => { const n = Number(value); return Number.isFinite(n) ? Math.min(100_000, Math.max(0, Math.floor(n / 20) * 20)) : 0; };
-function rememberedContext() {
-  try { const value = JSON.parse(sessionStorage.getItem(searchContextKey) ?? '{}'); return { search: typeof value.search === 'string' ? value.search : '', offset: pageOffset(value.offset) }; }
-  catch { return { search: '', offset: 0 }; }
+function contextHref(search: string, view: SearchView, sort: SearchSort, offset: number) {
+  return `/searches?${new URLSearchParams({ search: search || 'all', view, sort, offset: String(offset) })}`;
 }
-
+function readContext() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const remembered = JSON.parse(sessionStorage.getItem(contextKey) ?? '{}') as { search?: string; view?: SearchView; sort?: SearchSort; offset?: number };
+    return {
+      search: params.get('search') === 'all' ? '' : params.get('search') ?? remembered.search ?? '',
+      view: views.includes(params.get('view') as SearchView) ? params.get('view') as SearchView : views.includes(remembered.view as SearchView) ? remembered.view! : 'new',
+      sort: sorts.includes(params.get('sort') as SearchSort) ? params.get('sort') as SearchSort : sorts.includes(remembered.sort as SearchSort) ? remembered.sort! : 'relevance',
+      offset: params.has('offset') ? pageOffset(params.get('offset')) : pageOffset(remembered.offset),
+    };
+  } catch { return { search: '', view: 'new' as SearchView, sort: 'relevance' as SearchSort, offset: 0 }; }
+}
+type ResultsPayload = { items: SearchJob[]; total: number; resultVersion?: string | number; latestRun?: Search['latestRun'] };
 
 export default function SearchesPage() {
   const { locale } = useLocale(); const es = locale === 'es';
-  const [searches, setSearches] = useState<Search[]>([]); const [results, setResults] = useState<SearchJob[]>([]); const [selectedId, setSelectedId] = useState('');
-  const formDraft = useSessionDraft('saved-search-form', { payload: '' }, (value): value is { payload: string } => Boolean(value && typeof value === 'object' && 'payload' in value && typeof value.payload === 'string'));
-  const { draft, editing, open: formOpen } = readForm(formDraft.value.payload);
-  const setDraft = (draft: Draft) => formDraft.update((stored) => ({ payload: JSON.stringify({ ...readForm(stored.payload), draft, open: true }) }));
-  const setEditing = (editing: string) => formDraft.update((stored) => ({ payload: JSON.stringify({ ...readForm(stored.payload), editing }) }));
-  const setFormOpen = (open: boolean) => formDraft.update((stored) => ({ payload: JSON.stringify({ ...readForm(stored.payload), open }) }));
-  const [formError, setFormError] = useState(''); const [criteriaMissing, setCriteriaMissing] = useState(false);
-  const [invalidField, setInvalidField] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState(false); const [loadError, setLoadError] = useState('');
-  useEffect(() => { if (formError) document.getElementById(invalidField ? `search-${invalidField}` : criteriaMissing ? 'search-role' : 'search-form-error')?.focus(); }, [formError, criteriaMissing, invalidField]);
-  const [resultLoading, setResultLoading] = useState(false);
-  const [feeds, setFeeds] = useState<Feed[]>([]); const [resultsError, setResultsError] = useState(false);
-  const [total, setTotal] = useState(0); const [offset, setOffset] = useState(0);
-  const formTitle = useRef<HTMLHeadingElement>(null); const resultsTitle = useRef<HTMLHeadingElement>(null);
-  const offsetRef = useRef(0); const listVersion = useRef(0);
-  const selectedRef = useRef(''); const requestVersion = useRef(0); const focusForm = useRef(false);
-  const [loading, setLoading] = useState(true); const [listFailed, setListFailed] = useState(false); const [busy, setBusy] = useState(''); const [error, setError] = useState(''); const [message, setMessage] = useState('');
-  const errorFocus = useErrorFocus(error);
   const t = (spanish: string, english: string) => es ? spanish : english;
-  const problem = (cause: unknown) => {
-    const codes: Record<string, [string, string]> = {
-      SEARCH_REFRESH_COOLDOWN: ['Esta búsqueda ya está actualizada. La próxima consulta aparece en su tarjeta.', 'This search is up to date. Its next check is shown on the card.'],
-      SEARCH_REFRESH_ALREADY_RUNNING: ['Ya estamos consultando esta búsqueda. Revisa los resultados en unos momentos.', 'This search is already running. Check its results in a moment.'],
-      SEARCH_DISABLED: ['Reanuda la búsqueda para volver a consultar las fuentes.', 'Resume the search to check the sources again.'],
-      SEARCH_REFRESH_FAILED: ['No pudimos consultar las fuentes. Conservamos las ofertas guardadas y lo intentaremos después.', 'We could not check the sources. Saved jobs are preserved and we will try again later.'],
-      INVALID_INPUT: ['Revisa los datos de la búsqueda e indica un puesto o una empresa.', 'Check the search details and enter a role or company.'],
-    };
-    return cause instanceof ApiError && codes[cause.code] ? codes[cause.code]![es ? 0 : 1] : errorMessage(cause);
-  };
-  const loadResults = useCallback(async (id: string, start = 0, background = false) => {
-    const version = ++requestVersion.current; if (!background) { setResultLoading(true); setResultsError(false); }
-    try {
-      let result = await api<{ items: SearchJob[]; total: number }>(`/job-searches/${id}/results?limit=20&offset=${start}`);
-      if (result.total > 0 && start >= result.total) {
-        start = Math.floor((result.total - 1) / 20) * 20;
-        result = await api<{ items: SearchJob[]; total: number }>(`/job-searches/${id}/results?limit=20&offset=${start}`);
-      }
-      if (version !== requestVersion.current) return;
-      if (window.location.pathname === '/searches') window.history.replaceState(null, '', contextHref(id, start));
-      setResults(result.items); setResultsError(false); setRefreshError(false); setLoadError(''); setTotal(result.total); setOffset(start); offsetRef.current = start;
-      try { sessionStorage.setItem(searchContextKey, JSON.stringify({ search: id, offset: start })); } catch { /* The URL still preserves this view when storage is unavailable. */ }
-    } catch (cause) { if (version === requestVersion.current) { if (background) setRefreshError(true); else { setResults([]); setTotal(0); setResultsError(true); setLoadError(errorMessage(cause)); } } }
-    finally { if (version === requestVersion.current) setResultLoading(false); }
-  }, []);
-  const load = useCallback(async (selected?: string, start?: number, background = false) => {
-    const ticket = ++listVersion.current;
-    try {
-      const response = await api<{ searches: Search[]; coverage: { feeds?: Feed[] } }>('/job-searches');
-      if (ticket !== listVersion.current) return;
-      setListFailed(false); setLoadError(''); setSearches(response.searches); setFeeds(response.coverage.feeds ?? []);
-      const requestedId = selected ?? selectedRef.current;
-      const active = response.searches.find((item) => item.id === requestedId) ?? response.searches[0];
-      selectedRef.current = active?.id ?? ''; setSelectedId(active?.id ?? '');
-      if (active) {
-        const pageOffset = active.id === requestedId ? start ?? offsetRef.current : 0;
-        if (window.location.pathname === '/searches') window.history.replaceState(null, '', contextHref(active.id, pageOffset));
-        await loadResults(active.id, pageOffset, background);
-      } else { setResults([]); setTotal(0); }
-    } catch (cause) { if (ticket === listVersion.current) { if (background) setRefreshError(true); else { setListFailed(true); setLoadError(errorMessage(cause)); } } }
-    finally { if (ticket === listVersion.current) setLoading(false); }
-  }, [loadResults]);
-  useEffect(() => {
-    const restore = () => {
-      const params = new URLSearchParams(window.location.search);
-      const remembered = rememberedContext();
-      selectedRef.current = params.get('search') ?? remembered.search;
-      offsetRef.current = params.has('search') ? pageOffset(params.get('offset')) : remembered.offset;
-      void load(selectedRef.current, offsetRef.current);
-    };
-    restore(); window.addEventListener('popstate', restore);
-    return () => { requestVersion.current++; listVersion.current++; window.removeEventListener('popstate', restore); };
-  }, [load]);
-  useEffect(() => { if (formOpen && focusForm.current) { formTitle.current?.focus(); focusForm.current = false; } }, [formOpen, editing]);
-  const openNew = () => { if (formOpen && (draft.role || draft.company || draft.location) && !window.confirm(t('¿Descartar este borrador y crear otra búsqueda?', 'Discard this draft and create another search?'))) return; setEditing(''); setDraft(emptyDraft()); focusForm.current = true; setFormOpen(true); if (formOpen) formTitle.current?.focus(); };
+  const [searches, setSearches] = useState<Search[]>([]); const [results, setResults] = useState<SearchJob[]>([]);
+  const [selectedId, setSelectedId] = useState(''); const [view, setView] = useState<SearchView>('new'); const [sort, setSort] = useState<SearchSort>('relevance');
+  const formDraft = useSessionDraft('saved-search-form', { payload: '' }, (value): value is { payload: string } => Boolean(value && typeof value === 'object' && 'payload' in value && typeof value.payload === 'string'));
+  const formState = readForm(formDraft.value.payload); const { draft, editing, open: formOpen } = formState;
+  const editSearch = searches.find((search) => search.id === editing);
+  const setFormState = (next: FormState) => formDraft.update({ payload: JSON.stringify(next) });
+  const setDraft = (next: SearchDraft) => setFormState({ ...readForm(formDraft.value.payload), draft: next, open: true });
+  const [formError, setFormError] = useState(''); const [criteriaMissing, setCriteriaMissing] = useState(false); const [invalidField, setInvalidField] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); const [listFailed, setListFailed] = useState(false); const [resultLoading, setResultLoading] = useState(false); const [resultsError, setResultsError] = useState(false);
+  const [total, setTotal] = useState(0); const [offset, setOffset] = useState(0); const [busy, setBusy] = useState(''); const [error, setError] = useState(''); const [message, setMessage] = useState<keyof typeof successMessages | ''>(''); const [loadError, setLoadError] = useState('');
+  const [pendingArrivals, setPendingArrivals] = useState(false); const [latestRun, setLatestRun] = useState<Search['latestRun']>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null); const resultsTitle = useRef<HTMLHeadingElement>(null); const focusForm = useRef(false);
+  const selectedRef = useRef(''); const viewRef = useRef<SearchView>('new'); const sortRef = useRef<SearchSort>('relevance'); const offsetRef = useRef(0); const listRequest = useRef(0); const resultRequest = useRef(0); const initialized = useRef(false);
+  const searchesRef = useRef<Search[]>([]); const resultVersionRef = useRef<string | number | undefined>(undefined); const totalRef = useRef(0); const resultItemsRef = useRef<SearchJob[]>([]); const resultViewRef = useRef('');
+  const errorFocus = useErrorFocus(error);
   const selectedSearch = searches.find((search) => search.id === selectedId);
-  const running = searches.some((search) => search.lastRunStatus === 'RUNNING');
-  useLocalRefresh(() => load(undefined, undefined, true), { paused: loading || Boolean(busy) || resultLoading, interval: running ? 3000 : 30000 });
+  const anyRunning = searches.some(searchInProgress);
+  const sourceError = (search: Search) => search.latestRun?.status === 'FAILED' || search.lastRunStatus === 'FAILED' || (search.latestRun?.status === 'PARTIAL' && Boolean(search.latestRun.finishedAt)) || Boolean(search.latestRun?.sources.some((source) => ['FAILED', 'ERROR'].includes(source.status.toUpperCase())));
+  const saveContext = (searchId = selectedRef.current, nextView = viewRef.current, nextSort = sortRef.current, nextOffset = offsetRef.current, replace = true) => {
+    const href = contextHref(searchId, nextView, nextSort, nextOffset);
+    window.history[replace ? 'replaceState' : 'pushState'](null, '', href);
+    try { sessionStorage.setItem(contextKey, JSON.stringify({ search: searchId, view: nextView, sort: nextSort, offset: nextOffset })); } catch { /* URL continues to preserve this tab's context. */ }
+  };
+  const sourceName = (id: string) => ({ remotive: 'Remotive', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', boards: t('Empresas seguidas', 'Followed companies') } as Record<string, string>)[id] ?? id;
   const dateTime = (value: string) => new Intl.DateTimeFormat(es ? 'es-ES' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
   const modeLabel = (mode: Search['workMode']) => ({ any: t('Cualquier modalidad', 'Any work mode'), remote: t('En remoto', 'Remote'), hybrid: t('Híbrida', 'Hybrid'), onsite: t('Presencial', 'On-site') })[mode];
+  const viewPath = (search: string) => `${search ? `/job-searches/${encodeURIComponent(search)}/results` : '/job-searches/results'}`;
 
+  const loadResults = useCallback(async (search: string, nextView: SearchView, nextSort: SearchSort, start: number, background = false) => {
+    const ticket = ++resultRequest.current;
+    if (!background) { setResultLoading(true); setResultsError(false); }
+    const viewKey = `${search}|${nextView}|${nextSort}`;
+    const query = new URLSearchParams({ view: nextView, sort: nextSort, offset: String(start), limit: '20' });
+    try {
+      let payload = await api<ResultsPayload>(`${viewPath(search)}?${query}`);
+      if (payload.total > 0 && start >= payload.total) {
+        start = Math.floor((payload.total - 1) / 20) * 20; query.set('offset', String(start));
+        payload = await api<ResultsPayload>(`${viewPath(search)}?${query}`);
+      }
+      if (ticket !== resultRequest.current) return false;
+      setResultsError(false); setLoadError(''); setLatestRun(payload.latestRun ?? searchesRef.current.find((item) => item.id === search)?.latestRun ?? null);
+      const sameView = viewKey === resultViewRef.current;
+      const changedItems = payload.total !== totalRef.current || payload.items.map((item) => item.groupId ?? item.id).join('|') !== resultItemsRef.current.map((item) => item.groupId ?? item.id).join('|');
+      if (background && sameView && changedItems && resultItemsRef.current.length > 0) { setPendingArrivals(true); return; }
+      setPendingArrivals(false); resultViewRef.current = viewKey; resultItemsRef.current = payload.items; totalRef.current = payload.total; setResults(payload.items); setTotal(payload.total); setOffset(start); offsetRef.current = start;
+      if (payload.resultVersion !== undefined) resultVersionRef.current = payload.resultVersion;
+      saveContext(search, nextView, nextSort, start);
+      return true;
+    } catch (cause) {
+      if (ticket === resultRequest.current) {
+        if (!background) { setResultsError(true); setLoadError(errorMessage(cause)); }
+      }
+      return false;
+    } finally { if (ticket === resultRequest.current && !background) setResultLoading(false); }
+  }, []);
+
+  const load = useCallback(async (background = false, restoreContext?: ReturnType<typeof readContext>) => {
+    const ticket = ++listRequest.current;
+    try {
+      const response = await api<{ searches: Search[] }>('/job-searches');
+      if (ticket !== listRequest.current) return;
+      searchesRef.current = response.searches;
+      setSearches(response.searches); setListFailed(false); setLoadError('');
+      const context = restoreContext ?? { search: selectedRef.current, view: viewRef.current, sort: sortRef.current, offset: offsetRef.current };
+      const id = context.search && response.searches.some((search) => search.id === context.search) ? context.search : '';
+      selectedRef.current = id; setSelectedId(id); viewRef.current = context.view; setView(context.view); sortRef.current = context.sort; setSort(context.sort); offsetRef.current = context.offset;
+      if (!initialized.current && !context.search && !window.location.search) { viewRef.current = 'new'; setView('new'); }
+      initialized.current = true;
+      await loadResults(id, context.view, context.sort, context.offset, background);
+    } catch (cause) {
+      if (ticket === listRequest.current && !background) { setListFailed(true); setLoadError(errorMessage(cause)); }
+    } finally { if (ticket === listRequest.current) setLoading(false); }
+  }, [loadResults]);
+
+  useEffect(() => {
+    const restore = () => { const context = readContext(); void load(false, context); };
+    restore(); window.addEventListener('popstate', restore);
+    return () => { listRequest.current++; resultRequest.current++; window.removeEventListener('popstate', restore); };
+  }, [load]);
+  useEffect(() => { if (formOpen && focusForm.current) { titleRef.current?.focus(); focusForm.current = false; } }, [formOpen, editing]);
+  useEffect(() => {
+    if (!formError) return;
+    document.getElementById(invalidField ? `search-${invalidField}` : criteriaMissing ? 'search-role' : 'search-form-error')?.focus();
+  }, [formError, criteriaMissing, invalidField]);
+  useLocalRefresh(() => load(true), { paused: loading || Boolean(busy) || resultLoading, interval: anyRunning ? 3000 : 30000 });
+
+  const choose = async (id: string, nextView = view, nextSort = sort, start = 0, push = true) => {
+    selectedRef.current = id; setSelectedId(id); viewRef.current = nextView; setView(nextView); sortRef.current = nextSort; setSort(nextSort); offsetRef.current = start; setOffset(start);
+    saveContext(id, nextView, nextSort, start, !push); await loadResults(id, nextView, nextSort, start); resultsTitle.current?.focus();
+  };
+  const openNew = () => {
+    if (formOpen && (draft.role || draft.company || draft.location) && !window.confirm(t('¿Descartar este borrador y crear otra búsqueda?', 'Discard this draft and create another search?'))) return;
+    focusForm.current = true; setFormState({ draft: emptyDraft(), editing: '', open: true, idempotencyKey: crypto.randomUUID() });
+  };
+  const beginEdit = (search: Search) => {
+    if (formOpen && (draft.role || draft.company || draft.location) && !window.confirm(t('¿Descartar este borrador para editar otra búsqueda?', 'Discard this draft to edit another search?'))) return;
+    const legacy = search.matcherVersion === 1;
+    focusForm.current = true;
+    setFormState({ editing: search.id, open: true, idempotencyKey: '', draft: { role: search.role ?? '', company: search.company ?? '', location: search.location ?? '', workMode: search.workMode, frequencyHours: search.frequencyHours, enabled: search.enabled, autoPrepare: search.autoPrepare, providerIds: search.providerIds ?? defaultProviders, matcherVersion: search.matcherVersion ?? 1, includeRelated: search.includeRelated ?? false, improveMatching: !legacy } });
+  };
+  const closeDraft = () => {
+    if (!window.confirm(t('¿Descartar este borrador sin guardar?', 'Discard this unsaved draft?'))) return;
+    setFormError(''); setCriteriaMissing(false); formDraft.update({ payload: '' });
+  };
+  const problem = (cause: unknown) => {
+    if (cause instanceof ApiError && cause.status === 409) return t('Esta búsqueda cambió en otra pestaña. Actualiza la lista y vuelve a aplicar tus cambios.', 'This search changed in another tab. Reload the list and apply your changes again.');
+    return cause instanceof ApiError && cause.code === 'SEARCH_REFRESH_ALREADY_RUNNING' ? t('La consulta sigue en curso. Conservamos las ofertas visibles.', 'The search is still running. Visible jobs are preserved.') : errorMessage(cause);
+  };
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(''); setFormError(''); setCriteriaMissing(false); setInvalidField(null); setMessage('');
     if (!draft.role.trim() && !draft.company.trim()) { setCriteriaMissing(true); setFormError(t('Indica un puesto, una empresa o ambos.', 'Enter a role, a company, or both.')); document.getElementById('search-role')?.focus(); return; }
     const tooLong = (['role', 'company', 'location'] as const).find((field) => draft[field].trim().length > 200);
-    if (tooLong) { setInvalidField(tooLong); setFormError(t('Usa un máximo de 200 caracteres en cada campo de búsqueda.', 'Use at most 200 characters in each search field.')); document.getElementById(`search-${tooLong}`)?.focus(); return; }
+    if (tooLong) { setInvalidField(tooLong); setFormError(t('Usa un máximo de 200 caracteres en cada campo.', 'Use at most 200 characters in each field.')); document.getElementById(`search-${tooLong}`)?.focus(); return; }
+    if (!draft.providerIds.length) { setFormError(t('Elige al menos una fuente de ofertas.', 'Choose at least one job source.')); return; }
     setBusy(editing || 'create');
-    const body = { role: draft.role.trim() || null, company: draft.company.trim() || null, location: draft.location.trim() || null, workMode: draft.workMode, frequencyHours: draft.frequencyHours, enabled: draft.enabled, autoPrepare: draft.autoPrepare, language: locale };
+    const body: Record<string, unknown> = { role: draft.role.trim() || null, company: draft.company.trim() || null, location: draft.location.trim() || null, workMode: draft.workMode, frequencyHours: draft.frequencyHours, enabled: draft.enabled, autoPrepare: draft.autoPrepare, language: locale };
+    if (!editing || !editSearch || editSearch.matcherVersion === 2 || draft.improveMatching) {
+      body.matcherVersion = draft.improveMatching || !editing ? 2 : draft.matcherVersion;
+      body.providerIds = draft.providerIds; body.includeRelated = draft.includeRelated;
+    }
+    if (editing && editSearch) body.expectedRevision = editSearch.revision;
+    if (!editing) {
+      const idempotencyKey = formState.idempotencyKey || crypto.randomUUID();
+      if (!formState.idempotencyKey) setFormState({ ...formState, idempotencyKey });
+      body.idempotencyKey = idempotencyKey;
+    }
     try {
-      const saved = await api<{ search: Search }>(editing ? `/job-searches/${editing}` : '/job-searches', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
-      formDraft.update({ payload: '' }); setMessage(t('Búsqueda guardada. Revisa el resultado de la consulta abajo.', 'Search saved. Check the outcome below.'));
-      await load(saved.search.id, 0); resultsTitle.current?.focus();
+      const response = await api<{ search: Search; runId?: string; refresh: null }>(editing ? `/job-searches/${editing}` : '/job-searches', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(body) });
+      const id = response.search.id; formDraft.update({ payload: '' }); setMessage('searchSaved');
+      await load(false, { search: id, view: 'new', sort: 'relevance', offset: 0 }); resultsTitle.current?.focus();
     } catch (cause) { setFormError(problem(cause)); } finally { setBusy(''); }
   };
-  const editSearch = (search: Search) => { if (formOpen && (draft.role || draft.company || draft.location) && !window.confirm(t('¿Descartar este borrador para editar otra búsqueda?', 'Discard this draft to edit another search?'))) return; setEditing(search.id); setDraft({ role: search.role ?? '', company: search.company ?? '', location: search.location ?? '', workMode: search.workMode, frequencyHours: search.frequencyHours, enabled: search.enabled, autoPrepare: search.autoPrepare }); focusForm.current = true; setFormOpen(true); if (formOpen) formTitle.current?.focus(); };
   const runAction = async (search: Search, action: 'refresh' | 'toggle') => {
     setBusy(search.id); setError(''); setMessage('');
     try {
       if (action === 'refresh') {
-        const refreshed = await api<{ matched: number; coverage: string }>(`/job-searches/${search.id}/refresh`, { method: 'POST', body: '{}' });
-        setMessage(refreshed.matched === 0 ? t('No hay ofertas que coincidan en las fuentes públicas ahora mismo.', 'No matching jobs are available from the public feeds right now.') : t('Búsqueda actualizada.', 'Search refreshed.'));
-      } else await api(`/job-searches/${search.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !search.enabled }) });
-      await load(search.id);
+        await api<{ runId: string }>(`/job-searches/${search.id}/refresh`, { method: 'POST', body: '{}' });
+        setMessage('refresh');
+      } else await api(`/job-searches/${search.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !search.enabled, expectedRevision: search.revision }) });
+      await load(false);
     } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
   };
-  const choose = async (id: string, start = 0) => { listVersion.current++; setError(''); selectedRef.current = id; offsetRef.current = start; setSelectedId(id); window.history.pushState(null, '', contextHref(id, start)); await loadResults(id, start); resultsTitle.current?.focus(); };
+  const updateReview = async (job: SearchJob, decision: 'SHORTLISTED' | 'ARCHIVED' | 'UNREVIEWED' | 'SKIPPED') => {
+    setBusy(job.id); setError(''); setMessage('');
+    try {
+      await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision }) });
+      setMessage(decision === 'SHORTLISTED' ? 'saved' : decision === 'ARCHIVED' ? 'archived' : 'restored');
+      await loadResults(selectedId, view, sort, offset);
+    } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
+  };
+  const markReviewed = async (job: SearchJob) => {
+    setBusy(job.id); setError('');
+    try {
+      const ids = selectedId ? [selectedId] : job.searchIds ?? [];
+      await Promise.all(ids.map((id) => api(`/job-searches/${id}/results/${job.id}/review`, { method: 'POST', body: '{}' })));
+      await loadResults(selectedId, view, sort, offset);
+      setMessage('reviewed');
+    } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
+  };
+  const showArrivals = async () => { if (await loadResults(selectedId, view, sort, offset)) resultsTitle.current?.focus(); };
+  const changeView = (next: SearchView) => { void choose(selectedId, next, sort, 0); };
+  const changeSort = (next: SearchSort) => { void choose(selectedId, view, next, 0); };
+
+  const filterTabs: Array<{ id: SearchView; es: string; en: string }> = [
+    { id: 'new', es: 'Nuevas', en: 'New' }, { id: 'all', es: 'Todas', en: 'All' }, { id: 'saved', es: 'Guardadas', en: 'Saved' }, { id: 'archived', es: 'Archivadas', en: 'Archived' },
+  ];
+  const pageCount = Math.ceil(total / 20);
+  const resultsReturn = contextHref(selectedId, view, sort, offset);
+  const progressSearches = selectedId ? (selectedSearch ? [selectedSearch] : []) : searches.filter((search) => {
+    return searchInProgress(search) || sourceError(search) || Boolean(search.latestRun?.error || search.lastError);
+  });
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} description={t('Dinos qué buscas. Guardaremos las ofertas que coincidan y volveremos a buscar por ti.', 'Tell us what you are looking for. We save matching jobs and keep searching for you.')} action={<div className={styles.actions}>{!formOpen && searches.length > 0 && <Button disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button>}<Link href="/jobs" className="button button-secondary">{t('Ver ofertas guardadas', 'Open saved jobs')}</Link></div>}/>
-
-    {formOpen && (draft.role || draft.company || draft.location) && <Notice tone={formDraft.storageFailed ? 'warning' : 'info'}>{formDraft.storageFailed ? t('No se pudo conservar el borrador. Guárdalo antes de salir.', 'The draft could not be kept. Save it before leaving.') : t('Borrador conservado en esta pestaña hasta que cierres sesión.', 'Draft kept in this tab until you sign out.')}</Notice>}
-    {busy && <Notice>{t('Guardando los cambios y comprobando las ofertas disponibles… Puede tardar unos segundos.', 'Saving changes and checking available jobs… This may take a few seconds.')}</Notice>}
-    {refreshError && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => void load(undefined, undefined, true)}>{t('Reintentar actualización', 'Retry update')}</Button>}>{t('No pudimos actualizar la lista. Conservamos los últimos resultados; volveremos a intentarlo.', 'Could not update the list. Your last results are kept; we will try again.')}</Notice>}
-    {loadError && <Notice tone="error">{loadError}</Notice>}{error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
+    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} description={t('Guarda lo que buscas y vuelve a una lista de ofertas nuevas, explicadas y sin saltos cuando llegan más resultados.', 'Save what you are looking for and return to a clear, useful list as new jobs arrive.')} action={<div className={styles.actions}>{!formOpen && searches.length > 0 && <Button disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button>}<a href="/jobs" className="button button-secondary">{t('Ver ofertas guardadas', 'Open saved jobs')}</a></div>} />
+    {busy && <Notice>{busy === 'create' ? t('Guardando la búsqueda…', 'Saving your search…') : t('Guardando cambios…', 'Saving changes…')}</Notice>}
+    {loadError && <Notice tone={listFailed ? 'error' : 'warning'} actions={listFailed ? <Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button> : undefined}>{loadError}</Notice>}
+    {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}
+    {message && <Notice tone="success">{t(successMessages[message][0], successMessages[message][1])}</Notice>}
+    {pendingArrivals && <Notice tone="info" actions={<Button variant="secondary" onClick={showArrivals}>{t('Mostrar nuevas ofertas', 'Show new jobs')}</Button>}>{t('Hay ofertas nuevas. Tu página y posición siguen como estaban.', 'New jobs are available. Your page and position are unchanged.')}</Notice>}
     <div className={styles.layout}>
-      {(formOpen || (!loading && !listFailed && searches.length === 0)) && <section className={styles.formColumn} aria-labelledby="search-form-title">
-        <Card className={styles.formCard}>
-          <h2 id="search-form-title" ref={formTitle} tabIndex={-1}>{t(editing ? 'Editar búsqueda' : '¿Qué trabajo buscas?', editing ? 'Edit search' : 'What job are you looking for?')}</h2>
-          <p className={styles.intro}>{t('Indica un puesto, una empresa o ambos (máximo 200 caracteres por campo). No necesitas completar tu perfil.', 'Enter a role, a company, or both (up to 200 characters per field). You do not need to complete your profile.')}</p>
-          <form onSubmit={(event) => void submit(event)} className={styles.form}>
-            {formError && <div id="search-form-error" tabIndex={-1} className={styles.formError}><Notice tone="error">{formError}</Notice></div>}
-            <Field disabled={busy !== '' || !formDraft.ready} id="search-role" name="role" aria-invalid={criteriaMissing || draft.role.trim().length > 200 || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Puesto o palabras clave', 'Role or keywords')} value={draft.role} onChange={(event) => { setCriteriaMissing(false); setFormError(''); setDraft({ ...draft, role: event.target.value }); }} placeholder={t('Ej.: Product Designer', 'e.g. product designer')} hint={t('Se buscan estas palabras en el título. Prueba también el puesto en inglés.', 'These words are matched in job titles. Try the title used in the listings.')}/>
-            <Field disabled={busy !== '' || !formDraft.ready} id="search-company" aria-invalid={draft.company.trim().length > 200 || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Empresa (opcional)', 'Company (optional)')} value={draft.company} onChange={(event) => { setCriteriaMissing(false); setFormError(''); setDraft({ ...draft, company: event.target.value }); }} placeholder={t('Ej.: Northwind', 'e.g. Northwind')}/>
-            <Field disabled={busy !== '' || !formDraft.ready} id="search-location" aria-invalid={draft.location.trim().length > 200 || undefined} aria-describedby={formError ? 'search-form-error' : undefined} label={t('Ubicación (opcional)', 'Location (optional)')} value={draft.location} onChange={(event) => { setFormError(''); setDraft({ ...draft, location: event.target.value }); }} placeholder={t('Ej.: Berlín o España', 'e.g. Berlin or Spain')}/>
-            <details className={styles.moreOptions} key={editing || 'new'} open={editing ? true : undefined}><summary>{t('Más opciones: modalidad y automatización', 'More options: work mode and automation')}</summary><div className={styles.form}>
-            <SelectField disabled={busy !== '' || !formDraft.ready} label={t('Modalidad', 'Work mode')} value={draft.workMode} onChange={(event) => setDraft({ ...draft, workMode: event.target.value as Draft['workMode'] })}><option value="any">{t('Cualquiera', 'Any')}</option><option value="remote">{t('En remoto', 'Remote')}</option><option value="hybrid">{t('Híbrida', 'Hybrid')}</option><option value="onsite">{t('Presencial', 'On-site')}</option></SelectField>
-            <SelectField disabled={busy !== '' || !formDraft.ready} label={t('Frecuencia de actualización', 'Refresh frequency')} value={draft.frequencyHours} onChange={(event) => setDraft({ ...draft, frequencyHours: Number(event.target.value) as Draft['frequencyHours'] })}><option value={6}>{t('Cada 6 horas', 'Every 6 hours')}</option><option value={12}>{t('Cada 12 horas', 'Every 12 hours')}</option><option value={24}>{t('Cada 24 horas', 'Every 24 hours')}</option></SelectField>
-            <label className={styles.check}><input type="checkbox" disabled={busy !== '' || !formDraft.ready} checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}/><span>{t('Actualizar esta búsqueda automáticamente', 'Refresh this search automatically')}</span></label>
-            <label className={styles.check}><input type="checkbox" disabled={busy !== '' || !formDraft.ready} checked={draft.autoPrepare} onChange={(event) => setDraft({ ...draft, autoPrepare: event.target.checked })}/><span>{t('Preparar también un CV para cada coincidencia', 'Also prepare a resume for each match')} <small>{t('Usa tu perfil confirmado. Si faltan datos, te pediremos completarlos en Mis solicitudes. Siempre revisarás el CV antes de enviarlo.', 'Uses your confirmed profile. Missing details appear in My applications. You always review the resume before submitting it.')}</small></span></label>
-            </div></details>
-            <div className={styles.actions}><Button type="submit" disabled={busy !== '' || !formDraft.ready}>{busy ? t('Guardando…', 'Saving…') : t(editing ? 'Guardar cambios' : 'Buscar y guardar', editing ? 'Save changes' : 'Search and save')}</Button>{searches.length > 0 && <Button type="button" variant="quiet" disabled={busy !== '' || !formDraft.ready} onClick={() => { if (window.confirm(t('¿Descartar este borrador?', 'Discard this draft?'))) { setFormError(''); setCriteriaMissing(false); formDraft.update({ payload: '' }); } }}>{t('Descartar borrador', 'Discard draft')}</Button>}</div>
-            <p className={styles.automationHint}>{draft.enabled ? t(`Buscaremos ahora y después cada ${draft.frequencyHours} horas mientras la app esté funcionando en tu equipo. Puedes cerrar esta pestaña.`, `We will search now and then every ${draft.frequencyHours} hours while the app is running on your computer. You can close this tab.`) : t('Esta búsqueda se guardará en pausa. Reanúdala cuando quieras recibir ofertas.', 'This search will be saved paused. Resume it when you want to find jobs.')}</p>
-            <small className={styles.automationHint}>{t('Fuentes: Remotive y Arbeitnow, con ofertas remotas y de Europa. No cubrimos todos los portales.', 'Sources: Remotive and Arbeitnow, with remote and European jobs. We do not cover every job board.')}</small>
-          </form>
-        </Card>
-
-      </section>}
+      {(formOpen || (!loading && !listFailed && searches.length === 0)) && <SearchForm draft={draft} editing={editing} existingSearch={editSearch} busy={Boolean(busy)} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t} />}
       <section className={styles.listColumn} aria-labelledby="saved-searches-title">
-        <div className={styles.sectionHead}><div><h2 id="saved-searches-title">{t('Tus búsquedas', 'Your searches')}</h2><p>{t(`${searches.length} búsqueda${searches.length === 1 ? '' : 's'} guardada${searches.length === 1 ? '' : 's'}`, `${searches.length} saved search${searches.length === 1 ? '' : 'es'}`)}</p></div><Button variant="quiet" disabled={loading || resultLoading || busy !== ''} onClick={() => void load()}>{t('Actualizar resultados', 'Reload results')}</Button></div>
-        {searches.length > 0 && <ul className={styles.savedSearchGrid} aria-label={t('Búsquedas guardadas', 'Saved searches')}>
-          {searches.map((search) => <li key={search.id}>
-            <button type="button" className={styles.savedSearchButton} aria-pressed={search.id === selectedId} aria-controls="search-results" disabled={busy !== '' || resultLoading} onClick={() => void choose(search.id)}>
-              <span className={styles.savedSearchTitle}>{search.role || search.company || t('Cualquier puesto', 'Any role')}</span>
-              <span className={styles.savedSearchMeta}>{[search.role ? search.company : null, search.location, modeLabel(search.workMode)].filter(Boolean).join(' · ')}</span>
-              <span className={styles.savedSearchMeta}>{search.enabled ? t('Activa', 'Active') : t('Pausada', 'Paused')} · {search.lastRunStatus === 'RUNNING' ? t('Buscando…', 'Searching…') : search.lastRunStatus === 'FAILED' ? t('Error en la última consulta', 'Last check failed') : !search.lastRunAt ? t('Primera consulta pendiente', 'First check pending') : t(`${search.lastResultCount} oferta${search.lastResultCount === 1 ? '' : 's'} en la última consulta`, `${search.lastResultCount} job${search.lastResultCount === 1 ? '' : 's'} at last check`)}</span>
-              <span className={styles.savedSearchAction}>{search.id === selectedId ? t('✓ Viendo esta búsqueda', '✓ Viewing this search') : t('Ver resultados →', 'View results →')}</span>
-            </button>
-          </li>)}
-        </ul>}
-        {loading ? <Notice>{t('Cargando búsquedas…', 'Loading searches…')}</Notice> : listFailed && searches.length === 0 ? <Notice actions={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>}>{t('No pudimos cargar tus búsquedas. Reintenta para recuperar la lista.', 'We could not load your searches. Try again to recover the list.')}</Notice> : searches.length === 0 ? <Card><Empty title={t('Todavía no tienes búsquedas', 'No saved searches yet')} detail={t('Guarda una búsqueda para descubrir nuevas ofertas sin añadir enlaces de empresas.', 'Save a search to find public jobs without adding employer links.')}/></Card> : <div className={styles.searchList}>{searches.filter((search) => search.id === selectedId).map((search) => <details className={styles.searchCard} key={search.id}><summary>{t('Ajustes y actividad de esta búsqueda', 'Settings and activity for this search')} · {search.enabled ? t('Activa', 'Active') : t('Pausada', 'Paused')}</summary>
-          <div className={styles.cardHead}><div><h3>{search.role || t('Cualquier puesto', 'Any role')}{search.company ? ` · ${search.company}` : ''}</h3><p>{[search.location, modeLabel(search.workMode), `${search.frequencyHours} h`].filter(Boolean).join(' · ')}</p></div><Tag tone={search.enabled ? 'green' : 'neutral'}>{search.enabled ? t('ACTIVA', 'ACTIVE') : t('PAUSADA', 'PAUSED')}</Tag></div>
-          <div className={styles.status}>{search.lastRunStatus === 'FAILED' || search.lastRunStatus === 'PARTIAL' || search.lastRunStatus === 'STALE' || search.lastRunStatus === 'BOUNDED' ? <span className={styles.warning}>{search.lastRunStatus === 'PARTIAL' || search.lastRunStatus === 'BOUNDED' ? t('Cobertura limitada: puede haber más ofertas en las fuentes.', 'Limited coverage: the sources may contain more jobs.') : t('Algunos datos pueden estar desactualizados', 'Some results may be stale')}</span> : search.lastRunStatus === 'RUNNING' ? t('Buscando ofertas…', 'Searching for jobs…') : search.lastRunStatus === 'EMPTY' ? t('Sin coincidencias todavía', 'No matches yet') : search.lastRunAt ? t(`Última búsqueda: ${dateTime(search.lastRunAt)}`, `Last checked: ${dateTime(search.lastRunAt)}`) : t('Aún no se ha actualizado', 'Not refreshed yet')}<span>{search.lastResultCount} {search.lastResultCount === 1 ? t('coincidencia', 'match') : t('coincidencias', 'matches')}</span></div>
-          {search.enabled && search.nextRunAt && <p className={styles.schedule}>{t('Próxima consulta: ', 'Next check: ')}{dateTime(search.nextRunAt)}</p>}
-          <div className={styles.cardActions}><Button variant="quiet" disabled={busy !== '' || !search.enabled || search.lastRunStatus === 'RUNNING' || Boolean(search.nextRunAt && Date.parse(search.nextRunAt) > Date.now())} onClick={() => void runAction(search, 'refresh')}>{busy === search.id ? t('Buscando…', 'Searching…') : t('Actualizar ahora', 'Refresh now')}</Button><Button variant="quiet" disabled={busy !== '' || !formDraft.ready} onClick={() => void runAction(search, 'toggle')}>{search.enabled ? t('Pausar', 'Pause') : t('Reanudar', 'Resume')}</Button><Button variant="quiet" disabled={busy !== '' || !formDraft.ready} onClick={() => editSearch(search)}>{t('Editar', 'Edit')}</Button></div>
-        </details>)}</div>}
-        {selectedId && <div id="search-results" className={styles.results} aria-live="polite"><h2 ref={resultsTitle} tabIndex={-1}>{t('Resultados de la búsqueda', 'Search results')}{selectedSearch && `: ${[selectedSearch.role, selectedSearch.company].filter(Boolean).join(' · ')}`}</h2>{total > 0 && !resultLoading && <p className={styles.intro}>{t('Abre una oferta que te interese y pulsa Preparar mi solicitud. Te guiaremos con los datos que falten.', 'Open a job that interests you and choose Prepare my application. We will guide you through any missing details.')}</p>}<p>{total} {total === 1 ? t('oferta', 'job') : t('ofertas', 'jobs')}</p><details className={styles.feedSummary}><summary>{t('Fuentes consultadas', 'Sources checked')}</summary><p>{['remotive', 'arbeitnow'].map((provider, index) => { const feed = feeds.find((item) => item.provider === provider); return <span key={provider}>{index > 0 ? ' · ' : ''}{provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}: {!feed?.fetchedAt ? t('sin datos todavía', 'no data yet') : `${feed.listings} ${t('ofertas en la última lectura', 'listings at last fetch')}${feed.coverage === 'BOUNDED' ? t(' (cobertura parcial)', ' (partial coverage)') : ''}${feed.lastError ? t(' (sin actualizar por un error)', ' (not updated due to an error)') : ''}`}</span>; })}</p></details>{resultLoading ? <Notice>{t('Cargando resultados…', 'Loading results…')}</Notice> : results.length ? <div className={styles.resultList}>{results.map((job) => <Card className={styles.resultCard} key={job.id}><div><h3><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(contextHref(selectedId, offset))}`}>{job.title}</Link></h3><p>{job.company} · {job.location || t('Ubicación sin indicar', 'Location not listed')}</p>{selectedSearch?.autoPrepare && !job.autoPreparedAt && <small className={styles.preparationStatus}>{!selectedSearch.enabled ? t('Preparación pausada con esta búsqueda.', 'Preparation is paused with this search.') : job.autoPrepareError === 'PREPARATION_FAILED' ? t('No se pudo preparar el CV. Volveremos a intentarlo; también puedes abrir la oferta para prepararlo.', 'Could not prepare the resume. We will retry; you can also open the job to prepare it.') : t('Candidatura pendiente de preparación.', 'Application waiting to be prepared.')}</small>}{selectedSearch?.autoPrepare && job.autoPreparedAt && <Link href="/applications?view=review">{t('Continuar con la solicitud', 'Continue with the application')}</Link>}{job.unknownLocation && <small className={styles.warning}>{t('La ubicación es amplia o no está indicada; comprueba dónde puedes trabajar.', 'The location is broad or unspecified; check where you can work.')}</small>}</div><div className={styles.sources}>{job.sources.map((source) => <a key={`${source.provider}:${source.url}`} href={source.url} target="_blank" rel="noopener noreferrer">{source.provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}</a>)}</div></Card>)}</div> : <Card className={styles.emptyResults}>
-          <Empty title={resultsError ? t('No pudimos cargar los resultados', 'Could not load results') : selectedSearch?.lastRunStatus === 'RUNNING' ? t('Estamos buscando ofertas', 'Searching for jobs') : !selectedSearch?.lastRunAt ? t(selectedSearch?.enabled ? 'Tu primera consulta está pendiente' : 'Esta búsqueda está pausada', selectedSearch?.enabled ? 'Your first search is pending' : 'This search is paused') : selectedSearch.lastRunStatus === 'FAILED' ? t('No pudimos completar la búsqueda', 'Could not complete the search') : t('No encontramos coincidencias en estas fuentes', 'No matches in these sources')}
-            detail={resultsError ? t('Reintenta cargar la lista. Esto no inicia otra consulta a las fuentes.', 'Retry loading the list. This does not start a new source request.') : selectedSearch?.lastRunStatus === 'RUNNING' ? t('Los resultados aparecerán aquí cuando termine la consulta.', 'Results will appear here when the search finishes.') : !selectedSearch?.lastRunAt ? t(selectedSearch?.enabled ? 'La búsqueda se ejecutará con el servicio local encendido.' : 'Reanúdala para consultar las ofertas disponibles.', selectedSearch?.enabled ? 'The search will run while the local service is on.' : 'Resume it to check available jobs.') : selectedSearch.lastRunStatus === 'FAILED' ? t('Las fuentes no respondieron correctamente. Volveremos a intentarlo; cero resultados no significa que no haya ofertas.', 'The sources did not respond correctly. We will retry; zero results does not mean there are no jobs.') : t('Se consultaron las ofertas disponibles, pero ninguna coincide con tus filtros. Esto no significa que no existan vacantes en otros portales.', 'Available listings were checked, but none match your filters. Other job boards may still have vacancies.')}/>
-          {!resultsError && selectedSearch?.lastRunAt && !['RUNNING', 'FAILED'].includes(selectedSearch.lastRunStatus ?? '') && <>
-            <p>{t('Revisa la escritura del puesto, prueba palabras más amplias o el título en inglés. Todas las palabras deben aparecer en el título; las siglas no se amplían automáticamente.', 'Check the spelling, try broader keywords or the English job title. All words must appear in the title; acronyms are not expanded automatically.')}</p>
-            <p>{t('Puedes editar los filtros ahora: comprobamos las ofertas ya disponibles sin esperar a la próxima actualización.', 'You can edit the filters now: we check already available listings without waiting for the next update.')}</p>
-          </>}
-          <div className={styles.actions}>{resultsError ? <Button variant="secondary" onClick={() => void loadResults(selectedId)}>{t('Reintentar', 'Try again')}</Button> : selectedSearch && <><Button disabled={busy !== '' || !formDraft.ready} onClick={() => editSearch(selectedSearch)}>{t('Ajustar esta búsqueda', 'Adjust this search')}</Button>{!selectedSearch.enabled && <Button variant="secondary" disabled={busy !== '' || !formDraft.ready} onClick={() => void runAction(selectedSearch, 'toggle')}>{t('Reanudar búsqueda', 'Resume search')}</Button>}</>}</div>
-        </Card>}{total > 20 && <nav className={styles.actions} aria-label={t('Páginas de resultados', 'Result pages')}><Button variant="secondary" disabled={offset === 0 || resultLoading} onClick={() => void choose(selectedId, Math.max(0, offset - 20))}>{t('Anterior', 'Previous')}</Button><span>{Math.floor(offset / 20) + 1} / {Math.ceil(total / 20)}</span><Button variant="secondary" disabled={offset + 20 >= total || resultLoading} onClick={() => void choose(selectedId, offset + 20)}>{t('Siguiente', 'Next')}</Button></nav>}</div>}
+        <div className={styles.sectionHead}><div><h2 id="saved-searches-title">{t('Todas las búsquedas', 'All searches')}</h2><p>{t(`${searches.length} búsqueda${searches.length === 1 ? '' : 's'} guardada${searches.length === 1 ? '' : 's'}`, `${searches.length} saved search${searches.length === 1 ? '' : 'es'}`)}</p></div><Button variant="quiet" disabled={loading || resultLoading || busy !== ''} onClick={() => void load()}>{t('Actualizar', 'Reload')}</Button></div>
+        {loading && <Notice>{t('Cargando búsquedas…', 'Loading searches…')}</Notice>}
+        {listFailed && <Card><Empty title={t('No pudimos cargar las búsquedas', 'Could not load searches')} detail={t('Reintenta para recuperar la lista.', 'Try again to recover the list.')} /><Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button></Card>}
+        {!loading && !listFailed && searches.length === 0 && <Card><Empty title={t('Todavía no tienes búsquedas', 'No saved searches yet')} detail={t('Empieza con un puesto o una empresa. No necesitas un CV.', 'Start with a role or company. You do not need a resume.')} /></Card>}
+        {searches.length > 0 && <div className={styles.searchList} role="list" aria-label={t('Búsquedas guardadas', 'Saved searches')}>
+          <div role="listitem"><Card className={`${styles.searchCard} ${!selectedId ? styles.searchCardSelected : ''}`}><div className={styles.cardHead}><div><h3><button type="button" className={styles.searchTitleButton} aria-pressed={!selectedId} aria-controls="search-results" onClick={() => void choose('', view, sort, 0)}>{t('Todas las búsquedas', 'All searches')}</button></h3><p>{searches.length} {searches.length === 1 ? t('búsqueda guardada', 'saved search') : t('búsquedas guardadas', 'saved searches')}</p></div><span className={styles.searchCardMeta}>{searches.reduce((sum, search) => sum + (search.lastNewCount || 0), 0)} {t('nuevas', 'new')}</span></div></Card></div>
+          {searches.map((search) => <div role="listitem" key={search.id}><SearchCard search={search} selected={selectedId === search.id} disabled={Boolean(busy) || resultLoading} onSelect={() => void choose(search.id, view, sort, 0)} onEdit={() => beginEdit(search)} onToggle={() => void runAction(search, 'toggle')} onRefresh={() => void runAction(search, 'refresh')} t={t} modeLabel={modeLabel} dateTime={dateTime} /></div>)}
+        </div>}
+      </section>
+      <section className={styles.results} id="search-results" aria-labelledby="search-results-title">
+        <div className={styles.resultsHead}><h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{t('Ofertas encontradas', 'Matching jobs')}{selectedSearch ? ` · ${[selectedSearch.role, selectedSearch.company].filter(Boolean).join(' · ')}` : ''}</h2><div className={styles.sortControl}><label htmlFor="search-sort">{t('Ordenar', 'Sort')}</label><select id="search-sort" value={sort} onChange={(event) => changeSort(event.target.value as SearchSort)}><option value="relevance">{t('Coincidencia', 'Relevance')}</option><option value="recent">{t('Más recientes', 'Most recent')}</option></select></div></div>
+        <div className={styles.filterTabs} role="tablist" aria-label={t('Filtrar ofertas', 'Filter jobs')}>{filterTabs.map((tab) => <button key={tab.id} type="button" role="tab" aria-selected={view === tab.id} onClick={() => changeView(tab.id)}>{t(tab.es, tab.en)}</button>)}</div>
+        {progressSearches.map((search) => <SearchProgress key={search.id} search={search} t={t} sourceName={sourceName} dateTime={dateTime} />)}
+        <p className={styles.resultCount}>{total} {total === 1 ? t('oferta', 'job') : t('ofertas', 'jobs')}</p>
+        {resultLoading ? <Notice>{t('Cargando resultados…', 'Loading results…')}</Notice> : results.length > 0 ? <div className={styles.resultList}>{results.map((job) => <SearchResultCard key={job.id} job={job} returnTo={resultsReturn} view={view} latestRun={latestRun} busy={Boolean(busy)} t={t} sourceName={sourceName} onSave={() => void updateReview(job, 'SHORTLISTED')} onArchive={() => void updateReview(job, job.shortlistDecision === 'ARCHIVED' ? 'UNREVIEWED' : 'ARCHIVED')} onReview={() => void markReviewed(job)} />)}</div> : !loading && (selectedId ? <SearchEmptyState search={selectedSearch} view={view} caughtUp={Boolean(selectedSearch?.latestRun?.finishedAt || selectedSearch?.lastRunAt)} error={resultsError} inProgress={Boolean(selectedSearch && searchInProgress(selectedSearch))} paused={Boolean(selectedSearch && !selectedSearch.enabled)} sourceError={Boolean(selectedSearch && sourceError(selectedSearch))} onRetry={() => void loadResults(selectedId, view, sort, offset)} onEdit={() => selectedSearch && beginEdit(selectedSearch)} onResume={() => selectedSearch && void runAction(selectedSearch, 'toggle')} t={t} /> : searches.length > 0 ? <SearchEmptyState view={view} caughtUp={searches.every((search) => Boolean(search.latestRun?.finishedAt || search.lastRunAt))} error={resultsError} inProgress={progressSearches.length > 0} paused={searches.every((search) => !search.enabled)} sourceError={searches.some(sourceError)} onRetry={() => void loadResults('', view, sort, offset)} onEdit={searches.some((search) => search.enabled) ? openNew : undefined} t={t} /> : null)}
+        {pageCount > 1 && <nav className={styles.pagination} aria-label={t('Páginas de resultados', 'Result pages')}><Button variant="secondary" disabled={offset === 0 || resultLoading} onClick={() => void choose(selectedId, view, sort, Math.max(0, offset - 20))}>{t('Anterior', 'Previous')}</Button><span>{Math.floor(offset / 20) + 1} / {pageCount}</span><Button variant="secondary" disabled={offset + 20 >= total || resultLoading} onClick={() => void choose(selectedId, view, sort, offset + 20)}>{t('Siguiente', 'Next')}</Button></nav>}
       </section>
     </div>
-        <details className={styles.coverage}>
-          <summary>{t('Cobertura y fuentes', 'Coverage and sources')}</summary>
-          <p>{t('Consultamos Remotive (ofertas remotas; pueden publicarse con 24 horas de retraso) y Arbeitnow (Europa, incluida Alemania). No necesitas claves ni enlaces de empresas. Los resultados dependen de lo que publiquen estos dos servicios.', 'We check Remotive (remote jobs; listings may be delayed by 24 hours) and Arbeitnow (Europe, including Germany). No API keys or employer links are needed. Results depend on what these two services publish.')}</p>
-          <p><a href="https://github.com/remotive-com/remote-jobs-api" target="_blank" rel="noopener noreferrer">Remotive API</a> · <a href="https://www.arbeitnow.com/blog/job-board-api" target="_blank" rel="noopener noreferrer">Arbeitnow API</a></p>
-          <small>{t('Cada fuente se consulta como máximo una vez cada 6 horas para evitar consultas repetidas. Si una fuente falla, mostramos los datos guardados indicando que pueden estar desactualizados.', 'Each feed is fetched at most once every 6 hours to avoid repeat requests. If a feed fails, saved data remains visible with a stale status.')}</small>
-        </details>
+    <details className={styles.coverage}><summary>{t('Fuentes y datos enviados', 'Sources and data shared')}</summary><p>{t('Remotive, Arbeitnow e Himalayas pueden buscar ofertas según las fuentes activadas. Cuando eliges Himalayas, compartimos únicamente los criterios de búsqueda que escribes (puesto, empresa o país), nunca tu CV ni datos de contacto. Las empresas seguidas aparecen solo si las incluyes.', 'Remotive, Arbeitnow and Himalayas can find jobs when enabled. If you choose Himalayas, we share only the search criteria you enter (role, company or country), never your resume or contact details. Followed company boards appear only when selected.')}</p><p><a href="https://github.com/remotive-com/remote-jobs-api" target="_blank" rel="noopener noreferrer">Remotive</a> · <a href="https://www.arbeitnow.com/blog/job-board-api" target="_blank" rel="noopener noreferrer">Arbeitnow</a> · <a href="https://himalayas.app/docs/remote-jobs-api" target="_blank" rel="noopener noreferrer">Himalayas</a></p></details>
   </AppShell></WorkspaceGate>;
 }

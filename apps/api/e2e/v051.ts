@@ -9,8 +9,9 @@ export const v051First: Scenario = {
   name: 'v051-honest-home-action-and-safe-signout',
   async run({ page, api, marker, allowConsole }) {
     await goTo(page, '/'); await setLocale(page, 'es');
-    const action = page.getByRole('link', { name: 'Crear mi búsqueda', exact: true });
-    assert.equal(await action.getAttribute('href'), '/searches'); await action.click();
+    // The home inbox now uses a context aware primary action; keep checking its destination rather than obsolete copy.
+    const action = page.locator('.getting-started').getByRole('link').first();
+    assert.match(await action.getAttribute('href') ?? '', /^\/searches(?:\?|$)/); await action.click();
     await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
     await goTo(page, '/profile/setup');
     const name = page.getByLabel('Nombre', { exact: true }); await name.fill(`Unsaved ${marker}`);

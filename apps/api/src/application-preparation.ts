@@ -45,6 +45,11 @@ export async function prepareApplication(workspaceId: string, jobId: string, loc
       await lockKey(tx, `application:${workspaceId}:${jobId}`);
       const job = (await tx.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, workspaceId))).limit(1))[0];
       if (!job) return blocked(jobId, 'JOB_NOT_FOUND');
+      const grouped = await tx.execute(sql`SELECT a.id,a.document_id FROM applications a JOIN job_identity_members m ON m.workspace_id=a.workspace_id AND m.job_id=a.job_id
+        JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key
+        WHERE target.workspace_id=${workspaceId} AND target.job_id=${jobId}::uuid AND a.job_id<>${jobId}::uuid ORDER BY a.created_at LIMIT 2`);
+      if (grouped.rows.length) return { ...blocked(jobId,'APPLICATION_ALREADY_EXISTS'),applicationId:grouped.rows[0]!.id as string,documentId:grouped.rows[0]!.document_id as string|null };
+
       const profile = (await tx.select().from(profileVersions).where(eq(profileVersions.workspaceId, workspaceId)).orderBy(desc(profileVersions.revision)).limit(1))[0];
       const snapshot = (await tx.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, workspaceId), eq(jobSnapshots.jobId, jobId))).orderBy(desc(jobSnapshots.fetchedAt)).limit(1))[0];
       const snapshotId = snapshot?.id ?? null;
