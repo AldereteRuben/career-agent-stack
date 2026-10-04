@@ -6,6 +6,7 @@ import { MAX_ARBEITNOW_PAGES, PROVIDERS, type PublicJob, type SearchWorkMode } f
 
 import { enqueueSearch, latestSearchRun, SEARCH_PROVIDERS } from './search-execution.js';
 import { searchResults, searchUnreadCounts, reviewSearchResult, type ResultQuery } from './search-results.js';
+import { withEffectiveSeenAt } from './review-state.js';
 
 type SearchInput = JobSearchInput & { matcherVersion: number; providerIds: string[]; includeRelated: boolean; idempotencyKey: string; expectedRevision: number };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -206,6 +207,8 @@ export function registerJobSearchRoutes(app: FastifyInstance, workspace: (reques
     const query = request.query as { limit?: string; offset?: string };
     const limit = Math.max(1, Math.min(100, Number.parseInt(query.limit ?? '20', 10) || 20));
     const offset = Math.max(0, Number.parseInt(query.offset ?? '0', 10) || 0);
-    return { items: filtered.slice(offset, offset + limit).map(({ job, match, matchedAt, unknownLocation, sources }) => ({ ...job, matchedAt, unknownLocation, sources, autoPreparedAt: match.autoPreparedAt, autoPrepareError: match.autoPrepareError })), total: filtered.length };
+    const page = filtered.slice(offset, offset + limit);
+    const reviewed = new Map((await withEffectiveSeenAt(db, workspaceId, page.map(({ job }) => job))).map((job) => [job.id, job.seenAt]));
+    return { items: page.map(({ job, match, matchedAt, unknownLocation, sources }) => ({ ...job, seenAt: reviewed.get(job.id) ?? null, matchedAt, unknownLocation, sources, autoPreparedAt: match.autoPreparedAt, autoPrepareError: match.autoPrepareError })), total: filtered.length };
   });
 }

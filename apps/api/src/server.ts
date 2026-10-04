@@ -1,4 +1,5 @@
 import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
+import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
 import { RELEASE_VERSION } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
@@ -108,7 +109,7 @@ app.get('/api/v1/summary', async (request) => {
   const completion = profileCompletion(profile?.profile ?? {}, facts);
   const recentSources = jobRows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, jobRows.map((job) => job.id)))) : [];
   return {
-    boards: boardRows, recentJobs: (await scoreJobs(db, id, jobRows, context)).map((job) => ({ ...job, searchSources: recentSources.filter((source, index, rows) => source.jobId === job.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) })), recentApplications: applicationRows, pendingFacts: completion.pendingFactCount, unansweredItems: answerRows.filter((answer) => answer.approvalStatus === 'UNANSWERED').length,
+    boards: boardRows, recentJobs: (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, jobRows), context)).map((job) => ({ ...job, searchSources: recentSources.filter((source, index, rows) => source.jobId === job.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) })), recentApplications: applicationRows, pendingFacts: completion.pendingFactCount, unansweredItems: answerRows.filter((answer) => answer.approvalStatus === 'UNANSWERED').length,
     savedSearchCount: savedSearchCounts[0]?.total ?? 0, activeSearchCount: savedSearchCounts[0]?.active ?? 0, applicationCounts, activeApplications, totalJobs: jobCount[0]?.count ?? 0, boardCount: boardCounts[0]?.total ?? 0, approvedSourceCount: boardCounts[0]?.approved ?? 0, profileCompletion: completion,
     capabilities: { externalWrites: true, email: false, browserRunner: true, hostedAI: false },
   };
@@ -279,7 +280,8 @@ app.get('/api/v1/jobs', async (request) => {
   if (query.q) { const pattern = `%${query.q.slice(0, 80).replace(/[\\%_]/g, (char) => `\\${char}`)}%`; filters.push(or(ilike(jobs.title, pattern), ilike(jobs.company, pattern))!); }
   if (query.scope === 'favorites') filters.push(eq(jobs.shortlistDecision, 'SHORTLISTED'));
   else if (query.scope === 'archived') filters.push(eq(jobs.shortlistDecision, 'ARCHIVED'));
-  else if (query.scope === 'new') filters.push(sql`${jobs.discoveredAt} is not null`, isNull(jobs.seenAt), ne(jobs.shortlistDecision, 'ARCHIVED'));
+  // Same New definition as search inboxes and discovery counts (review-state.ts).
+  else if (query.scope === 'new') filters.push(sql`${jobs.discoveredAt} is not null`, isNewJob(id));
   else if (query.scope === 'active') filters.push(ne(jobs.shortlistDecision, 'ARCHIVED'));
   if (['OPEN', 'POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN'].includes(query.availability ?? '')) filters.push(eq(jobs.availability, query.availability as 'OPEN' | 'POSSIBLY_CLOSED' | 'CLOSED' | 'UNKNOWN'));
   const paged = query.paged === 'true'; const page = Math.max(1, Math.min(100000, Number.parseInt(query.page ?? '1', 10) || 1));
@@ -288,7 +290,7 @@ app.get('/api/v1/jobs', async (request) => {
     paged ? db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...filters)) : Promise.resolve([]),
   ]);
   const sourceRows = rows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, rows.map((row) => row.id)))) : [];
-  const items = (await scoreJobs(db, id, rows)).map((row) => ({ ...row, searchSources: sourceRows.filter((source, index, rows) => source.jobId === row.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) }));
+  const items = (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, rows))).map((row) => ({ ...row, searchSources: sourceRows.filter((source, index, rows) => source.jobId === row.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) }));
   return paged ? { items, total: count[0]?.total ?? 0, page, pageSize: 24 } : items;
 });
 app.get('/api/v1/jobs/:id', async (request, reply) => {
@@ -301,14 +303,16 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
     db.select().from(applications).where(and(eq(applications.workspaceId, id), or(eq(applications.jobId, jobId), sql`${applications.jobId} IN(SELECT m.job_id FROM job_identity_members m JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key WHERE target.workspace_id=${id} AND target.job_id=${jobId}::uuid)`))).orderBy(desc(applications.updatedAt)),
     db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), eq(jobSearchSources.jobId, jobId))),
   ]);
-  const [scored] = await scoreJobs(db, id, [job]);
+  const [scored] = await scoreJobs(db, id, await withEffectiveSeenAt(db, id, [job]));
   // Present legacy feed snapshots as readable text without rewriting their evidence/hash.
   const readableSnapshots = searchSources.length ? snapshots.map((snapshot) => ({ ...snapshot, descriptionText: plainDescription(snapshot.descriptionText) })) : snapshots;
   return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob };
 });
+/** Reviewing from /jobs also clears the job from every search inbox and from strong-identity duplicates. */
 app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
-  const updated = await db.update(jobs).set({ seenAt: new Date() }).where(and(eq(jobs.id, (request.params as { id: string }).id), eq(jobs.workspaceId, workspace(request)))).returning({ id: jobs.id });
-  return updated[0] ?? fail(reply, 404, 'NOT_FOUND');
+  const { id: jobId } = request.params as { id: string };
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return fail(reply, 404, 'NOT_FOUND');
+  return await reviewJob(workspace(request), jobId) ? { id: jobId } : fail(reply, 404, 'NOT_FOUND');
 });
 app.post('/api/v1/jobs/import', async (request, reply) => {
   const parsed = parseBody(jobImportSchema, request.body, reply); if (!parsed) return;
@@ -336,17 +340,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   if (!['SHORTLISTED', 'SKIPPED', 'ARCHIVED', 'UNREVIEWED'].includes(String(body?.decision))) return fail(reply, 400, 'INVALID_SHORTLIST_DECISION');
   const { id: jobId } = request.params as { id: string };
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return fail(reply,404,'NOT_FOUND');
-  const workspaceId=workspace(request);
-  return db.transaction(async (tx) => {
-    await lockJobIdentity(tx,workspaceId);
-    await tx.execute(sql`UPDATE jobs SET shortlist_decision=${String(body!.decision)},updated_at=now() WHERE workspace_id=${workspaceId} AND
-      (id=${jobId}::uuid OR id IN(SELECT b.job_id FROM job_identity_members a JOIN job_identity_members b ON b.workspace_id=a.workspace_id AND b.identity_key=a.identity_key WHERE a.workspace_id=${workspaceId} AND a.job_id=${jobId}::uuid
-      AND NOT EXISTS(SELECT 1 FROM job_identity_members c JOIN jobs cj ON cj.workspace_id=c.workspace_id AND cj.id=c.job_id
-        LEFT JOIN applications ca ON ca.workspace_id=c.workspace_id AND ca.job_id=c.job_id
-        WHERE c.workspace_id=a.workspace_id AND c.identity_key=a.identity_key GROUP BY c.identity_key HAVING count(DISTINCT cj.shortlist_decision)>1 OR count(DISTINCT ca.id)>1)))`);
-    const updated=(await tx.select().from(jobs).where(and(eq(jobs.workspaceId,workspaceId),eq(jobs.id,jobId))))[0];
-    return updated ?? fail(reply,404,'NOT_FOUND');
-  });
+  return await decideJob(workspace(request), jobId, String(body!.decision)) ?? fail(reply,404,'NOT_FOUND');
 });
 
 registerResumeJourney(app, workspace);

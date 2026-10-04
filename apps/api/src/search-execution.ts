@@ -6,6 +6,7 @@ import { normalizeHimalayasCountry, readHimalayasSearch } from './himalayas-sour
 import { loadProviderFeed, type OnPrepare } from './job-search.js';
 import { readPublicFeed, type PublicJob, type SearchWorkMode, ProviderReadError } from './job-search-sources.js';
 import { identityUrl, jobIdentity } from './job-identity.js';
+import { isNewJobSql } from './review-state.js';
 
 export const SEARCH_PROVIDERS = ['remotive', 'arbeitnow', 'himalayas', 'boards'] as const;
 export type SearchProvider = typeof SEARCH_PROVIDERS[number];
@@ -238,8 +239,8 @@ export async function runSearchExecutionTick(reader: SearchReader = readSearchSo
         const allFailed = sources.every((s) => s.status === 'FAILED');
         const partial = sources.some((s) => ['FAILED','STALE'].includes(s.status) || ['BOUNDED','PARTIAL'].includes(s.coverage));
         const status = allFailed ? 'FAILED' : partial ? 'PARTIAL' : 'SUCCEEDED';
-        const count = (await client.query(`SELECT count(*)::int AS total,count(*) FILTER(WHERE v.seen_at IS NULL)::int AS fresh FROM search_run_results r
-          JOIN search_job_reviews v USING(workspace_id,search_id,job_id) WHERE r.run_id=$1`, [run.id])).rows[0];
+        const count = (await client.query(`SELECT count(*)::int AS total,count(*) FILTER(WHERE ${isNewJobSql('j','$2')})::int AS fresh FROM search_run_results r
+          JOIN jobs j ON j.workspace_id=r.workspace_id AND j.id=r.job_id WHERE r.run_id=$1 AND r.workspace_id=$2`, [run.id,run.workspace_id])).rows[0];
         await client.query(`UPDATE search_runs SET status=$3,error=$4,finished_at=now(),lease_until=NULL WHERE id=$1 AND owner=$2`, [run.id,owner,status,allFailed ? 'SOURCE_READ_FAILED' : partial ? 'SOURCE_PARTIAL_FAILURE' : null]);
         await client.query(`UPDATE saved_job_searches SET last_run_at=now(),last_run_status=$3,last_result_count=$4,last_new_count=$5,last_error=$6,
           next_run_at=CASE WHEN enabled THEN now()+frequency_hours*interval '1 hour' ELSE NULL END,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND revision=$7`, [run.workspace_id,run.search_id,status,count.total,count.fresh,allFailed ? 'SOURCE_READ_FAILED' : partial ? 'SOURCE_PARTIAL_FAILURE' : null,run.revision]);

@@ -1,4 +1,7 @@
-import { pool } from '@career/db';
+import { db, pool } from '@career/db';
+import { sql } from 'drizzle-orm';
+import { lockJobIdentity } from './job-identity.js';
+import { effectiveSeenAtSql, isNewJobSql, markJobReviewed, reviewedJobsCte, sameVacancySql } from './review-state.js';
 type Source = {provider:string;name?:string;url:string;postedAt:string|null;fetchedAt?:string|null};
 type ResultRow = {job:{id:string;title:string;company:string;location:string|null;canonical_url:string|null;availability:string;shortlist_decision:string};archived:boolean;saved:boolean;seen_at:string|null;matched_at:string;search_ids:string[];group_id:string;duplicate_count:number;identity_conflict:boolean;score:number;reasons:string[];location_status:string;unknown_location:boolean;source_lists:Source[][];autoPreparedAt:string|null;autoPrepareError:string|null;applicationId:string|null;documentId:string|null;applicationState:string|null;documentApprovalStatus:string|null};
 export type ResultQuery = { limit?: string; offset?: string; view?: string; sort?: string };
@@ -39,11 +42,12 @@ export async function searchResults(workspaceId: string, searchId: string | null
         OR (lower(s.location) IN ('germany','alemania') AND lower(j.location)~'(germany|alemania|deutschland|german)')
         OR (lower(s.location) IN ('uk','united kingdom') AND lower(j.location)~'(uk|united kingdom|britain|england)')
         OR (lower(s.location) IN ('usa','united states') AND lower(j.location)~'(usa|united states|us)'))
+  ), reviewed AS MATERIALIZED (${reviewedJobsCte('$1')}
   ), grouped AS MATERIALIZED (
     SELECT CASE WHEN ci.conflicted THEN j.id::text ELSE coalesce(im.identity_key,j.id::text) END AS group_id,
       (array_agg(j.id ORDER BY m.score DESC,j.created_at,j.id))[1] AS job_id,
       max(m.score) AS score,max(m.posted_at) AS posted_at,min(m.matched_at) AS matched_at,
-      CASE WHEN bool_and(m.seen_at IS NOT NULL) THEN max(m.seen_at) ELSE NULL END AS seen_at,
+      CASE WHEN bool_and(${effectiveSeenAtSql('j','rv')} IS NOT NULL) THEN max(${effectiveSeenAtSql('j','rv')}) ELSE NULL END AS seen_at,
       array_agg(DISTINCT m.search_id) AS search_ids,count(DISTINCT j.id)::int AS duplicate_count,
       bool_or(coalesce(ci.conflicted,false)) AS identity_conflict,
       (array_agg(m.reasons ORDER BY m.score DESC,j.id))[1] AS reasons,
@@ -53,6 +57,7 @@ export async function searchResults(workspaceId: string, searchId: string | null
       bool_or(j.shortlist_decision='ARCHIVED') AS archived,bool_or(j.shortlist_decision='SHORTLISTED') AS saved,
       bool_or(j.shortlist_decision='SKIPPED') AS skipped
     FROM matches m JOIN jobs j ON j.id=m.job_id AND j.workspace_id=$1
+    LEFT JOIN reviewed rv ON rv.job_id=j.id
     LEFT JOIN job_identity_members im ON im.workspace_id=j.workspace_id AND im.job_id=j.id
     LEFT JOIN LATERAL (
       SELECT count(DISTINCT member.shortlist_decision)>1 OR count(DISTINCT application.id)>1 AS conflicted
@@ -74,7 +79,7 @@ export async function searchResults(workspaceId: string, searchId: string | null
         WHERE a.workspace_id=$1 AND (a.job_id=page.job_id OR a.job_id IN(SELECT im.job_id FROM job_identity_members im WHERE im.workspace_id=$1 AND im.identity_key=page.group_id))
         ORDER BY a.updated_at DESC,a.id LIMIT 1
       ) a ON true),'[]'::jsonb) AS items,
-    (SELECT md5(coalesce(string_agg(run_id::text,',' ORDER BY search_id),'')) FROM latest)||':'||(SELECT count(*)::text FROM matches)||':'||(SELECT count(*)::text FROM matches WHERE seen_at IS NOT NULL) AS version`, [workspaceId,searchId,view,limit,offset]);
+    (SELECT md5(coalesce(string_agg(run_id::text,',' ORDER BY search_id),'')) FROM latest)||':'||(SELECT count(*)::text FROM matches)||':'||(SELECT count(*) FILTER(WHERE seen_at IS NOT NULL)||':'||count(*) FILTER(WHERE archived OR saved OR skipped) FROM grouped) AS version`, [workspaceId,searchId,view,limit,offset]);
   const result = rows[0];
   return { total: result.total, resultVersion: result.version ?? 'legacy', latestRun: searchId ? await latestSearchRun(workspaceId,searchId) : null,
     items: result.items.map((r: ResultRow) => {
@@ -88,17 +93,16 @@ export async function searchResults(workspaceId: string, searchId: string | null
     }) };
 }
 
+/** Reviewing from a search (or All searches) reviews the vacancy everywhere; the search scope only validates the request. */
 export async function reviewSearchResult(workspaceId: string, searchId: string | null, jobId: string): Promise<boolean> {
-  const result = await pool.query(`INSERT INTO search_job_reviews(workspace_id,search_id,job_id,seen_at)
-    SELECT m.workspace_id,m.search_id,m.job_id,now() FROM saved_job_search_matches m WHERE m.workspace_id=$1
-    AND ($2::uuid IS NULL OR m.search_id=$2) AND (m.job_id=$3 OR EXISTS(
-      SELECT 1 FROM job_identity_members a JOIN job_identity_members b ON b.workspace_id=a.workspace_id AND b.identity_key=a.identity_key
-      WHERE a.workspace_id=$1 AND a.job_id=$3 AND b.job_id=m.job_id
-      AND NOT EXISTS(SELECT 1 FROM job_identity_members c JOIN jobs cj ON cj.workspace_id=c.workspace_id AND cj.id=c.job_id
-        LEFT JOIN applications ca ON ca.workspace_id=c.workspace_id AND ca.job_id=c.job_id
-        WHERE c.workspace_id=a.workspace_id AND c.identity_key=a.identity_key GROUP BY c.identity_key HAVING count(DISTINCT cj.shortlist_decision)>1 OR count(DISTINCT ca.id)>1)))
-    ON CONFLICT(workspace_id,search_id,job_id) DO UPDATE SET seen_at=coalesce(search_job_reviews.seen_at,excluded.seen_at) RETURNING job_id`, [workspaceId,searchId,jobId]);
-  return Boolean(result.rowCount);
+  return db.transaction(async (tx) => {
+    await lockJobIdentity(tx, workspaceId);
+    const listed = await tx.execute(sql`SELECT 1 FROM saved_job_search_matches m WHERE m.workspace_id=${workspaceId}
+      AND (${searchId}::uuid IS NULL OR m.search_id=${searchId}::uuid) AND m.job_id IN(${sameVacancySql(workspaceId, jobId)}) LIMIT 1`);
+    if (!listed.rows.length) return false;
+    await markJobReviewed(tx, workspaceId, jobId);
+    return true;
+  });
 }
 
 /** Counts reflect review/archive changes immediately, including jobs first found in another search. */
@@ -112,17 +116,17 @@ export async function searchUnreadCounts(workspaceId: string): Promise<Map<strin
   ), matches AS MATERIALIZED (
     SELECT rr.search_id,rr.job_id,2 AS version FROM latest l JOIN search_run_results rr ON rr.run_id=l.run_id AND rr.workspace_id=$1
     UNION ALL SELECT m.search_id,m.job_id,1 FROM saved_job_search_matches m JOIN selected s ON s.id=m.search_id AND s.matcher_version=1 WHERE m.workspace_id=$1
-  ) SELECT m.search_id,count(DISTINCT CASE WHEN ci.conflicted THEN j.id::text ELSE coalesce(im.identity_key,j.id::text) END)::int AS total
-    FROM matches m JOIN jobs j ON j.workspace_id=$1 AND j.id=m.job_id
-    LEFT JOIN job_identity_members im ON im.workspace_id=j.workspace_id AND im.job_id=j.id
+  ), joined AS MATERIALIZED (
+    SELECT m.search_id,j.id,j.seen_at,j.shortlist_decision FROM matches m JOIN jobs j ON j.workspace_id=$1 AND j.id=m.job_id
+  ), fresh AS MATERIALIZED (SELECT search_id,id FROM joined j WHERE ${isNewJobSql('j','$1')} -- filter after the join so it cannot reorder the scans
+  ) SELECT m.search_id,count(DISTINCT CASE WHEN ci.conflicted THEN m.id::text ELSE coalesce(im.identity_key,m.id::text) END)::int AS total
+    FROM fresh m LEFT JOIN job_identity_members im ON im.workspace_id=$1 AND im.job_id=m.id
     LEFT JOIN LATERAL (
       SELECT count(DISTINCT member.shortlist_decision)>1 OR count(DISTINCT application.id)>1 AS conflicted
       FROM job_identity_members identity JOIN jobs member ON member.workspace_id=identity.workspace_id AND member.id=identity.job_id
       LEFT JOIN applications application ON application.workspace_id=member.workspace_id AND application.job_id=member.id
       WHERE identity.workspace_id=$1 AND identity.identity_key=im.identity_key
     ) ci ON true
-    LEFT JOIN search_job_reviews v ON v.workspace_id=$1 AND v.search_id=m.search_id AND v.job_id=m.job_id
-    WHERE v.seen_at IS NULL AND j.shortlist_decision NOT IN ('SHORTLISTED','ARCHIVED','SKIPPED') AND (m.version=2 OR j.seen_at IS NULL)
     GROUP BY m.search_id`,[workspaceId]);
   return new Map(rows.map(row=>[row.search_id,row.total]));
 }

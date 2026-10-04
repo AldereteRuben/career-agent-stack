@@ -7,6 +7,7 @@ import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { boards, db, jobs, jobOccurrences, jobSnapshots, pool, workspaces } from '@career/db';
 import { readBoardWithReport, SourceHttpError } from './sources.js';
 import { applyMatch, loadMatchingContext, occurrencesForBoard } from './workspace-data.js';
+import { isNewJob } from './review-state.js';
 
 export const INTERVAL_MS = 6 * 60 * 60 * 1000;
 const jitter = () => Math.floor(Math.random() * 5 * 60 * 1000);
@@ -123,7 +124,7 @@ export function registerDiscoveryRoutes(app: FastifyInstance, workspace: (reques
     const [settings, rows, unread] = await Promise.all([
       db.select({ enabled: workspaces.discoveryEnabled }).from(workspaces).where(eq(workspaces.id, id)),
       db.select().from(boards).where(eq(boards.workspaceId, id)).orderBy(boards.companyName),
-      db.select({ count: sql<number>`count(*)::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), sql`${jobs.discoveredAt} is not null`, isNull(jobs.seenAt), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`)),
+      db.select({ count: sql<number>`count(*)::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), sql`${jobs.discoveredAt} is not null`, isNewJob(id))),
     ]);
     const enabled = settings[0]?.enabled ?? false;
     return { enabled, intervalHours: 6, unreadCount: unread[0]?.count ?? 0, boards: rows.map((board) => {
