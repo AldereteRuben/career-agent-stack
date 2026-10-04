@@ -1,0 +1,110 @@
+/* Local layout for the job list and job detail pages. Shared tokens and primitives live in globals.css. */
+
+.headerActions,
+.emptyActions,
+.laterActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.emptyActions {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.headerActions > :global(.button),
+.emptyActions > :global(.button),
+.laterActions > :global(.button) {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Job detail: the essentials a person needs before deciding, in one compact row. */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  min-width: 0;
+  margin: -12px 0 16px;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.summary > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.summary strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.later {
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.later > h2 {
+  margin: 0 0 4px;
+  font-size: var(--text-base);
+}
+
+.later > p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* Optional profile-fit reading: closed by default so it never looks like a required step. */
+.fit {
+  padding: 0;
+}
+
+.fit > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 16px 19px;
+  cursor: pointer;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fit > summary small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.fit > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.fit[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.fitBody {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 19px;
+  overflow-wrap: anywhere;
+}
+
+.fitBody :global(.detail-score) {
+  flex-wrap: wrap;
+}
