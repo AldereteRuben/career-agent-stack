@@ -68,7 +68,9 @@ export const v071Scenarios: Scenario[] = [
         // A failed background check updates its status without removing offers the person is reading.
         // It is a local refresh, not a second portal check during the production cooldown.
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-        await page.getByText(/La última consulta no se pudo completar/).waitFor();
+        // A refresh may already be in flight, so the next idle poll (30 s) can deliver this change.
+        // Use the same polling allowance as the arrival check above, including paced fixture requests.
+        await page.getByText(/La última consulta no se pudo completar/).waitFor({ timeout: 45000 });
         await page.getByRole('link', { name: fixture.title, exact: true }).waitFor();
         await page.getByRole('button', { name: 'Reintentar ahora', exact: true }).click();
         await page.getByText(/Podrás volver a consultar .*Mientras tanto, puedes revisar las ofertas ya encontradas/).waitFor();
