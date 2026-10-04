@@ -38,7 +38,7 @@ export default function StartPage() {
         <p>{c('Puedes activar la preparación de CV en cada búsqueda. Usa solo tu experiencia confirmada. Cada envío requiere tu revisión y autorización; la búsqueda nunca postula por sí sola.', 'You can enable resume preparation for each search. It only uses your confirmed experience. Each submission needs your review and authorization; searching never applies on its own.')}</p>
       </details>
       <p className="muted-label">{c('Tu perfil se completa una vez y se reutiliza. Seguir empresas y guardar respuestas son opciones adicionales.', 'Complete your profile once and reuse it. Following companies and saving answers are additional options.')} <Link href="/profile/setup">{c('Configurar mi perfil paso a paso', 'Set up my profile step by step')}</Link></p>
-      <Link href="/">{c('Volver a Inicio', 'Back to Home')}</Link>
+      <Link href="/searches">{c('Volver a Buscar empleo', 'Back to Find jobs')}</Link>
     </div>
   </AppShell></WorkspaceGate>;
 }

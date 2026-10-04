@@ -270,6 +270,71 @@ main:focus {
   color: #bdd8c5;
 }
 
+/* Secondary destinations: a labelled disclosure below the three main links. */
+.nav-tools {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #3a4b5f;
+}
+
+.nav-tools-toggle {
+  width: 100%;
+  min-height: var(--control);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #d0d8e1;
+  font: inherit;
+  font-size: var(--text-base);
+  text-align: start;
+  cursor: pointer;
+}
+
+.nav-tools-toggle:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.nav-tools-toggle .nav-copy {
+  flex: 1;
+}
+
+.nav-tools-current {
+  color: #fff;
+  font-weight: 600;
+}
+
+.nav-tools-chevron {
+  display: grid;
+  flex: none;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.nav-tools-toggle[aria-expanded="true"] .nav-tools-chevron {
+  transform: rotate(-90deg);
+}
+
+.nav-tools-list {
+  display: grid;
+  gap: 2px;
+  padding-left: 12px;
+}
+
+.nav-tools-list[hidden] {
+  display: none;
+}
+
+.nav-link-compact .nav-copy {
+  padding-block: 6px;
+}
+
 .sidebar-spacer {
   flex: 1;
   min-height: 24px;
@@ -392,6 +457,10 @@ main:focus {
 
 .crumb-slash {
   color: var(--muted-2);
+}
+
+.crumb-part {
+  display: contents;
 }
 
 .crumb-current {
@@ -3018,6 +3087,10 @@ main:focus {
 @media (forced-colors: active) {
   .nav-active {
     outline: 2px solid CanvasText;
+  }
+
+  .nav-tools-toggle {
+    border: 1px solid ButtonText;
   }
 
   .tag,
