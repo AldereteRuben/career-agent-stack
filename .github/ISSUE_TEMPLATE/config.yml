@@ -1,5 +1,8 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
+  - name: Question or idea / Pregunta o idea
+    url: https://github.com/AldereteRuben/career-agent-stack/discussions
+    about: Ask questions, get installation help and share ideas in Discussions. / Haz preguntas, pide ayuda con la instalación y comparte ideas en Discussions.
   - name: Security / Seguridad
-    url: https://github.com/AldereteRuben/career-agent-stack/blob/main/SECURITY.md
-    about: Read the private reporting instructions before sharing a vulnerability.
+    url: https://github.com/AldereteRuben/career-agent-stack/security/policy
+    about: Read the private reporting instructions before sharing a vulnerability. / Lee cómo reportar en privado antes de compartir una vulnerabilidad.

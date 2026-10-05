@@ -1,8 +1,19 @@
 # Security policy
 
+**English** · [Español](#en-español)
+
+## Supported versions
+
+Security fixes are made only for the [latest release](https://github.com/AldereteRuben/career-agent-stack/releases/latest). Update to it before reporting a problem; older versions do not receive patches.
+
+| Version | Supported |
+| --- | --- |
+| Latest release | Yes |
+| Any earlier release | No |
+
 ## Supported deployment
 
-Version 0.3 is designed for one private workspace on one local computer. The API binds to loopback and checks Host and Origin on state-changing requests. The session cookie is HttpOnly and SameSite=Strict. Do not expose the API, PostgreSQL, Ollama, or a browser debugging port to a LAN or the internet.
+Career Agent Stack is designed for one private workspace on one local computer. The API binds to loopback and checks Host and Origin on state-changing requests. The session cookie is HttpOnly and SameSite=Strict. Do not expose the API, PostgreSQL, Ollama, or a browser debugging port to a LAN or the internet.
 
 The first-run token is stored under `data/setup-token` with private permissions and is consumed after sign-in. The API signs a 14-day session with `APP_SESSION_SECRET`. Losing or changing the secret invalidates sessions; a session reset is handled locally. A full-disk encryption layer is recommended for stored CVs and other personal information.
 
@@ -20,10 +31,24 @@ Do not commit `.env`, `data/`, `storage/`, `backups/`, exports, resumes, applica
 
 Operational backups include a database dump and generated documents. The archive is **not encrypted**; keep it on an encrypted drive or in a private location. A separate key file authenticates the manifest and preserves the installation encryption key. Restoring requires that key, creates a new database and data folder, resets source permissions, and generates fresh sign-in credentials. See [backup and restore](docs/operations/backup-restore.md).
 
-## Reporting
+## Reporting a vulnerability
 
-Do not report vulnerabilities, tokens or personal information in public issues or pull requests. While this repository remains private, contact the owner through your existing private collaboration channel and include sanitized reproduction steps only.
+Do not report vulnerabilities, tokens or personal information in public issues, discussions or pull requests.
 
-When the repository is made public and private vulnerability reporting is enabled, use [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new). This endpoint is not currently enabled for the private repository. If the button is unavailable, open an issue only asking the maintainer to enable a private reporting channel; include no vulnerability details. No response-time guarantee is offered.
+**While the repository is private**, GitHub private vulnerability reporting is not available. Contact the owner through your existing private collaboration channel and include sanitized reproduction steps only.
 
-Reports should describe the affected version, impact and a minimal reproduction using fictional data. Do not access someone else's workspace or upload backups as proof.
+**Once the repository is public** and the maintainers have run the [publication controls](docs/operations/public-repository.md), use [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new) (GitHub private vulnerability reporting). Only the maintainers see the report, and the fix can be coordinated privately before it is disclosed.
+
+If neither route is available to you, use the [private channel request](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=private_channel.yml) form. It asks only for a private way to continue; include no vulnerability details.
+
+Reports should describe the affected version, impact and a minimal reproduction using fictional data. Do not access someone else's workspace or upload backups as proof. The maintainers are volunteers: no response time is guaranteed, but reports are read and acknowledged as soon as possible, and reporters are credited in the advisory unless they prefer otherwise.
+
+## En español
+
+Solo la [última versión publicada](https://github.com/AldereteRuben/career-agent-stack/releases/latest) recibe correcciones de seguridad; actualiza antes de reportar.
+
+No publiques vulnerabilidades, tokens ni datos personales en issues, conversaciones o pull requests públicos. Mientras el repositorio sea privado, el reporte privado de GitHub no está disponible: contacta al responsable por el canal privado que ya compartan. Cuando el repositorio sea público y se hayan aplicado los [controles de publicación](docs/operations/public-repository.md), usa [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new) (reporte privado de GitHub): solo los responsables lo ven y la corrección se coordina en privado antes de hacerla pública. Si no tienes ninguna de esas vías, usa el formulario para [pedir un canal privado](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=private_channel.yml), sin detalles. Describe la versión afectada, el impacto y una reproducción mínima con datos ficticios. No accedas al espacio de otra persona ni subas copias de seguridad como prueba.
+
+La aplicación está pensada para un único espacio privado en un solo equipo local. No expongas la API, PostgreSQL, Ollama ni un puerto de depuración del navegador a la red local o a internet.
+
+No subas a Git `.env`, `data/`, `storage/`, `backups/`, exportaciones, CVs, comprobantes de solicitudes ni material de sesión. Las copias de seguridad **no están cifradas**: guárdalas en un disco cifrado o en un lugar privado, junto con su archivo de clave por separado. Las exportaciones y los registros contienen datos personales. Consulta la [guía de copias de seguridad](docs/operations/backup-restore.md).
