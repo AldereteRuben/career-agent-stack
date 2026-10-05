@@ -16,7 +16,7 @@
 //   SETUP_SMOKE_REPORT=<path>       also write the evidence as JSON to this file
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -24,6 +24,11 @@ import process from 'node:process';
 import { describeDatabase, listeningPid, loadPg, maskSecrets, parseEnv, projectRoot } from '../lib/local-env.mjs';
 
 const keep = process.env.SETUP_SMOKE_KEEP === '1';
+// The .command launchers are macOS zsh scripts. Their checks run only where zsh (and expect, for the terminal pause) exist;
+// elsewhere they are skipped and recorded, never reported as passed.
+const hasTool = (tool, flag) => spawnSync(tool, [flag], { stdio: 'ignore' }).status === 0;
+const zshAvailable = hasTool('zsh', '--version');
+const expectAvailable = hasTool('expect', '-v');
 const adminUrl = process.env.SETUP_SMOKE_ADMIN_DATABASE_URL || `postgresql://${encodeURIComponent(userInfo().username)}@127.0.0.1:5432/postgres`;
 const runId = randomBytes(6).toString('hex');
 const installId = `smoke_${runId}`;
@@ -221,16 +226,22 @@ async function main() {
     expect(recoveredLogin.status === 200 && !(await readOrNull(tokenPath)), 'recovered code signs in exactly once');
     const originalSession = await (await globalThis.fetch(`${web}/api/v1/session`, { headers: { cookie } })).json();
     expect(originalSession.authenticated === true, 'recovering access preserves existing sessions');
-    expect(spawnSync('zsh', ['-n', join(copy, 'Recover Career Agent Stack.command')]).status === 0, 'recovery launcher parses');
-    record('access-code recovery: private new code accepted once, existing session preserved, recovery launcher parses', true);
+    if (zshAvailable) expect(spawnSync('zsh', ['-n', join(copy, 'Recover Career Agent Stack.command')]).status === 0, 'recovery launcher parses');
+    record(`access-code recovery: private new code accepted once, existing session preserved${zshAvailable ? ', recovery launcher parses' : ''}`, true);
 
     // Finder-like environment: minimal PATH, no shell profile, no inherited project variables.
     const finderEnv = { HOME: process.env.HOME, USER: process.env.USER, LOGNAME: process.env.USER, PATH: '/usr/bin:/bin:/usr/sbin:/sbin', TERM: 'xterm-256color', TMPDIR: process.env.TMPDIR };
     const command = join(copy, 'Start Career Agent Stack.command');
-    expect(spawnSync('zsh', ['-n', command]).status === 0, '.command must parse in zsh');
-    step = run(dirname(copy), 'zsh', [command, '--check'], { env: finderEnv, clean: true });
-    expect(step.status === 0 && !/read-only variable/.test(step.output) && /Everything is in order|Todo en orden/.test(step.output), `.command --check in a Finder-like shell failed (${step.status})\n${tail(step.output)}`);
-    record('Start Career Agent Stack.command (zsh, Finder-like PATH): finds Node 24, status 0, no read-only variable error', true);
+    if (zshAvailable) {
+      expect(spawnSync('zsh', ['-n', command]).status === 0, '.command must parse in zsh');
+      step = run(dirname(copy), 'zsh', [command, '--check'], { env: finderEnv, clean: true });
+      expect(step.status === 0 && !/read-only variable/.test(step.output) && /Everything is in order|Todo en orden/.test(step.output), `.command --check in a Finder-like shell failed (${step.status})\n${tail(step.output)}`);
+      record('Start Career Agent Stack.command (zsh, Finder-like PATH): finds Node 24, status 0, no read-only variable error', true);
+
+    } else {
+      evidence.limitations.push('zsh is not installed: the .command launcher checks (Finder-like PATH) were skipped');
+      record('Start Career Agent Stack.command (zsh, Finder-like PATH): skipped, zsh is not installed', true, { skipped: true });
+    }
 
     step = run(copy, process.execPath, ['scripts/launch.mjs', '--check']);
     expect(step.status === 0, `status failed\n${tail(step.output)}`);
@@ -242,11 +253,16 @@ async function main() {
     expect(step.status === 0, `stop failed\n${tail(step.output)}`);
     launched = false;
     expect(!listeningPid(webPort) && !listeningPid(apiPort), 'ports must be free after stop');
-    // Under a pseudo-terminal (expect), as in Terminal.app, so the "Press Enter" pause is really exercised.
-    const pause = `set timeout 120; spawn zsh $env(SMOKE_COMMAND) --check; expect "Press Enter to close" { send "\\r" }; expect eof; exit [lindex [wait] 3]`;
-    step = run(dirname(copy), 'expect', ['-c', pause], { env: { ...finderEnv, SMOKE_COMMAND: command }, clean: true });
-    expect(step.status === 1 && !/read-only variable/.test(step.output) && /need attention/.test(step.output) && /Press Enter to close/.test(step.output), `.command must report the failure and pause (${step.status})\n${tail(step.output)}`);
-    record('pnpm run stop frees the ports; .command (in a terminal) reports the stopped stack, waits for Enter, exits 1', true);
+    if (zshAvailable && expectAvailable) {
+      // Under a pseudo-terminal (expect), as in Terminal.app, so the "Press Enter" pause is really exercised.
+      const pause = `set timeout 120; spawn zsh $env(SMOKE_COMMAND) --check; expect "Press Enter to close" { send "\\r" }; expect eof; exit [lindex [wait] 3]`;
+      step = run(dirname(copy), 'expect', ['-c', pause], { env: { ...finderEnv, SMOKE_COMMAND: command }, clean: true });
+      expect(step.status === 1 && !/read-only variable/.test(step.output) && /need attention/.test(step.output) && /Press Enter to close/.test(step.output), `.command must report the failure and pause (${step.status})\n${tail(step.output)}`);
+      record('pnpm run stop frees the ports; .command (in a terminal) reports the stopped stack, waits for Enter, exits 1', true);
+    } else {
+      evidence.limitations.push('zsh or expect is not installed: the .command terminal pause check was skipped');
+      record('pnpm run stop frees the ports; .command pause check skipped (needs zsh and expect)', true, { skipped: true });
+    }
 
     // CAREER_ENV_FILE: another installation's configuration (like a restored workspace: absolute data folder,
     // own ports and session secret) started with a separate checkout's code, without any .env in that checkout.
@@ -284,7 +300,9 @@ async function main() {
     for (const name of ['api', 'dashboard']) {
       expect(await readOrNull(join(restored, 'data/run', `${name}.json`)) && await readOrNull(join(restored, 'data/logs', `${name}.log`)), `${name} run record and log must be in the selected data folder`);
     }
-    expect(!(await readOrNull(join(copy2, '.env'))) && !(await modeOf(join(copy2, 'data'))), 'the second checkout must get neither a .env nor a data/ folder');
+    // The launcher's startup lock lives in the checkout's data/ folder and is removed afterwards, so the folder may remain empty.
+    const strayData = await readdir(join(copy2, 'data')).catch(() => []);
+    expect(!(await readOrNull(join(copy2, '.env'))) && strayData.every((name) => name === 'launcher.lock'), `the second checkout must get no .env and no installation data in data/ (found: ${strayData.join(', ') || 'nothing'})`);
     step = run(copy2, process.execPath, ['scripts/doctor.mjs'], { env: { CAREER_ENV_FILE: altEnv } });
     expect(step.status === 0 && /CAREER_ENV_FILE configuration/.test(step.output), `doctor with CAREER_ENV_FILE failed\n${tail(step.output)}`);
     step = run(copy2, process.execPath, ['scripts/stop.mjs'], { env: { CAREER_ENV_FILE: altEnv } });

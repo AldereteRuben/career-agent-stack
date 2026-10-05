@@ -11,6 +11,27 @@ pnpm start                                 # or double-click "Start Career Agent
 
 With Docker instead of Homebrew PostgreSQL, open Docker Desktop and skip the first two PostgreSQL steps: bootstrap starts the bundled `compose.yaml` database when nothing answers on port 5432 and then uses its administrator automatically.
 
+## Linux (Ubuntu)
+
+Verified once on Ubuntu 26.04 (GNOME on Wayland) with PostgreSQL 17: the clean-install smoke test passes. Other distributions, desktops and WSL have not been verified.
+
+```sh
+# Node 24 and pnpm 11.10.0, for example with fnm (https://github.com/Schniz/fnm)
+fnm install 24 && fnm use 24 && npm install -g pnpm@11.10.0
+
+# PostgreSQL 17: Ubuntu 26.04 ships 18, so use the official PostgreSQL (PGDG) repository
+sudo apt install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+sudo apt install -y postgresql-17
+
+# An administrator that bootstrap can use (it only creates this installation's own role and database)
+sudo -u postgres psql -c "ALTER ROLE $USER WITH LOGIN CREATEDB CREATEROLE;"   # use CREATE ROLE if it does not exist
+sudo -u postgres psql -c "\password $USER"
+CAREER_ADMIN_DATABASE_URL="postgresql://$USER:YOUR_PASSWORD@127.0.0.1:5432/postgres" pnpm run bootstrap
+```
+
+`pnpm start --copy-token` needs a clipboard tool: `wl-clipboard` on Wayland or `xclip` on X11 (`sudo apt install wl-clipboard`). Without one it prints where the token file is. The `.command` launchers are macOS-only; use `pnpm start`.
+
 ## First run
 
 The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postgresql@17 && brew services start postgresql@17`). Docker Compose is a fallback that bootstrap uses only when nothing answers on the database port and Docker is running; it was not available on the machine where v0.2 was verified. CI checks builds on Linux and Windows; complete installation and browser journeys on those systems have not been verified.
@@ -91,7 +112,7 @@ Messages are printed in Spanish and English. Spanish comes first when the system
 
 ### Known limits
 
-- The `.command` file is macOS-only (zsh). From Finder it loads fnm or nvm, refuses a Node other than 24 with a clear message (Homebrew's `node` may be a newer major), and on failure waits for Enter so the message stays readable. The CLI launcher relies on Unix process tools: native Windows startup is unsupported; Linux/WSL installation has not been verified end to end.
+- The `.command` file is macOS-only (zsh). From Finder it loads fnm or nvm, refuses a Node other than 24 with a clear message (Homebrew's `node` may be a newer major), and on failure waits for Enter so the message stays readable. The CLI launcher relies on Unix process tools: native Windows startup is unsupported. On Linux the smoke test passes (see above); WSL has not been verified.
 - Rebuild detection compares modification times. After an unusual checkout, if the app looks outdated, run `pnpm run stop`, then `pnpm run build`, then `pnpm start`.
 - A port taken by another program is reported, not freed. Use `lsof -nP -iTCP:<port> -sTCP:LISTEN` to see what is using it.
 - Neither bootstrap nor the launcher installs PostgreSQL or creates a cluster. Bootstrap creates only this installation's own role and database, and only through an administrator that can connect.
@@ -131,6 +152,8 @@ Use the workspace export action to download versioned JSON. It includes career f
 - starts the copy with the launcher on two free ephemeral ports (never 3000/3001) while `DATABASE_URL` in the shell points elsewhere, signs in through the web origin with the copy's own single-use token, runs `status`, `doctor` and the `.command` file in a Finder-like minimal shell and in a pseudo-terminal (exit codes, Enter pause, no zsh `status` error), and stops it;
 - drops the `career_smoke_<hex>` databases and roles it created and removes the copy, then fails if the live `.env`, the live sign-in token, the processes on 3000/3001 or the server's list of databases and roles changed. It never connects to an existing workspace database.
 
+The `.command` launcher checks (zsh syntax, a Finder-like shell, the terminal pause under `expect`) run only where `zsh` and `expect` exist; elsewhere, such as Linux without zsh, they are skipped and listed under `limitations` in the report, never counted as passed. The administrator may be a non-superuser with `CREATEROLE` and `CREATEDB`.
+
 It needs a loopback PostgreSQL administrator (`SETUP_SMOKE_ADMIN_DATABASE_URL`, default `postgresql://<user>@127.0.0.1:5432/postgres`) and Node 24. `SETUP_SMOKE_KEEP=1` keeps the copy and database for debugging and prints how to remove them; `SETUP_SMOKE_REPORT=<file>` writes the evidence as JSON. Dependencies come from the pnpm store, so a warm store makes `pnpm install` take seconds; a cold, network install is not part of the test.
 
 ## Restore and operational backups
@@ -145,6 +168,7 @@ Automatic read-only discovery is available after opt-in in Companies I follow; i
 
 - Primera vez (macOS): `brew install fnm postgresql@17 && fnm install 24 && corepack enable`, `brew services start postgresql@17`, `node scripts/bootstrap.mjs` y `pnpm start`. Con Docker Desktop abierto no hace falta PostgreSQL de Homebrew.
 - Qué hace la preparación: `node scripts/bootstrap.mjs` (o doble clic en `Start Career Agent Stack.command`). Instala dependencias, crea una base de datos propia para esta copia (`career_<id>`) en tu PostgreSQL 17 de Homebrew, aplica migraciones y solo al final crea `.env`. Si algo falla, te dice qué hacer en español e inglés y al repetirlo continúa donde se quedó, con las mismas claves. Nunca reutiliza la base de otra instalación ni sobrescribe un `.env` existente.
+- Linux (Ubuntu): consulta la sección «Linux (Ubuntu)» de arriba. PostgreSQL 17 se instala desde el repositorio oficial PGDG, y para copiar el token necesitas `wl-clipboard` (Wayland) o `xclip` (X11). Está verificado solo en Ubuntu 26.04; otras distribuciones y WSL no.
 - ¿Ya hay otro PostgreSQL en el puerto 5432 que no acepta tu usuario? Indica un administrador con `CAREER_ADMIN_DATABASE_URL=postgresql://USUARIO:CLAVE@127.0.0.1:5432/postgres pnpm run bootstrap`.
 - ¿Dice «no puede actuar como el usuario nuevo» o «debe ser capaz de hacer SET ROLE»? Solo ocurre en PostgreSQL 16 o posterior, y significa que tu administrador no es superusuario y no pudo recibir `SET` sobre el rol nuevo. Como superusuario ejecuta `GRANT <rol del mensaje> TO <tu administrador> WITH SET TRUE;` y repite `pnpm run bootstrap`: retoma con las mismas claves.
 - Cada día: doble clic en `Start Career Agent Stack.command` o `pnpm start`. Reutiliza lo que ya funciona, inicia lo que falta, espera a que responda y abre el navegador. Si falla, la ventana espera a que pulses Enter para que puedas leer el mensaje.
