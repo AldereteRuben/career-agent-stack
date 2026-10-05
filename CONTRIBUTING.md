@@ -63,6 +63,10 @@ For example: `fix: keep the search filter when returning to results`. Keep your 
 
 There is no guaranteed response time. If a pull request has had no answer for two weeks, a polite comment asking for a review is welcome.
 
+### Versions and releases
+
+Do not change version numbers, `RELEASE_VERSION` or `CHANGELOG.md` in your pull request. Merged pull requests accumulate on `main`, and the maintainer publishes a release when a set of changes is ready: they align the versions and the changelog in a release pull request, tag it and publish the release notes. Versions follow [Semantic Versioning](https://semver.org): fixes raise the last number (0.9.2 → 0.9.3) and new features the middle one (0.9.x → 0.10.0). Maintainers label each pull request (`bug`, `enhancement`, `documentation`…) so it appears in the right section of the release notes, which credit every contributor.
+
 ## Contribution terms
 
 By intentionally submitting a contribution for inclusion, you confirm that you have the right to submit it and offer your original contribution under `LICENSE` **and** `LICENSE-PERSONAL-USE.md`. You retain ownership of your contribution; no copyright assignment is required. Do not submit third-party code under incompatible terms. Identify any third-party material, retain its notices, and document dependency changes.
@@ -82,5 +86,7 @@ Puedes abrir issues, conversaciones y pull requests en español.
 **Commits.** Un resumen corto con prefijo (`feat:`, `fix:`, `docs:`, `test:`, `build:`), por ejemplo `fix: conservar el filtro al volver a los resultados`. Conserva tu autoría y no añadas líneas de coautoría de herramientas o modelos; indica la ayuda sustancial de IA en la descripción del pull request.
 
 **Pull requests.** Abre el PR contra `main`, completa la plantilla (issue enlazado, qué cambió, comprobaciones y límites) y añade capturas sin datos privados en ambos idiomas si cambia la interfaz. En una primera contribución, un responsable aprueba la ejecución del CI después de leer los cambios. Responde a la revisión con nuevos commits en la misma rama. Los cambios se unen con **squash merge**, así que el título del PR será el mensaje del commit. No hay plazo de respuesta garantizado; si en dos semanas no hay respuesta, puedes dejar un comentario amable.
+
+**Versiones.** No cambies los números de versión, `RELEASE_VERSION` ni `CHANGELOG.md` en tu PR. Los cambios unidos se acumulan en `main` y el responsable publica una versión cuando un conjunto está listo: alinea versiones y changelog en una PR de release, crea la etiqueta y publica las notas. Se usa [versionado semántico](https://semver.org/lang/es/): los arreglos suben el último número (0.9.2 → 0.9.3) y las funciones nuevas el del medio (0.9.x → 0.10.0). Los responsables etiquetan cada PR para que aparezca en la sección correcta de las notas de la versión, donde se reconoce a cada persona que contribuyó.
 
 **Términos.** Al enviar cambios aceptas ofrecer tus aportaciones bajo la licencia no comercial y el permiso adicional de uso personal; conservas su autoría. Las contribuciones asistidas por IA son bienvenidas si las entiendes, puedes explicarlas y lo indicas en el PR. Las contribuciones se revisan y no se incorporan automáticamente.

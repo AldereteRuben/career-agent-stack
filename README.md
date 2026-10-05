@@ -200,4 +200,4 @@ This is **source-available software with noncommercial restrictions**. It is not
 
 Third-party components retain their [own licenses and notices](THIRD_PARTY_NOTICES.md). These terms accompany the current licensed source tree; earlier release archives did not include them. Release v0.3.0 includes the license and contribution terms.
 
-[Repository publication controls](docs/operations/public-repository.md).
+[Public repository controls](docs/operations/public-repository.md).
