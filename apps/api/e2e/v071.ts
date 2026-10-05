@@ -70,7 +70,10 @@ export const v071Scenarios: Scenario[] = [
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         // A refresh may already be in flight, so the next idle poll (30 s) can deliver this change.
         // Use the same polling allowance as the arrival check above, including paced fixture requests.
-        await page.getByText(/La última consulta no se pudo completar/).waitFor({ timeout: 45000 });
+        const failedStatus = page.getByText('Algunas consultas fallaron · ver qué pasó', { exact: true });
+        await failedStatus.waitFor({ timeout: 45000 });
+        await failedStatus.click();
+        await page.getByText(/La última consulta no se pudo completar/).waitFor();
         await page.getByRole('link', { name: fixture.title, exact: true }).waitFor();
         await page.getByRole('button', { name: 'Reintentar ahora', exact: true }).click();
         await page.getByText(/Podrás volver a consultar .*Mientras tanto, puedes revisar las ofertas ya encontradas/).waitFor();
