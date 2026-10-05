@@ -192,6 +192,12 @@ Bug reports, feature ideas, translations and pull requests are welcome in Englis
 - Questions and ideas go to [Discussions](https://github.com/AldereteRuben/career-agent-stack/discussions); see [getting help](SUPPORT.md).
 - Everyone participating follows the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately as described in the [security policy](SECURITY.md).
 
+### Contributors
+
+<a href="https://github.com/AldereteRuben/career-agent-stack/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=AldereteRuben/career-agent-stack" alt="Contributors to Career Stack" />
+</a>
+
 ## License
 
 Free for noncommercial use under [PolyForm Noncommercial 1.0.0](LICENSE), with an [additional permission for your own job search](LICENSE-PERSONAL-USE.md), including seeking paid employment. You may clone, adapt and share the project for permitted purposes while retaining the license and notices. Commercial sale, paid hosting and reuse in commercial products or business operations are not licensed, subject to the standard license's express permissions for noncommercial organizations. Those permissions include specified charitable, educational and government institutions regardless of their funding.
