@@ -206,4 +206,4 @@ Es **código disponible con restricciones no comerciales** (*source available*).
 
 Los componentes de terceros conservan sus [propias licencias y avisos](THIRD_PARTY_NOTICES.md). Estos términos acompañan al código actual; los archivos de versiones anteriores no los incluían. La versión v0.3.0 incluye la licencia y los términos de contribución.
 
-[Preparación del repositorio público](docs/operations/public-repository.md).
+[Controles del repositorio público](docs/operations/public-repository.md).
