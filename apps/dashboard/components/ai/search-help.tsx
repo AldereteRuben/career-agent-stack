@@ -27,7 +27,7 @@ export function SearchAiHelp({ searchIds, jobs = [], returnTo = '/searches', inl
     const controller = new AbortController();
     void api<AiConnectionResponse>('/ai/connections', { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) { setConnection(value); setFailed(false); } })
-      .catch(() => { if (!controller.signal.aborted) setFailed(true); });
+      .catch(() => { if (!controller.signal.aborted) { setFailed(true); setConnection(null); } });
     void api<{ policies: Policy[] }>(`/ai/automation?locale=${locale}`, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) { setPolicies(value.policies); setPolicyFailed(false); } })
       .catch(() => { if (!controller.signal.aborted) setPolicyFailed(true); });

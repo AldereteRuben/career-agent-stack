@@ -33,7 +33,7 @@ const outputFor = request => {
   if (request.operation === 'RESUME_DRAFT') return { ...common, proposals: [{ proposalKey: 'first', section: 'EXPERIENCE', text: 'Built accessible booking forms for a fictional website.', changeExplanation: 'Makes the supplied experience easier to read.', sourceFactIds: [ids.fact], warnings: [] }], warnings: [] };
   return { ...common, result: { status: 'DRAFT', text: 'I built a fictional booking website with accessible forms.', evidence: [{ factId: ids.fact }] } };
 };
-const state = { documentApproval: 'PENDING_REVIEW', showSearches: false, connected: false, observed: false, previewError: null, mode: 'success', startLost: false, startExpired: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
+const state = { connectionFailure: false, automationFailure: false, documentApproval: 'PENDING_REVIEW', showSearches: false, connected: false, observed: false, previewError: null, mode: 'success', startLost: false, startExpired: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
 const observation = () => ({ id: ids.observation, sessionState: 'SIGNED_IN', version: '0.test', maskedIdentity: 'a***@example.test', plan: null, usage: null });
 const connectionState = () => ({ enabled: true, connection: state.connected ? { ...observation(), id: ids.connection, authorized: true } : null, observation: state.observed ? observation() : null });
 const response = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
@@ -82,7 +82,7 @@ try {
     if (path.endsWith('/approve') && path.startsWith('/answers/')) return response(route, { ok: true });
     if (path === '/settings' || path === '/privacy' || path === '/discovery') return response(route, {});
     if (path === '/backups/current') return response(route, { state: 'idle' });
-    if (path === '/ai/connections') return response(route, connectionState());
+    if (path === '/ai/connections') return state.connectionFailure ? response(route, {error: 'AI_UNAVAILABLE'}, 503) : response(route, connectionState());
     if (path === '/ai/connections/codex/inspect') { state.observed = true; return response(route, connectionState()); }
     if (path === '/ai/connections/codex/authorize') { assert.equal(request.postDataJSON().observationId, ids.observation); state.connected = true; return response(route, connectionState()); }
     if (path === `/ai/connections/${ids.connection}/disconnect`) { state.connected = false; state.observed = false; return response(route, connectionState()); }
@@ -114,7 +114,7 @@ try {
       if (artifact[3] === 'resume') { state.resumeSaves.push(request.postDataJSON()); return response(route, { error: 'AI_SOURCE_CHANGED' }, 409); }
       return response(route, state.artifacts.get(artifact[1]));
     }
-    if (path === '/ai/automation' && method === 'GET') { state.automationReads++; return response(route, { enabled: true, policies: state.policies, searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], facts: [{ factId: ids.fact, kind: fact.kind, text: fact.statement }], limits: { maximumDailyStarts: 10, maximumPerPass: 5 } }); }
+    if (path === '/ai/automation' && method === 'GET') { if (state.automationFailure) return response(route, {error: 'AI_UNAVAILABLE'}, 503); state.automationReads++; return response(route, { enabled: true, policies: state.policies, searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], facts: [{ factId: ids.fact, kind: fact.kind, text: fact.statement }], limits: { maximumDailyStarts: 10, maximumPerPass: 5 } }); }
     if (path === '/ai/automation/preview') { const body = request.postDataJSON(); state.automationPreviews.push(body); return response(route, { previewId: 'automation-preview', expiresAt: future(), searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], sources: { facts: [] }, categories: ['JOB_POSTING'], locale: body.locale, maximumDailyStarts: body.maximumDailyStarts, connection: { maskedIdentity: 'a***@example.test' }, newOffersOnly: true }); }
     if (path === '/ai/automation' && method === 'POST') { state.policies = [{ id: 'policy', revision: 1, active: true, paused: false, searchIds: [ids.search], selectedFactIds: [], locale: 'en', maximumDailyStarts: 1, activatedAt: now, maskedIdentity: 'a***@example.test', queued: 0, ready: 0 }]; return response(route, state.policies[0], 201); }
     if (path === '/ai/automation/policy/pause') { state.paused++; state.policies[0].paused = true; return response(route, state.policies[0]); }
@@ -360,6 +360,18 @@ try {
   state.documentApproval = 'USER_APPROVED'; await page.reload(); await locale('en');
   await visible(resume.getByText('You reviewed this resume. Download it to continue on the employer’s page.', { exact: true }));
   assert.equal(await resume.getByRole('link', { name: 'Download selected resume', exact: true }).getAttribute('class'), 'button ');
+  state.connectionFailure = true; await goto('/searches');
+  await visible(page.getByRole('button', { name: 'Retry connection', exact: true }));
+  assert.equal(await page.getByText('Account ready. Continue with your request below; you will review the data before sharing it.', { exact: true }).count(), 0, 'A failed refresh does not claim a ready account');
+  state.connectionFailure = false; await click('Retry connection');
+  await visible(page.getByText('Account ready. Continue with your request below; you will review the data before sharing it.', { exact: true }));
+  state.automationFailure = true; await page.close(); page = await context.newPage();
+  await goto('/searches'); await locale('en');
+  await page.getByText(/Codex help and automatic summaries · Connected/, { exact: true }).click();
+  await visible(page.getByText('Could not check automatic summaries. Manual help is still available on each job.', { exact: true }));
+  await visible(page.getByRole('link', { name: 'View saved summary', exact: true }));
+  state.automationFailure = false; await click('Retry summary status');
+  assert.equal(state.starts.length, startsBefore, 'Status recovery never starts inference');
   console.log('✓ v0.9.2 single search entry, duplicate labels, mobile density, exact-job anchor, automatic setup and inline connection');
   assert.deepEqual(unmatched, [], 'Every non-session API must be intercepted'); assert.deepEqual(failures, [], 'No browser errors');
   console.log('✓ ES/EN and 390px mobile layouts; no unexpected API calls or browser errors');
