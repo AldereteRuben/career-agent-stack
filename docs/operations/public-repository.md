@@ -10,7 +10,7 @@ The repository has been **public** since 2026-10-05, on the owner's instruction.
 - Squash merging only; merged branches are automatically deleted; auto-merge is off.
 - GitHub Actions uses read-only tokens, cannot approve PRs, allows GitHub-owned actions, and requires full commit SHA pins.
 - CI checks lint and types; unit, UI-logic, source and archive suites; discovery, saved searches and the v0.8/v0.9 migrations against a disposable PostgreSQL service; synthetic AI, PDF, preparation and assisted-application flows with fictional data; and production builds on Ubuntu and Windows. It does **not** verify backup restore, the clean-install smoke test or the macOS `.command` launchers. Use the isolated local suites for those changes.
-- Dependabot is configured for weekly npm and monthly Actions updates. Dependency vulnerability alerts are enabled. No automatic merging is configured.
+- Dependabot is configured for weekly npm and monthly Actions updates. Dependency vulnerability alerts and Dependabot security updates (pull requests that fix vulnerable dependencies) are enabled. No automatic merging is configured; each pull request goes through CI and review.
 - Generated release notes are grouped by pull request label (`.github/release.yml`). Contributors' pull requests do not change versions; the maintainer releases through a release pull request (see [Contributing](../../CONTRIBUTING.md#versions-and-releases)).
 
 ## License scope
@@ -34,7 +34,8 @@ While the repository was private, GitHub rejected branch protection on the curre
 - Private vulnerability reporting.
 - Secret scanning and push protection.
 - Discussions (with GitHub's default categories: Announcements, General, Ideas, Polls, Q&A and Show and tell), repository topics, and the `needs-triage`, `translation`, `good first issue` and `help wanted` labels.
-- CodeQL code scanning with GitHub's default setup for JavaScript and TypeScript. Its first analysis completed and reported two alerts for triage.
+- CodeQL code scanning with GitHub's default setup for JavaScript and TypeScript. Its first analysis reported two alerts, dismissed as false positives after review: application-journey links are always internal paths with a validated return destination, and `htmlToText` output is plain text that React and the PDF renderer escape.
+- Dependabot security updates (enabled on 2026-10-05).
 
 The configuration permits administrator bypass (`enforce_admins: false`) because there is currently one owner and an author cannot approve their own PR. External contributors cannot merge without write access. When another trusted maintainer joins, consider enabling admin enforcement to require independent review for the owner's changes too.
 
