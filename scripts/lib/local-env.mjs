@@ -231,6 +231,21 @@ export async function mtimeOf(path) {
 }
 
 /**
+ * Start time of a Linux process in milliseconds, from the kernel's own clock ticks. `ps` derives it from the boot time with
+ * two roundings to whole seconds and can be about two seconds off. Null when /proc cannot be read.
+ */
+function linuxStartMs(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const ticks = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]); // field 22; the command name in field 2 may contain spaces
+    const uptime = Number(readFileSync('/proc/uptime', 'utf8').split(' ')[0]);
+    const ticksPerSecond = Number(spawnSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }).stdout) || 100;
+    const started = Date.now() - uptime * 1000 + (ticks / ticksPerSecond) * 1000;
+    return Number.isFinite(started) ? started : null;
+  } catch { return null; }
+}
+
+/**
  * Identity of a running process: exact start time, process group, command line and working directory.
  * Returns null when any part cannot be read, so callers can fail closed.
  */
@@ -247,13 +262,21 @@ export async function processIdentity(pid) {
     cwd = lsof.status === 0 ? lsof.stdout.split('\n').find((line) => line.startsWith('n'))?.slice(1) ?? null : null;
   }
   if (!cwd) return null;
-  const startedAt = Date.parse(match[2].replace(/\s+/g, ' '));
+  const startedAt = (process.platform === 'linux' ? linuxStartMs(pid) : null) ?? Date.parse(match[2].replace(/\s+/g, ' '));
   if (Number.isNaN(startedAt)) return null;
   return { pid, pgid: Number(match[1]), lstart: match[2].replace(/\s+/g, ' '), startedAt, args: match[3], cwd };
 }
 
-/** PID listening on a loopback TCP port, or null when unknown. */
+/**
+ * PID listening on a TCP port, or null when unknown. On Linux `ss` is asked first: lsof 4.99 skips a process whose title
+ * contains nested parentheses, which is how Next.js renames its server ("next-server (v16.3.8)").
+ */
 export function listeningPid(port) {
+  if (process.platform === 'linux') {
+    const ss = spawnSync('ss', ['-H', '-ltnp', `sport = :${port}`], { encoding: 'utf8' });
+    const found = Number(ss.stdout?.match(/pid=(\d+)/)?.[1]);
+    if (ss.status === 0 && Number.isInteger(found) && found > 0) return found;
+  }
   const lsof = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' });
   const pid = Number(lsof.stdout?.trim().split('\n')[0]);
   return lsof.status === 0 && Number.isInteger(pid) && pid > 0 ? pid : null;
