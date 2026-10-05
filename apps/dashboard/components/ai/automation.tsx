@@ -15,9 +15,9 @@ type Preview = { previewId: string; expiresAt: string; searches: Search[]; sourc
 const searchLabel = (search: Search) => [search.role, search.company, search.location].filter(Boolean).join(' · ');
 
 /** Optional setup only. Reading or opening this panel never schedules a provider task. */
-export function AiAutomationPanel({ sourceRunId, connectionRevision = 0, onChanged }: { sourceRunId?: string; connectionRevision?: number; onChanged?: () => void }) {
+export function AiAutomationPanel({ sourceRunId, connectionRevision = 0, onChanged, initiallyOpen = false }: { sourceRunId?: string; initiallyOpen?: boolean; connectionRevision?: number; onChanged?: () => void }) {
   const { locale } = useLocale(); const c = copy(locale); const id = useId();
-  const [open, setOpen] = useState(false); const [overview, setOverview] = useState<Overview | null>(null);
+  const [open, setOpen] = useState(initiallyOpen); const [overview, setOverview] = useState<Overview | null>(null);
   const [searchIds, setSearchIds] = useState<string[]>([]); const [factIds, setFactIds] = useState<string[]>([]);
   const [maximum, setMaximum] = useState('1'); const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false); const [loading, setLoading] = useState(false);

@@ -3385,3 +3385,6 @@ main:focus {
 .tracker-filter { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 16px; }
 .tracker-filter .field { flex: 1 1 240px; min-width: 0; }
 .tracker-pagination { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px; }
+
+.application-resume .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.application-resume .button-row > * { max-width: 100%; white-space: normal; }

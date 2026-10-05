@@ -10,8 +10,22 @@ import type { AiConnectionResponse, AiLoginAttempt, AiSessionObservation } from 
 import styles from './connection.module.css';
 
 type Action = 'inspect' | 'authorize' | 'login' | 'cancel' | 'disconnect';
-type Feedback = 'connected' | 'disconnected' | 'login-completed' | 'login-cancelled' | 'login-expired' | 'login-failed' | null;
+type Feedback = 'checked' | 'connected' | 'disconnected' | 'login-completed' | 'login-cancelled' | 'login-expired' | 'login-failed' | null;
 const INSTALL_URL = 'https://developers.openai.com/codex/cli';
+
+/** Provider identifiers are not customer-facing subscription names. */
+function planLabel(plan: string, locale: Locale): string {
+  const plans: Record<string, string> = {
+    free: 'ChatGPT Free', go: 'ChatGPT Go', plus: 'ChatGPT Plus',
+    pro: 'ChatGPT Pro', prolite: 'ChatGPT Pro', promax: 'ChatGPT Pro',
+    team: 'ChatGPT Business', business: 'ChatGPT Business',
+    self_serve_business_prolite: 'ChatGPT Business', self_serve_business_usage_based: 'ChatGPT Business',
+    enterprise: 'ChatGPT Enterprise', ent26: 'ChatGPT Enterprise',
+    enterprise_cbp_automation: 'ChatGPT Enterprise', enterprise_cbp_usage_based: 'ChatGPT Enterprise',
+    edu: 'ChatGPT Edu', edu_plus: 'ChatGPT Edu', edu_pro: 'ChatGPT Edu',
+  };
+  return plans[plan] ?? copy(locale)('Detalle no disponible', 'Details unavailable');
+}
 
 function errorCode(error: unknown): string {
   return error instanceof ApiError ? error.code : error instanceof TypeError ? 'NETWORK_UNAVAILABLE' : 'UNKNOWN';
@@ -23,11 +37,11 @@ function connectionError(code: string, locale: Locale): string {
     AI_DISABLED: c('La ayuda con IA no está activa en esta instalación.', 'AI assistance is not active on this installation.'),
     AI_UNAVAILABLE: c('Codex no está disponible ahora. Comprueba que esté instalado y vuelve a intentarlo.', 'Codex is unavailable right now. Check that it is installed and try again.'),
     AI_NOT_INSTALLED: c('Instala Codex en este equipo y vuelve a comprobar la conexión.', 'Install Codex on this device and check the connection again.'),
-    AI_OBSERVATION_EXPIRED: c('La comprobación de la cuenta ha caducado. Pulsa Comprobar Codex antes de conectarla.', 'The account check expired. Choose Check Codex before connecting it.'),
+    AI_OBSERVATION_EXPIRED: c('La comprobación de la cuenta ha caducado. Pulsa Actualizar conexión antes de conectarla.', 'The account check expired. Choose Refresh connection before connecting it.'),
     AI_CHECK_ACCOUNT: c('Comprueba de nuevo la cuenta de Codex antes de conectarla. La comprobación anterior ya no está disponible.', 'Check your Codex account again before connecting it. The previous check is no longer available.'),
     AI_ACCOUNT_CHANGED: c('La cuenta de Codex cambió. Compruébala de nuevo y elige la cuenta que quieras usar.', 'The Codex account changed. Check it again and choose the account you want to use.'),
-    AI_CONNECTION_CONFLICT: c('La conexión cambió mientras la estabas revisando. Pulsa Comprobar Codex y revisa la cuenta actual.', 'The connection changed while you were reviewing it. Choose Check Codex and review the current account.'),
-    AI_CONNECTION_NOT_FOUND: c('Esa conexión ya no está disponible. Pulsa Comprobar Codex para ver el estado actual.', 'That connection is no longer available. Choose Check Codex to see its current status.'),
+    AI_CONNECTION_CONFLICT: c('La conexión cambió mientras la estabas revisando. Pulsa Actualizar conexión y revisa la cuenta actual.', 'The connection changed while you were reviewing it. Choose Refresh connection and review the current account.'),
+    AI_CONNECTION_NOT_FOUND: c('Esa conexión ya no está disponible. Pulsa Actualizar conexión para ver el estado actual.', 'That connection is no longer available. Choose Refresh connection to see its current status.'),
     AI_AUTH_REQUIRED: c('Inicia sesión en Codex y vuelve a comprobar la conexión.', 'Sign in to Codex and check the connection again.'),
     AI_LOGIN_UNAVAILABLE: c('No pudimos iniciar la conexión. Inicia sesión desde la aplicación oficial de Codex y vuelve a comprobarla aquí.', 'We could not start sign-in. Sign in using the official Codex application, then check again here.'),
     LOGIN_UNAVAILABLE: c('No pudimos iniciar la conexión. Inicia sesión desde la aplicación oficial de Codex y vuelve a comprobarla aquí.', 'We could not start sign-in. Sign in using the official Codex application, then check again here.'),
@@ -62,7 +76,7 @@ function UsageDetails({ usage, locale }: { usage: AiUsageSnapshot | null; locale
     <div className={styles.detailsBody}>
       <p className={styles.hint}>{c('Son datos de tu cuenta de Codex y pueden incluir uso en otras aplicaciones. Los porcentajes indican lo que ya has consumido.', 'These are figures for your Codex account and may include use in other applications. Percentages show how much you have already used.')}</p>
       {!hasWindows ? <p>{c('Codex no ha facilitado la cuota disponible. No podemos estimar cuántas tareas te quedan.', 'Codex has not provided available quota. We cannot estimate how many tasks you have left.')}</p> : <>
-        {usage.availability === 'STALE' && <p>{c('Estos datos pueden haber cambiado. Pulsa Comprobar Codex para actualizarlos.', 'These figures may have changed. Choose Check Codex to update them.')}</p>}
+        {usage.availability === 'STALE' && <p>{c('Estos datos pueden haber cambiado. Pulsa Actualizar conexión para actualizarlos.', 'These figures may have changed. Choose Refresh connection to update them.')}</p>}
         {usage.anyLimitReached === true && <Notice tone="warning" role={null}>{c('Codex indica que has alcanzado un límite. Espera a que se restablezca antes de iniciar otra tarea.', 'Codex reports that you have reached a limit. Wait for it to reset before starting another task.')}</Notice>}
         <ul className={styles.usageList}>{usage.windows.map((window, index) => {
           const used = typeof window.usedPercent === 'number' && Number.isFinite(window.usedPercent) ? Math.max(0, Math.min(100, window.usedPercent)) : null;
@@ -196,6 +210,7 @@ export function AiConnectionPanel({ visible = true, onConnectionChange }: { visi
         const next = await api<AiConnectionResponse>(endpoint, { method: 'POST', ...(kind === 'authorize' ? { body: JSON.stringify({ observationId: state.observation!.id }) } : {}) });
         if (!mounted.current || generation.current !== ticket) return;
         setState(next); changeHandler.current?.(next);
+        if (kind === 'inspect') setFeedback('checked');
         if (kind === 'authorize' || kind === 'disconnect') {
           if (kind === 'authorize' && next.connection?.authorized && next.connection.sessionState === 'SIGNED_IN') setFeedback('connected');
           else if (kind === 'disconnect' && !next.connection?.authorized) setFeedback('disconnected');
@@ -210,12 +225,13 @@ export function AiConnectionPanel({ visible = true, onConnectionChange }: { visi
   };
 
   const connected = state?.connection?.authorized === true && state.connection.sessionState === 'SIGNED_IN';
-  const observed: AiSessionObservation | null = connected ? state!.connection : state?.observation ?? state?.connection ?? null;
+  const observed: AiSessionObservation | null = state?.observation ?? state?.connection ?? null;
   const loginUrl = officialLoginUrl(login?.url);
   const busy = loading || action !== null;
   const canAuthorize = !connected && state?.observation?.sessionState === 'SIGNED_IN';
   const unavailable = state?.enabled === false || error === 'NOT_FOUND' || error === 'AI_DISABLED';
   const feedbackMessages: Record<NonNullable<Feedback>, string> = {
+    checked: c('Conexión actualizada. Esta comprobación consulta la sesión y el consumo; no ejecuta tareas de IA.', 'Connection refreshed. This check reads the session and usage; it does not run AI tasks.'),
     connected: c('Cuenta conectada. Podrás elegir qué tarea hacer y qué información compartir.', 'Account connected. You can choose which task to run and which information to share.'),
     disconnected: c('Codex se desconectó de Career Stack. Tu sesión de Codex sigue abierta fuera de esta app.', 'Codex was disconnected from Career Stack. Your Codex session remains signed in outside this app.'),
     'login-completed': c('Has iniciado sesión. Revisa la cuenta y elige Usar esta cuenta para conectarla a Career Stack.', 'You are signed in. Review the account and choose Use this account to connect it to Career Stack.'),
@@ -244,7 +260,7 @@ export function AiConnectionPanel({ visible = true, onConnectionChange }: { visi
       {feedback && <Notice tone={feedback === 'login-failed' || feedback === 'login-expired' ? 'warning' : 'success'}>{feedbackMessages[feedback]}</Notice>}
       {state && <>
         <div className={styles.state}>
-          <h3>{connected ? c('Tu cuenta está lista', 'Your account is ready') : waitingId ? c('Continúa en la página oficial', 'Continue on the official website') : observed?.sessionState === 'SIGNED_IN' ? c('Elige si quieres usar esta cuenta', 'Choose whether to use this account') : c('Conecta Codex', 'Connect Codex')}</h3>
+          <h3>{connected ? c('Tu cuenta está lista', 'Your account is ready') : waitingId ? c('Continúa en la página oficial', 'Continue on the official website') : observed?.sessionState === 'SIGNED_IN' ? c('Cuenta detectada · falta conectarla', 'Account detected · not connected yet') : c('Conecta Codex', 'Connect Codex')}</h3>
           {observed?.sessionState === 'NOT_INSTALLED' && <p>{c('Para conectar tu cuenta, primero instala la aplicación oficial de Codex en este equipo. Después vuelve aquí.', 'To connect your account, first install the official Codex application on this device. Then come back here.')} <a href={INSTALL_URL} target="_blank" rel="noopener noreferrer">{c('Ver cómo instalar Codex (abre otra pestaña)', 'See how to install Codex (opens a new tab)')}</a></p>}
           {observed?.sessionState === 'UNSUPPORTED' && <p>{c('La configuración de Codex no es compatible. Inicia sesión con tu cuenta de ChatGPT en la aplicación oficial y actualiza Codex si es necesario. Después vuelve a comprobar la conexión.', 'This Codex setup is not supported. Sign in with your ChatGPT account in the official application and update Codex if needed. Then check the connection again.')} <a href={INSTALL_URL} target="_blank" rel="noopener noreferrer">{c('Consultar las instrucciones oficiales', 'View official instructions')}</a></p>}
           {observed?.sessionState === 'UNAVAILABLE' && <p>{c('No pudimos consultar Codex en este equipo. Comprueba que esté instalado y vuelve a intentarlo.', 'We could not check Codex on this device. Check that it is installed and try again.')}</p>}
@@ -252,7 +268,7 @@ export function AiConnectionPanel({ visible = true, onConnectionChange }: { visi
           {!observed && !waitingId && <p>{c('Comprueba si Codex está instalado y qué cuenta tiene abierta en este equipo.', 'Check whether Codex is installed and which account is signed in on this device.')}</p>}
           {observed?.sessionState === 'SIGNED_IN' && <dl className={styles.account}>
             <div><dt>{c('Cuenta de Codex', 'Codex account')}</dt><dd>{observed.maskedIdentity || c('Sesión iniciada · identidad no disponible', 'Signed in · identity unavailable')}</dd></div>
-            {observed.plan && <div><dt>{c('Plan', 'Plan')}</dt><dd>{observed.plan}</dd></div>}
+            <div><dt>{c('Plan', 'Plan')}</dt><dd>{observed.plan ? planLabel(observed.plan, locale) : c('Actualiza la conexión para consultarlo', 'Refresh the connection to check')}</dd></div>
           </dl>}
           {waitingId ? <>
             <p>{c('Abre el enlace e inicia sesión. Esta página comprobará el resultado mientras permanezca abierta.', 'Open the link and sign in. This page will check the result while it remains open.')}</p>
@@ -265,9 +281,10 @@ export function AiConnectionPanel({ visible = true, onConnectionChange }: { visi
           </> : <div className={styles.actions}>
             {canAuthorize && <Button disabled={busy} onClick={() => void perform('authorize')}>{action === 'authorize' ? c('Conectando…', 'Connecting…') : c('Usar esta cuenta', 'Use this account')}</Button>}
             {observed?.sessionState === 'SIGNED_OUT' && <Button disabled={busy} onClick={() => void perform('login')}>{action === 'login' ? c('Preparando inicio de sesión…', 'Preparing sign-in…') : c('Iniciar sesión en Codex', 'Sign in to Codex')}</Button>}
-            <Button variant={observed ? 'secondary' : 'primary'} disabled={busy} onClick={() => void perform('inspect')}>{action === 'inspect' ? c('Comprobando Codex…', 'Checking Codex…') : c('Comprobar Codex', 'Check Codex')}</Button>
+            <Button variant={observed ? 'secondary' : 'primary'} disabled={busy} onClick={() => void perform('inspect')}>{action === 'inspect' ? c('Actualizando conexión…', 'Refreshing connection…') : observed ? c('Actualizar conexión', 'Refresh connection') : c('Comprobar Codex', 'Check Codex')}</Button>
             {state.connection?.authorized && <Button variant="quiet" disabled={busy} onClick={() => void perform('disconnect')}>{action === 'disconnect' ? c('Desconectando…', 'Disconnecting…') : c('Desconectar de Career Stack', 'Disconnect from Career Stack')}</Button>}
           </div>}
+          {observed && !waitingId && <p className={styles.hint}>{c('Actualizar conexión vuelve a consultar la cuenta abierta en Codex y su consumo. Úsalo si cambiaste de cuenta o quieres ver datos recientes.', 'Refresh connection checks the account signed in to Codex and its usage again. Use it after switching accounts or to see updated information.')}</p>}
           {!connected && <p className={styles.hint}>{c('Conectar la cuenta no envía tu perfil ni inicia tareas. Podrás revisar los datos antes de usar la IA; el análisis automático requiere una autorización aparte.', 'Connecting your account does not send your profile or start tasks. You can review the data before using AI; automatic analysis requires separate permission.')}</p>}
           {connected && <p className={styles.hint}>{c('Cada tarea puede consumir cuota de tu plan. Conectar la cuenta no activa el análisis automático ni envía solicitudes.', 'Each task may use your plan’s quota. Connecting the account does not turn on automatic analysis or submit applications.')}</p>}
         </div>

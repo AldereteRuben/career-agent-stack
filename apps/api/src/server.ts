@@ -398,7 +398,9 @@ app.post('/api/v1/applications', async (request, reply) => {
 app.get('/api/v1/applications/:id', async (request, reply) => {
   const id = workspace(request); const { id: applicationId } = request.params as { id: string };
   const row = (await db.select().from(applications).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
-  return row ?? fail(reply, 404, 'NOT_FOUND');
+  if (!row) return fail(reply, 404, 'NOT_FOUND');
+  const document = row.documentId ? (await db.select({ approvalStatus: documentVersions.approvalStatus }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.id, row.documentId))).limit(1))[0] : null;
+  return { ...row, documentApprovalStatus: document?.approvalStatus ?? null };
 });
 app.get('/api/v1/applications/:id/events', async (request, reply) => {
   const { id: applicationId } = request.params as { id: string }; const id = workspace(request);

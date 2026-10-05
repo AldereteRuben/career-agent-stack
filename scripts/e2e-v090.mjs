@@ -18,7 +18,7 @@ const checkedUrl = (value) => {
 const ui = checkedUrl(process.env.V090_UI_URL); const apiUrl = checkedUrl(process.env.V090_API_URL);
 assert.notEqual(ui.port, apiUrl.port);
 const artifacts = process.env.V090_ARTIFACTS ?? resolve('output/playwright/v090');
-const ids = { job: randomUUID(), fact: randomUUID(), question: randomUUID(), search: randomUUID(), observation: randomUUID(), connection: randomUUID() };
+const ids = { application: randomUUID(), document: randomUUID(), job: randomUUID(), fact: randomUUID(), question: randomUUID(), search: randomUUID(), observation: randomUUID(), connection: randomUUID() };
 const now = new Date().toISOString(); const future = () => new Date(Date.now() + 300_000).toISOString();
 const fact = { id: ids.fact, kind: 'experience', statement: 'Built a fictional booking website with accessible forms.', tags: ['design'], approvalStatus: 'USER_APPROVED' };
 const question = { id: ids.question, semanticKey: 'describe_your_relevant_work_experience', questionText: 'Describe your relevant work experience', jurisdiction: 'ES', questionScope: 'job_application', value: null, approvalStatus: 'UNANSWERED', strategy: 'ASK_USER', revision: 1 };
@@ -33,7 +33,7 @@ const outputFor = request => {
   if (request.operation === 'RESUME_DRAFT') return { ...common, proposals: [{ proposalKey: 'first', section: 'EXPERIENCE', text: 'Built accessible booking forms for a fictional website.', changeExplanation: 'Makes the supplied experience easier to read.', sourceFactIds: [ids.fact], warnings: [] }], warnings: [] };
   return { ...common, result: { status: 'DRAFT', text: 'I built a fictional booking website with accessible forms.', evidence: [{ factId: ids.fact }] } };
 };
-const state = { connected: false, observed: false, previewError: null, mode: 'success', startLost: false, startExpired: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
+const state = { documentApproval: 'PENDING_REVIEW', showSearches: false, connected: false, observed: false, previewError: null, mode: 'success', startLost: false, startExpired: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
 const observation = () => ({ id: ids.observation, sessionState: 'SIGNED_IN', version: '0.test', maskedIdentity: 'a***@example.test', plan: null, usage: null });
 const connectionState = () => ({ enabled: true, connection: state.connected ? { ...observation(), id: ids.connection, authorized: true } : null, observation: state.observed ? observation() : null });
 const response = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
@@ -50,7 +50,7 @@ const locale = async value => { if (!(await page.locator('html').getAttribute('l
 const overflow = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true, 'No horizontal page overflow');
 const screenshot = async name => {
   await page.evaluate(() => document.scrollingElement?.scrollTo(0, 0));
-  await page.screenshot({ path: join(artifacts, name), fullPage: true });
+  await page.screenshot({ path: join(artifacts, name), fullPage: true, animations: 'disabled' });
 };
 try {
   await mkdir(artifacts, { recursive: true });
@@ -67,11 +67,16 @@ try {
       if (method === 'PUT') { profile.profile = request.postDataJSON().profile; profile.revision++; ids.fact = randomUUID(); fact.id = ids.fact; }
       return response(route, profile);
     }
+    const application = { id: ids.application, documentId: ids.document, documentApprovalStatus: state.documentApproval, jobId: ids.job, company: job.company, role: job.title, location: job.location, canonicalUrl: job.canonicalUrl, state: 'REVIEW_REQUIRED', recruitmentStage: 'NOT_CONTACTED', shortlistDecision: 'UNREVIEWED', notes: '', updatedAt: now, version: 1 };
+    if (path === '/applications') return response(route, { items: [application], total: 1, offset: 0, limit: 25 });
+    if (path === `/applications/${ids.application}`) return response(route, application);
+    if (path === `/applications/${ids.application}/events` || path === '/preparations') return response(route, []);
+    if (path === `/applications/${ids.application}/assist`) return response(route, { supported: false, url: job.canonicalUrl, identity: { fullName: 'Alex Example', email: 'alex@example.test' }, application, documents: [], attempts: [] });
     if (path === '/documents') return response(route, []);
     if (path === '/jobs') return response(route, [job]);
     if (path === `/jobs/${ids.job}`) return response(route, { job, snapshots: [{ id: randomUUID(), title: job.title, descriptionText: posting, fetchedAt: now }], sources: [], applications: [] });
-    if (path === '/job-searches' && method === 'GET') return response(route, { searches: [], coverage: {} });
-    if (path.startsWith('/job-searches') && method === 'GET') return response(route, { items: [], total: 0 });
+    if (path === '/job-searches' && method === 'GET') return response(route, { searches: state.showSearches ? [ids.search, ids.question].map(id => ({ id, role: 'QA', company: null, location: 'Spain', workMode: 'remote', frequencyHours: 24, enabled: true, autoPrepare: false, language: 'en', revision: 1, matcherVersion: 2, providerIds: ['remotive'], includeRelated: false, lastRunAt: now, nextRunAt: new Date(Date.now() + 86400000).toISOString(), lastRunStatus: 'SUCCEEDED', lastResultCount: 1, lastNewCount: 1, lastError: null, latestRun: { id: 'run', status: 'SUCCEEDED', finishedAt: now, error: null, sources: [{ provider: 'remotive', status: 'FRESH', coverage: 'COMPLETE', fetchedAt: now, error: null }] } })) : [], coverage: {} });
+    if (path.startsWith('/job-searches') && method === 'GET') return response(route, { items: state.showSearches ? [{ ...job, aiSummaryStates: { en: 'SAVED', es: 'RUNNING' }, matchedAt: now, sources: [] }] : [], total: state.showSearches ? 1 : 0 });
     if (path === '/job-searches' && method === 'POST') { state.searchSaves.push(request.postDataJSON()); return response(route, { error: 'TEST_SAVE_NOT_ALLOWED' }, 409); }
     if (path === '/answers' && method === 'POST') { state.questionSaves.push(request.postDataJSON()); return response(route, { id: randomUUID() }, 201); }
     if (path.endsWith('/approve') && path.startsWith('/answers/')) return response(route, { ok: true });
@@ -124,14 +129,14 @@ try {
   console.log('✓ Explicit account inspection and connection; no task starts');
 
   await goto('/searches');
-  await page.getByText('Describe what I want with AI help · optional', { exact: true }).click();
+  await page.getByRole('button', { name: 'Describe with Codex', exact: true }).click();
   await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).fill('Product Designer in Spain, remote, four days a week');
   await goto('/settings'); await goto('/searches');
   await visible(page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }));
   assert.equal(await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).inputValue(), 'Product Designer in Spain, remote, four days a week');
   console.log('✓ Natural-language search and disclosure survive Settings navigation');
   state.previewError = 'AI_NOT_CONNECTED';
-  await page.getByRole('button', { name: /Codex/ }).last().click();
+  await click('Prepare filters with Codex');
   await click('Check the connection here'); await visible(page.getByRole('button', { name: 'Disconnect from Career Stack', exact: true }));
   assert.match(await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).inputValue(), /four days/);
   await click('Review my task’s data again');
@@ -269,7 +274,7 @@ try {
     for (const width of [360, 768, 1096, 1440, 720]) {
       await page.setViewportSize({ width, height: width === 720 ? 450 : 900 });
       await overflow();
-      const check = page.getByRole('button', { name: language === 'es' ? 'Comprobar Codex' : 'Check Codex', exact: true });
+      const check = page.getByRole('button', { name: language === 'es' ? 'Actualizar conexión' : 'Refresh connection', exact: true });
       await check.focus(); await page.keyboard.press('Tab');
       assert.equal(await page.evaluate(() => document.activeElement?.tagName === 'BUTTON'), true, 'Keyboard can reach the next account action');
       const box = await page.locator(':focus').boundingBox(); assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, 'Focused action fits the viewport');
@@ -304,6 +309,58 @@ try {
   await visible(page.getByText('Historial borrado: 2 tareas, 1 propuestas y 0 registros de consumo.', { exact: true }));
   assert.equal(state.historyClears, 1, 'Only explicit deletion submits the reviewed preview');
   console.log('✓ Local history cleanup preview and explicit confirm work while disconnected (mock only)');
+
+  // v0.9.2: contextual assistance, one form, inline connection and compact results.
+  state.showSearches = true; state.connected = true; state.observed = true;
+  await page.close(); page = await context.newPage(); page.setDefaultTimeout(15000);
+  page.on('pageerror', error => failures.push(error.message));
+  await goto('/searches'); await locale('en');
+  await visible(page.getByRole('link', { name: 'View saved summary', exact: true }));
+  const scopes = page.getByRole('group', { name: 'Your searches', exact: true });
+  assert.notEqual(await scopes.getByRole('button').nth(1).innerText(), await scopes.getByRole('button').nth(2).innerText(), 'Duplicate search labels are distinguishable');
+  assert.equal(await page.getByRole('link', { name: 'Understand a job with Codex', exact: true }).count(), 0, 'No arbitrary first-job shortcut');
+  await page.setViewportSize({ width: 390, height: 844 }); await overflow();
+  await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);
+  const bounds = await page.locator('#search-results').evaluate(el => ({ width: el.getBoundingClientRect().width, right: el.getBoundingClientRect().right, viewport: innerWidth }));
+  assert.ok(bounds.right <= bounds.viewport, `Results must fit the viewport, not be clipped: ${JSON.stringify(bounds)}`);
+  assert.deepEqual(await page.locator('#search-results > *').evaluateAll(nodes => nodes.filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => el.className)), [], 'Every results panel fits without hidden clipping');
+  assert.ok(await page.locator('#search-result-list').evaluate(el => el.getBoundingClientRect().top < 1050), 'Jobs remain close to the first mobile screen');
+  await screenshot('v092-results-mobile.png');
+  const startsBefore = state.starts.length;
+  await page.getByRole('link', { name: 'View saved summary', exact: true }).click();
+  await visible(page.locator('#job-ai-assistance'));
+  await page.waitForFunction(() => document.activeElement?.id === 'job-ai-assistance');
+  await page.waitForFunction(() => { const y = document.getElementById('job-ai-assistance')?.getBoundingClientRect().top; return y !== undefined && y >= 0 && y < 200; });
+  assert.equal(state.starts.length, startsBefore, 'Opening a summary never starts inference');
+  await goto('/searches');
+  await page.getByText(/Codex help and automatic summaries · Connected/, { exact: true }).click();
+  await page.getByText('Enable automatic summaries', { exact: true }).click();
+  await page.getByRole('link', { name: `${job.title} · ${job.company}`, exact: true }).click();
+  await visible(page.getByText(/Step 1: request and read this summary/));
+  assert.equal(state.starts.length, startsBefore, 'Opening automatic setup does not authorize a task');
+  await goto('/searches'); await click('New search'); await click('Describe with Codex');
+  const requestBox = page.getByRole('textbox', { name: 'What job would you like to find?', exact: true });
+  await requestBox.fill('QA in Spain');
+  assert.equal(await page.getByLabel('Role or keywords', { exact: true }).count(), 0, 'Only the AI form is visible');
+  await click('Choose filters'); assert.equal(await requestBox.count(), 0);
+  await click('Describe with Codex'); assert.equal(await requestBox.inputValue(), 'QA in Spain', 'Mode switches preserve the request');
+  state.connected = false; state.observed = false;
+  await goto('/settings'); await goto('/searches');
+  await click('Connect Codex here'); await click('Check Codex'); await click('Use this account');
+  await visible(page.getByText('Account ready. Continue with your request below; you will review the data before sharing it.', { exact: true }));
+  assert.equal(await requestBox.inputValue(), 'QA in Spain'); assert.equal(new URL(page.url()).pathname, '/searches');
+  assert.equal(state.starts.length, startsBefore, 'Inline connection does not consume quota');
+  await locale('es'); await visible(page.getByRole('button', { name: 'Elegir filtros', exact: true })); await overflow();
+  await screenshot('v092-inline-connection-es.png');
+  await goto(`/applications?id=${ids.application}`);
+  const resume = page.locator('.application-resume');
+  await visible(resume.getByRole('link', { name: 'Revisar CV pendiente', exact: true }));
+  assert.ok((await resume.getByRole('link', { name: 'Descargar CV elegido', exact: true }).getAttribute('class')).includes('button-quiet'));
+  await overflow(); await screenshot('v092-pending-cv-es.png');
+  state.documentApproval = 'USER_APPROVED'; await page.reload(); await locale('en');
+  await visible(resume.getByText('You reviewed this resume. Download it to continue on the employer’s page.', { exact: true }));
+  assert.equal(await resume.getByRole('link', { name: 'Download selected resume', exact: true }).getAttribute('class'), 'button ');
+  console.log('✓ v0.9.2 single search entry, duplicate labels, mobile density, exact-job anchor, automatic setup and inline connection');
   assert.deepEqual(unmatched, [], 'Every non-session API must be intercepted'); assert.deepEqual(failures, [], 'No browser errors');
   console.log('✓ ES/EN and 390px mobile layouts; no unexpected API calls or browser errors');
 } catch (error) {

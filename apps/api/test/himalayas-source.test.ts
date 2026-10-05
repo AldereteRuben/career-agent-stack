@@ -213,3 +213,14 @@ test('maps invalid JSON, network errors, and request aborts to provider read err
     fetch: async (_input, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))),
   }), (error: unknown) => error instanceof ProviderReadError && error.code === 'SOURCE_TIMEOUT');
 });
+
+
+test('accepts provider timestamps in seconds, milliseconds and ISO without changing the date', async () => {
+  for (const stamp of [updatedAt / 1000, updatedAt, new Date(updatedAt).toISOString()]) {
+    const result = await readHimalayasSearch({ role: 'Designer', company: null, location: null }, {
+      fetch: async () => response(page([job({ pubDate: stamp })], { updatedAt: stamp })),
+    });
+    assert.equal(result.sourceUpdatedAt, new Date(updatedAt).toISOString());
+    assert.equal(result.jobs[0]?.postedAt, new Date(updatedAt).toISOString());
+  }
+});

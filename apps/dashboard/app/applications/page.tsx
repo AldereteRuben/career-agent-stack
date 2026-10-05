@@ -22,7 +22,7 @@ import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
 import type { Locale } from '@/lib/locale';
 
-type Application = { documentId: string | null; id: string; jobId: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; updatedAt: string; version: number };
+type Application = { documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; updatedAt: string; version: number };
 type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null };
 type Patch = { state?: string; recruitmentStage?: string; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
 
@@ -166,7 +166,7 @@ function ApplicationsView() {
     try {
       const updated = await api<Application>(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ ...patch, expectedVersion: selected.version }) });
       setRows((current) => current.map((row) => row.id === updated.id ? updated : row));
-      if (selectedRef.current === id) setDetail({ id, data: updated, status: 'ready' });
+      if (selectedRef.current === id) { setDetail({ id, data: { ...updated, documentApprovalStatus: updated.documentId === selected.documentId ? selected.documentApprovalStatus : null }, status: 'ready' }); void loadSelected(id); }
       setMessage(success);
       if (selectedRef.current === id) void loadEvents(id);
       return true;
@@ -240,7 +240,14 @@ function ApplicationsView() {
           </div><Tag tone={stateTone(selected.state)}>{labelFor.applicationState(selected.state, locale)}</Tag></div>
           {!isApplicationClosedForPreparation(selected) && <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application" returnTo={returnTo}/>}
           {canAutoPrepare && selected.jobId && <ApplicationPreparationAction key={`prepare:${selected.id}`} jobId={selected.jobId} applicationId={selected.id} returnTo={returnTo} disabled={busy !== null}/>}
-          {!canAutoPrepare && <div className="application-resume"><h3>{c('CV para esta solicitud', 'Resume for this application')}</h3>{selected.documentId ? <><p>{c('El CV elegido está vinculado a esta solicitud. Descargarlo no lo envía a la empresa.', 'The selected resume is linked to this application. Downloading it does not send it to the employer.')}</p><a className="button button-secondary" href={`/api/v1/documents/${selected.documentId}/file`}>{c('Descargar CV elegido', 'Download selected resume')}</a></> : <p>{c('Todavía no has elegido un CV para esta solicitud.', 'You have not selected a resume for this application yet.')}</p>}{!isApplicationClosedForPreparation(selected) && <Link className="button button-quiet" href={withSearchOrigin(resumeHref(selected), returnTo)}>{selected.documentId ? c('Revisar o cambiar CV', 'Review or change resume') : c('Preparar o elegir CV', 'Prepare or choose resume')}</Link>}</div>}
+          {!canAutoPrepare && <div className="application-resume"><h3>{c('CV para esta solicitud', 'Resume for this application')}</h3>
+            {selected.documentId ? <><Tag tone={selected.documentApprovalStatus === 'USER_APPROVED' ? 'green' : 'amber'}>{selected.documentApprovalStatus ? labelFor.documentApproval(selected.documentApprovalStatus, locale) : c('Comprueba este CV antes de usarlo', 'Check this resume before using it')}</Tag><p>{selected.documentApprovalStatus === 'USER_APPROVED' ? c('Ya revisaste este CV. Puedes descargarlo para continuar en la página de la empresa.', 'You reviewed this resume. Download it to continue on the employer’s page.') : c('Este CV necesita tu revisión antes de usarlo en la solicitud.', 'This resume needs your review before you use it for the application.')}</p></> : <p>{c('Todavía no has elegido un CV para esta solicitud.', 'You have not selected a resume for this application yet.')}</p>}
+            <div className="button-row">
+              {!isApplicationClosedForPreparation(selected) && <Link className={`button ${selected.documentApprovalStatus === 'USER_APPROVED' ? 'button-secondary' : ''}`} href={withSearchOrigin(resumeHref(selected), returnTo)}>{selected.documentId ? selected.documentApprovalStatus === 'USER_APPROVED' ? c('Revisar o cambiar CV', 'Review or change resume') : c('Revisar CV pendiente', 'Review pending resume') : c('Preparar o elegir CV', 'Prepare or choose resume')}</Link>}
+              {selected.documentId && <a className={`button ${selected.documentApprovalStatus === 'USER_APPROVED' ? '' : 'button-quiet'}`} href={`/api/v1/documents/${selected.documentId}/file`}>{c('Descargar CV elegido', 'Download selected resume')}</a>}
+            </div>
+          </div>}
+
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
           <div className="tracker-controls">

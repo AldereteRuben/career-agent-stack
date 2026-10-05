@@ -7,6 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { localizedError, useLocale, type Locale } from '@/lib/i18n';
 import { copy, labelFor } from '@/lib/labels';
 import { AiResultView, type AiArtifact, type AiPreviewSources } from './result-view';
+import { useLocalRefresh } from '@/lib/local-refresh';
 import { AiConnectionPanel } from './connection';
 import styles from './draft-action.module.css';
 
@@ -69,19 +70,23 @@ function draftError(code: string, locale: Locale): string {
 const needsSettings = (code: string | null | undefined) => !!code && ['NOT_CONNECTED', 'AI_NOT_CONNECTED', 'AI_UNAVAILABLE', 'AI_DISABLED', 'ACCOUNT_CHANGED', 'AI_ACCOUNT_CHANGED', 'AI_CONSENT_INVALID', 'UNSUPPORTED_VERSION', 'PROVIDER_LIMIT_REACHED'].includes(code);
 
 /** Local capability read only; it never inspects a provider account or starts an AI task. */
-export function useAiAvailable() {
+export function useAiStatus() {
   const [available, setAvailable] = useState(false);
+  const [failed, setFailed] = useState(false); const [revision, setRevision] = useState(0);
+  const retry = () => setRevision(value => value + 1);
+  useLocalRefresh(async () => { retry(); });
   useEffect(() => {
     const controller = new AbortController();
     void api<{ available: string[] }>('/capabilities', { signal: controller.signal }).then(result => {
-      if (!controller.signal.aborted) setAvailable(result.available.includes('ai-processing'));
-    }).catch(() => { /* Optional assistance stays hidden when capability status cannot be read. */ });
+      if (!controller.signal.aborted) { setAvailable(result.available.includes('ai-processing')); setFailed(false); }
+    }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
-  }, []);
-  return available;
+  }, [revision]);
+  return { available, failed, retry };
 }
+export function useAiAvailable() { return useAiStatus().available; }
 
-export function AiDraftAction({ request, label, onReview, renderResultActions, visible = true }: { request: AiDraftRequest; label: string; onReview?: (artifact: AiArtifact) => void; renderResultActions?: (artifact: AiArtifact, runId: string) => ReactNode; visible?: boolean }) {
+export function AiDraftAction({ request, label, onReview, renderResultActions, visible = true, initiallyOpen = false }: { request: AiDraftRequest; label: string; onReview?: (artifact: AiArtifact) => void; renderResultActions?: (artifact: AiArtifact, runId: string) => ReactNode; visible?: boolean; initiallyOpen?: boolean }) {
   const { locale } = useLocale();
   const c = copy(locale);
   const regionId = useId();
@@ -91,7 +96,8 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
   const workRef = useRef<Work>(null);
   const generation = useRef(0);
   const startRequest = useRef<RunRequest | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
+  useEffect(() => { if (initiallyOpen) setOpen(true); }, [initiallyOpen]);
   const [work, setWork] = useState<Work>(null);
   const [preview, setPreview] = useState<StoredPreview | null>(null);
   const [remember, setRemember] = useState(false);

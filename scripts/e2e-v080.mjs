@@ -222,8 +222,8 @@ try {
   await page.getByRole('button', { name: /Gestionar búsquedas \(4\)|Manage searches \(4\)/ }).waitFor();
   await page.getByRole('link', { name: /Product Designer/ }).waitFor();
   await page.getByText(/Checking job portals now|Consultando los portales ahora/).waitFor();
-  await page.getByText(/Details by portal|Detalles por portal/, { exact: true }).click();
-  await page.getByText(/Complete response|Respuesta completa/).first().waitFor();
+  await page.locator('section[aria-label] details > summary').filter({ hasText: /see what happened|ver qué pasó|Results have limits|Resultados con límites|How it works and portal details|Cómo funciona y detalles por portal/ }).first().click();
+  await page.getByText(/Full response read|Se leyó la respuesta completa/).first().waitFor();
   await page.getByText(/Can be checked again|Puede volver a consultarse/).waitFor();
   const appLink = page.locator('a[href^="/applications?id="]').first();
   await appLink.waitFor();

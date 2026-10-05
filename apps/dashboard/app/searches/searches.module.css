@@ -118,3 +118,27 @@
 .moreOptions > summary::-webkit-details-marker { display: none; }
 .moreOptions > summary { list-style: none; }
 .moreOptions > summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+
+.aiHelp { display: grid; gap: 8px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); overflow-wrap: anywhere; }
+.aiHelp p { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.aiHelp .actions { margin-top: 4px; }
+
+/* Keep guidance secondary to jobs; only one creation method is shown at a time. */
+.aiHelp { padding: 10px 14px; }
+.aiHelp > summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; font-size: .9rem; }
+.aiHelp[open] > summary { margin-bottom: 10px; }
+.aiHelp ul, .aiHelp ol { margin: 0; padding-inline-start: 22px; }
+.aiHelp li + li { margin-top: 8px; }
+.aiHelp a { color: var(--blue-dark); }
+.entryModes { display: flex; flex-wrap: wrap; gap: 8px; }
+.entryModes [aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); color: var(--blue-dark); }
+.scopeChoices small { display: block; font-weight: 400; font-size: .75rem; color: var(--muted); }
+@media (max-width: 620px) {
+  .scopeChoices { flex-wrap: nowrap; overflow-x: auto; padding: 3px; }
+  .scopeChoices button { flex: 0 0 auto; max-width: 260px; }
+  .scopeField { width: 100%; }
+  .scopeBar { gap: 4px; }
+}
+
+.results, .scopeField, .aiHelp { grid-template-columns: minmax(0, 1fr); }
+.resultsHead, .sortControl { min-width: 0; max-width: 100%; }

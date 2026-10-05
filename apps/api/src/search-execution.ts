@@ -38,7 +38,9 @@ async function himalayasFeed(criteria: SearchCriteria): Promise<Feed> {
   const company = normalizeText(criteria.company);
   const location = normalizeHimalayasCountry(criteria.location);
   const query = { role, company, location };
-  const key = createHash('sha256').update(JSON.stringify({ q: [role,company].filter(Boolean).join(' '), country: location })).digest('hex');
+  // Version the reader cache after fixing Unix-second timestamps. Old parse failures
+  // must not prevent a corrected read; host rate limits and daily budgets still apply.
+  const key = createHash('sha256').update(JSON.stringify({ format: 2, q: [role,company].filter(Boolean).join(' '), country: location })).digest('hex');
   const client = await pool.connect(); let locked = false;
   try {
     // A single host lock bounds requests across every search and query cache.

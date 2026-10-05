@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { lockJobIdentity } from './job-identity.js';
 import { effectiveSeenAtSql, isNewJobSql, markJobReviewed, reviewedJobsCte, sameVacancySql } from './review-state.js';
 type Source = {provider:string;name?:string;url:string;postedAt:string|null;fetchedAt?:string|null};
-type ResultRow = {job:{id:string;title:string;company:string;location:string|null;canonical_url:string|null;availability:string;shortlist_decision:string};archived:boolean;saved:boolean;seen_at:string|null;matched_at:string;search_ids:string[];group_id:string;duplicate_count:number;identity_conflict:boolean;score:number;reasons:string[];location_status:string;unknown_location:boolean;source_lists:Source[][];autoPreparedAt:string|null;autoPrepareError:string|null;applicationId:string|null;documentId:string|null;applicationState:string|null;documentApprovalStatus:string|null};
+type ResultRow = {aiSummaryStates?: Record<string,string>;job:{id:string;title:string;company:string;location:string|null;canonical_url:string|null;availability:string;shortlist_decision:string};archived:boolean;saved:boolean;seen_at:string|null;matched_at:string;search_ids:string[];group_id:string;duplicate_count:number;identity_conflict:boolean;score:number;reasons:string[];location_status:string;unknown_location:boolean;source_lists:Source[][];autoPreparedAt:string|null;autoPrepareError:string|null;applicationId:string|null;documentId:string|null;applicationState:string|null;documentApprovalStatus:string|null};
 export type ResultQuery = { limit?: string; offset?: string; view?: string; sort?: string };
 import { latestSearchRun } from './search-execution.js';
 
@@ -71,14 +71,25 @@ export async function searchResults(workspaceId: string, searchId: string | null
       WHEN 'new' THEN seen_at IS NULL AND NOT archived AND NOT saved AND NOT skipped ELSE NOT archived END
   ), page AS MATERIALIZED (SELECT * FROM filtered ORDER BY ${order},group_id LIMIT $4 OFFSET $5)
   SELECT (SELECT count(*)::int FROM filtered) AS total,
-    coalesce((SELECT jsonb_agg(to_jsonb(page)||jsonb_build_object('job',to_jsonb(j),'autoPreparedAt',m.auto_prepared_at,'autoPrepareError',m.auto_prepare_error,'applicationId',a.id,'documentId',a.document_id,'applicationState',a.state,'documentApprovalStatus',a.approval_status) ORDER BY ${order},group_id)
+    coalesce((SELECT jsonb_agg(to_jsonb(page)||jsonb_build_object('job',to_jsonb(j),'autoPreparedAt',m.auto_prepared_at,'autoPrepareError',m.auto_prepare_error,'applicationId',a.id,'documentId',a.document_id,'applicationState',a.state,'documentApprovalStatus',a.approval_status,'aiSummaryStates',ai.states) ORDER BY ${order},group_id)
       FROM page JOIN jobs j ON j.id=page.job_id AND j.workspace_id=$1 LEFT JOIN LATERAL (
         SELECT auto_prepared_at,auto_prepare_error FROM saved_job_search_matches WHERE workspace_id=$1 AND job_id=page.job_id ORDER BY auto_prepared_at DESC NULLS LAST LIMIT 1
        ) m ON true LEFT JOIN LATERAL (
         SELECT a.id,a.document_id,a.state,d.approval_status FROM applications a LEFT JOIN document_versions d ON d.workspace_id=a.workspace_id AND d.id=a.document_id
         WHERE a.workspace_id=$1 AND (a.job_id=page.job_id OR a.job_id IN(SELECT im.job_id FROM job_identity_members im WHERE im.workspace_id=$1 AND im.identity_key=page.group_id))
         ORDER BY a.updated_at DESC,a.id LIMIT 1
-      ) a ON true),'[]'::jsonb) AS items,
+      ) a ON true LEFT JOIN LATERAL (
+        SELECT jsonb_object_agg(locale,summary_state) AS states FROM (
+          SELECT DISTINCT ON(r.snapshot->>'locale') r.snapshot->>'locale' AS locale,
+            CASE WHEN r.status IN ('QUEUED','RUNNING','CANCEL_REQUESTED') THEN r.status
+              WHEN r.status='SUCCEEDED' AND artifact.state IS NOT NULL AND artifact.state<>'DISMISSED' THEN 'SAVED'
+              ELSE r.status END AS summary_state
+          FROM ai_runs r LEFT JOIN ai_artifacts artifact ON artifact.workspace_id=r.workspace_id AND artifact.run_id=r.id
+          WHERE r.workspace_id=$1 AND r.operation='JOB_ANALYSIS' AND r.snapshot->'job'->>'jobId'=page.job_id::text
+            AND r.snapshot->>'locale' IN ('es','en')
+          ORDER BY r.snapshot->>'locale',r.created_at DESC,r.id DESC
+        ) recent
+      ) ai ON true),'[]'::jsonb) AS items,
     (SELECT md5(coalesce(string_agg(run_id::text,',' ORDER BY search_id),'')) FROM latest)||':'||(SELECT count(*)::text FROM matches)||':'||(SELECT count(*) FILTER(WHERE seen_at IS NOT NULL)||':'||count(*) FILTER(WHERE archived OR saved OR skipped) FROM grouped) AS version`, [workspaceId,searchId,view,limit,offset]);
   const result = rows[0];
   return { total: result.total, resultVersion: result.version ?? 'legacy', latestRun: searchId ? await latestSearchRun(workspaceId,searchId) : null,
@@ -89,7 +100,7 @@ export async function searchResults(workspaceId: string, searchId: string | null
         shortlistDecision:r.archived ? 'ARCHIVED' : r.saved ? 'SHORTLISTED' : j.shortlist_decision,
         seenAt:r.seen_at,matchedAt:r.matched_at,searchIds:r.search_ids,groupId:r.group_id,duplicateCount:r.duplicate_count,identityConflict:r.identity_conflict,
         searchScore:r.score,searchReasons:r.reasons,locationStatus:r.location_status,unknownLocation:r.unknown_location,
-        sources:[...sources.values()],autoPreparedAt:r.autoPreparedAt,autoPrepareError:r.autoPrepareError,applicationId:r.applicationId,documentId:r.documentId,applicationState:r.applicationState,documentApprovalStatus:r.documentApprovalStatus };
+        aiSummaryStates:r.aiSummaryStates ?? {},sources:[...sources.values()],autoPreparedAt:r.autoPreparedAt,autoPrepareError:r.autoPrepareError,applicationId:r.applicationId,documentId:r.documentId,applicationState:r.applicationState,documentApprovalStatus:r.documentApprovalStatus };
     }) };
 }
 

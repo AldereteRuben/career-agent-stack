@@ -10,7 +10,7 @@ export type HimalayasSearchOptions = { fetch?: typeof fetch; maxPages?: number; 
 export type HimalayasSearchResult = { jobs: PublicJob[]; coverage: 'COMPLETE' | 'BOUNDED' | 'PARTIAL'; requests: number; sourceUpdatedAt?: string; retryAt?: number };
 
 type HimalayasJob = Record<string, unknown>;
-type HimalayasPage = { jobs: HimalayasJob[]; updatedAt: number; totalCount: number; limit: number };
+type HimalayasPage = { jobs: HimalayasJob[]; updatedAt: string; totalCount: number; limit: number };
 
 const clean = (value: string | null): string | null => {
   const result = value?.trim();
@@ -19,8 +19,13 @@ const clean = (value: string | null): string | null => {
 
 function validTimestamp(value: unknown, futureToleranceMs = 24 * 60 * 60 * 1000): string | null {
   const earliest = Date.UTC(2000, 0, 1);
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < earliest || value > Date.now() + futureToleranceMs) return null;
-  const date = new Date(value);
+  // The public feed uses Unix seconds; older responses used milliseconds.
+  // Accept the ISO timestamps documented by the provider as well.
+  const milliseconds = typeof value === 'number' && Number.isSafeInteger(value)
+    ? (value >= earliest / 1000 && value < earliest ? value * 1000 : value)
+    : typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? Date.parse(value) : NaN;
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < earliest || milliseconds > Date.now() + futureToleranceMs) return null;
+  const date = new Date(milliseconds);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
@@ -56,12 +61,13 @@ function requiredText(value: unknown): value is string {
 function parsePage(payload: unknown): HimalayasPage {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new ProviderReadError('SOURCE_INVALID_RESPONSE');
   const root = payload as Record<string, unknown>;
+  const updatedAt = validTimestamp(root.updatedAt);
   if (!Array.isArray(root.jobs) || !Number.isSafeInteger(root.totalCount) || (root.totalCount as number) < 0 ||
       !Number.isSafeInteger(root.limit) || (root.limit as number) < 1 || (root.limit as number) > 100 ||
-      typeof root.updatedAt !== 'number' || !Number.isSafeInteger(root.updatedAt) || !validTimestamp(root.updatedAt)) {
+      !updatedAt) {
     throw new ProviderReadError('SOURCE_INVALID_RESPONSE');
   }
-  return { jobs: root.jobs as HimalayasJob[], updatedAt: root.updatedAt, totalCount: root.totalCount as number, limit: root.limit as number };
+  return { jobs: root.jobs as HimalayasJob[], updatedAt: updatedAt!, totalCount: root.totalCount as number, limit: root.limit as number };
 }
 
 function isPublicWebHost(hostname: string): boolean {
@@ -88,7 +94,7 @@ function normalizeJob(job: HimalayasJob): PublicJob {
   const title = requiredText(job.title) ? job.title.trim().slice(0, 300) : null;
   const company = requiredText(job.companyName) ? job.companyName.trim().slice(0, 200) : null;
   const url = safeApplicationUrl(job.applicationLink);
-  if (!title || !company || !url || !requiredText(job.guid) || job.guid.length > 300 || typeof job.pubDate !== 'number') {
+  if (!title || !company || !url || !requiredText(job.guid) || job.guid.length > 300 || (typeof job.pubDate !== 'number' && !validTimestamp(job.pubDate))) {
     throw new ProviderReadError('SOURCE_INVALID_RESPONSE');
   }
   const restrictions = job.locationRestrictions;
@@ -110,7 +116,7 @@ function normalizeJob(job: HimalayasJob): PublicJob {
     location: countries.length ? countries.join(', ') : 'Worldwide',
     workMode: 'remote',
     url,
-    postedAt: typeof job.pubDate === 'number' ? validTimestamp(job.pubDate) : null,
+    postedAt: validTimestamp(job.pubDate),
     description,
     raw,
   };

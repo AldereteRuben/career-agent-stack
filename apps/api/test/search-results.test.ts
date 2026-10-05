@@ -146,6 +146,28 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     console.info(`Synthetic first grouped result query without manual ANALYZE: ${firstGroupQueryMs.toFixed(1)}ms`);
   });
 
+  test('job summary badges stay scoped to the job and language, and dismissed artifacts are not ready', async () => {
+    activeWorkspace = workspace;
+    const result = await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all`);
+    const jobId = result.json().items[0].id;
+    const connection = (await client.query(`INSERT INTO ai_connections(workspace_id,provider,account_fingerprint,state) VALUES($1,'codex',$2,'UNAVAILABLE') RETURNING id`, [workspace, 'a'.repeat(64)])).rows[0].id;
+    const consent = (await client.query(`INSERT INTO ai_consents(workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,notice_version) VALUES($1,$2,'codex',$3,1,1,'JOB_ANALYSIS','[]','test') RETURNING id`, [workspace,connection,'a'.repeat(64)])).rows[0].id;
+    for (const locale of ['es','en']) {
+      const run = (await client.query(`INSERT INTO ai_runs(workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,reserved_day)
+        VALUES($1,$2,$3,'codex',1,1,$4,'JOB_ANALYSIS','MANUAL',$5,$6,$4,$4,$7,$4,'{}',CURRENT_DATE) RETURNING id`, [workspace,connection,consent,'a'.repeat(64),locale === 'es' ? 'QUEUED' : 'SUCCEEDED',randomUUID(),JSON.stringify({locale,job:{jobId}})])).rows[0].id;
+      if (locale === 'en') await client.query(`INSERT INTO ai_artifacts(workspace_id,run_id,schema_version,prompt_version,locale,output,sources) VALUES($1,$2,1,'test','en','{}','{}')`, [workspace,run]);
+    }
+    const read = async () => (await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all`)).json().items;
+    const items = await read();
+    assert.deepEqual(items.find((item: {id:string}) => item.id === jobId).aiSummaryStates, {es:'QUEUED',en:'SAVED'});
+    assert.ok(items.filter((item: {id:string}) => item.id !== jobId).every((item: {aiSummaryStates:object}) => Object.keys(item.aiSummaryStates).length === 0));
+    await client.query(`UPDATE ai_artifacts SET state='DISMISSED' WHERE workspace_id=$1`,[workspace]);
+    assert.notEqual((await read()).find((item: {id:string}) => item.id === jobId).aiSummaryStates.en,'SAVED');
+    await client.query('DELETE FROM ai_runs WHERE workspace_id=$1',[workspace]);
+    await client.query('DELETE FROM ai_consents WHERE workspace_id=$1',[workspace]);
+    await client.query('DELETE FROM ai_connections WHERE workspace_id=$1',[workspace]);
+  });
+
   test('ranking pagination is stable and bounded to the requested page', async () => {
     activeWorkspace = performanceWorkspace;
     const first = await app.inject(`/api/v1/job-searches/${resultSearch}/results?view=all&limit=20&offset=0`);

@@ -95,8 +95,8 @@ export async function checkSearchUsability({ browser, uiUrl, cookies, artifacts 
     await page.locator('#search-result-list details summary').first().click();
     await page.getByRole('button', { name: 'Marcar como revisada', exact: true }).click();
     await page.getByRole('heading', { name: 'No hay ofertas nuevas por revisar', exact: true }).waitFor();
-    await scopes.getByRole('button', { name: 'QA Engineer', exact: true }).waitFor();
-    await scopes.getByRole('button', { name: 'SDET', exact: true }).waitFor();
+    await scopes.getByRole('button', { name: /^QA Engineer / }).waitFor();
+    await scopes.getByRole('button', { name: /^SDET / }).waitFor();
     await scopes.getByRole('button', { name: 'Todas mis búsquedas', exact: true }).waitFor();
     assert.equal(reviews, 1, 'One review updates every visible counter without waiting for polling');
     assert.deepEqual(errors, []);

@@ -28,6 +28,7 @@ export default function JobDetailPage() {
   const [data, setData] = useState<Detail | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
   const aiAvailable = useAiAvailable();
+  const [helpRequested, setHelpRequested] = useState(false);
   const reviewContinuation = useRef<HTMLAnchorElement>(null); const focusAfterReview = useRef(false);
   const loadVersion = useRef(0);
   const load = useCallback(async () => {
@@ -56,6 +57,19 @@ export default function JobDetailPage() {
   useEffect(() => {
     if (job?.seenAt && focusAfterReview.current) { focusAfterReview.current = false; reviewContinuation.current?.focus({ preventScroll: true }); }
   }, [job?.seenAt]);
+  const helpFrame = useRef<number | null>(null);
+  const focusHelp = useCallback((node: HTMLHeadingElement | null) => {
+    if (helpFrame.current !== null) cancelAnimationFrame(helpFrame.current);
+    if (!node || window.location.hash !== '#job-ai-assistance') return;
+    helpFrame.current = requestAnimationFrame(() => {
+      setHelpRequested(true); node.focus({ preventScroll: true }); node.scrollIntoView({ block: 'start', behavior: 'instant' });
+    });
+  }, []);
+  useEffect(() => {
+    const followHash = () => focusHelp(document.getElementById('job-ai-assistance') as HTMLHeadingElement | null);
+    window.addEventListener('hashchange', followHash);
+    return () => { window.removeEventListener('hashchange', followHash); if (helpFrame.current !== null) cancelAnimationFrame(helpFrame.current); };
+  }, [focusHelp]);
   const markReviewed = async (trigger: HTMLButtonElement) => {
     if (!job || busy) return;
     // A late initial read must never replace the result of this mutation.
@@ -114,7 +128,7 @@ export default function JobDetailPage() {
       {Boolean(data?.searchSources?.length) && <div className="job-detail-meta"><p>{c('Publicada en el portal de empleo ', 'Published on the job site ')}{data?.searchSources?.map((item, index) => <span key={item.url}>{index ? ' · ' : ''}<a href={item.url} target="_blank" rel="noopener noreferrer">{item.provider === 'remotive' ? 'Remotive' : item.provider === 'himalayas' ? 'Himalayas' : 'Arbeitnow'}</a></span>)}{data?.searchSources?.some((item) => item.provider === 'remotive') && <> {c('Remotive publica su catálogo gratuito con 24 horas de retraso.', 'Remotive publishes its free feed with a 24-hour delay.')}</>}</p></div>}
       {canPrepare && <ApplicationPreparationAction returnTo={returnTo} jobId={job.id} applicationId={existing?.id}/>}
       <div className="detail-layout"><div className="detail-main">
-        {aiAvailable && snapshot?.descriptionText && <Card className="form-card"><h2>{c('Entender esta oferta', 'Understand this job')}</h2><p>{c('Pide un resumen y revisa los requisitos con sus fuentes. Si lo pides desde aquí, se comparte solo el texto de la oferta.', 'Get a summary and review requirements with their sources. Requesting one here shares only the job posting text.')}</p><AiDraftAction key={job.id} request={{ operation: 'JOB_ANALYSIS', locale, jobId: job.id, selectedFactIds: [] }} label={c('Resumir y explicar con Codex', 'Summarize and explain with Codex')} renderResultActions={(_artifact, runId) => <AiAutomationPanel sourceRunId={runId}/>}/></Card>}
+        {aiAvailable && snapshot?.descriptionText && <Card className="form-card"><h2 id="job-ai-assistance" ref={focusHelp} className="focus-heading" tabIndex={-1}>{c('Entender esta oferta', 'Understand this job')}</h2><p>{c('Pide un resumen y revisa los requisitos con sus fuentes. Si lo pides desde aquí, se comparte solo el texto de la oferta.', 'Get a summary and review requirements with their sources. Requesting one here shares only the job posting text.')}</p>{searchParams.get('aiSetup') === 'automatic' && <Notice>{c('Paso 1: pide y lee este resumen. Paso 2: debajo del resultado podrás elegir las búsquedas y revisar el permiso para resumir ofertas nuevas automáticamente.', 'Step 1: request and read this summary. Step 2: below the result, choose searches and review permission to summarize new jobs automatically.')}</Notice>}<AiDraftAction key={job.id} initiallyOpen={helpRequested} request={{ operation: 'JOB_ANALYSIS', locale, jobId: job.id, selectedFactIds: [] }} label={c('Resumir y explicar con Codex', 'Summarize and explain with Codex')} renderResultActions={(_artifact, runId) => <AiAutomationPanel sourceRunId={runId} initiallyOpen={searchParams.get('aiSetup') === 'automatic'}/>}/></Card>}
         <Card className="detail-description"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('EL PUESTO', 'THE JOB')}</div><h2 id="job-description" className="focus-heading" tabIndex={-1}>{c('Descripción guardada', 'Saved description')}</h2></div>{source && <Tag tone="blue">{source.provider.toUpperCase()}</Tag>}</div>{snapshot?.descriptionText ? <div className="description-text">{snapshot.descriptionText}</div> : <div className="notice notice-warning">{c('Esta fuente no incluyó descripción. No suponemos requisitos que no aparecen en los datos.', 'This source did not include a description. We do not assume requirements that are not in the data.')}</div>}</Card>
         <details className={`card ${styles.fit}`}><summary>{c('Encaje con tu perfil (opcional)', 'Fit with your profile (optional)')} <small>{fitPending ? c('Faltan datos para valorarlo', 'Not enough information yet') : `${job.fitScore} / 100`}</small></summary><div className={styles.fitBody}>
           <p>{c('No necesitas revisarlo para preparar tu solicitud. Comparamos la oferta con tus datos que confirmaste y los puestos que buscas. No es la probabilidad de que te contraten.', 'You do not need to review this to prepare your application. We compare the job with your confirmed profile details and the roles you are looking for. It is not the probability of being hired.')}</p>

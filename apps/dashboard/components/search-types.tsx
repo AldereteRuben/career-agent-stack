@@ -29,6 +29,7 @@ export type Search = {
 };
 
 export type SearchJob = {
+  aiSummaryStates?: Partial<Record<'es' | 'en', string>>;
   id: string;
   company: string;
   title: string;

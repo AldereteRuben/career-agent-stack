@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.2
+
+- One search creation method at a time: describe the role with Codex or choose filters. Switching methods keeps the draft; account connection stays inside the search.
+- Compact automatic-search status and on-demand explanations keep offers closer to the top. Similar search names include location, work mode, frequency and a distinguishing number.
+- Job-specific summary links open and focus the correct assistance section after asynchronous loading. Search cards show summaries in progress or saved, scoped to the job and language.
+- A visible automatic-summary guide lets people choose a job, review the first summary and then explicitly authorize future summaries with a daily limit.
+- Refresh local assistant state on focus; retry failed capability reads. An automation status failure does not hide the working account connection.
+- Show the linked CV approval status and prioritize reviewing pending CVs over downloading them.
+- Explain account refresh, display friendly plan names and distinguish portal failures from cached or bounded results.
+- Accept Himalayas timestamps in Unix seconds, milliseconds and ISO format. Version its reader cache so old parse failures do not block a corrected read; host limits remain enforced.
+- No new migration, provider or automatic permission. See [upgrade, verification and limits](docs/releases/v0.9.2.md).
+
 ## 0.9.1
 
 - Prevent duplicate application tracking when selecting a resume for equivalent job records.
