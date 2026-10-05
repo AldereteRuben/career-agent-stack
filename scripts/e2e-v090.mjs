@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global document */
+/* global document, innerWidth */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
