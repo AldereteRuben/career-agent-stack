@@ -240,7 +240,7 @@ export const v053Scenarios: Scenario[] = [
       await goTo(page, '/documents'); await page.getByRole('button', { name: /^CV guardados/ }).click();
       const card = page.locator('.document-card').filter({ hasText: approved.name });
       await card.waitFor();
-      assert.equal(await card.getByText(/Tu perfil cambió/).count(), 0, 'No regeneration prompt after preference-only changes');
+      assert.equal(await card.getByText(/Tu perfil o la oferta cambió/).count(), 0, 'No regeneration prompt after preference-only changes');
 
       // A real change to the printed name blocks approval, linking and assisted use.
       await goTo(page, '/profile');
@@ -255,7 +255,7 @@ export const v053Scenarios: Scenario[] = [
       await assert.rejects(() => api.post('/applications/with-resume', { applicationId: another.id, documentId: approved.id }), /409.*PROFILE_CHANGED_REGENERATE_DOCUMENT/);
       await assert.rejects(() => api.post(`/applications/${application.id}/assist/prepare`, { documentId: approved.id }), /409.*ASSIST_DOCUMENT_STALE/);
       await page.goto(new URL(`/documents?applicationId=${application.id}&view=review&document=${approved.id}&from=saved`, page.url()).toString());
-      await page.getByText(/Tu perfil cambió desde que aprobaste este CV/).waitFor();
+      await page.getByText(/Tu perfil o la oferta cambió desde que aprobaste este CV/).waitFor();
       await page.getByRole('button', { name: 'Preparar versión actualizada', exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Usar en esta solicitud', exact: true }).count(), 0);
 

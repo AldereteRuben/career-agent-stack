@@ -16,7 +16,7 @@ import { copy } from '@/lib/labels';
 
 type Capabilities = { release: string; available: string[]; unavailable: string[]; externalWrites: boolean; automaticSubmission: boolean };
 type AiPermission = { id: string; operation: string; dataCategories: string[]; searchIds: string[] | null; remembered: boolean; grantedAt: string };
-function AiPermissionsPanel({ connectionRevision }: { connectionRevision: number }) {
+function AiPermissionsPanel({ connectionRevision, onChanged }: { connectionRevision: number; onChanged: () => void }) {
   const { locale } = useLocale(); const c = copy(locale);
   const [open, setOpen] = useState(false);
   const [permissions, setPermissions] = useState<AiPermission[]>([]);
@@ -40,6 +40,7 @@ function AiPermissionsPanel({ connectionRevision }: { connectionRevision: number
     try {
       await api(`/ai/consents/${encodeURIComponent(id)}/revoke`, { method: 'POST' });
       setPermissions(current => current.filter(permission => permission.id !== id)); setRemoved(true);
+      onChanged();
     } catch (err) { setError(errorMessage(err)); }
     finally { setBusy(null); }
   };
@@ -88,8 +89,8 @@ export default function SettingsPage() {
     <div className="settings-grid"><div className="settings-main">
       <section id="assistant" aria-label={c('Conexión y permisos de IA', 'AI connection and permissions')}><Card className="form-card">
         <AiConnectionPanel onConnectionChange={() => setAiConnectionRevision(value => value + 1)}/>
-        <AiPermissionsPanel connectionRevision={aiConnectionRevision}/>
-        <AiAutomationPanel connectionRevision={aiConnectionRevision}/>
+        <AiPermissionsPanel connectionRevision={aiConnectionRevision} onChanged={() => setAiConnectionRevision(value => value + 1)}/>
+        <AiAutomationPanel connectionRevision={aiConnectionRevision} onChanged={() => setAiConnectionRevision(value => value + 1)}/>
         <AiHistoryPanel/>
       </Card></section>
       <Card className="form-card"><h2>{c('Copia de seguridad para recuperar tu espacio', 'Back up your workspace for recovery')}</h2>

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, applications, applicationEvents, assistedAttempts, documentVersions, jobs } from '@career/db';
 import { lockKey, profileLockKey } from './workspace-data.js';
 import { documentReadiness } from './document-reuse.js';
@@ -18,6 +18,14 @@ export function registerResumeJourney(app: FastifyInstance, workspace: (request:
       await lockJobIdentity(tx, id);
       await lockKey(tx, profileLockKey(id));
       if (body.jobId) await lockKey(tx, `application:${id}:${body.jobId}`);
+      if (body.jobId) {
+        const aliases = await tx.execute(sql`SELECT a.id FROM applications a
+          JOIN job_identity_members m ON m.workspace_id=a.workspace_id AND m.job_id=a.job_id
+          JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key
+          WHERE target.workspace_id=${id} AND target.job_id=${body.jobId}::uuid AND a.job_id<>${body.jobId}::uuid
+          ORDER BY a.created_at LIMIT 1`);
+        if (aliases.rows.length) return { error: 'APPLICATION_ALREADY_EXISTS', applicationId: aliases.rows[0]!.id };
+      }
       const documents = await tx.select().from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.id, body.documentId))).limit(1);
       const document = (await documentReadiness(tx, id, documents))[0];
       if (!document?.assistReady) return { error: 'PROFILE_CHANGED_REGENERATE_DOCUMENT' };

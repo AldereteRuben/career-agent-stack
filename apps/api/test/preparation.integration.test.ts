@@ -66,6 +66,17 @@ describe('evidence-based application preparation with a disposable database', { 
       await client.query("update profile_facts set approval_status = 'USER_APPROVED', approved_at = now() where id = $1", [factId]);
       const preparedResponse = await post(); const prepared = preparedResponse.json(); assert.equal(prepared.status, 'PREPARED'); assert.equal(prepared.applicationId, applicationId); assert.ok(prepared.documentId);
       const firstDocument = prepared.documentId as string;
+      const aliasId = randomUUID(); const aliasIdentity = 'f'.repeat(64);
+      await client.query("insert into jobs(id,workspace_id,company,title,availability) values($1,$2,'Fictional Labs','Java QA Engineer','OPEN')", [aliasId, workspace]);
+      await client.query("insert into job_identity_members(workspace_id,job_id,identity_key,evidence) values($1,$2,$4,'{}'),($1,$3,$4,'{}')", [workspace, jobId, aliasId, aliasIdentity]);
+      const resumeApp = Fastify();
+      (await import('../src/resume-journey.js')).registerResumeJourney(resumeApp, () => workspace);
+      try {
+        const attempts = await Promise.all([1, 2].map(() => resumeApp.inject({ method: 'POST', url: '/api/v1/applications/with-resume', payload: { jobId: aliasId, documentId: firstDocument } })));
+        for (const attempt of attempts) { assert.equal(attempt.statusCode, 409); assert.equal(attempt.json().error, 'APPLICATION_ALREADY_EXISTS'); assert.equal(attempt.json().applicationId, applicationId); }
+        assert.equal((await client.query('select count(*)::int as n from applications where workspace_id=$1', [workspace])).rows[0].n, 1);
+      } finally { await resumeApp.close(); }
+
       assert.equal((await queueItem()).queueState, 'REVIEW_DOCUMENT');
       assert.equal(prepared.answerSuggestions[0].provenance.startsWith('Approved stored answer'), true);
       const repeated = (await post()).json(); assert.equal(repeated.documentId, firstDocument); assert.equal(repeated.applicationId, applicationId);

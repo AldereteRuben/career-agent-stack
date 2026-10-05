@@ -25,6 +25,7 @@ import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
 import { exportAiData } from './ai/export.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
+import { answerReviewExpired } from './ai/answer-current.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
@@ -126,7 +127,7 @@ app.get('/api/v1/profile', async (request) => {
     latestFacts(db, id, profile?.id),
     latestAnswers(db, id),
   ]);
-  return { revision: profile?.revision ?? 1, locale: profile?.locale ?? 'en-GB', profile: profile?.profile ?? {}, facts: facts.map((fact) => ({ ...fact, details: fact.details ?? legacyEmployment(fact.kind, fact.statement) })), answers, completion: profileCompletion(profile?.profile ?? {}, facts) };
+  return { revision: profile?.revision ?? 1, locale: profile?.locale ?? 'en-GB', profile: profile?.profile ?? {}, facts: facts.map((fact) => ({ ...fact, details: fact.details ?? legacyEmployment(fact.kind, fact.statement) })), answers: answers.map(answer => ({ ...answer, reviewExpired: answerReviewExpired(answer) })), completion: profileCompletion(profile?.profile ?? {}, facts) };
 });
 
 /** Rescoring is derived data; a failure must not undo the user's committed change. */
@@ -216,7 +217,7 @@ app.get('/api/v1/answers', async (request) => {
   const id = workspace(request);
   // Latest revision per question by default; ?history=true returns every stored revision.
   if ((request.query as { history?: string }).history === 'true') return db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)).orderBy(desc(answerVersions.createdAt));
-  return latestAnswers(db, id);
+  return (await latestAnswers(db, id)).map(answer => ({ ...answer, reviewExpired: answerReviewExpired(answer) }));
 });
 app.post('/api/v1/answers', async (request, reply) => {
   const parsed = parseBody(answerSchema, request.body, reply); if (!parsed) return;
@@ -239,11 +240,13 @@ app.post('/api/v1/answers/:id/approve', async (request, reply) => {
     await lockKey(tx, answerLockKey(id, answer));
     const latest = await tx.select({ id: answerVersions.id }).from(answerVersions).where(and(eq(answerVersions.workspaceId, id), eq(answerVersions.semanticKey, answer.semanticKey), eq(answerVersions.jurisdiction, answer.jurisdiction), eq(answerVersions.questionScope, answer.questionScope))).orderBy(desc(answerVersions.revision)).limit(1);
     if (latest[0]?.id !== answer.id) return 'ANSWER_REVISION_STALE' as const;
+    if (answerReviewExpired(answer)) return 'ANSWER_REVIEW_EXPIRED' as const;
     if (!(await aiAnswerCurrent(tx, id, answer))) return 'AI_SOURCE_CHANGED' as const;
     return (await tx.update(answerVersions).set({ approvalStatus: 'USER_APPROVED' }).where(and(eq(answerVersions.id, answerId), eq(answerVersions.workspaceId, id))).returning())[0]!;
   });
   if (result === 'NOT_FOUND') return fail(reply, 404, 'NOT_FOUND');
   if (result === 'AI_SOURCE_CHANGED') return fail(reply, 409, 'AI_SOURCE_CHANGED');
+  if (result === 'ANSWER_REVIEW_EXPIRED') return fail(reply, 409, 'ANSWER_REVIEW_EXPIRED');
   if (result === 'ANSWER_REVISION_STALE') return fail(reply, 409, 'ANSWER_REVISION_STALE', 'A newer version of this answer exists; approve the latest one.');
   return result;
 });

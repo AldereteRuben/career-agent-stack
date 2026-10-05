@@ -154,7 +154,7 @@ export async function executeCodex(
     run: (options: Parameters<typeof runAiProcess>[0]) => runAiProcess({ ...options, environment }),
   };
   let before: CodexAccountObservation;
-  try { before = await inspect(identitySalt, signal, accountDependencies); }
+  try { before = await inspect(identitySalt, signal, accountDependencies, true); }
   catch { throw new CodexExecutionError(signal?.aborted ? 'CANCELLED' : 'NOT_CONNECTED', 'NO'); }
   if (signal?.aborted) throw new CodexExecutionError('CANCELLED', 'NO');
   checkAccount(before, expectedAccountFingerprint, 'NO');

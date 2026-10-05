@@ -105,6 +105,8 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
   const [pageVisible, setPageVisible] = useState(true);
   const [clock, setClock] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyRetry, setHistoryRetry] = useState(0);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const historyLoaded = useRef<string | null>(null);
   const requestKey = JSON.stringify(request);
@@ -123,7 +125,7 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
     if (!visible || running || workRef.current || historyLoaded.current === requestKey) return;
     const controller = new AbortController();
     const ticket = generation.current;
-    setHistoryLoading(true);
+    setHistoryLoading(true); setHistoryError(false);
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
@@ -137,7 +139,6 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
           }
           const response = await api<{ runs: RecoveredRun[] }>(`/ai/runs?${query}`, { signal: controller.signal });
           if (controller.signal.aborted || generation.current !== ticket) return;
-          historyLoaded.current = requestKey;
           const expectedFacts = 'selectedFactIds' in sourceRequest ? [...(sourceRequest.selectedFactIds ?? [])].sort() : [];
           const sameFacts = (item: RecoveredRun) => JSON.stringify([...(item.selectedFactIds ?? [])].sort()) === JSON.stringify(expectedFacts);
           const relevant = sourceRequest.operation === 'JOB_ANALYSIS' ? response.runs : response.runs.filter(sameFacts);
@@ -149,18 +150,19 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
             if (result) setArtifact({ value: result, requestKey, runId: latestResult.id });
           }
           // Set active state after loading the previous result: changing `running` cleans up this effect.
+          historyLoaded.current = requestKey;
+          setError(value => value === 'AI_EQUIVALENT_ACTIVE' ? null : value);
           if (active) { setRun(active); setRunRequestKey(requestKey); }
-          else if (latestResult) { setRun(latestResult); setRunRequestKey(requestKey); }
+          else if (relevant[0]) { setRun(relevant[0]); setRunRequestKey(requestKey); }
         } catch {
-          // History is optional; creating a run still enforces server-side duplicate and queue guards.
-          if (!controller.signal.aborted) historyLoaded.current = requestKey;
+          if (!controller.signal.aborted && generation.current === ticket) setHistoryError(true);
         } finally {
           if (!controller.signal.aborted && generation.current === ticket) setHistoryLoading(false);
         }
       })();
     }, 250);
     return () => { controller.abort(); window.clearTimeout(timer); setHistoryLoading(false); };
-  }, [visible, requestKey, running]);
+  }, [visible, requestKey, running, historyRetry, work]);
 
   useEffect(() => {
     if (!visible || !open || !preview || run || !pageVisible) return;
@@ -212,6 +214,7 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
   const prepare = async () => {
     setOpen(true);
     if (running || needsResult || uncertainStart || historyLoading) return;
+    if (historyError) { setHistoryRetry(value => value + 1); return; }
     const ticket = beginWork('preview');
     if (ticket === null) return;
     try {
@@ -239,6 +242,10 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
       if (!mounted.current || generation.current !== ticket) return;
       const uncertain = !(failure instanceof ApiError) || failure.status >= 500 || failure.status === 408;
       setUncertainStart(uncertain); setError(failureCode(failure));
+      if (failure instanceof ApiError && failure.code === 'AI_EQUIVALENT_ACTIVE') {
+        historyLoaded.current = null;
+        setHistoryRetry(value => value + 1);
+      }
       if (!uncertain) startRequest.current = null;
     } finally { endWork(ticket); }
   };
@@ -262,7 +269,8 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
   const connectionProblem = needsSettings(error) || needsSettings(run?.error?.code);
 
   return <div className={styles.action} hidden={!visible}>
-    <div className={styles.actions}><Button type="button" variant="secondary" aria-expanded={open} aria-controls={regionId} disabled={work !== null || historyLoading} onClick={() => { if (artifact && !open) setOpen(true); else void prepare(); }}>{historyLoading ? c('Consultando tareas anteriores…', 'Checking earlier tasks…') : work === 'preview' ? c('Preparando los datos…', 'Preparing the data…') : running || needsResult ? c('Ver progreso de la ayuda', 'View assistance progress') : uncertainStart ? c('Revisar la tarea pendiente', 'Check the pending task') : artifact && !open ? c('Ver la sugerencia guardada', 'View the saved suggestion') : label}</Button></div>
+    <div className={styles.actions}><Button type="button" variant="secondary" aria-expanded={open} aria-controls={regionId} disabled={work !== null || historyLoading} onClick={() => { if ((artifact || run) && !open) setOpen(true); else void prepare(); }}>{historyLoading ? c('Consultando tareas anteriores…', 'Checking earlier tasks…') : work === 'preview' ? c('Preparando los datos…', 'Preparing the data…') : running || needsResult ? c('Ver progreso de la ayuda', 'View assistance progress') : uncertainStart ? c('Revisar la tarea pendiente', 'Check the pending task') : run && ['FAILED', 'INTERRUPTED', 'CANCELLED'].includes(run.state) && !open ? c('Ver qué pasó con la tarea', 'See what happened to the task') : artifact && !open ? c('Ver la sugerencia guardada', 'View the saved suggestion') : label}</Button></div>
+    {historyError && <Notice tone="warning" actions={<Button type="button" variant="secondary" disabled={work !== null || historyLoading} onClick={() => setHistoryRetry(value => value + 1)}>{c('Reintentar carga del historial', 'Retry loading history')}</Button>}>{c('No pudimos consultar las tareas anteriores. Reintenta para recuperar su estado antes de iniciar otra.', 'We could not check earlier tasks. Retry to recover their status before starting another.')}</Notice>}
     {open && <section id={regionId} className={styles.panel} aria-labelledby={headingId}>
       <div className={styles.heading}><h3 ref={heading} tabIndex={-1} id={headingId}>{c('Ayuda de Codex', 'Help from Codex')}</h3><Button type="button" variant="quiet" disabled={work !== null} onClick={() => setOpen(false)}>{c('Ocultar', 'Hide')}</Button></div>
       {work === 'preview' && <p role="status">{c('Preparando la vista de los datos que compartirás. Todavía no se envían a Codex.', 'Preparing a preview of the data you will share. It has not been sent to Codex yet.')}</p>}

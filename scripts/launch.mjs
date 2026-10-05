@@ -10,9 +10,11 @@
 // --recover-session explicitly replaces the local one-time sign-in code; existing sessions remain valid.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { closeSync, openSync, unlinkSync, writeFileSync } from 'node:fs';
 import { access, chmod, mkdir, open, readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import process from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
   pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
@@ -32,6 +34,44 @@ const at = (...parts) => resolve(projectRoot, ...parts);
 const fix = (es, en) => ({ es, en });
 const run = (command, commandArgs, options = {}) => spawnSync(command, commandArgs, { cwd: projectRoot, stdio: 'inherit', ...options });
 const exists = async (path) => { try { await access(path); return true; } catch { return false; } };
+
+// One launcher per checkout: migrations, dependency installation and .next are shared,
+// even when CAREER_ENV_FILE selects a different installation. Never steal a lock:
+// a compiler child can still be running after its launcher has been interrupted.
+async function lockStartup() {
+  const lockPath = at('data/launcher.lock');
+  await mkdir(at('data'), { recursive: true, mode: 0o700 });
+  const deadline = Date.now() + 300_000;
+  let announced = false;
+  while (true) {
+    let handle;
+    try { handle = openSync(lockPath, 'wx', 0o600); }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (!announced) {
+        step('Otro inicio está en curso; esperando a que termine…', 'Another startup is in progress; waiting for it to finish…');
+        announced = true;
+      }
+      if (Date.now() >= deadline) throw new RecoveryError({
+        es: 'El otro inicio no terminó en 5 minutos.', en: 'The other startup did not finish within 5 minutes.',
+        fixes: [fix('Revisa el otro terminal. Si se interrumpió, comprueba que no queden procesos de inicio o compilación antes de retirar data/launcher.lock y repetir el inicio.', 'Check the other terminal. If it was interrupted, confirm no startup or build processes remain before removing data/launcher.lock and starting again.')],
+      });
+      await delay(1_000);
+      continue;
+    }
+    const release = () => {
+      if (handle === undefined) return;
+      closeSync(handle);
+      handle = undefined;
+      unlinkSync(lockPath);
+      process.off('exit', release);
+    };
+    process.once('exit', release);
+    try { writeFileSync(handle, `${process.pid}\n`); }
+    catch (error) { release(); throw error; }
+    return release;
+  }
+}
 
 function checkNode() {
   const major = Number(process.versions.node.split('.')[0]);
@@ -386,5 +426,9 @@ async function main() {
   }
 }
 
-try { await main(); }
-catch (error) { printRecovery(error); process.exitCode = 1; }
+let releaseStartup;
+try {
+  if (!checkOnly) releaseStartup = await lockStartup();
+  await main();
+} catch (error) { printRecovery(error); process.exitCode = 1; }
+finally { releaseStartup?.(); }

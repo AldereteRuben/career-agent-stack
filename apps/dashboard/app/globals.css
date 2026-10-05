@@ -2148,9 +2148,22 @@ main:focus {
 
 .tracker-controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 14px 0;
+}
+
+.tracker-controls > .button {
+  align-self: end;
+  justify-self: start;
+  max-width: 100%;
+  padding-block: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tracker-controls > .application-state-options {
+  grid-column: 1 / -1;
 }
 
 .tracker-boundary {
@@ -3053,6 +3066,10 @@ main:focus {
 
   .tracker-controls {
     grid-template-columns: 1fr;
+  }
+
+  .tracker-controls > .button {
+    justify-self: stretch;
   }
 
   .tracker-boundary {

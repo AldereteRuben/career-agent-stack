@@ -14,6 +14,8 @@ import { aiAnswerCurrent, registerAiAnswerRoutes } from '../src/ai-answer-routes
 import { createAiConnectionRepository } from '../src/ai/connection-store.js';
 import { createAiQueue } from '../src/ai/queue.js';
 import { AI_PROMPT_VERSION } from '../src/ai/prompts.js';
+import { latestReusableAnswers, answerReviewExpired } from '../src/ai/answer-current.js';
+import { createAiHistoryService } from '../src/ai/history.js';
 import { exportAiData } from '../src/ai/export.js';
 
 const root = new URL('../../../', import.meta.url);
@@ -94,6 +96,15 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     assert.equal(exported.connections[0]!.active, false); assert.ok(exported.consents[0]!.revokedAt);
     assert.ok(!exportText.includes(fingerprint)); assert.ok(!exportText.includes('officialContextRef'));
     assert.ok(!exportText.includes('leaseToken')); assert.equal(exported.artifacts.length, 1);
+    const historyService = createAiHistoryService({ pool: fixturePool });
+    try {
+      const deletion = await historyService.preview(owner);
+      await historyService.clear(owner, { previewId: deletion.previewId });
+      const retryDeleted = await app.inject({ method: 'POST', url: '/api/v1/ai/runs', payload });
+      assert.equal(retryDeleted.statusCode, 409, retryDeleted.body);
+      assert.equal(retryDeleted.json().error, 'AI_PREVIEW_EXPIRED');
+      assert.equal((await fixturePool.query('SELECT count(*)::int AS n FROM ai_runs WHERE id=$1', [firstId])).rows[0].n, 0);
+    } finally { await historyService.close(); }
     const profileId = randomUUID(); const factId = randomUUID(); const questionId = randomUUID();
     await database.insert(schema.profileVersions).values({ id: profileId, workspaceId: owner, revision: 1, profile: { identity: { fullName: 'Fictional Applicant', email: 'fictional@example.test' } } });
     await database.insert(schema.profileFacts).values({ id: factId, workspaceId: owner, profileVersionId: profileId, kind: 'achievement', statement: 'Handled 20 customer enquiries each day.', tags: [], source: 'USER_ENTERED', approvalStatus: 'USER_APPROVED' });
@@ -120,6 +131,16 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/artifacts/${completedAnswer.artifactId}/answer`, payload: { expectedRevision: 1, text: proposed } })).json().id, saved.id, 'ambiguous save retry reuses answer');
     const storedAnswer = (await database.select().from(schema.answerVersions)).find(row => row.id === saved.id)!;
     assert.equal(await aiAnswerCurrent(database, owner, storedAnswer), true);
+    await fixturePool.query("UPDATE answer_versions SET approval_status='USER_APPROVED' WHERE id=$1", [saved.id]);
+    assert.ok((await latestReusableAnswers(database, owner)).some(row => row.id === saved.id));
+    await fixturePool.query("UPDATE answer_versions SET review_after=now()-interval '1 second' WHERE id=$1", [saved.id]);
+    assert.equal((await latestReusableAnswers(database, owner)).some(row => row.id === saved.id), false, 'expired AI answer is not reusable');
+    const manualId = randomUUID();
+    await database.insert(schema.answerVersions).values({ id: manualId, workspaceId: owner, semanticKey: 'expired_manual', jurisdiction: 'ES', questionScope: 'job_application', value: 'Fictional answer', strategy: 'EXACT_APPROVED', approvalStatus: 'USER_APPROVED', revision: 1, reviewAfter: new Date(0) });
+    assert.equal((await latestReusableAnswers(database, owner)).some(row => row.id === manualId), false, 'manual expiry is respected too');
+    assert.equal(answerReviewExpired({ reviewAfter: new Date(100) }, 100), true, 'expiry boundary is inclusive');
+    assert.equal(answerReviewExpired({ reviewAfter: null }), false);
+
     await fixturePool.query('UPDATE profile_facts SET statement=$2 WHERE id=$1', [copiedFactId, 'Changed by fixture after suggestion.']);
     assert.equal(await aiAnswerCurrent(database, owner, storedAnswer), false, 'changed source blocks AI answer approval');
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/connections/${connection.json().connection.id}/disconnect` })).statusCode, 200);

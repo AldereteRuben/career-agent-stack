@@ -1,6 +1,9 @@
 packages:
   - apps/*
   - packages/*
+# The local launcher installs missing dependencies with the frozen lockfile.
+# Do not let pnpm reinstall them before the launcher can coordinate startup.
+verifyDepsBeforeRun: false
 allowBuilds:
   esbuild: true
 

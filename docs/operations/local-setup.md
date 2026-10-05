@@ -29,6 +29,12 @@ The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postg
 
 No board is enabled by bootstrap or demo seeding. An empty board registry only means no individual companies are followed. Role and company searches have their own settings in **Find jobs**.
 
+### Repeated start commands
+
+`pnpm start --copy-token` reuses healthy local services and copies the pending sign-in token without displaying it. The project disables pnpm's automatic dependency installation before scripts; the launcher installs missing dependencies with the frozen lockfile instead. Keep the pnpm version pinned in `package.json`; an update notification does not require changing it.
+
+Start commands in the same checkout wait for each other, so they do not run migrations or builds simultaneously. After five minutes, a waiting command exits with recovery instructions. If an interrupted startup leaves `data/launcher.lock`, first confirm that its launcher and any child build have stopped before removing that lock. Never remove a lock while a build is still running. `pnpm run status` remains read-only and does not acquire the startup lock.
+
 ### Bootstrap options
 
 | Variable | Use |
@@ -144,6 +150,12 @@ Automatic read-only discovery is available after opt-in in Companies I follow; i
 - ¿Te pide un token? `pnpm start --copy-token` lo copia al portapapeles sin mostrarlo y lo borra de ahí a los 2 minutos; el archivo `.command` lo hace siempre. Si ya no tienes token, ejecuta antes `pnpm run reset:session`. Tus datos no cambian. Las sesiones ya abiertas siguen válidas hasta que caducan.
 - ¿Abrir una instalación restaurada? En otra copia del código (`git worktree add ../career-restored`): `CAREER_ENV_FILE=/ruta/restaurada/.env pnpm start --copy-token`. Nunca copies nada sobre el `.env` activo.
 - Los registros están en `data/logs/` (o en la carpeta de datos de `CAREER_ENV_FILE`).
+
+## Updating to v0.9.1 / Actualizar a v0.9.1
+
+From v0.9.0, create a verified backup, stop the local services, update the checkout, run `pnpm install --frozen-lockfile`, then `pnpm start`. There is no new migration. Existing data, PDFs, connections and permissions are retained. Review the [v0.9.1 corrections and verification](../releases/v0.9.1.md). Repeated starts wait for the active launcher; `pnpm start --copy-token` reuses healthy services.
+
+Desde v0.9.0: crea una copia verificada, detén los servicios, actualiza el código, ejecuta `pnpm install --frozen-lockfile` y después `pnpm start`. No hay migraciones nuevas. Se conservan datos, PDF, conexiones y permisos. Los inicios simultáneos esperan su turno.
 
 ## Updating to v0.9.0 / Actualizar a v0.9.0
 

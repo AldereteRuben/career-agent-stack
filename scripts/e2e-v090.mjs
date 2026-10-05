@@ -33,7 +33,7 @@ const outputFor = request => {
   if (request.operation === 'RESUME_DRAFT') return { ...common, proposals: [{ proposalKey: 'first', section: 'EXPERIENCE', text: 'Built accessible booking forms for a fictional website.', changeExplanation: 'Makes the supplied experience easier to read.', sourceFactIds: [ids.fact], warnings: [] }], warnings: [] };
   return { ...common, result: { status: 'DRAFT', text: 'I built a fictional booking website with accessible forms.', evidence: [{ factId: ids.fact }] } };
 };
-const state = { connected: false, observed: false, previewError: null, mode: 'success', startLost: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
+const state = { connected: false, observed: false, previewError: null, mode: 'success', startLost: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
 const observation = () => ({ id: ids.observation, sessionState: 'SIGNED_IN', version: '0.test', maskedIdentity: 'a***@example.test', plan: null, usage: null });
 const connectionState = () => ({ enabled: true, connection: state.connected ? { ...observation(), id: ids.connection, authorized: true } : null, observation: state.observed ? observation() : null });
 const response = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
@@ -63,7 +63,10 @@ try {
     if (path === '/session') return route.continue();
     if (path === '/capabilities') return response(route, { available: ['ai-processing'], unavailable: [] });
     if (path === '/summary') return response(route, { boards: [], recentJobs: [], recentApplications: [], pendingFacts: 0, unansweredItems: 0, applicationCounts: {}, savedSearchCount: 0, activeSearchCount: 0, totalJobs: 0, activeApplications: 0, profileCompletion: { percent: 100, completed: 6, total: 6, missing: [], approvedFactCount: 1, pendingFactCount: 0 } });
-    if (path === '/profile') return response(route, profile);
+    if (path === '/profile') {
+      if (method === 'PUT') { profile.profile = request.postDataJSON().profile; profile.revision++; ids.fact = randomUUID(); fact.id = ids.fact; }
+      return response(route, profile);
+    }
     if (path === '/documents') return response(route, []);
     if (path === '/jobs') return response(route, [job]);
     if (path === `/jobs/${ids.job}`) return response(route, { job, snapshots: [{ id: randomUUID(), title: job.title, descriptionText: posting, fetchedAt: now }], sources: [], applications: [] });
@@ -78,8 +81,8 @@ try {
     if (path === '/ai/connections/codex/inspect') { state.observed = true; return response(route, connectionState()); }
     if (path === '/ai/connections/codex/authorize') { assert.equal(request.postDataJSON().observationId, ids.observation); state.connected = true; return response(route, connectionState()); }
     if (path === `/ai/connections/${ids.connection}/disconnect`) { state.connected = false; state.observed = false; return response(route, connectionState()); }
-    if (path === '/ai/consents') return response(route, { consents: state.consentRevokes ? [] : [{ id: 'consent', operation: 'SEARCH_DRAFT', dataCategories: ['SEARCH_REQUEST'], searchIds: [], remembered: true, grantedAt: now }] });
-    if (path === '/ai/consents/consent/revoke') { state.consentRevokes++; return response(route, { ok: true }); }
+    if (path === '/ai/consents') { state.permissionReads++; return response(route, { consents: state.consentRevokes ? [] : [{ id: 'consent', operation: 'SEARCH_DRAFT', dataCategories: ['SEARCH_REQUEST'], searchIds: [], remembered: true, grantedAt: now }] }); }
+    if (path === '/ai/consents/consent/revoke') { state.consentRevokes++; state.policies.forEach(policy => { policy.paused = true; }); return response(route, { ok: true }); }
     if (path === '/ai/history/clear-preview') { state.historyPreviews++; return response(route, { previewId: 'history-preview', expiresAt: future(), removable: { runs: 2, artifacts: 1, usageRecords: 0 }, preserved: { activeRuns: 1, referencedArtifacts: 2, retainedDependencies: 3 }, retentionDays: 30 }); }
     if (path === '/ai/history/clear') { assert.deepEqual(request.postDataJSON(), { previewId: 'history-preview' }); state.historyClears++; return response(route, { deleted: { runs: 2, artifacts: 1, usageRecords: 0 }, retentionDays: 30 }); }
     if (path === '/ai/runs/preview') {
@@ -89,21 +92,23 @@ try {
     }
     if (path === '/ai/runs' && method === 'POST') {
       const body = request.postDataJSON(); state.starts.push(body);
+      if (state.equivalentActive) { state.equivalentActive = false; return response(route, { error: 'AI_EQUIVALENT_ACTIVE' }, 409); }
       let run = state.runs.find(item => item.key === body.idempotencyKey);
       if (!run) { const source = state.previews.get(body.previewId); assert.ok(source); const id = randomUUID(); const artifactId = randomUUID(); run = { id, state: state.mode === 'success' ? 'SUCCEEDED' : state.mode === 'failure' ? 'FAILED' : 'RUNNING', origin: 'MANUAL', artifactId, key: body.idempotencyKey, request: source, selectedFactIds: source.selectedFactIds ?? [], error: state.mode === 'failure' ? { code: 'PROVIDER_ERROR', dispatched: 'YES' } : undefined }; state.runs.unshift(run); state.artifacts.set(artifactId, { id: artifactId, revision: 1, state: 'PENDING_REVIEW', operation: source.operation, output: outputFor(source), sources: sourcesFor(source) }); }
       if (state.startLost) { state.startLost = false; return route.abort('connectionreset'); }
       return response(route, run, 202);
     }
+    if (path === '/ai/runs' && method === 'GET' && state.historyFailures > 0) { state.historyFailures--; return response(route, { error: 'AI_UNAVAILABLE' }, 503); }
     if (path === '/ai/runs' && method === 'GET') return response(route, { runs: state.runs.filter(run => run.request.operation === url.searchParams.get('operation') && run.request.locale === url.searchParams.get('locale') && (!url.searchParams.has('jobId') || run.request.jobId === url.searchParams.get('jobId')) && (!url.searchParams.has('questionId') || run.request.questionId === url.searchParams.get('questionId'))) });
     const runId = path.match(/^\/ai\/runs\/([^/]+)(\/cancel)?$/);
     if (runId) { const run = state.runs.find(item => item.id === runId[1]); assert.ok(run); if (runId[2]) run.state = 'CANCELLED'; return response(route, run); }
     const artifact = path.match(/^\/ai\/artifacts\/([^/]+)(\/(answer|resume))?$/);
     if (artifact) {
-      if (artifact[3] === 'answer') { state.savedAnswers.push(request.postDataJSON()); question.id = randomUUID(); question.revision++; question.value = request.postDataJSON().text; question.approvalStatus = 'UNANSWERED'; return response(route, question, 201); }
+      if (artifact[3] === 'answer') { if (state.answerSaveFailure) { state.answerSaveFailure = false; return response(route, { error: 'AI_UNAVAILABLE' }, 503); } state.savedAnswers.push(request.postDataJSON()); question.id = randomUUID(); question.revision++; question.value = request.postDataJSON().text; question.approvalStatus = 'UNANSWERED'; return response(route, question, 201); }
       if (artifact[3] === 'resume') { state.resumeSaves.push(request.postDataJSON()); return response(route, { error: 'AI_SOURCE_CHANGED' }, 409); }
       return response(route, state.artifacts.get(artifact[1]));
     }
-    if (path === '/ai/automation' && method === 'GET') return response(route, { enabled: true, policies: state.policies, searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], facts: [{ factId: ids.fact, kind: fact.kind, text: fact.statement }], limits: { maximumDailyStarts: 10, maximumPerPass: 5 } });
+    if (path === '/ai/automation' && method === 'GET') { state.automationReads++; return response(route, { enabled: true, policies: state.policies, searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], facts: [{ factId: ids.fact, kind: fact.kind, text: fact.statement }], limits: { maximumDailyStarts: 10, maximumPerPass: 5 } }); }
     if (path === '/ai/automation/preview') { const body = request.postDataJSON(); state.automationPreviews.push(body); return response(route, { previewId: 'automation-preview', expiresAt: future(), searches: [{ id: ids.search, role: 'Product Designer', company: '', location: 'Spain', enabled: true }], sources: { facts: [] }, categories: ['JOB_POSTING'], locale: body.locale, maximumDailyStarts: body.maximumDailyStarts, connection: { maskedIdentity: 'a***@example.test' }, newOffersOnly: true }); }
     if (path === '/ai/automation' && method === 'POST') { state.policies = [{ id: 'policy', revision: 1, active: true, paused: false, searchIds: [ids.search], selectedFactIds: [], locale: 'en', maximumDailyStarts: 1, activatedAt: now, maskedIdentity: 'a***@example.test', queued: 0, ready: 0 }]; return response(route, state.policies[0], 201); }
     if (path === '/ai/automation/policy/pause') { state.paused++; state.policies[0].paused = true; return response(route, state.policies[0]); }
@@ -120,6 +125,10 @@ try {
   await goto('/searches');
   await page.getByText('Describe what I want with AI help · optional', { exact: true }).click();
   await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).fill('Product Designer in Spain, remote, four days a week');
+  await goto('/settings'); await goto('/searches');
+  await visible(page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }));
+  assert.equal(await page.getByRole('textbox', { name: 'What job would you like to find?', exact: true }).inputValue(), 'Product Designer in Spain, remote, four days a week');
+  console.log('✓ Natural-language search and disclosure survive Settings navigation');
   state.previewError = 'AI_NOT_CONNECTED';
   await page.getByRole('button', { name: /Codex/ }).last().click();
   await click('Check the connection here'); await visible(page.getByRole('button', { name: 'Disconnect from Career Stack', exact: true }));
@@ -162,7 +171,22 @@ try {
   state.mode = 'failure'; await click('Summarize and explain with Codex'); await click('Allow this task');
   await visible(page.getByText('Codex could not complete the task. You can try again when you are ready.', { exact: true }));
   await visible(page.getByRole('heading', { name: 'The job, at a glance', exact: true }));
-  state.mode = 'success'; console.log('✓ Page close/reopen recovers active work; cancel and failure preserve the prior result');
+  const failedStarts = state.starts.length;
+  await goto('/settings'); await goto(`/jobs/${ids.job}`); await click('See what happened to the task');
+  await visible(page.getByText('The task may have used quota even though there is no result.', { exact: true }));
+  state.runs[0].state = 'INTERRUPTED';
+  state.historyFailures = 1;
+  await goto('/settings'); await goto(`/jobs/${ids.job}`);
+  await click('Retry loading history'); await click('See what happened to the task');
+  await visible(page.getByText('The task was interrupted. It will not repeat on its own and may have used quota. You can prepare another when you are ready.', { exact: true }));
+  assert.equal(state.starts.length, failedStarts, 'History recovery never starts inference');
+  await click('Summarize and explain with Codex');
+  const activeRace = { ...state.runs[0], id: randomUUID(), state: 'RUNNING', artifactId: undefined, error: undefined };
+  state.runs.unshift(activeRace); state.equivalentActive = true;
+  await click('Allow this task'); await visible(page.getByRole('button', { name: 'Cancel task', exact: true }));
+  await click('Cancel task'); assert.equal(activeRace.state, 'CANCELLED');
+  state.mode = 'success'; console.log('✓ Failed/interrupted tasks, initial history failure and active-task race recover without duplicate inference');
+
 
   await goto(`/documents?jobId=${ids.job}`); await locale('en');
   const factCheckbox = page.locator('.fact-pick input'); if (!(await factCheckbox.isChecked())) await factCheckbox.check();
@@ -196,16 +220,42 @@ try {
   await answerRow.getByRole('checkbox', { name: /Built a fictional/ }).check();
   await answerRow.getByRole('button', { name: 'Draft with Codex', exact: true }).click(); await click('Allow this task'); await click('Review and edit my answer');
   await page.getByRole('textbox', { name: 'Answer to save', exact: true }).fill('My reviewed fictional answer.'); assert.equal(state.savedAnswers.length, 0);
+  await click('Review and edit my answer');
+  assert.equal(await page.getByRole('textbox', { name: 'Answer to save', exact: true }).inputValue(), 'My reviewed fictional answer.');
+  state.answerSaveFailure = true; await click('Save answer for review');
+  await visible(answerRow.locator('[role="alert"]'));
+  await click('Review and edit my answer');
+  assert.equal(await page.getByRole('textbox', { name: 'Answer to save', exact: true }).inputValue(), 'My reviewed fictional answer.', 'Repeated review after failed save preserves manual text');
   await click('Save answer for review'); assert.equal(state.savedAnswers[0].text, 'My reviewed fictional answer.'); assert.equal(question.approvalStatus, 'UNANSWERED');
   await visible(answerRow.getByRole('button', { name: 'Approve answer', exact: true }));
   await page.getByRole('textbox', { name: 'What is the application asking?', exact: true }).fill('Do you have permission to work in Spain?');
   await page.getByRole('combobox', { name: 'Country it applies to', exact: true }).selectOption('ES');
   await click('Save question for later'); assert.equal(state.questionSaves[0].value, null);
   console.log('✓ Experience answer selection, editable review, save still unapproved and empty question saving');
+  await answerRow.getByText('Draft an answer from my experience', { exact: true }).click();
+  await answerRow.getByRole('checkbox', { name: /Built a fictional/ }).check();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Alex Revised');
+  await click('Save my details');
+  await visible(answerRow.getByText('Your profile changed. Choose the experience you want to share again. Any answer you are editing is preserved.', { exact: true }));
+  assert.equal(await answerRow.getByRole('checkbox', { checked: true }).count(), 0);
+  await answerRow.getByRole('checkbox', { name: /Built a fictional/ }).check();
+  await answerRow.getByRole('button', { name: 'Draft with Codex', exact: true }).click();
+  await visible(page.getByRole('button', { name: 'Allow this task', exact: true }));
+  assert.deepEqual([...state.previews.values()].at(-1).selectedFactIds, [ids.fact]);
+  console.log('✓ Profile revision clears invisible fact selections and allows a new explicit selection');
+  question.reviewExpired = true; question.approvalStatus = 'USER_APPROVED';
+  await goto('/profile'); await page.getByText('Saved answers · optional', { exact: true }).click();
+  await visible(page.getByText('Needs updating', { exact: true }));
+  assert.equal(await page.getByRole('button', { name: 'Approve answer', exact: true }).count(), 0);
+  assert.equal(await page.getByText('Draft an answer from my experience', { exact: true }).count(), 0);
+  question.reviewExpired = false;
+  console.log('✓ Expired answers require editing instead of appearing reusable');
+
+
 
   await locale('es'); await page.setViewportSize({ width: 390, height: 844 }); await overflow();
   await screenshot('profile-mobile-es.png');
-  await goto(`/jobs/${ids.job}`); await locale('en'); await click('View the saved suggestion'); await overflow();
+  await goto(`/jobs/${ids.job}`); await locale('en'); await click('See what happened to the task'); await overflow();
   await screenshot('job-mobile-en.png');
   await goto('/settings'); await locale('es'); await visible(page.getByRole('button', { name: 'Desconectar de Career Stack', exact: true })); await overflow();
   await screenshot('settings-mobile-es.png');
@@ -222,6 +272,23 @@ try {
     await screenshot(`settings-200-percent-equivalent-${language}.png`);
   }
   console.log('✓ 360/768/1096/1440 CSS-pixel widths in ES/EN and 720×450 equivalent to 200% at 1440×900; keyboard focus visible. No screen-reader or real-user claim.');
+  state.policies[0].paused = false;
+  await goto('/settings'); await locale('en');
+  await page.getByText('Saved AI permissions', { exact: true }).click();
+  await page.getByText('Summarize new jobs automatically · optional', { exact: true }).click();
+  await visible(page.getByRole('button', { name: 'Pause summaries', exact: true }));
+  const autoReads = state.automationReads;
+  await click('Withdraw permission');
+  await visible(page.getByText('Paused', { exact: true }));
+  assert.ok(state.automationReads > autoReads, 'Revoking permission refreshes automatic help');
+  state.policies[0].paused = false; state.consentRevokes = 0;
+  await goto('/settings');
+  await page.getByText('Saved AI permissions', { exact: true }).click();
+  await visible(page.getByRole('button', { name: 'Withdraw permission', exact: true }));
+  await page.getByText('Summarize new jobs automatically · optional', { exact: true }).click();
+  const permissionRefresh = page.waitForResponse(res => new URL(res.url()).pathname === '/api/v1/ai/consents');
+  await click('Pause summaries'); await permissionRefresh;
+  console.log('✓ Permission revocation and automation pause refresh sibling panels');
   await locale('es');
   await click('Desconectar de Career Stack'); assert.equal(state.connected, false);
   await page.getByText('Historial local de ayuda con IA', { exact: true }).click();

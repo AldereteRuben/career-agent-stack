@@ -15,7 +15,7 @@ type Preview = { previewId: string; expiresAt: string; searches: Search[]; sourc
 const searchLabel = (search: Search) => [search.role, search.company, search.location].filter(Boolean).join(' · ');
 
 /** Optional setup only. Reading or opening this panel never schedules a provider task. */
-export function AiAutomationPanel({ sourceRunId, connectionRevision = 0 }: { sourceRunId?: string; connectionRevision?: number }) {
+export function AiAutomationPanel({ sourceRunId, connectionRevision = 0, onChanged }: { sourceRunId?: string; connectionRevision?: number; onChanged?: () => void }) {
   const { locale } = useLocale(); const c = copy(locale); const id = useId();
   const [open, setOpen] = useState(false); const [overview, setOverview] = useState<Overview | null>(null);
   const [searchIds, setSearchIds] = useState<string[]>([]); const [factIds, setFactIds] = useState<string[]>([]);
@@ -58,12 +58,14 @@ export function AiAutomationPanel({ sourceRunId, connectionRevision = 0 }: { sou
     try {
       await api<Policy>('/ai/automation', { method: 'POST', body: JSON.stringify(activation.current) });
       setUncertain(false); setPreview(null); activation.current = null; setSearchIds([]); setFactIds([]); setReload(value => value + 1);
+      onChanged?.();
       setMessage(c('Ayuda automática activada para las búsquedas elegidas. Los resultados aparecerán al abrir cada oferta nueva.', 'Automatic help enabled for the selected searches. Results will appear when you open each new job.'));
     } catch (failure) { setUncertain(!(failure instanceof ApiError) || failure.status >= 500 || failure.status === 408); throw failure; }
   });
   const pause = (policy: Policy) => act(async () => {
     await api(`/ai/automation/${encodeURIComponent(policy.id)}/pause`, { method: 'POST', body: JSON.stringify({ expectedRevision: policy.revision }) });
     setReload(value => value + 1); setMessage(c('Ayuda automática pausada. Las tareas que ya empezaron pueden consumir cuota.', 'Automatic help paused. Tasks that already started may use quota.'));
+    onChanged?.();
   });
   const changeSelection = (values: string[], value: string, checked: boolean) => checked ? [...values, value] : values.filter(item => item !== value);
   const locked = busy || loading || uncertain;

@@ -102,7 +102,14 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     const preview = previews.get(body.data.previewId);
     if (!preview || preview.workspaceId !== id || Date.now() - preview.at >= 300_000) return reply.code(409).send({ error: 'AI_PREVIEW_EXPIRED' });
     if (preview.idempotencyKey && preview.idempotencyKey !== body.data.idempotencyKey) return reply.code(409).send({ error: 'AI_IDEMPOTENCY_CONFLICT' });
-    if (preview.runId) return reply.code(202).send(await runView(id, preview.runId));
+    if (preview.runId) {
+      const run = await runView(id, preview.runId);
+      if (run) return reply.code(202).send(run);
+      // History removal also invalidates the in-memory preview. Replaying it must
+      // never return a null run or silently authorize another provider task.
+      previews.delete(preview.id);
+      return reply.code(409).send({ error: 'AI_PREVIEW_EXPIRED' });
+    }
     if (preview.task) return reply.code(202).send(await preview.task);
     preview.idempotencyKey = body.data.idempotencyKey;
     const execute = async () => {

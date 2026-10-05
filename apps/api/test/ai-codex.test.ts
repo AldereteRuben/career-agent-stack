@@ -141,8 +141,11 @@ test('explicit provider limit blocks dispatch but unavailable quota is not repor
   let calls = 0;
   const now = Date.now();
   await assert.rejects(executeCodex(source(), fingerprint, salt, undefined, CODEX_DEFAULT_MODEL, deps({
-    inspect: async () => ({ ...signedIn(), usage: normalizeAiUsage({ provider: 'codex', source: 'PROVIDER_REPORTED', observedAt: new Date(now).toISOString(), costUsd: null,
-      windows: [{ windowId: 'primary', usedPercent: 100, resetsAt: null, limitReached: true }] }, now) }),
+    inspect: async (_salt, _signal, _dependencies, readUsage) => {
+      assert.equal(readUsage, true, 'preflight must request real quota inspection');
+      return { ...signedIn(), usage: normalizeAiUsage({ provider: 'codex', source: 'PROVIDER_REPORTED', observedAt: new Date(now).toISOString(), costUsd: null,
+        windows: [{ windowId: 'primary', usedPercent: 100, resetsAt: null, limitReached: true }] }, now) };
+    },
     run: async options => { calls++; return emit(options); },
   })), code('PROVIDER_LIMIT_REACHED', 'NO'));
   assert.equal(calls, 0);

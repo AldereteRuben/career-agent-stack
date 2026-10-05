@@ -14,7 +14,7 @@ import { emptyKind, nextCheckLabel, searchName, summarize } from '@/components/l
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { useErrorFocus } from '@/lib/disclosure-focus';
 import { useLocalRefresh } from '@/lib/local-refresh';
-import { useSessionDraft } from '@/lib/session-draft';
+import { stringDraft, useSessionDraft } from '@/lib/session-draft';
 import { useLocale } from '@/lib/i18n';
 import styles from './searches.module.css';
 
@@ -99,8 +99,11 @@ export default function SearchesPage() {
   const [matchesTotal, setMatchesTotal] = useState<number | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const aiAvailable = useAiAvailable();
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiSearchRequest, setAiSearchRequest] = useState('');
+  const aiSearchDraft = useSessionDraft('ai-search-request', { text: '', open: '' }, stringDraft);
+  const aiOpen = aiSearchDraft.value.open === 'true';
+  const setAiOpen = (open: boolean) => aiSearchDraft.update(value => ({ ...value, open: String(open) }));
+  const aiSearchRequest = aiSearchDraft.value.text ?? '';
+  const setAiSearchRequest = (text: string) => aiSearchDraft.update(value => ({ ...value, text }));
   const [aiSearchProposal, setAiSearchProposal] = useState<AiArtifact | null>(null);
   const [aiProposalError, setAiProposalError] = useState('');
   const [aiProposalRetry, setAiProposalRetry] = useState(0);
@@ -353,7 +356,8 @@ export default function SearchesPage() {
       {(formOpen || firstUse) && <div className={styles.formColumn}>
         {aiAvailable && !editing && <details className={`card ${styles.formCard}`} open={aiOpen} onToggle={event => setAiOpen(event.currentTarget.open)}><summary>{t('Describir lo que busco con ayuda de IA · opcional', 'Describe what I want with AI help · optional')}</summary><div className={styles.form}>
           <p className={styles.intro}>{t('Cuéntalo con tus palabras. Codex propondrá los filtros; tú los revisarás antes de guardar y empezar la búsqueda.', 'Describe it in your own words. Codex will suggest filters for you to review before saving and starting the search.')}</p>
-          <TextareaField label={t('¿Qué trabajo te gustaría encontrar?', 'What job would you like to find?')} value={aiSearchRequest} maxLength={2000} rows={3} onChange={event => setAiSearchRequest(event.target.value)} placeholder={t('Por ejemplo: busco diseño de producto en remoto desde España.', 'For example: I am looking for a remote product design job based in Spain.')}/>
+          <TextareaField label={t('¿Qué trabajo te gustaría encontrar?', 'What job would you like to find?')} value={aiSearchRequest} disabled={!aiSearchDraft.ready} maxLength={2000} rows={3} onChange={event => setAiSearchRequest(event.target.value)} placeholder={t('Por ejemplo: busco diseño de producto en remoto desde España.', 'For example: I am looking for a remote product design job based in Spain.')}/>
+          {aiSearchDraft.storageFailed && <Notice tone="warning">{t('No se pudo conservar este borrador en la pestaña. Copia tu texto antes de salir.', 'This draft could not be preserved in the tab. Copy your text before leaving.')}</Notice>}
           {aiSearchRequest.trim() ? <AiDraftAction visible={aiOpen} request={{ operation: 'SEARCH_DRAFT', locale, searchRequest: aiSearchRequest.trim() }} label={t('Preparar los filtros con Codex', 'Prepare filters with Codex')} onReview={reviewAiSearch}/> : <small>{t('Describe lo que buscas para revisar los datos que compartirás.', 'Describe what you are looking for to review the data you will share.')}</small>}
         </div></details>}
         {aiSearchProposal?.output.operation === 'SEARCH_DRAFT' && <Notice role={null}><div className="form-stack"><p>{t('Propuesta de IA en los campos de abajo. Revísalos y pulsa Buscar ofertas cuando quieras empezar.', 'The AI suggestion is in the fields below. Review them and choose Find jobs when you want to start.')}</p>{aiSearchProposal.output.unsupportedConstraints.length > 0 && <><strong>{t('Recuerda comprobar estas condiciones en cada oferta; no se usan como filtros:', 'Remember to check these conditions in each posting; they are not used as filters:')}</strong><ul>{aiSearchProposal.output.unsupportedConstraints.map((item, index) => <li key={index}>«{item.requestQuote}» — {item.explanation}</li>)}</ul></>}{aiSearchProposal.output.clarifications.length > 0 && <ul>{aiSearchProposal.output.clarifications.map((item, index) => <li key={index}>{item.question}</li>)}</ul>}</div></Notice>}

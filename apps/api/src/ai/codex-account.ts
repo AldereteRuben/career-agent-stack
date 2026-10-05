@@ -72,7 +72,7 @@ export async function findCodexExecutable(environment: NodeJS.ProcessEnv = proce
 }
 
 export async function initializeCodexRpc(rpc: AiRpcClient): Promise<void> {
-  await rpc.request('initialize', { clientInfo: { name: 'career_stack', title: 'Career Stack', version: '0.9.0' }, capabilities: { experimentalApi: true } });
+  await rpc.request('initialize', { clientInfo: { name: 'career_stack', title: 'Career Stack', version: '0.9.1' }, capabilities: { experimentalApi: true } });
   await rpc.notify('initialized');
 }
 

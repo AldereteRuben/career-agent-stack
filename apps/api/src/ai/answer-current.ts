@@ -8,6 +8,10 @@ import { loadAiSourceRecords } from './source-reader.js';
 import { checkAiSourceCurrent } from './source-snapshot.js';
 const hash=(text:string)=>createHash('sha256').update(text,'utf8').digest('hex');
 
+export function answerReviewExpired(answer: Pick<typeof answerVersions.$inferSelect, 'reviewAfter'>, now = Date.now()) {
+  return answer.reviewAfter !== null && answer.reviewAfter.getTime() <= now;
+}
+
 /** Approval checks the saved wording and its supporting facts, while allowing the new answer revision itself. */
 export async function aiAnswerCurrent(executor: Executor, workspaceId: string, answer: typeof answerVersions.$inferSelect) {
   if (answer.workspaceId !== workspaceId) return false;
@@ -30,6 +34,7 @@ export async function latestReusableAnswers(executor: Executor, workspaceId: str
   const rows=await latestAnswers(executor,workspaceId);
   const usable: typeof rows=[];
   for (const answer of rows) {
+    if (answerReviewExpired(answer)) continue;
     if (!answer.aiProvenance || (answer.approvalStatus==='USER_APPROVED' && await aiAnswerCurrent(executor,workspaceId,answer))) usable.push(answer);
   }
   return usable;

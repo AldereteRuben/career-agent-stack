@@ -1,6 +1,6 @@
 {
   "name": "career-agent-stack",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "packageManager": "pnpm@11.10.0",

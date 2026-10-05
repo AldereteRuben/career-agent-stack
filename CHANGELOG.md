@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.1
+
+- Prevent duplicate application tracking when selecting a resume for equivalent job records.
+- Exclude expired saved answers from preparation and require a new reviewed version; show expiry in the profile.
+- Preserve manually edited assistant answers on repeated review and retain natural-language search drafts across navigation.
+- Remove obsolete profile selections with a clear notice after a profile revision.
+- Recover failed and interrupted tasks, retry history reads, and reconnect to an existing task after a concurrent start.
+- Reject replay of an assistant preview whose task was deleted, requiring a fresh sharing review.
+- Refresh permissions and automatic-summary settings together after revocation or pause.
+- Read provider-reported quota before Codex dispatch; unavailable quota remains unknown.
+- Align the application tracking button and serialize local starts to avoid simultaneous builds. Disable pnpm dependency reinstallation before launcher coordination.
+- No new migration or provider. Claude remains deferred; all new AI checks use synthetic data and mocked inference. See [upgrade and verification](docs/releases/v0.9.1.md).
+
 ## 0.9.0
 
 - Optional official Codex connection with masked account confirmation, explicit sharing previews, revocable permissions and observed subscription limits. Native execution is certified only for macOS and CLI 0.160.0 with ChatGPT plan authentication; Claude is deferred.
