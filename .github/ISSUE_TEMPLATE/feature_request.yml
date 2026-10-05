@@ -1,6 +1,6 @@
 name: Improvement / Proponer una mejora
 description: Suggest a usability, accessibility, translation or functional improvement.
-labels: [enhancement]
+labels: [enhancement, needs-triage]
 body:
   - type: textarea
     id: problem
