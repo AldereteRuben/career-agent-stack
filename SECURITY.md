@@ -35,7 +35,11 @@ Operational backups include a database dump and generated documents. The archive
 
 Do not report vulnerabilities, tokens or personal information in public issues, discussions or pull requests.
 
-Use [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new) (GitHub private vulnerability reporting). Only the maintainers see the report, and the fix can be coordinated privately before it is disclosed. If the button is unavailable, open an issue only asking the maintainer to enable a private reporting channel; include no vulnerability details.
+**While the repository is private**, GitHub private vulnerability reporting is not available. Contact the owner through your existing private collaboration channel and include sanitized reproduction steps only.
+
+**Once the repository is public** and the maintainers have run the [publication controls](docs/operations/public-repository.md), use [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new) (GitHub private vulnerability reporting). Only the maintainers see the report, and the fix can be coordinated privately before it is disclosed.
+
+If neither route is available to you, use the [private channel request](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=private_channel.yml) form. It asks only for a private way to continue; include no vulnerability details.
 
 Reports should describe the affected version, impact and a minimal reproduction using fictional data. Do not access someone else's workspace or upload backups as proof. The maintainers are volunteers: no response time is guaranteed, but reports are read and acknowledged as soon as possible, and reporters are credited in the advisory unless they prefer otherwise.
 
@@ -43,6 +47,8 @@ Reports should describe the affected version, impact and a minimal reproduction 
 
 Solo la [última versión publicada](https://github.com/AldereteRuben/career-agent-stack/releases/latest) recibe correcciones de seguridad; actualiza antes de reportar.
 
-No publiques vulnerabilidades, tokens ni datos personales en issues, conversaciones o pull requests públicos. Usa [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new) (reporte privado de GitHub): solo los responsables lo ven y la corrección se coordina en privado antes de hacerla pública. Si el botón no está disponible, abre un issue pidiendo solo un canal privado, sin detalles. Describe la versión afectada, el impacto y una reproducción mínima con datos ficticios. No accedas al espacio de otra persona ni subas copias de seguridad como prueba.
+No publiques vulnerabilidades, tokens ni datos personales en issues, conversaciones o pull requests públicos. Mientras el repositorio sea privado, el reporte privado de GitHub no está disponible: contacta al responsable por el canal privado que ya compartan. Cuando el repositorio sea público y se hayan aplicado los [controles de publicación](docs/operations/public-repository.md), usa [Report a vulnerability](https://github.com/AldereteRuben/career-agent-stack/security/advisories/new) (reporte privado de GitHub): solo los responsables lo ven y la corrección se coordina en privado antes de hacerla pública. Si no tienes ninguna de esas vías, usa el formulario para [pedir un canal privado](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=private_channel.yml), sin detalles. Describe la versión afectada, el impacto y una reproducción mínima con datos ficticios. No accedas al espacio de otra persona ni subas copias de seguridad como prueba.
 
 La aplicación está pensada para un único espacio privado en un solo equipo local. No expongas la API, PostgreSQL, Ollama ni un puerto de depuración del navegador a la red local o a internet.
+
+No subas a Git `.env`, `data/`, `storage/`, `backups/`, exportaciones, CVs, comprobantes de solicitudes ni material de sesión. Las copias de seguridad **no están cifradas**: guárdalas en un disco cifrado o en un lugar privado, junto con su archivo de clave por separado. Las exportaciones y los registros contienen datos personales. Consulta la [guía de copias de seguridad](docs/operations/backup-restore.md).

@@ -2,8 +2,6 @@
 
 <!-- What changed and why. Link the issue (e.g. Closes #123). / Qué cambió y por qué. Enlaza el issue (por ejemplo Closes #123). -->
 
-Closes #
-
 ## Verification / Comprobaciones
 
 <!-- Commands, results, checks not run, and remaining limitations. / Comandos, resultados, comprobaciones no ejecutadas y límites pendientes. -->

@@ -41,7 +41,7 @@ Este código de conducta aplica tanto a espacios del proyecto como a espacios p�
 
 ## Aplicación
 
-Instancias de comportamiento abusivo, acosador o inaceptable de otro modo podrán ser reportadas a los administradores de la comunidad responsables del cumplimiento a través de GitHub: usa **Report content** (Reportar contenido) en el comentario, issue, conversación o pull request, que llega a los administradores, o reporta la cuenta a GitHub. Si algo no se puede reportar así, abre un issue pidiendo al responsable, [@AldereteRuben](https://github.com/AldereteRuben), un canal privado, sin incluir ningún detalle. Todas las quejas serán evaluadas e investigadas de una manera puntual y justa.
+Instancias de comportamiento abusivo, acosador o inaceptable de otro modo podrán ser reportadas a los administradores de la comunidad responsables del cumplimiento a través de GitHub: usa **Report content** (Reportar contenido) en el comentario, issue, conversación o pull request, que llega a los administradores, o reporta la cuenta a GitHub. Si algo no se puede reportar así, usa el formulario para [pedir un canal privado](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=private_channel.yml) al responsable, [@AldereteRuben](https://github.com/AldereteRuben), sin incluir ningún detalle. Todas las quejas serán evaluadas e investigadas de una manera puntual y justa.
 
 Todos los administradores de la comunidad están obligados a respetar la privacidad y la seguridad de quienes reporten incidentes.
 

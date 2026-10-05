@@ -4,7 +4,7 @@
 
 The repository remains **private**. Community files and license terms are prepared in the current source tree. Publishing is a separate owner decision.
 
-- Issues enabled; bug and improvement forms support English and Spanish and are labeled `needs-triage`. Blank issues are disabled; questions are directed to Discussions.
+- Issues enabled; bug, improvement and private-channel-request forms support English and Spanish and are labeled `needs-triage` (the label exists now, so forms apply it before publication too). Blank issues are disabled; questions are directed to Discussions. The private-channel form has no detail field, so a vulnerability or conduct report can ask for a private route without disclosing anything.
 - Bilingual PR template, contribution guide (branches, commit prefixes, review and squash merge), [Contributor Covenant 2.1](../../CODE_OF_CONDUCT.md) code of conduct in [English](../../CODE_OF_CONDUCT.md) and [Spanish](../../CODE_OF_CONDUCT.es.md) with reports through GitHub, [getting help](../../SUPPORT.md) and `CODEOWNERS` identify the review process.
 - `.editorconfig` and `.gitattributes` keep UTF-8, two-space indentation and LF line endings for every contributor, including Windows checkouts.
 - Squash merging only; merged branches are automatically deleted; auto-merge is off.
@@ -49,11 +49,11 @@ The script exits at the first API failure; earlier operations may have succeeded
 
 ## Before making visibility public
 
-1. Review the Git history and release assets for personal data, credentials and private links; `.gitignore` cannot erase history. A scan on 2026-10-05 of all 89 commits found no common token formats, private keys, `.env` files, data folders, backups or files over 500 KB. Commit author names and email addresses become public with the history; contributors who prefer it can use their GitHub `noreply` address for future commits. A scan is useful but is not proof that no sensitive material exists.
+1. Review the Git history and release assets for personal data, credentials and private links; `.gitignore` cannot erase history. Publishing exposes **every** branch, tag and pull request ref (`refs/pull/*`, including closed pull requests), not only `main`. A scan on 2026-10-05 covered all 95 commits reachable from the `origin` branches (`main`, `chore/public-repository-readiness`, `fix/bootstrap-postgres16-set-role`), all tags and the 11 pull request refs. It found no common token formats, private keys, `.env` files, data folders or backups; the largest file is `docs/legal/dependency-license-texts.txt` (473 KB). No release has uploaded assets, only GitHub's automatic source archives. Repeat the scan if new branches or pull requests appear before publication, and decide open pull requests (such as #10) first. Commit author names and email addresses become public with the history; contributors who prefer it can use their GitHub `noreply` address for future commits. A scan is useful but is not proof that no sensitive material exists.
 2. Review the license and additional permission, contribution terms, and third-party inventory. The dependency inventory reflects installed macOS packages; do a distribution-specific review before shipping binaries, especially LGPL components.
 3. Confirm CI passes for the publication revision. Inspect external PR code and workflow changes before approving their runs; never give fork jobs secrets or use a personal/self-hosted runner.
 4. Make visibility public only on the owner's instruction, immediately apply the script above, and confirm its read-back results.
-5. In **Settings**, complete what the script cannot set: under *Moderation options → Reported content*, allow reports to maintainers (the code of conduct relies on it); create the Discussions categories *Q&A*, *Ideas* and *Show and tell*; and upload a social preview image.
+5. In **Settings**, complete what the script cannot set: under *Moderation options → Reported content*, allow reports to maintainers (the code of conduct relies on it); review the default Discussions categories GitHub creates (*Q&A*, *Ideas*, *Show and tell* and others) instead of adding duplicates; and upload a social preview image.
 6. Label a few small, well-described issues as `good first issue` so new contributors have a place to start.
 7. Publish a new tagged release containing the license files and verify that GitHub offers private vulnerability reporting.
 

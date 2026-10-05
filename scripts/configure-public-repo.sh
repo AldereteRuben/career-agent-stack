@@ -21,7 +21,7 @@ gh label create "translation" --repo "$repo" --color 5319E7 --description "Engli
 gh label create "good first issue" --repo "$repo" --color 7057FF --description "Small, well-described task for newcomers / Tarea pequeña para empezar" --force
 gh label create "help wanted" --repo "$repo" --color 008672 --description "Contributions welcome / Se agradece ayuda" --force
 # Code scanning with GitHub's CodeQL default setup (free for public repositories).
-gh api --method PATCH "repos/$repo/code-scanning/default-setup" -f state=configured
+gh api --method PATCH "repos/$repo/code-scanning/default-setup" -f state=configured -f query_suite=default -f "languages[]=javascript-typescript"
 gh api "repos/$repo/branches/main/protection"
 gh api "repos/$repo/actions/permissions/fork-pr-contributor-approval"
 gh api "repos/$repo/private-vulnerability-reporting"
