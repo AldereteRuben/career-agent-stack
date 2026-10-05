@@ -65,6 +65,10 @@ jobs:
         run: node --test scripts/test/v080-migration.test.mjs
         env:
           CAREER_V080_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify bootstrap database creation with a non-superuser administrator
+        run: pnpm run test:bootstrap-db
+        env:
+          CAREER_BOOTSTRAP_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify v0.9 additive migration
         run: node --test scripts/test/v090-migration.test.mjs
         env:

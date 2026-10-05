@@ -31,6 +31,7 @@ import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, installEnv, loadPg, loopbackHosts, mtimeOf, ok, parseEnv, pendingEnvPath, portIsFree, portIsOpen,
   printRecovery, projectRoot, promoteWithoutOverwrite, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
+import { allowAdminToUseRole } from './lib/bootstrap-database.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
@@ -223,19 +224,14 @@ async function createOwnDatabase(values) {
     if (role.rowCount) await client.query(`alter role ${client.escapeIdentifier(name)} with login password ${password}`);
     else await client.query(`create role ${client.escapeIdentifier(name)} with login password ${password}`);
     await client.query(`comment on role ${client.escapeIdentifier(name)} is ${client.escapeLiteral(mark)}`);
-    // PostgreSQL 16+ no longer lets a CREATEROLE administrator act as the roles it creates, which "create database … owner"
-    // needs. The creator holds ADMIN OPTION on the new role, so it can grant itself membership with SET. Superusers skip this.
-    if (!me.rolsuper) {
-      const { rows: [{ version }] } = await client.query(`select current_setting('server_version_num')::int as version`);
-      try { await client.query(`grant ${client.escapeIdentifier(name)} to current_user${version >= 160000 ? ' with set true' : ''}`); }
-      catch (error) {
-        if (error?.code !== '42501') throw error;
-        throw new RecoveryError({
-          es: `El usuario «${adminUser}» no puede actuar como el usuario nuevo «${name}», necesario para crear su base de datos.`,
-          en: `User "${adminUser}" cannot act as the new role "${name}", which is needed to create its database.`,
-          fixes: [fix(`Como superusuario de PostgreSQL: GRANT ${name} TO ${adminUser} WITH SET TRUE; y vuelve a ejecutar`, `As a PostgreSQL superuser: GRANT ${name} TO ${adminUser} WITH SET TRUE; then run again`), rerun],
-        });
-      }
+    try { await allowAdminToUseRole(client, name); }
+    catch (error) {
+      if (error?.code !== '42501') throw error;
+      throw new RecoveryError({
+        es: `El usuario «${adminUser}» no puede actuar como el usuario nuevo «${name}», necesario para crear su base de datos.`,
+        en: `User "${adminUser}" cannot act as the new role "${name}", which is needed to create its database.`,
+        fixes: [fix(`Como superusuario de PostgreSQL: GRANT ${name} TO ${adminUser} WITH SET TRUE; y vuelve a ejecutar`, `As a PostgreSQL superuser: GRANT ${name} TO ${adminUser} WITH SET TRUE; then run again`), rerun],
+      });
     }
     const database = decodeURIComponent(target.pathname.slice(1));
     const existing = await client.query(`select shobj_description(oid, 'pg_database') as mark from pg_database where datname = $1`, [database]);

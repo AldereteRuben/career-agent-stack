@@ -35,6 +35,7 @@
     "test:backup": "node --test scripts/test/backup-archive.test.mjs",
     "test:backup-api": "pnpm --filter @career/api exec tsx --test test/backup-routes.test.ts",
     "test:setup": "node scripts/test/setup-smoke.mjs",
+    "test:bootstrap-db": "node --test scripts/test/bootstrap-database.test.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
     "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts test/himalayas-source.test.ts test/search-execution.test.ts test/search-results.test.ts test/job-identity.test.ts",
