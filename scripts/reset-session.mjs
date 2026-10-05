@@ -14,5 +14,5 @@ await mkdir(dirname(target), { recursive: true, mode: 0o700 });
 await writeFile(target, randomBytes(24).toString('base64url'), { mode: 0o600 });
 await chmod(target, 0o600);
 ok(`Nuevo token de acceso de un solo uso guardado en ${shown} (no se muestra).`, `New single-use sign-in token saved to ${shown} (not shown).`);
-say(`  Cópialo con: pbcopy < "${shown}"  y pégalo en la pantalla de acceso.`, `Copy it with: pbcopy < "${shown}"  and paste it on the sign-in screen.`);
+say('  Cópialo con: pnpm start --copy-token  y pégalo en la pantalla de acceso (o abre el archivo y copia su contenido).', 'Copy it with: pnpm start --copy-token  and paste it on the sign-in screen (or open the file and copy its contents).');
 say('  Tus datos no cambian. Las sesiones ya abiertas siguen válidas hasta caducar.', 'Your data is unchanged. Sessions already signed in stay valid until they expire.');
