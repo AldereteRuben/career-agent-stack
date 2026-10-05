@@ -242,6 +242,9 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
       if (!mounted.current || generation.current !== ticket) return;
       const uncertain = !(failure instanceof ApiError) || failure.status >= 500 || failure.status === 408;
       setUncertainStart(uncertain); setError(failureCode(failure));
+      if (failure instanceof ApiError && failure.code === 'AI_PREVIEW_EXPIRED') {
+        setPreview(value => value ? { ...value, value: { ...value.value, expiresAt: new Date(0).toISOString() } } : null);
+      }
       if (failure instanceof ApiError && failure.code === 'AI_EQUIVALENT_ACTIVE') {
         historyLoaded.current = null;
         setHistoryRetry(value => value + 1);

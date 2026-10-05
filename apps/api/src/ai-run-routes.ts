@@ -94,10 +94,11 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     const body = createSchema.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
     const id = workspace(request);
+    const accepted = (run: unknown) => run ? reply.code(202).send(run) : reply.code(409).send({ error: 'AI_PREVIEW_EXPIRED' });
     const prior = (await database.select().from(aiRuns).where(and(eq(aiRuns.workspaceId, id), eq(aiRuns.idempotencyKey, body.data.idempotencyKey))).limit(1))[0];
     if (prior) {
       if (prior.origin !== 'MANUAL' || prior.inputVersions.previewId !== body.data.previewId) return reply.code(409).send({ error: 'AI_IDEMPOTENCY_CONFLICT' });
-      return reply.code(202).send(await runView(id, prior.id));
+      return accepted(await runView(id, prior.id));
     }
     const preview = previews.get(body.data.previewId);
     if (!preview || preview.workspaceId !== id || Date.now() - preview.at >= 300_000) return reply.code(409).send({ error: 'AI_PREVIEW_EXPIRED' });
@@ -110,7 +111,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
       previews.delete(preview.id);
       return reply.code(409).send({ error: 'AI_PREVIEW_EXPIRED' });
     }
-    if (preview.task) return reply.code(202).send(await preview.task);
+    if (preview.task) return accepted(await preview.task);
     preview.idempotencyKey = body.data.idempotencyKey;
     const execute = async () => {
       const connection = await activeConnection(id);
@@ -131,7 +132,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
       return runView(id, run.id);
     };
     preview.task = execute();
-    try { return reply.code(202).send(await preview.task); } finally { delete preview.task; }
+    try { return accepted(await preview.task); } finally { delete preview.task; }
   });
   app.get('/api/v1/ai/runs', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');

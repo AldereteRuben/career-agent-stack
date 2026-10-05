@@ -33,7 +33,7 @@ const outputFor = request => {
   if (request.operation === 'RESUME_DRAFT') return { ...common, proposals: [{ proposalKey: 'first', section: 'EXPERIENCE', text: 'Built accessible booking forms for a fictional website.', changeExplanation: 'Makes the supplied experience easier to read.', sourceFactIds: [ids.fact], warnings: [] }], warnings: [] };
   return { ...common, result: { status: 'DRAFT', text: 'I built a fictional booking website with accessible forms.', evidence: [{ factId: ids.fact }] } };
 };
-const state = { connected: false, observed: false, previewError: null, mode: 'success', startLost: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
+const state = { connected: false, observed: false, previewError: null, mode: 'success', startLost: false, startExpired: false, previews: new Map(), runs: [], artifacts: new Map(), starts: [], consentRevokes: 0, paused: 0, historyFailures: 0, equivalentActive: false, answerSaveFailure: false, permissionReads: 0, automationReads: 0, savedAnswers: [], resumeSaves: [], questionSaves: [], searchSaves: [], automationPreviews: [], policies: [], historyPreviews: 0, historyClears: 0 };
 const observation = () => ({ id: ids.observation, sessionState: 'SIGNED_IN', version: '0.test', maskedIdentity: 'a***@example.test', plan: null, usage: null });
 const connectionState = () => ({ enabled: true, connection: state.connected ? { ...observation(), id: ids.connection, authorized: true } : null, observation: state.observed ? observation() : null });
 const response = (route, value, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
@@ -92,6 +92,7 @@ try {
     }
     if (path === '/ai/runs' && method === 'POST') {
       const body = request.postDataJSON(); state.starts.push(body);
+      if (state.startExpired) { state.startExpired = false; state.previews.delete(body.previewId); return response(route, { error: 'AI_PREVIEW_EXPIRED' }, 409); }
       if (state.equivalentActive) { state.equivalentActive = false; return response(route, { error: 'AI_EQUIVALENT_ACTIVE' }, 409); }
       let run = state.runs.find(item => item.key === body.idempotencyKey);
       if (!run) { const source = state.previews.get(body.previewId); assert.ok(source); const id = randomUUID(); const artifactId = randomUUID(); run = { id, state: state.mode === 'success' ? 'SUCCEEDED' : state.mode === 'failure' ? 'FAILED' : 'RUNNING', origin: 'MANUAL', artifactId, key: body.idempotencyKey, request: source, selectedFactIds: source.selectedFactIds ?? [], error: state.mode === 'failure' ? { code: 'PROVIDER_ERROR', dispatched: 'YES' } : undefined }; state.runs.unshift(run); state.artifacts.set(artifactId, { id: artifactId, revision: 1, state: 'PENDING_REVIEW', operation: source.operation, output: outputFor(source), sources: sourcesFor(source) }); }
@@ -136,9 +137,13 @@ try {
   await click('Review my task’s data again');
   await page.getByText('See exactly what will be shared', { exact: true }).click();
   assert.equal(state.starts.length, 0); await visible(page.locator('p').filter({ hasText: /^Product Designer in Spain, remote, four days a week$/ }));
+  state.startExpired = true; await click('Allow this task');
+  await visible(page.getByRole('button', { name: 'Refresh the data', exact: true }));
+  assert.equal(state.runs.length, 0, 'Expired server preview does not start another task');
+  await click('Refresh the data');
   state.startLost = true; await click('Allow this task'); await click('Retry this task');
   await visible(page.getByRole('heading', { name: 'Your suggested search', exact: true }));
-  assert.equal(state.starts[0].idempotencyKey, state.starts[1].idempotencyKey, 'Lost response retry uses same key');
+  assert.equal(state.starts.at(-2).idempotencyKey, state.starts.at(-1).idempotencyKey, 'Lost response retry uses same key');
   assert.equal(await page.getByRole('button', { name: 'Review and edit the search', exact: true }).isEnabled(), false);
   await page.getByRole('checkbox', { name: /I understand those conditions/ }).check(); await click('Review and edit the search');
   assert.equal(state.searchSaves.length, 0, 'Review does not create or run a search');
