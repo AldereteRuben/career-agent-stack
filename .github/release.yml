@@ -1,0 +1,18 @@
+# Groups GitHub's automatically generated release notes by pull request label.
+# Maintainers label each pull request when reviewing it; unlabeled changes appear under "Other changes".
+changelog:
+  exclude:
+    labels: [duplicate, invalid, wontfix]
+  categories:
+    - title: New features / Funciones nuevas
+      labels: [enhancement]
+    - title: Bug fixes / Arreglos
+      labels: [bug]
+    - title: Accessibility and translations / Accesibilidad y traducciones
+      labels: [accessibility, translation]
+    - title: Documentation / Documentación
+      labels: [documentation]
+    - title: Dependencies / Dependencias
+      labels: [dependencies, github_actions]
+    - title: Other changes / Otros cambios
+      labels: ["*"]

@@ -1,0 +1,26 @@
+name: Request a private channel / Pedir un canal privado
+description: Ask a maintainer for a private way to report a vulnerability or a conduct issue. Include no details here.
+title: "Private channel request / Solicitud de canal privado"
+labels: [needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is **public**. Do not describe the vulnerability or incident, and do not include names, links, logs or screenshots. A maintainer will reply with a private way to continue.
+        Este issue es **público**. No describas la vulnerabilidad ni el incidente, ni incluyas nombres, enlaces, registros o capturas. Un responsable te responderá con una vía privada para continuar.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic / Tema
+      options:
+        - Security / Seguridad
+        - Code of conduct / Código de conducta
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-details
+    attributes:
+      label: Confirmation / Confirmación
+      options:
+        - label: I included no details about the problem in this issue. / No incluí detalles del problema en este issue.
+          required: true

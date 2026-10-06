@@ -1,0 +1,8 @@
+# Keep LF line endings for every contributor, including Windows checkouts:
+# the .command and shell launchers fail with CRLF.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.woff2 binary

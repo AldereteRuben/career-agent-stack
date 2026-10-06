@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
+import { AppShell, PageHeader, WorkspaceGate, DetailTitle } from '@/components/shell';
 import { Button, Card, Icon, Notice, Tag } from '@/components/ui';
 import { api, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor } from '@/lib/labels';
@@ -106,7 +106,7 @@ export default function JobDetailPage() {
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
   };
 
-  return <WorkspaceGate><AppShell>
+  return <WorkspaceGate><AppShell><DetailTitle name={job?.title}/>
     <Link href={backHref} className="back-link">← {backHref.startsWith('/searches') ? c('Volver a mi búsqueda', 'Back to my search') : c('Volver a ofertas', 'Back to jobs')}</Link>
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando oferta…', 'Loading job…')}</Notice>}

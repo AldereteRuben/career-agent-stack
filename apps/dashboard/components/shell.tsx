@@ -7,9 +7,9 @@ import { RELEASE_VERSION } from '@career/domain';
 import Link from 'next/link';
 import { clearSessionDrafts } from '@/lib/session-draft';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
+import { Suspense, createContext, useCallback, useContext, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import { api, ApiError, errorMessage } from '@/lib/api';
-import { useLocale } from '@/lib/i18n';
+import { useDocumentTitle, useLocale } from '@/lib/i18n';
 import { Button, Icon, Notice } from './ui';
 
 type Copy = { es: string; en: string };
@@ -121,8 +121,18 @@ export function LanguageSwitch({ className = '' }: { className?: string }) {
   return <button type="button" className={`language-toggle ${className}`} lang={next} onClick={() => setLocale(next)}>{next === 'en' ? 'English' : 'Español'}</button>;
 }
 
+const DetailTitleContext = createContext<(detail: string | null) => void>(() => undefined);
+
+/** Render inside AppShell to name the open job or application in the tab title: "QA Engineer · Saved jobs · Career Stack". */
+export function DetailTitle({ name }: { name: string | null | undefined }) {
+  const setDetail = useContext(DetailTitleContext);
+  useEffect(() => { setDetail(name || null); return () => setDetail(null); }, [name, setDetail]);
+  return null;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname(); const router = useRouter(); const { t, locale } = useLocale();
+  const [detailTitle, setDetailTitle] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const isDrawer = useMediaQuery(DRAWER_QUERY);
   const drawerOpen = isDrawer && menuOpen;
@@ -212,10 +222,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="main-column" inert={drawerOpen}>
       <header className="topbar">
         <button ref={menuButtonRef} type="button" className="mobile-menu" aria-expanded={drawerOpen} aria-controls="app-sidebar" onClick={() => setMenuOpen(true)}><Icon name="menu" size={22}/><span className="sr-only">{t("Abrir menú")}</span></button>
-        <Suspense fallback={<Breadcrumbs locale={locale} route={resolveRoute(pathname, null)}/>}><QueryAwareBreadcrumbs pathname={pathname} locale={locale}/></Suspense>
+        <Suspense fallback={<Breadcrumbs locale={locale} route={resolveRoute(pathname, null)}/>}><QueryAwareBreadcrumbs pathname={pathname} locale={locale} detail={detailTitle}/></Suspense>
         <div className="topbar-right"><span className="local-indicator"><Icon name="shield" size={16}/><span>{locale === 'es' ? 'Datos guardados localmente' : 'Data saved locally'}</span></span><LanguageSwitch/></div>
       </header>
-      <main id="main-content" className="page-wrap" tabIndex={-1}>{children}</main>
+      <main id="main-content" className="page-wrap" tabIndex={-1}><DetailTitleContext.Provider value={setDetailTitle}>{children}</DetailTitleContext.Provider></main>
       <footer className="app-footer"><span>{t("Career Stack")} <span className="footer-version">{RELEASE_VERSION}</span></span><Link href="/settings">{t("Privacidad y control")} <Icon name="arrow" size={16}/></Link></footer>
     </div>
   </div>;
@@ -232,9 +242,14 @@ function QueryAwareNav(props: NavProps) {
   return <MainNav {...props} route={resolveRoute(props.pathname, search)}/>;
 }
 
-function QueryAwareBreadcrumbs({ pathname, locale }: { pathname: string; locale: string }) {
+function QueryAwareBreadcrumbs({ pathname, locale, detail }: { pathname: string; locale: string; detail: string | null }) {
   const search = useSearchParams();
-  return <Breadcrumbs locale={locale} route={resolveRoute(pathname, search)}/>;
+  const route = resolveRoute(pathname, search);
+  const say = (copy: Copy) => locale === 'en' ? copy.en : copy.es;
+  // The page name is the last crumb; with an open item, its name leads and the section it belongs to follows.
+  const section = route.crumbs.length > 1 ? route.crumbs[route.crumbs.length - 2]! : route.crumbs[0]!;
+  useDocumentTitle(detail ? [detail, say(section)] : [say(route.crumbs[route.crumbs.length - 1]!)]);
+  return <Breadcrumbs locale={locale} route={route}/>;
 }
 
 function Breadcrumbs({ locale, route }: { locale: string; route: Route }) {

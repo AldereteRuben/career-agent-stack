@@ -1,5 +1,7 @@
 # Career Agent Stack
 
+[![CI](https://github.com/AldereteRuben/career-agent-stack/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AldereteRuben/career-agent-stack/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/AldereteRuben/career-agent-stack)](https://github.com/AldereteRuben/career-agent-stack/releases/latest) [![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
+
 Tu espacio privado para buscar ofertas automáticamente, preparar candidaturas con tu experiencia confirmada y seguir cada postulación.
 
 [English](README.md) · **Español**
@@ -77,7 +79,7 @@ pnpm install --frozen-lockfile
 pnpm run bootstrap
 ```
 
-Si el repositorio es privado, tu cuenta necesita acceso y Git debe estar autenticado. También puedes usar `gh repo clone AldereteRuben/career-agent-stack` después de `gh auth login`.
+Con GitHub CLI también puedes usar `gh repo clone AldereteRuben/career-agent-stack`.
 
 La preparación crea un `.env` privado con claves nuevas, crea una base de datos y credenciales propias para esta instalación, aplica las migraciones e instala Chromium para generar PDF. Conserva un `.env` existente y no añade datos de ejemplo. Si se interrumpe, retoma las claves de `.env.pending`; `.env` se finaliza cuando la preparación termina correctamente. La instalación inicial necesita conexión a internet.
 
@@ -190,7 +192,17 @@ Más información: [seguridad](SECURITY.md), [componentes de terceros](THIRD_PAR
 
 ## Comunidad y contribuciones
 
-Aceptamos issues, propuestas, traducciones y pull requests en español o inglés. Consulta [cómo contribuir](CONTRIBUTING.md), [convivencia](CODE_OF_CONDUCT.md) y [reportes de seguridad](SECURITY.md).
+Aceptamos issues, propuestas, traducciones y pull requests en español o inglés.
+
+- ¿Es tu primera vez? Busca issues con la etiqueta [good first issue](https://github.com/AldereteRuben/career-agent-stack/labels/good%20first%20issue) y lee [cómo contribuir](CONTRIBUTING.md).
+- Las preguntas e ideas van en [Discussions](https://github.com/AldereteRuben/career-agent-stack/discussions); consulta [cómo pedir ayuda](SUPPORT.md).
+- Quien participa sigue el [código de conducta](CODE_OF_CONDUCT.es.md). Reporta vulnerabilidades en privado como indica la [política de seguridad](SECURITY.md).
+
+### Personas que contribuyen
+
+<a href="https://github.com/AldereteRuben/career-agent-stack/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=AldereteRuben/career-agent-stack" alt="Personas que contribuyen a Career Stack" />
+</a>
 
 ## Licencia
 
@@ -200,4 +212,4 @@ Es **código disponible con restricciones no comerciales** (*source available*).
 
 Los componentes de terceros conservan sus [propias licencias y avisos](THIRD_PARTY_NOTICES.md). Estos términos acompañan al código actual; los archivos de versiones anteriores no los incluían. La versión v0.3.0 incluye la licencia y los términos de contribución.
 
-[Preparación del repositorio público](docs/operations/public-repository.md).
+[Controles del repositorio público](docs/operations/public-repository.md).
