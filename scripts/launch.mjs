@@ -103,7 +103,7 @@ async function checkDependencies() {
     es: 'No se pudieron instalar las dependencias.', en: 'Dependencies could not be installed.',
     fixes: [fix('Comprueba tu conexión y ejecuta: pnpm install --frozen-lockfile', 'Check your connection and run: pnpm install --frozen-lockfile')],
   });
-  await markDependenciesCurrent(at('node_modules/.modules.yaml'));
+  await markDependenciesCurrent(at('node_modules/.modules.yaml'), at('pnpm-lock.yaml'));
 }
 
 async function loadEnvironment() {

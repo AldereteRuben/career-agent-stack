@@ -16,14 +16,33 @@ test('a lockfile newer than the install marker stops looking outdated once the m
     const earlier = new Date(Date.now() - 3 * 60 * 60 * 1000); // installed three hours ago
     await utimes(marker, earlier, earlier);
     assert.ok(await mtimeOf(marker) < await mtimeOf(lockfile), 'before: the lockfile is newer, which is what status reads as outdated');
-    assert.equal(await markDependenciesCurrent(marker), true);
+    assert.equal(await markDependenciesCurrent(marker, lockfile), true);
     assert.ok(await mtimeOf(marker) >= await mtimeOf(lockfile), 'after: the install marker is not older than the lockfile');
     assert.equal((await stat(marker)).size, 'layoutVersion: 5\n'.length, 'only the date changes, never the contents');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+// Regression: the file times keep sub-millisecond detail, so "now" truncated to a millisecond could land just below a lockfile written
+// in the same millisecond, and the marker still looked older. The first test hit this about once in twelve runs.
+test('the marker is never older than the lockfile, even when both were written at almost the same instant', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-marker-'));
+  try {
+    await mkdir(join(root, 'node_modules'));
+    const marker = join(root, 'node_modules/.modules.yaml'); const lockfile = join(root, 'pnpm-lock.yaml');
+    for (let i = 0; i < 200; i++) {
+      await writeFile(marker, 'layoutVersion: 5\n'); await writeFile(lockfile, `lockfileVersion: 9 # ${i}\n`);
+      assert.equal(await markDependenciesCurrent(marker, lockfile), true);
+      assert.ok(await mtimeOf(marker) >= await mtimeOf(lockfile), `round ${i}: the marker must not be older than the lockfile`);
+    }
+    const future = new Date(Date.now() + 60 * 60 * 1000); // a lockfile with a clock skew into the future
+    await utimes(lockfile, future, future);
+    await markDependenciesCurrent(marker, lockfile);
+    assert.ok(await mtimeOf(marker) >= await mtimeOf(lockfile), 'a lockfile dated in the future still ends up not newer than the marker');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('without a marker there is nothing to refresh and no error', async () => {
   const root = await mkdtemp(join(tmpdir(), 'career-marker-'));
-  try { assert.equal(await markDependenciesCurrent(join(root, 'node_modules/.modules.yaml')), false); }
+  try { assert.equal(await markDependenciesCurrent(join(root, 'node_modules/.modules.yaml'), join(root, 'pnpm-lock.yaml')), false); }
   finally { await rm(root, { recursive: true, force: true }); }
 });
