@@ -313,6 +313,13 @@ export function LanguageToggle({ className = '' }: { className?: string }) {
 
 export function localizedError(code: string, locale: Locale) {
   const spanish: Record<string, string> = {
+    AI_ARTIFACT_NOT_FOUND: 'No encontramos ese borrador. Puede que ya se haya sustituido; actualiza la página.', AI_CONSENT_NOT_FOUND: 'No encontramos tu permiso para usar el asistente. Revísalo en Ajustes y vuelve a intentarlo.',
+    AI_INVALID_SELECTION: 'Algunos datos elegidos ya no están disponibles. Revisa la selección e inténtalo de nuevo.', ASSIST_UNSUPPORTED_URL: 'Esta solicitud no se puede preparar aquí: su enlace no es de un formulario compatible.',
+    HOST_NOT_ALLOWED: 'Abre Career Stack desde la dirección local que muestra el lanzador (localhost). Esta dirección no está permitida.', LOCAL_ONLY: 'Career Stack solo acepta conexiones desde este mismo equipo.',
+    ORIGIN_NOT_ALLOWED: 'Esta página no se abrió desde la dirección de tu Career Stack. Ábrela desde la dirección que muestra el lanzador.', ORIGIN_REQUIRED: 'No pudimos comprobar desde dónde se envió la petición. Recarga la página e inténtalo de nuevo.',
+    INVALID_PREPARATION_REQUEST: 'No se pudo preparar la solicitud. Revisa los datos elegidos e inténtalo de nuevo.', INVALID_SEARCH_PROFILE: 'Pon un nombre de hasta 160 caracteres para esta búsqueda.',
+    SETUP_TOKEN_REQUIRED: 'Pega el código de acceso para continuar.', SEARCH_DISABLED: 'Esta búsqueda está pausada. Actívala para actualizar sus ofertas.',
+    SEARCH_REFRESH_FAILED: 'No pudimos actualizar esta búsqueda ahora. Tu búsqueda sigue guardada; inténtalo más tarde.',
     BACKUP_IN_PROGRESS: 'Ya hay una copia en preparación. Espera a que termine.', BACKUP_NOT_AVAILABLE: 'Esta descarga ya no está disponible. Crea otra copia desde Ajustes.',
     INVALID_INPUT: 'Revisa los campos e inténtalo de nuevo.', INVALID_PROFILE: 'No se pudo guardar el perfil. Revisa los datos.', SESSION_REQUIRED: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
     INVALID_SETUP_TOKEN: 'El código no es válido. Comprueba que lo copiaste completo e inténtalo de nuevo.', SETUP_TOKEN_ALREADY_USED: 'Este código ya se utilizó. Abre la ayuda de esta pantalla para obtener uno nuevo.',
@@ -349,6 +356,13 @@ export function localizedError(code: string, locale: Locale) {
     FACT_NOT_IN_CURRENT_REVISION: 'Este hecho pertenece a una revisión anterior del perfil. Recarga la última versión e inténtalo de nuevo.',
   };
   const english: Record<string, string> = {
+    AI_ARTIFACT_NOT_FOUND: 'We could not find that draft. It may have been replaced; refresh the page.', AI_CONSENT_NOT_FOUND: 'We could not find your permission to use the assistant. Check it in Settings and try again.',
+    AI_INVALID_SELECTION: 'Some of the chosen details are no longer available. Review the selection and try again.', ASSIST_UNSUPPORTED_URL: 'This application cannot be prepared here: its link is not from a supported form.',
+    HOST_NOT_ALLOWED: 'Open Career Stack from the local address the launcher shows (localhost). This address is not allowed.', LOCAL_ONLY: 'Career Stack only accepts connections from this same computer.',
+    ORIGIN_NOT_ALLOWED: 'This page was not opened from your Career Stack address. Open it from the address the launcher shows.', ORIGIN_REQUIRED: 'We could not check where the request came from. Reload the page and try again.',
+    INVALID_PREPARATION_REQUEST: 'The application could not be prepared. Check the chosen details and try again.', INVALID_SEARCH_PROFILE: 'Enter a name of up to 160 characters for this search.',
+    SETUP_TOKEN_REQUIRED: 'Paste the access code to continue.', SEARCH_DISABLED: 'This search is paused. Turn it on to update its jobs.',
+    SEARCH_REFRESH_FAILED: 'We could not update this search right now. Your search is still saved; try again later.',
     BACKUP_IN_PROGRESS: 'A backup is already being prepared. Wait for it to finish.', BACKUP_NOT_AVAILABLE: 'This download is no longer available. Create another backup in Settings.',
     INVALID_INPUT: 'Check the fields and try again.', INVALID_PROFILE: 'We could not save your profile. Check the details.', SESSION_REQUIRED: 'Your session expired. Sign in again.',
     INVALID_SETUP_TOKEN: 'That code is not valid. Check that you copied the entire code and try again.', SETUP_TOKEN_ALREADY_USED: 'This code has already been used. Open the help on this screen to get a new one.',

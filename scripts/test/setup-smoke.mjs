@@ -21,6 +21,7 @@ import { createServer } from 'node:net';
 import { tmpdir, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
+import { allowAdminToUseRole, runAsRole } from '../lib/bootstrap-database.mjs';
 import { describeDatabase, listeningPid, loadPg, maskSecrets, parseEnv, projectRoot } from '../lib/local-env.mjs';
 
 const keep = process.env.SETUP_SMOKE_KEEP === '1';
@@ -109,15 +110,31 @@ async function cleanCopy(target) {
   return copied;
 }
 
+/**
+ * Removes the disposable database and role through the admin connection. Bootstrap gives a non-superuser administrator SET
+ * (never INHERIT) on the role it creates, and on PostgreSQL 15 and earlier takes the membership back, so dropping the
+ * database needs the same grant, SET ROLE and RESET ROLE that bootstrap itself uses.
+ */
 async function dropSmokeObjects() {
-  for (const id of [installId, conflictId]) {
-    const name = `career_${id}`;
-    expect(/^career_smoke_[0-9a-f]{12}(_c)?$/.test(name), `refusing to drop unexpected name ${name}`);
-    const db = await admin('select 1 from pg_database where datname = $1', [name]);
-    if (db.rowCount) await admin(`drop database "${name}" with (force)`);
-    const role = await admin('select 1 from pg_roles where rolname = $1', [name]);
-    if (role.rowCount) await admin(`drop role "${name}"`);
-  }
+  const { Client } = loadPg();
+  const client = new Client({ connectionString: adminUrl, connectionTimeoutMillis: 5_000 });
+  await client.connect();
+  try {
+    for (const id of [installId, conflictId]) {
+      const name = `career_${id}`;
+      expect(/^career_smoke_[0-9a-f]{12}(_c)?$/.test(name), `refusing to drop unexpected name ${name}`);
+      const db = await client.query('select pg_get_userbyid(datdba) = current_user as mine from pg_database where datname = $1', [name]);
+      const role = await client.query('select 1 from pg_roles where rolname = $1', [name]);
+      if (db.rowCount) {
+        const drop = () => client.query(`drop database "${name}" with (force)`);
+        // A database someone else owns can only be dropped as its owner; one the administrator created itself needs nothing.
+        if (db.rows[0].mine || !role.rowCount) await drop();
+        else if (await allowAdminToUseRole(client, name)) await runAsRole(client, name, drop);
+        else await drop();
+      }
+      if (role.rowCount) await client.query(`drop role "${name}"`);
+    }
+  } finally { await client.end(); }
 }
 
 async function main() {
@@ -214,8 +231,15 @@ async function main() {
     expect(session.authenticated === true, 'session must be authenticated after sign-in');
     expect(!(await readOrNull(tokenPath)), 'the single-use token must be consumed');
     const journal = JSON.parse(await readFile(join(copy, 'packages/db/migrations/meta/_journal.json'), 'utf8')).entries.length;
-    const migrations = await admin('select count(*)::int as n from drizzle.__drizzle_migrations', [], `career_${installId}`);
-    const workspaces = await admin('select count(*)::int as n from workspaces', [], `career_${installId}`);
+    // The installation's own credentials: the administrator is deliberately not allowed into this database.
+    const { Client } = loadPg();
+    const installation = new Client({ connectionString: parseEnv(await readFile(join(copy, '.env'), 'utf8')).DATABASE_URL, connectionTimeoutMillis: 5_000 });
+    await installation.connect();
+    let migrations; let workspaces;
+    try {
+      migrations = await installation.query('select count(*)::int as n from drizzle.__drizzle_migrations');
+      workspaces = await installation.query('select count(*)::int as n from workspaces');
+    } finally { await installation.end(); }
     expect(migrations.rows[0].n === journal && workspaces.rows[0].n === 1, 'the copy database must hold every migration and the one workspace the copy API created');
     record('web /login 200, sign-in with the copy token through the web origin, session authenticated, token consumed', true);
 

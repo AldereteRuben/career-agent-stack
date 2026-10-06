@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import { allowAdminToUseRole, runAsRole } from '../lib/bootstrap-database.mjs';
+import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from '../lib/bootstrap-database.mjs';
 
 const root = new URL('../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -43,6 +43,8 @@ test('a non-superuser administrator can create a database for the role it create
       await administrator.query(`revoke all on database "${databases[0]}" from public`);
     });
     assert.equal((await administrator.query('select current_user as me')).rows[0].me, adminRole, 'reset role must return to the administrator');
+    // Bootstrap gives the membership back once the database is protected where a grant cannot be SET only (PostgreSQL 15 and earlier).
+    assert.equal(await releaseAdminFromRole(administrator, roles[0]), version < 160000);
     // The installation promises "no access for other local roles": the administrator must not be able to open the new database.
     assert.equal((await administrator.query(`select has_database_privilege($1, 'connect') as can_connect`, [databases[0]])).rows[0].can_connect, false);
     const asAdminOnNewDatabase = new Client({ connectionString: Object.assign(new URL(asAdmin), { pathname: `/${databases[0]}` }).toString() });

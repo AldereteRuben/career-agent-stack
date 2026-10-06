@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -15,6 +16,7 @@ describe('evidence-based application preparation with a disposable database', { 
   const dbName = `career_preparation_${randomBytes(6).toString('hex')}`;
   let admin: InstanceType<typeof Client>; let client: InstanceType<typeof Client>;
   let module: typeof import('../src/application-preparation.js'); let pool: { end(): Promise<void> };
+  let closePool: (() => Promise<void>) | undefined;
   let workspace: string; let otherWorkspace: string; let jobId: string; let filesPath: string;
   const originalDatabase = process.env.DATABASE_URL; const originalFilesPath = process.env.FILES_LOCAL_PATH;
   const originalEncryption = process.env.APP_ENCRYPTION_KEY; const originalSession = process.env.APP_SESSION_SECRET;
@@ -31,10 +33,10 @@ describe('evidence-based application preparation with a disposable database', { 
     filesPath = await mkdtemp(join(tmpdir(), 'career-preparation-files-')); process.env.FILES_LOCAL_PATH = filesPath;
     client = new Client({ connectionString: url.toString() }); await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((entry) => entry.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
-    module = await import('../src/application-preparation.js'); pool = (await import('@career/db')).pool;
+    module = await import('../src/application-preparation.js'); pool = (await import('@career/db')).pool; closePool = trackPgPoolCleanup(pool);
   });
   after(async () => {
-    await pool?.end(); await client?.end();
+    await closePool?.(); await client?.end();
     if (admin) { await admin.query(`drop database if exists "${dbName}" with (force)`); await admin.end(); }
     if (filesPath) await rm(filesPath, { recursive: true, force: true });
     if (originalDatabase === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabase;
