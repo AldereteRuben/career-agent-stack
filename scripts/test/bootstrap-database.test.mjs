@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import { allowAdminToUseRole } from '../lib/bootstrap-database.mjs';
+import { allowAdminToUseRole, runAsRole } from '../lib/bootstrap-database.mjs';
 
 const root = new URL('../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -38,7 +38,22 @@ test('a non-superuser administrator can create a database for the role it create
     await administrator.query(`create database "${databases[0]}" owner "${roles[0]}"`);
     const { rows } = await administrator.query(`select pg_get_userbyid(datdba) as owner from pg_database where datname = $1`, [databases[0]]);
     assert.equal(rows[0].owner, roles[0]);
+    await runAsRole(administrator, roles[0], async () => {
+      await administrator.query(`comment on database "${databases[0]}" is 'bootstrap test'`);
+      await administrator.query(`revoke all on database "${databases[0]}" from public`);
+    });
+    assert.equal((await administrator.query('select current_user as me')).rows[0].me, adminRole, 'reset role must return to the administrator');
+    const membership = async () => (await administrator.query(
+      `select bool_or(m.set_option) as set, bool_or(m.inherit_option) as inherit from pg_auth_members m
+         where m.roleid = $1::regrole and m.member = $2::regrole`, [`"${roles[0]}"`, `"${adminRole}"`])).rows;
+    if (version >= 160000) {
+      assert.deepEqual((await membership())[0], { set: true, inherit: false }, 'the grant must allow SET ROLE without inheriting privileges');
+      const { rows: [privileges] } = await administrator.query(`select pg_has_role($1, 'usage') as inherits, pg_has_role($1, 'set') as can_set`, [roles[0]]);
+      assert.deepEqual(privileges, { inherits: false, can_set: true });
+      await assert.rejects(administrator.query(`comment on database "${databases[0]}" is 'x'`), { code: '42501' }, 'ownership statements need SET ROLE when privileges are not inherited');
+    }
     await allowAdminToUseRole(administrator, roles[0]); // idempotent: repeating the grant must not fail
+    if (version >= 160000) assert.deepEqual((await membership())[0], { set: true, inherit: false }, 'a second grant must keep inherit off');
 
     await superuser.query(`create role "${roles[1]}" login password 'x'`);
     assert.equal(await allowAdminToUseRole(superuser, roles[1]), false, 'a superuser needs no grant');
