@@ -76,6 +76,7 @@
 .sources a { font-size: .9rem; }
 .warning { color: var(--amber); margin: 0; font-size: .92rem; }
 .applicationStatus { margin: 0; border-inline-start: 3px solid var(--blue); padding-inline-start: 10px; font-size: .92rem; }
+.applicationStatus a { color: var(--blue-dark); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .emptyResults { padding: 22px; }
 
 .providerFieldset { border: 1px solid var(--line); border-radius: 9px; padding: 12px; }

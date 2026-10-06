@@ -16,7 +16,7 @@ const reasonText: Record<string, [string, string]> = {
 function shownReason(reason: string, spanish: boolean) { return reasonText[reason]?.[spanish ? 0 : 1] ?? (spanish ? 'Otra coincidencia con tus criterios' : 'Another search criterion matches'); }
 function formatDate(value: string, spanish: boolean) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? '' : new Intl.DateTimeFormat(spanish ? 'es-ES' : 'en-GB', { dateStyle: 'medium' }).format(date); }
 
-/** Role, company, location and the main reason first; the three main decisions; everything else on demand. */
+/** Role, company, location and the main reason first; the same main decisions on every card (an existing application is linked from its status line); everything else on demand. */
 export function SearchResultCard({ aiAvailable = false, job, returnTo, view, busy, t, sourceName, onSave, onUnsave, onArchive, onReview }: Props) {
   const saved = job.shortlistDecision === 'SHORTLISTED'; const archived = job.shortlistDecision === 'ARCHIVED';
   const spanish = t('es', 'en') === 'es';
@@ -38,10 +38,10 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
       {unknownLocation && <p className={styles.warning}>{t('Comprueba en el anuncio desde qué países se puede trabajar.', 'Check eligible countries in the original listing.')}</p>}
       {job.identityConflict && <p className={styles.warning}>{t('Esta oferta tiene registros con decisiones o candidaturas diferentes. Los conservamos por separado.', 'This job has records with different decisions or applications. We kept them separate.')}</p>}
       {job.autoPrepareError && job.autoPrepareError !== 'EXISTING_APPLICATION' && <p className={styles.warning}>{job.autoPrepareError === 'PREPARING' ? t('Preparando tu candidatura…', 'Preparing your application…') : t('La preparación necesita tu revisión. Abre la oferta para continuar.', 'Preparation needs your review. Open the job to continue.')}</p>}
-      {job.applicationId && <p className={styles.applicationStatus}>{t('Candidatura existente', 'Existing application')} · {labelFor.applicationState(job.applicationState, spanish ? 'es' : 'en')}{job.documentApprovalStatus ? ` · ${labelFor.documentApproval(job.documentApprovalStatus, spanish ? 'es' : 'en')}` : ''}</p>}
+      {applicationHref && <p className={styles.applicationStatus}>{t('Candidatura existente', 'Existing application')} · {labelFor.applicationState(job.applicationState, spanish ? 'es' : 'en')}{job.documentApprovalStatus ? ` · ${labelFor.documentApproval(job.documentApprovalStatus, spanish ? 'es' : 'en')}` : ''} · <Link href={applicationHref} aria-describedby={titleId}>{applicationLabel}</Link></p>}
     </div>
     <div className={styles.resultActions}>
-      <Link className="button button-primary" href={applicationHref ?? jobHref} aria-describedby={titleId}>{applicationHref ? applicationLabel : t('Ver oferta', 'View job')}</Link>
+      <Link className="button button-primary" href={jobHref} aria-describedby={titleId}>{t('Ver oferta', 'View job')}</Link>
       {aiAvailable && <Link className="button button-secondary" href={`${jobHref}#job-ai-assistance`} aria-describedby={titleId}>{['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.aiSummaryStates?.[spanish ? 'es' : 'en'] ?? '') ? t('Resumen en preparación', 'Summary in progress') : job.aiSummaryStates?.[spanish ? 'es' : 'en'] === 'SAVED' ? t('Ver resumen guardado', 'View saved summary') : t('Resumir esta oferta', 'Summarize this job')}</Link>}
       {!archived && <Button variant="secondary" disabled={busy} aria-pressed={saved} aria-describedby={titleId} onClick={saved ? onUnsave : onSave}>{saved ? t('Quitar de guardadas', 'Unsave job') : t('Guardar oferta', 'Save job')}</Button>}
       <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onArchive}>{archived ? t('Recuperar', 'Restore') : t('Archivar', 'Archive')}</Button>
