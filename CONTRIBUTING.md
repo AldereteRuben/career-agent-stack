@@ -52,7 +52,7 @@ Use a short imperative summary with a type prefix, as in the existing history:
 | `test:` | Tests only |
 | `build:` | Dependencies, tooling or CI |
 
-For example: `fix: keep the search filter when returning to results`. Keep your own authorship; do not add co-author or generator lines for automated tools, assistants or models (disclose substantive AI help in the pull request instead).
+For example: `fix: keep the search filter when returning to results`. Keep your own authorship; do not add co-author or generator lines for automated tools, assistants or models.
 
 ## Pull requests
 
@@ -71,7 +71,7 @@ Do not change version numbers, `RELEASE_VERSION` or `CHANGELOG.md` in your pull 
 
 By intentionally submitting a contribution for inclusion, you confirm that you have the right to submit it and offer your original contribution under `LICENSE` **and** `LICENSE-PERSONAL-USE.md`. You retain ownership of your contribution; no copyright assignment is required. Do not submit third-party code under incompatible terms. Identify any third-party material, retain its notices, and document dependency changes.
 
-AI-assisted contributions are welcome if you review and understand them, can explain their behavior, disclose substantive assistance in the PR, and have the necessary rights to submit the resulting material. Never submit private prompts or user data.
+AI-assisted contributions are welcome if you review and understand them, can explain their behavior, and have the necessary rights to submit the resulting material. You do not need to declare which tools you used. Never submit private prompts or user data.
 
 ## En español
 
@@ -83,10 +83,10 @@ Puedes abrir issues, conversaciones y pull requests en español.
 
 **Desarrollo.** Sigue el [inicio en español](README.es.md). Haz un fork, crea una rama descriptiva (`fix/descripcion-corta`, `feat/...`, `docs/...`) y mantén el cambio enfocado en un solo tema. Conserva ambos idiomas, revisa teclado, foco visible y móvil en cambios de interfaz, y ejecuta las comprobaciones de la lista de arriba que correspondan.
 
-**Commits.** Un resumen corto con prefijo (`feat:`, `fix:`, `docs:`, `test:`, `build:`), por ejemplo `fix: conservar el filtro al volver a los resultados`. Conserva tu autoría y no añadas líneas de coautoría de herramientas o modelos; indica la ayuda sustancial de IA en la descripción del pull request.
+**Commits.** Un resumen corto con prefijo (`feat:`, `fix:`, `docs:`, `test:`, `build:`), por ejemplo `fix: conservar el filtro al volver a los resultados`. Conserva tu autoría y no añadas líneas de coautoría de herramientas o modelos.
 
 **Pull requests.** Abre el PR contra `main`, completa la plantilla (issue enlazado, qué cambió, comprobaciones y límites) y añade capturas sin datos privados en ambos idiomas si cambia la interfaz. En una primera contribución, un responsable aprueba la ejecución del CI después de leer los cambios. Responde a la revisión con nuevos commits en la misma rama. Los cambios se unen con **squash merge**, así que el título del PR será el mensaje del commit. No hay plazo de respuesta garantizado; si en dos semanas no hay respuesta, puedes dejar un comentario amable.
 
 **Versiones.** No cambies los números de versión, `RELEASE_VERSION` ni `CHANGELOG.md` en tu PR. Los cambios unidos se acumulan en `main` y el responsable publica una versión cuando un conjunto está listo: alinea versiones y changelog en una PR de release, crea la etiqueta y publica las notas. Se usa [versionado semántico](https://semver.org/lang/es/): los arreglos suben el último número (0.9.2 → 0.9.3) y las funciones nuevas el del medio (0.9.x → 0.10.0). Los responsables etiquetan cada PR para que aparezca en la sección correcta de las notas de la versión, donde se reconoce a cada persona que contribuyó.
 
-**Términos.** Al enviar cambios aceptas ofrecer tus aportaciones bajo la licencia no comercial y el permiso adicional de uso personal; conservas su autoría. Las contribuciones asistidas por IA son bienvenidas si las entiendes, puedes explicarlas y lo indicas en el PR. Las contribuciones se revisan y no se incorporan automáticamente.
+**Términos.** Al enviar cambios aceptas ofrecer tus aportaciones bajo la licencia no comercial y el permiso adicional de uso personal; conservas su autoría. Las contribuciones asistidas por IA son bienvenidas si las entiendes y puedes explicarlas; no hace falta indicar qué herramientas usaste. Las contribuciones se revisan y no se incorporan automáticamente.

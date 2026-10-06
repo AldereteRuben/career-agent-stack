@@ -17,7 +17,4 @@
 - [ ] I have the right to submit this contribution under LICENSE and LICENSE-PERSONAL-USE.md. / Tengo derecho a enviar esta contribución bajo LICENSE y LICENSE-PERSONAL-USE.md.
 - [ ] I included no personal data, secrets, real resumes, exports or backups. / No incluí datos personales, secretos, CVs reales, exportaciones ni copias de seguridad.
 - [ ] I documented new dependencies and third-party material, or there are none. / Documenté las dependencias y el material de terceros nuevos, o no hay.
-- [ ] I disclosed substantive AI assistance below, or there was none. / Indiqué abajo la ayuda sustancial de IA, o no la hubo.
 - [ ] I updated both languages and documentation where applicable. / Actualicé ambos idiomas y la documentación cuando corresponde.
-
-<!-- AI assistance (if any) / Ayuda de IA (si la hubo): -->
