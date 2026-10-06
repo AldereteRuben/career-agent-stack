@@ -201,6 +201,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return <div className="app-layout">
     <a className="skip-link" href="#main-content" inert={drawerOpen}>{t('Saltar al contenido principal')}</a>
+    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- in the drawer layout this element becomes a modal dialog (role added below), and its key handler traps Tab and closes on Escape */}
     <aside
       id="app-sidebar"
       ref={sidebarRef}
