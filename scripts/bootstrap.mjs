@@ -31,6 +31,7 @@ import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, installEnv, loadPg, loopbackHosts, mtimeOf, ok, parseEnv, pendingEnvPath, portIsFree, portIsOpen,
   printRecovery, projectRoot, promoteWithoutOverwrite, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
+import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
@@ -223,12 +224,27 @@ async function createOwnDatabase(values) {
     if (role.rowCount) await client.query(`alter role ${client.escapeIdentifier(name)} with login password ${password}`);
     else await client.query(`create role ${client.escapeIdentifier(name)} with login password ${password}`);
     await client.query(`comment on role ${client.escapeIdentifier(name)} is ${client.escapeLiteral(mark)}`);
+    let granted;
+    try { granted = await allowAdminToUseRole(client, name); }
+    catch (error) {
+      if (error?.code !== '42501') throw error;
+      const grantee = client.escapeIdentifier(name), member = client.escapeIdentifier(adminUser);
+      throw new RecoveryError({
+        es: `El usuario «${adminUser}» no puede actuar como el usuario nuevo «${name}», necesario para crear su base de datos.`,
+        en: `User "${adminUser}" cannot act as the new role "${name}", which is needed to create its database.`,
+        fixes: [fix(`Como superusuario de PostgreSQL: GRANT ${grantee} TO ${member} WITH SET TRUE, INHERIT FALSE; y vuelve a ejecutar`, `As a PostgreSQL superuser: GRANT ${grantee} TO ${member} WITH SET TRUE, INHERIT FALSE; then run again`), rerun],
+      });
+    }
     const database = decodeURIComponent(target.pathname.slice(1));
     const existing = await client.query(`select shobj_description(oid, 'pg_database') as mark from pg_database where datname = $1`, [database]);
     if (existing.rowCount && existing.rows[0].mark !== mark) throw conflict('database');
     if (!existing.rowCount) await client.query(`create database ${client.escapeIdentifier(database)} owner ${client.escapeIdentifier(name)} encoding 'UTF8' template template0`);
-    await client.query(`comment on database ${client.escapeIdentifier(database)} is ${client.escapeLiteral(mark)}`);
-    await client.query(`revoke all on database ${client.escapeIdentifier(database)} from public`);
+    const protect = async () => {
+      await client.query(`comment on database ${client.escapeIdentifier(database)} is ${client.escapeLiteral(mark)}`);
+      await client.query(`revoke all on database ${client.escapeIdentifier(database)} from public`);
+    };
+    // Both statements check ownership; the grant above is SET only, so become the owner just for them.
+    if (granted) { await runAsRole(client, name, protect); await releaseAdminFromRole(client, name); } else await protect();
     ok(`Base de datos propia lista: ${database} (usuario ${name}, sin acceso para otros usuarios locales)`, `Own database ready: ${database} (role ${name}, no access for other local roles)`);
   } finally { await client.end().catch(() => undefined); }
 }
