@@ -3388,3 +3388,43 @@ main:focus {
 
 .application-resume .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .application-resume .button-row > * { max-width: 100%; white-space: normal; }
+
+/* Not-found and error pages */
+.status-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+  background: var(--paper);
+}
+
+.status-page {
+  max-width: 560px;
+  width: 100%;
+  margin-inline: auto;
+  padding: 28px 24px;
+}
+
+.status-page .eyebrow {
+  margin-bottom: 8px;
+}
+
+.status-page h1:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 4px;
+}
+
+.status-page p {
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
