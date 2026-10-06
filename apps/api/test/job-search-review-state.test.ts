@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 import { after, before, describe, test } from 'node:test';
 import Fastify from 'fastify';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -15,6 +16,7 @@ const criteria = (role: string) => JSON.stringify({ role, company: null, locatio
 describe('consistent review state across surfaces (disposable PostgreSQL)', { skip: !adminUrl, concurrency: false }, () => {
   let admin: import('pg').Client; let client: import('pg').Client;
   let database: typeof import('@career/db'); let state: typeof import('../src/review-state.js'); let results: typeof import('../src/search-results.js');
+  let closePool: (() => Promise<void>) | undefined;
   let app: ReturnType<typeof Fastify>; let activeWorkspace: string;
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const ws = randomUUID(); const other = randomUUID();
@@ -32,7 +34,7 @@ describe('consistent review state across surfaces (disposable PostgreSQL)', { sk
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((name) => name.endsWith('.sql')).sort()) {
       await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
     }
-    database = await import('@career/db'); state = await import('../src/review-state.js'); results = await import('../src/search-results.js');
+    database = await import('@career/db'); closePool = trackPgPoolCleanup(database.pool); state = await import('../src/review-state.js'); results = await import('../src/search-results.js');
     const routes = await import('../src/job-search-routes.js'); const discovery = await import('../src/discovery.js');
     await client.query('INSERT INTO workspaces(id) VALUES($1),($2)', [ws, other]);
     const addSearch = async (workspace: string, role: string, version: number) => (await client.query(`INSERT INTO saved_job_searches(workspace_id,role,enabled,auto_prepare,matcher_version,provider_ids)
@@ -67,7 +69,7 @@ describe('consistent review state across surfaces (disposable PostgreSQL)', { sk
   });
 
   after(async () => {
-    await app?.close(); await database?.pool.end(); await client?.end();
+    await app?.close(); await closePool?.(); await client?.end();
     if (admin) { await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH(FORCE)`); await admin.end(); }
     if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabaseUrl;
   });

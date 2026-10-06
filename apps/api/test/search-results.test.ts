@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { after, before, describe, test } from 'node:test';
 import { performance } from 'node:perf_hooks';
 import Fastify from 'fastify';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -13,6 +14,7 @@ const databaseName = `career_searchres_${randomBytes(5).toString('hex')}`;
 
 describe('search result SQL and local performance (disposable PostgreSQL)', { skip: !adminUrl, concurrency: false }, () => {
   let admin: import('pg').Client; let client: import('pg').Client; let database: typeof import('@career/db'); let routes: typeof import('../src/job-search-routes.js');
+  let closePool: (() => Promise<void>) | undefined;
   let app: ReturnType<typeof Fastify>; let workspace: string; let performanceWorkspace: string; let activeWorkspace: string; let legacySearch: string; let resultSearch: string; let otherWorkspace: string;
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const searchIds: string[] = [];
@@ -29,7 +31,7 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((name) => name.endsWith('.sql')).sort()) {
       await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
     }
-    database = await import('@career/db'); routes = await import('../src/job-search-routes.js');
+    database = await import('@career/db'); closePool = trackPgPoolCleanup(database.pool); routes = await import('../src/job-search-routes.js');
     app = Fastify();
     workspace = randomUUID(); performanceWorkspace = randomUUID(); otherWorkspace = randomUUID(); activeWorkspace = workspace;
     await client.query('INSERT INTO workspaces(id) VALUES($1),($2),($3)', [workspace, performanceWorkspace, otherWorkspace]);
@@ -98,7 +100,7 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
   });
 
   after(async () => {
-    await app?.close(); await database?.pool.end(); await client?.end();
+    await app?.close(); await closePool?.(); await client?.end();
     if (admin) { await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH(FORCE)`); await admin.end(); }
     if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabaseUrl;
   });
