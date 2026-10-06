@@ -2,11 +2,11 @@
 
 import type { Locale } from './locale';
 import { useRouter } from 'next/navigation';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
 
 export type { Locale } from './locale';
 type Translator = (value: string, values?: Record<string, string | number>) => string;
-type LocaleContextValue = { locale: Locale; setLocale: (locale: Locale) => void; t: Translator };
+type LocaleContextValue = { locale: Locale; setLocale: (locale: Locale) => void; t: Translator; refreshing: boolean };
 
 const en: Record<string, string> = {
   'Ofertas encontradas': 'Found jobs', 'Todas tus ofertas': 'All your jobs',
@@ -274,19 +274,29 @@ const LocaleContext = createContext<LocaleContextValue | null>(null);
 export function LocaleProvider({ locale: initialLocale, children }: { locale: Locale; children: ReactNode }) {
   const router = useRouter();
   const [locale, setLocaleState] = useState(initialLocale);
+  const [refreshing, startRefresh] = useTransition();
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next);
     document.documentElement.lang = next;
     document.cookie = `locale=${next}; Path=/; Max-Age=31536000; SameSite=Lax`;
     // Refresh server metadata with the new cookie without resetting client drafts.
-    router.refresh();
+    startRefresh(() => router.refresh());
   }, [router]);
-  const value = useMemo(() => ({ locale, setLocale, t: (text: string, values?: Record<string, string | number>) => translate(locale, text, values) }), [locale]);
+  const value = useMemo(() => ({ locale, setLocale, t: (text: string, values?: Record<string, string | number>) => translate(locale, text, values), refreshing }), [locale, refreshing]);
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = locale === 'en' ? 'Career Stack · Your career space' : 'Career Stack · Tu espacio de carrera';
   }, [locale]);
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
+}
+
+/**
+ * Gives the page its own tab title, "Page · Career Stack" (WCAG 2.4.2). Refreshing server metadata after a language
+ * change resets the title to the app default, so it is applied again once that refresh finishes.
+ */
+export function useDocumentTitle(parts: readonly (string | null | undefined)[]) {
+  const { refreshing } = useLocale();
+  const title = [...parts.filter(Boolean), 'Career Stack'].join(' · ');
+  useEffect(() => { if (!refreshing) document.title = title; }, [title, refreshing]);
 }
 
 export function useLocale() {

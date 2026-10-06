@@ -56,6 +56,19 @@ const factsWith = async (api: ApiClient, statement: string) => (await api.get<Pr
 /** The profile form is the form that contains the name field. */
 const profileForm = (page: Page) => page.locator('form').filter({ has: page.getByLabel(/^(Nombre|Name|Full name|Nombre completo)$/i) }).first();
 
+/** Tab titles per route, "Page · Career Stack". '/' redirects to Find jobs. */
+const expectedTitles: Record<string, { en: string; es: string }> = {
+  '/': { en: 'Find jobs · Career Stack', es: 'Buscar empleo · Career Stack' },
+  '/overview': { en: 'Overview · Career Stack', es: 'Resumen · Career Stack' },
+  '/jobs': { en: 'All jobs · Career Stack', es: 'Todas las ofertas · Career Stack' },
+  '/jobs?scope=favorites': { en: 'Saved jobs · Career Stack', es: 'Guardadas · Career Stack' },
+  '/applications': { en: 'My applications · Career Stack', es: 'Mis solicitudes · Career Stack' },
+  '/profile': { en: 'My profile · Career Stack', es: 'Mi perfil · Career Stack' },
+  '/documents': { en: 'My resumes · Career Stack', es: 'Mis CV · Career Stack' },
+  '/boards': { en: 'Companies I follow · Career Stack', es: 'Empresas que sigo · Career Stack' },
+  '/settings': { en: 'Settings and privacy · Career Stack', es: 'Ajustes y privacidad · Career Stack' },
+};
+
 export const scenarios: Scenario[] = [
   {
     name: 'sign-in-and-language-switch',
@@ -67,9 +80,9 @@ export const scenarios: Scenario[] = [
       assert.equal(await mainNavigation(page).getByRole('link').count(), 3, 'Three primary destinations keep the first menu focused');
       await setLocale(page, 'en');
       await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Saved jobs/i }).waitFor();
-      await page.waitForFunction(() => document.title === 'Career Stack · Your career space');
+      await page.waitForFunction(() => document.title === 'Find jobs · Career Stack');
       await setLocale(page, 'es');
-      await page.waitForFunction(() => document.title === 'Career Stack · Tu espacio de carrera');
+      await page.waitForFunction(() => document.title === 'Buscar empleo · Career Stack');
       assert.equal(await hasHorizontalOverflow(page), false, 'Overview overflows horizontally at desktop width');
     },
   },
@@ -80,6 +93,7 @@ export const scenarios: Scenario[] = [
       const spanishOnly = /\b(Ofertas|Solicitudes|Mi perfil|Documentos|Fuentes|Privacidad|Guardar|Añadir|Aprobar|Cancelar|Descargar|Borrador|Empresa|Puesto|Ubicación|Resumen|Sin fecha|Aún no|Todavía|Abrir menú|Cerrar menú)\b/;
       const englishOnly = /\b(Jobs|Applications|My profile|Documents|Sources|Privacy|Save|Approve|Cancel|Download|Draft|Company|Location|Overview|No date|Not yet|Open menu|Close menu)\b/;
       const leaks: string[] = [];
+      const titles: Record<'en' | 'es', string[]> = { en: [], es: [] };
       for (const locale of ['en', 'es'] as const) {
         await setLocale(page, locale);
         for (const route of routes) {
@@ -91,13 +105,20 @@ export const scenarios: Scenario[] = [
           });
           const lang = (await page.locator('html').getAttribute('lang')) ?? '';
           const title = await page.title();
-          if (title !== (locale === 'en' ? 'Career Stack · Your career space' : 'Career Stack · Tu espacio de carrera')) leaks.push(`${route} (${locale}): unexpected tab title`);
+          const expected = expectedTitles[route]?.[locale];
+          if (expected && title !== expected) leaks.push(`${route} (${locale}): tab title is "${title}", expected "${expected}"`);
+          if (/^(Career Stack ·)/.test(title)) leaks.push(`${route} (${locale}): tab title "${title}" is the generic app title`);
+          titles[locale].push(title);
           if (!lang.startsWith(locale)) leaks.push(`${route} (${locale}): html lang is "${lang}"`);
           const leaked = text.match(locale === 'en' ? spanishOnly : englishOnly);
           if (leaked) leaks.push(`${route} (${locale}): "${leaked[0]}" in ${locale === 'en' ? 'English' : 'Spanish'} mode`);
         }
       }
       await setLocale(page, 'es');
+      for (const locale of ['en', 'es'] as const) {
+        const duplicated = titles[locale].filter((title, index) => titles[locale].indexOf(title) !== index);
+        if (duplicated.length) leaks.push(`(${locale}): routes share a tab title: ${[...new Set(duplicated)].join(', ')}`);
+      }
       assert.deepEqual(leaks, [], `Untranslated interface text:\n${leaks.join('\n')}`);
     },
   },

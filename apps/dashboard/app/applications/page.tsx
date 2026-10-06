@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
+import { AppShell, DetailTitle, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
@@ -207,6 +207,7 @@ function ApplicationsView() {
   const stateChoices = selected ? [selected.state, ...(transitions[selected.state] ?? []).filter((state) => (selectableApplicationStates as readonly string[]).includes(state))] : [];
 
   return <>
+    <DetailTitle name={selected?.role}/>
     <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Mis solicitudes', 'My applications')} description={c('Guarda los puestos a los que quieres solicitar, prepara el formulario y anota las respuestas de las empresas. Añadir aquí una solicitud no la envía.', 'Track jobs you want to apply for, prepare the form, and record employer responses. Adding an application here does not submit it.')} action={<Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir solicitud', 'Add application')}</Button>}/>
     <ApplicationSections active="tracking"/>
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
