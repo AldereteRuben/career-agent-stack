@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { before, after, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { readBoardWithReport, SourceHttpError, type BoardReadReport } from '../src/sources.js';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -16,6 +17,7 @@ describe('automatic discovery with a disposable database and fictional sources',
   const name = `career_discovery_${randomBytes(6).toString('hex')}`;
   let admin: InstanceType<typeof Client>; let client: InstanceType<typeof Client>;
   let module: typeof import('../src/discovery.js'); let pool: { end(): Promise<void> };
+  let closePool: (() => Promise<void>) | undefined;
   let workspace: string; let board: string;
   const originalDatabase = process.env.DATABASE_URL;
   before(async () => {
@@ -26,10 +28,10 @@ describe('automatic discovery with a disposable database and fictional sources',
     await admin.query(`create database "${name}"`); url.pathname = `/${name}`;
     process.env.DATABASE_URL = url.toString(); client = new Client({ connectionString: url.toString() }); await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((f) => f.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
-    module = await import('../src/discovery.js'); pool = (await import('@career/db')).pool;
+    module = await import('../src/discovery.js'); pool = (await import('@career/db')).pool; closePool = trackPgPoolCleanup(pool);
   });
   after(async () => {
-    await pool?.end(); await client?.end();
+    await closePool?.(); await client?.end();
     if (admin) { await admin.query(`drop database if exists "${name}" with (force)`); await admin.end(); }
     if (originalDatabase === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabase;
   });
