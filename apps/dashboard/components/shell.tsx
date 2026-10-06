@@ -33,6 +33,7 @@ const secondaryLinks: NavLink[] = [
 
 const toolsLabel: Copy = { es: 'Perfil y herramientas', en: 'Profile and tools' };
 const jobDetailLabel: Copy = { es: 'Detalle de la oferta', en: 'Job details' };
+const notFoundLabel: Copy = { es: 'Página no encontrada', en: 'Page not found' };
 
 type Route = { active: string | null; crumbs: Copy[] };
 
@@ -66,7 +67,9 @@ function resolveRoute(pathname: string, search: URLSearchParams | null): Route {
   if (primary) return { active: primary.key, crumbs: [primary.label] };
   const secondary = secondaryLinks.find((link) => link.key !== 'jobs' && within(pathname, link.href));
   if (secondary) return { active: secondary.key, crumbs: [toolsLabel, secondary.label] };
-  return { active: null, crumbs: [primaryLinks[0]!.label] };
+  // Only the root address redirects to Find jobs; any other unknown address is the not-found page.
+  if (pathname === '/') return { active: null, crumbs: [primaryLinks[0]!.label] };
+  return { active: null, crumbs: [notFoundLabel] };
 }
 
 /** Keep in sync with the drawer breakpoint in globals.css. */
