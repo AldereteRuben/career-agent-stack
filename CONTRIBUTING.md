@@ -11,6 +11,15 @@ Contributions, bug reports, translations, accessibility fixes and documentation 
 - **Ask or discuss** in [Discussions](https://github.com/AldereteRuben/career-agent-stack/discussions). See [getting help](SUPPORT.md).
 - **Send a pull request.** For a first contribution, issues labeled [good first issue](https://github.com/AldereteRuben/career-agent-stack/labels/good%20first%20issue) are small and well described; [help wanted](https://github.com/AldereteRuben/career-agent-stack/labels/help%20wanted) marks larger ones where help is welcome. Comment on the issue before you start so nobody duplicates the work.
 
+## Taking an issue
+
+1. Comment on the issue saying you would like to work on it, and briefly how.
+2. Wait until a maintainer assigns the issue to you before you start. An issue with an assignee is already taken; pick another one or offer to help in its thread.
+3. Issues labeled [needs-design](https://github.com/AldereteRuben/career-agent-stack/labels/needs-design) need an agreed approach first: propose it in the issue and wait for agreement before writing code.
+4. Post a short update if you need more time. If an assigned issue has no activity for two weeks, a maintainer may ask whether you are still working on it and, without an answer, unassign it so someone else can take it.
+
+[Milestones](https://github.com/AldereteRuben/career-agent-stack/milestones) show priorities: **v0.9.3** groups small fixes that are a good place to start, **v0.10.0** the next features, and **Later** larger work that needs a design decision first. Issues marked 🔒 or assigned to the maintainer involve personal data, consent or the data model and are not open for contribution.
+
 ## Before you start
 
 - Read [the license](LICENSE), [personal-use permission](LICENSE-PERSONAL-USE.md), [code of conduct](CODE_OF_CONDUCT.md) and [security policy](SECURITY.md).
@@ -78,6 +87,8 @@ AI-assisted contributions are welcome if you review and understand them, can exp
 Puedes abrir issues, conversaciones y pull requests en español.
 
 **Formas de contribuir.** Reporta errores con el [formulario de errores](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=bug_report.yml), propone mejoras o traducciones con el [formulario de mejoras](https://github.com/AldereteRuben/career-agent-stack/issues/new?template=feature_request.yml) y haz preguntas en [Discussions](https://github.com/AldereteRuben/career-agent-stack/discussions) (consulta [cómo pedir ayuda](SUPPORT.md)). Para una primera contribución busca issues con la etiqueta [good first issue](https://github.com/AldereteRuben/career-agent-stack/labels/good%20first%20issue) y comenta en el issue antes de empezar.
+
+**Tomar un issue.** Comenta en el issue que quieres trabajar en él y cómo, y **espera a que un responsable te lo asigne** antes de empezar. Si un issue ya tiene a alguien asignado, está tomado: elige otro u ofrece ayuda en su conversación. Los issues con la etiqueta [needs-design](https://github.com/AldereteRuben/career-agent-stack/labels/needs-design) necesitan acordar primero el enfoque: propónlo en el issue y espera el acuerdo antes de programar. Si necesitas más tiempo, deja una breve actualización; si un issue asignado pasa dos semanas sin actividad, un responsable puede preguntar si sigues con él y, sin respuesta, liberarlo para otra persona. Los [hitos](https://github.com/AldereteRuben/career-agent-stack/milestones) marcan las prioridades: **v0.9.3** reúne arreglos pequeños para empezar, **v0.10.0** las próximas funciones y **Más adelante** el trabajo grande que necesita una decisión de diseño. Los issues marcados con 🔒 o asignados al responsable tocan datos personales, consentimiento o el modelo de datos y no están abiertos a contribuciones.
 
 **Antes de empezar.** Lee la [licencia](LICENSE), el [permiso de uso personal](LICENSE-PERSONAL-USE.md), el [código de conducta](CODE_OF_CONDUCT.es.md) y la [política de seguridad](SECURITY.md). Busca si el problema ya está reportado y, para cambios grandes, abre primero un issue para acordar el alcance. Usa solo datos ficticios.
 
