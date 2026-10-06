@@ -1590,7 +1590,6 @@ main:focus {
 .fact-meta > span {
   font-size: var(--text-sm);
   color: #626c76;
-  text-transform: capitalize;
 }
 
 .fact-content p {
@@ -1620,7 +1619,6 @@ main:focus {
 
 .answer-row strong {
   font-size: var(--text-sm);
-  text-transform: capitalize;
 }
 
 .answer-row p {
@@ -2225,7 +2223,6 @@ main:focus {
 
 .timeline-item strong {
   font-size: var(--text-sm);
-  text-transform: capitalize;
 }
 
 .timeline-item p {
