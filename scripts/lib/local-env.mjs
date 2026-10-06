@@ -231,18 +231,17 @@ export async function mtimeOf(path) {
 }
 
 /**
- * Start time of a Linux process in milliseconds: the wall-clock boot time (`btime` in /proc/stat, as `ps` uses) plus the
- * process's start in clock ticks since boot. /proc/uptime is not used: it stops during suspend, so `now - uptime` drifts
- * later by every suspend and would make an old process look newer than a rebuild. `ps` also rounds to whole seconds twice and
- * can be about two seconds off. Null when /proc cannot be read.
+ * Start time of a Linux process in milliseconds, from the kernel's own clock ticks. `ps` derives it from the boot time with
+ * two roundings to whole seconds and can be about two seconds off. /proc/uptime and the start ticks both count
+ * suspended time (CLOCK_BOOTTIME), so the difference stays correct across suspend. Null when /proc cannot be read.
  */
 function linuxStartMs(pid) {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
     const ticks = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]); // field 22; the command name in field 2 may contain spaces
-    const btime = Number(readFileSync('/proc/stat', 'utf8').match(/^btime\s+(\d+)/m)?.[1]);
+    const uptime = Number(readFileSync('/proc/uptime', 'utf8').split(' ')[0]);
     const ticksPerSecond = Number(spawnSync('getconf', ['CLK_TCK'], { encoding: 'utf8' }).stdout) || 100;
-    const started = btime * 1000 + (ticks / ticksPerSecond) * 1000;
+    const started = Date.now() - uptime * 1000 + (ticks / ticksPerSecond) * 1000;
     return Number.isFinite(started) ? started : null;
   } catch { return null; }
 }

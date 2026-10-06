@@ -31,7 +31,7 @@ import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, installEnv, loadPg, loopbackHosts, mtimeOf, ok, parseEnv, pendingEnvPath, portIsFree, portIsOpen,
   printRecovery, projectRoot, promoteWithoutOverwrite, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
-import { allowAdminToUseRole, runAsRole } from './lib/bootstrap-database.mjs';
+import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
@@ -244,7 +244,7 @@ async function createOwnDatabase(values) {
       await client.query(`revoke all on database ${client.escapeIdentifier(database)} from public`);
     };
     // Both statements check ownership; the grant above is SET only, so become the owner just for them.
-    if (granted) await runAsRole(client, name, protect); else await protect();
+    if (granted) { await runAsRole(client, name, protect); await releaseAdminFromRole(client, name); } else await protect();
     ok(`Base de datos propia lista: ${database} (usuario ${name}, sin acceso para otros usuarios locales)`, `Own database ready: ${database} (role ${name}, no access for other local roles)`);
   } finally { await client.end().catch(() => undefined); }
 }

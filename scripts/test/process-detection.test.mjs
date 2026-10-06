@@ -27,9 +27,7 @@ test('a port nobody listens on has no process', { skip: !supported }, () => {
 
 // `ps` derives the start time from the boot time with two one-second roundings, so it can be about two seconds off. The
 // launcher compares it with the build time to say whether a service runs the current build, and it must not guess.
-// The boot time (`btime`) is whole seconds, so the start can be up to one second early but never late, and it does not drift
-// with suspend (unlike now - /proc/uptime), which is why the launcher keeps a one-second margin.
-test('the start time of a process is within one second, and never later than the real start', { skip: process.platform !== 'linux' }, async () => {
+test('the start time of a process is accurate to a fraction of a second', { skip: process.platform !== 'linux' }, async () => {
   const before = Date.now();
   const child = spawn(process.execPath, ['-e', `console.log('up'); setInterval(() => {}, 1000);`], { stdio: ['ignore', 'pipe', 'inherit'] });
   try {
@@ -37,6 +35,6 @@ test('the start time of a process is within one second, and never later than the
     const after = Date.now();
     const identity = await processIdentity(child.pid);
     assert.ok(identity, 'the identity must be readable');
-    assert.ok(identity.startedAt >= before - 1_100 && identity.startedAt <= after + 100, `started at ${identity.startedAt - before} ms after launch, expected between -1000 and ${after - before}`);
+    assert.ok(identity.startedAt >= before - 100 && identity.startedAt <= after + 100, `started at ${identity.startedAt - before} ms after launch, expected between 0 and ${after - before}`);
   } finally { child.kill(); }
 });

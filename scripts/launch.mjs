@@ -251,8 +251,7 @@ async function reportFreshness(name, labels, { port, buildMtime, needsBuild, isD
     problem(`${labels.es} en marcha, pero el código cambió después de la última compilación: NO es la versión más reciente. Hace falta reiniciar.`, `${labels.en} is running, but the code changed after the last build: it is NOT the latest version. A restart is required.`);
     return say(`    – ${restart.es}`, `    – ${restart.en}`, process.stderr);
   }
-  // Start times are only accurate to about a second (macOS `ps` lstart has one-second resolution; on Linux the boot time and
-  // clock ticks are rounded), so a build written within a second of the start is not treated as newer.
+  // `ps` start times have one-second resolution.
   if (buildMtime > identity.startedAt + 1_000) {
     problem(`${labels.es} en marcha desde antes de la compilación actual: NO usa la versión más reciente. Hace falta reiniciar.`, `${labels.en} has been running since before the current build: it is NOT using the latest version. A restart is required.`);
     return say(`    – ${restart.es}`, `    – ${restart.en}`, process.stderr);

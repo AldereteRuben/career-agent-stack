@@ -43,6 +43,11 @@ test('a non-superuser administrator can create a database for the role it create
       await administrator.query(`revoke all on database "${databases[0]}" from public`);
     });
     assert.equal((await administrator.query('select current_user as me')).rows[0].me, adminRole, 'reset role must return to the administrator');
+    // The installation promises "no access for other local roles": the administrator must not be able to open the new database.
+    assert.equal((await administrator.query(`select has_database_privilege($1, 'connect') as can_connect`, [databases[0]])).rows[0].can_connect, false);
+    const asAdminOnNewDatabase = new Client({ connectionString: Object.assign(new URL(asAdmin), { pathname: `/${databases[0]}` }).toString() });
+    await assert.rejects(asAdminOnNewDatabase.connect(), { code: '42501' }, 'the administrator must not be able to connect to the installation database');
+    await asAdminOnNewDatabase.end().catch(() => undefined);
     const membership = async () => (await administrator.query(
       `select bool_or(m.set_option) as set, bool_or(m.inherit_option) as inherit from pg_auth_members m
          where m.roleid = $1::regrole and m.member = $2::regrole`, [`"${roles[0]}"`, `"${adminRole}"`])).rows;

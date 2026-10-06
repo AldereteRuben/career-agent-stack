@@ -21,3 +21,15 @@ export async function runAsRole(client, role, work) {
   try { return await work(); }
   finally { await client.query('reset role'); }
 }
+
+/**
+ * Before PostgreSQL 16 a grant cannot be SET only: membership always inherits. Once the database is protected the
+ * administrator gives the membership back, so it cannot open the installation's database. On 16+ the SET-only
+ * membership is harmless and stays (a repeated run needs it). Not exercised by CI, which runs PostgreSQL 17.
+ */
+export async function releaseAdminFromRole(client, role) {
+  const { rows: [{ version }] } = await client.query(`select current_setting('server_version_num')::int as version`);
+  if (version >= 160000) return false;
+  await client.query(`revoke ${client.escapeIdentifier(role)} from current_user`);
+  return true;
+}
