@@ -24,12 +24,21 @@ function sourceFiles(directory: string): string[] {
 // carry their own translation and are not checked here. A missing entry silently shows the source text.
 const catalogCalls = /(?<![\w.])t\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`([^`$]*)`)\s*[,)](?!\s*['"`])/g;
 
+// t(condition ? 'A' : 'B') looks up each branch in the catalog.
+const literal = String.raw`(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")`;
+const ternaryCalls = new RegExp(String.raw`(?<![\w.])t\(\s*[\w.!=&|\s]+\?\s*${literal}\s*:\s*${literal}\s*\)`, 'g');
+
 test('every catalog text used in the dashboard has a translation', () => {
   const missing = new Set<string>();
   let checked = 0;
   for (const file of sourceFiles(dashboard)) {
-    for (const match of readFileSync(file, 'utf8').matchAll(catalogCalls)) {
-      const text = (match[1] ?? match[2] ?? match[3]!).replace(/\\'/g, "'");
+    const code = readFileSync(file, 'utf8');
+    const texts = [
+      ...[...code.matchAll(catalogCalls)].map((match) => match[1] ?? match[2] ?? match[3]!),
+      ...[...code.matchAll(ternaryCalls)].flatMap((match) => [match[1] ?? match[2]!, match[3] ?? match[4]!]),
+    ];
+    for (const raw of texts) {
+      const text = raw.replace(/\\'/g, "'");
       const normalized = text.trim().replace(/\s+/g, ' ');
       checked++;
       if (sameInBothLanguages.has(normalized)) continue;

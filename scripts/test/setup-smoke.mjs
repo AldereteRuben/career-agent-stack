@@ -41,9 +41,10 @@ const modeOf = async (path) => { try { return ((await stat(path)).mode & 0o777).
 class SmokeFailure extends Error {}
 function expect(condition, message) { if (!condition) throw new SmokeFailure(message); }
 
+// A skipped step is stored as `skipped: true` with no `ok`, so a consumer counting `steps[].ok` never counts it as a pass.
 function record(name, ok, details = {}) {
-  evidence.steps.push({ name, ok, ...details });
-  console.log(`${ok ? '✓' : '✗'} ${name}${details.ms ? ` (${Math.round(details.ms / 1000)} s)` : ''}`);
+  evidence.steps.push(details.skipped ? { name, ...details } : { name, ok, ...details });
+  console.log(`${details.skipped ? '–' : ok ? '✓' : '✗'} ${name}${details.ms ? ` (${Math.round(details.ms / 1000)} s)` : ''}`);
 }
 
 // Child environment: nothing that could point the copy at live data or a live port is inherited.
@@ -240,7 +241,7 @@ async function main() {
 
     } else {
       evidence.limitations.push('zsh is not installed: the .command launcher checks (Finder-like PATH) were skipped');
-      record('Start Career Agent Stack.command (zsh, Finder-like PATH): skipped, zsh is not installed', true, { skipped: true });
+      record('Start Career Agent Stack.command (zsh, Finder-like PATH): skipped, zsh is not installed', undefined, { skipped: true });
     }
 
     step = run(copy, process.execPath, ['scripts/launch.mjs', '--check']);
@@ -261,7 +262,7 @@ async function main() {
       record('pnpm run stop frees the ports; .command (in a terminal) reports the stopped stack, waits for Enter, exits 1', true);
     } else {
       evidence.limitations.push('zsh or expect is not installed: the .command terminal pause check was skipped');
-      record('pnpm run stop frees the ports; .command pause check skipped (needs zsh and expect)', true, { skipped: true });
+      record('pnpm run stop frees the ports; .command pause check skipped (needs zsh and expect)', undefined, { skipped: true });
     }
 
     // CAREER_ENV_FILE: another installation's configuration (like a restored workspace: absolute data folder,
