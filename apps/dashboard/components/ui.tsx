@@ -49,7 +49,7 @@ export function Notice({ children, tone = 'info', actions, role }: { children: R
   return <div className={`notice notice-${tone}`} role={liveRole}><div className="notice-content"><div className="notice-message">{children}</div>{actions && <div className="notice-actions">{actions}</div>}</div></div>;
 }
 
-export function Empty({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) { return <div className="empty"><div className="empty-orbit" aria-hidden="true"><Icon name="sparkle" size={18}/></div><h3>{title}</h3><p>{detail}</p>{action}</div>; }
+export function Empty({ title, detail, action, headingLevel = 'h3' }: { title: string; detail: string; action?: ReactNode; headingLevel?: 'h2' | 'h3' | 'h4' | 'h5' | 'h6' }) { const Heading = headingLevel; return <div className="empty"><div className="empty-orbit" aria-hidden="true"><Icon name="sparkle" size={18}/></div><Heading>{title}</Heading><p>{detail}</p>{action}</div>; }
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
