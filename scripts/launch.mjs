@@ -20,6 +20,7 @@ import {
   pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
   waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
+import { clipboardTools, missingClipboardAdvice } from './lib/clipboard.mjs';
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
@@ -349,13 +350,7 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
   ok(`Aplicación web lista en ${webOrigin}`, `Web app ready on ${webOrigin}`);
 }
 
-const clipboardTools = () => {
-  const has = (tool) => spawnSync('which', [tool], { stdio: 'ignore' }).status === 0;
-  if (process.platform === 'darwin') return { copy: ['pbcopy', []], paste: ['pbpaste', []] };
-  if (process.env.WAYLAND_DISPLAY && has('wl-copy')) return { copy: ['wl-copy', []], paste: ['wl-paste', ['-n']] };
-  if (has('xclip')) return { copy: ['xclip', ['-selection', 'clipboard']], paste: ['xclip', ['-selection', 'clipboard', '-o']] };
-  return null;
-};
+const availableClipboardTools = () => clipboardTools({ has: (tool) => spawnSync('which', [tool], { stdio: 'ignore' }).status === 0 });
 
 // Runs detached after the launcher exits: clears the clipboard only if it still holds the token.
 // It receives a SHA-256 of the token, never the token itself, so nothing secret appears in `ps`.
@@ -372,8 +367,11 @@ setTimeout(() => {
  * and clears the clipboard two minutes later if it still holds the token.
  */
 async function copyTokenToClipboard(tokenPath) {
-  const tools = clipboardTools();
-  if (!tools) return warn('No hay herramienta de portapapeles disponible; abre el archivo del token manualmente.', 'No clipboard tool available; open the token file manually.');
+  const tools = availableClipboardTools();
+  if (!tools) {
+    const advice = missingClipboardAdvice({ tokenPath: relative(projectRoot, tokenPath).startsWith('..') ? tokenPath : relative(projectRoot, tokenPath) });
+    return warn(`No hay herramienta de portapapeles disponible. ${advice.es}`, `No clipboard tool available. ${advice.en}`);
+  }
   const token = (await readFile(tokenPath, 'utf8')).trim();
   const copied = spawnSync(tools.copy[0], tools.copy[1], { input: token, stdio: ['pipe', 'ignore', 'ignore'] });
   if (copied.status !== 0) return warn('No se pudo copiar el token al portapapeles.', 'Could not copy the token to the clipboard.');
