@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
 const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -12,7 +13,7 @@ const name = `career_job_search_${randomBytes(6).toString('hex')}`;
 const fixture = { externalId: 'fictional-job-42', title: 'Product Designer', company: 'Fictional Studio', location: null, workMode: 'remote', url: 'https://remotive.com/remote-jobs/design/fictional-job-42', postedAt: '2026-10-01T00:00:00.000Z', description: 'Design accessible interfaces.', raw: { remote: true } };
 
 describe('saved job searches with a disposable database and cached fictional feeds', { skip: !adminUrl, concurrency: false }, () => {
-  let admin: InstanceType<typeof Client>; let client: InstanceType<typeof Client>; let pool: { end(): Promise<void> };
+  let admin: InstanceType<typeof Client>; let client: InstanceType<typeof Client>; let closePool: (() => Promise<void>) | undefined;
   let workspace: string; let module: typeof import('../src/job-search-routes.js'); let sources: typeof import('../src/job-search.js'); let dbmod: typeof import('@career/db');
   let calls: Array<{ workspaceId: string; jobId: string; locale: string }>; let failPrepare = false;
   const originalDatabase = process.env.DATABASE_URL;
@@ -26,10 +27,10 @@ describe('saved job searches with a disposable database and cached fictional fee
     process.env.DATABASE_URL = url.toString(); client = new Client({ connectionString: url.toString() }); await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((f) => f.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
     [module, sources, dbmod] = await Promise.all([import('../src/job-search-routes.js'), import('../src/job-search.js'), import('@career/db')]);
-    pool = dbmod.pool;
+    closePool = trackPgPoolCleanup(dbmod.pool);
   });
   after(async () => {
-    await pool?.end(); await client?.end();
+    await closePool?.(); await client?.end();
     if (admin) { await admin.query(`drop database if exists "${name}" with (force)`); await admin.end(); }
     if (originalDatabase === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabase;
   });

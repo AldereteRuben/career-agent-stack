@@ -9,6 +9,7 @@ import { before, after, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { AssistedBrowser } from '../src/assisted-browser.js';
 import type { AssistedPlan } from '@career/domain';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const requireDb = createRequire(join(root, 'packages/db/package.json'));
@@ -32,6 +33,7 @@ describe('assisted routes with fictional data and a disposable database', { skip
   let admin: Client; let sql: Client; let directory: string; let app: FastifyInstance; let browser: FakeBrowser;
   let runtime: { stopAll(): Promise<void> };
   let pool: { end(): Promise<void> }; let register: typeof import('../src/assisted-routes.js').registerAssistedRoutes;
+  let closePool: (() => Promise<void>) | undefined;
   let workspace = ''; const envBefore = { ...process.env };
   before(async () => {
     const url = new URL(adminUrl!);
@@ -45,12 +47,12 @@ describe('assisted routes with fictional data and a disposable database', { skip
     sql = new PgClient({ connectionString: url.toString() }); await sql.connect();
     for (const file of (await readdir(join(root,'packages/db/migrations'))).filter(n=>n.endsWith('.sql')).sort()) await sql.query(await readFile(join(root,'packages/db/migrations',file),'utf8'));
     register = (await import('../src/assisted-routes.js')).registerAssistedRoutes;
-    pool = (await import('@career/db')).pool;
+    pool = (await import('@career/db')).pool; closePool = trackPgPoolCleanup(pool);
     browser = new FakeBrowser(); app = Fastify(); runtime = await register(app, () => workspace, browser);
     (await import('../src/resume-journey.js')).registerResumeJourney(app, () => workspace);
   });
   after(async () => {
-    await app?.close(); await pool?.end(); await sql?.end();
+    await app?.close(); await closePool?.(); await sql?.end();
     if (admin) { await admin.query(`drop database if exists "${name}" with (force)`); await admin.end(); }
     if (directory) await rm(directory, { recursive: true, force: true });
     for (const key of Object.keys(process.env)) if (!(key in envBefore)) delete process.env[key];

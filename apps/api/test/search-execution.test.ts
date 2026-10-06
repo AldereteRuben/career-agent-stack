@@ -8,14 +8,15 @@ import type {Client as PgClient} from 'pg';
 import {ProviderReadError} from '../src/job-search-sources.js';
 import type {PublicJob} from '../src/job-search-sources.js';
 import type {SearchProvider} from '../src/search-execution.js';
+import {trackPgPoolCleanup} from './helpers/pg-pool-cleanup.js';
 const root=new URL('../../../',import.meta.url);
 const {Client}=createRequire(new URL('packages/db/package.json',root))('pg');
 const adminUrl=process.env.CAREER_JOB_SEARCH_TEST_ADMIN_URL;
 const name=`career_search_v080_${randomBytes(6).toString('hex')}`;
 describe('v0.8 persisted search execution in disposable database',{skip:!adminUrl,concurrency:false},()=>{
- let admin:PgClient|undefined,client!:PgClient,workspace:string,dbmod:typeof import('@career/db'),routes:typeof import('../src/job-search-routes.js'),execution:typeof import('../src/search-execution.js');
- before(async()=>{const url=new URL(adminUrl!);assert.ok(['127.0.0.1','localhost'].includes(url.hostname));assert.equal(url.pathname,'/postgres');admin=new Client({connectionString:url.toString()});await admin.connect();await admin.query(`CREATE DATABASE "${name}"`);url.pathname=`/${name}`;process.env.DATABASE_URL=url.toString();client=new Client({connectionString:url.toString()});await client.connect();for(const file of (await readdir(new URL('packages/db/migrations',root))).filter(f=>f.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`,root),'utf8'));[dbmod,routes,execution]=await Promise.all([import('@career/db'),import('../src/job-search-routes.js'),import('../src/search-execution.js')]);});
- after(async()=>{await dbmod?.pool.end();await client?.end();if(admin){await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH(FORCE)`);await admin.end();}});
+ let admin:PgClient|undefined,client!:PgClient,workspace:string,dbmod:typeof import('@career/db'),routes:typeof import('../src/job-search-routes.js'),execution:typeof import('../src/search-execution.js'),closePool:(()=>Promise<void>)|undefined;
+ before(async()=>{const url=new URL(adminUrl!);assert.ok(['127.0.0.1','localhost'].includes(url.hostname));assert.equal(url.pathname,'/postgres');admin=new Client({connectionString:url.toString()});await admin.connect();await admin.query(`CREATE DATABASE "${name}"`);url.pathname=`/${name}`;process.env.DATABASE_URL=url.toString();client=new Client({connectionString:url.toString()});await client.connect();for(const file of (await readdir(new URL('packages/db/migrations',root))).filter(f=>f.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`,root),'utf8'));[dbmod,routes,execution]=await Promise.all([import('@career/db'),import('../src/job-search-routes.js'),import('../src/search-execution.js')]);closePool=trackPgPoolCleanup(dbmod.pool);});
+ after(async()=>{await closePool?.();await client?.end();if(admin){await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH(FORCE)`);await admin.end();}});
  beforeEach(async()=>{await client.query('DELETE FROM search_query_cache');await client.query('DELETE FROM search_provider_budget');await client.query('DELETE FROM workspaces');workspace=randomUUID();await client.query('INSERT INTO workspaces(id) VALUES($1)',[workspace]);});
  const server=():FastifyInstance=>{const app=Fastify();routes.registerJobSearchRoutes(app,()=>workspace);return app;};
  const payload=(patch:Record<string,unknown>={})=>({role:'QA',company:null,location:null,workMode:'any',frequencyHours:24,enabled:true,autoPrepare:false,language:'en',matcherVersion:2,providerIds:['remotive','arbeitnow'],includeRelated:false,idempotencyKey:randomUUID(),...patch});
