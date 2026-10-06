@@ -69,7 +69,7 @@ function ProfileView() {
   const [savedEntry, setSavedEntry] = useState<Fact | null>(null);
   const savedEntryHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { if (savedEntry) savedEntryHeading.current?.focus(); }, [savedEntry]);
-  const reviewList = useRef<HTMLDivElement>(null);
+  const reviewList = useRef<HTMLElement>(null);
   const editHeading = useRef<HTMLHeadingElement>(null);
   const [editing, setEditing] = useState<(Fact & { revision: number }) | null>(null);
   useEffect(() => { if (editing && editHeading.current) { editHeading.current.focus({ preventScroll: true }); editHeading.current.scrollIntoView({ block: 'start', behavior: 'instant' }); } }, [editing]);
