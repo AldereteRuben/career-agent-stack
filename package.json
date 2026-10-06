@@ -42,7 +42,7 @@
     "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
     "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts",
     "test:ai-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v090.mts",
-    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts"
+    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/api-error-codes.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
