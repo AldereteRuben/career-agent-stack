@@ -9,8 +9,10 @@ import './globals.css';
 /**
  * Last resort for a failure of the root layout, which replaces the whole document: it brings its own <html lang> and has no
  * language provider, app shell or router, so it uses plain elements and the language cookie. Shows no error details.
+ * Try again reloads the page: for a failure of the layout on the server, `reset()` re-renders the same failed result and
+ * changes nothing (checked in a browser), while a new request can succeed.
  */
-export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
   // Start in English so the server and first client render agree, then switch to the saved or browser language.
   const [locale, setLocale] = useState<Locale>('en');
   const text = statusPageText.error;
@@ -24,7 +26,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
         <h1>{pick(locale, text.title)}</h1>
         <p>{pick(locale, text.detail)}</p>
         <div className="status-actions">
-          <button type="button" className="button button-primary" onClick={reset}>{pick(locale, text.retry)}</button>
+          <button type="button" className="button button-primary" onClick={() => window.location.reload()}>{pick(locale, text.retry)}</button>
           {/* A plain link on purpose: a full page load recovers even when the router is what failed. */}
           <a className="button button-secondary" href="/">{pick(locale, text.home)}</a>
         </div>
