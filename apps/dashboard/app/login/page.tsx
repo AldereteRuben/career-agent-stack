@@ -2,7 +2,7 @@
 
 import { Brand } from '@/components/brand';
 import { RELEASE_VERSION } from '@career/domain';
-import { LanguageToggle, localizedError, useLocale } from '@/lib/i18n';
+import { LanguageToggle, localizedError, useDocumentTitle, useLocale } from '@/lib/i18n';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Field, Icon, Notice } from '@/components/ui';
@@ -10,6 +10,7 @@ import { copy } from '@/lib/labels';
 
 export default function LoginPage() {
   const { locale } = useLocale(); const c = copy(locale);
+  useDocumentTitle([c('Iniciar sesión', 'Sign in')]);
   const [ready, setReady] = useState(false);
   useEffect(() => { setReady(true); }, []);
   const [token, setToken] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const router = useRouter();
