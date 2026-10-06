@@ -41,7 +41,7 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
       {job.applicationId && <p className={styles.applicationStatus}>{t('Candidatura existente', 'Existing application')} · {labelFor.applicationState(job.applicationState, spanish ? 'es' : 'en')}{job.documentApprovalStatus ? ` · ${labelFor.documentApproval(job.documentApprovalStatus, spanish ? 'es' : 'en')}` : ''}</p>}
     </div>
     <div className={styles.resultActions}>
-      <Link className="button" href={applicationHref ?? jobHref} aria-describedby={titleId}>{applicationHref ? applicationLabel : t('Ver oferta', 'View job')}</Link>
+      <Link className="button button-primary" href={applicationHref ?? jobHref} aria-describedby={titleId}>{applicationHref ? applicationLabel : t('Ver oferta', 'View job')}</Link>
       {aiAvailable && <Link className="button button-secondary" href={`${jobHref}#job-ai-assistance`} aria-describedby={titleId}>{['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.aiSummaryStates?.[spanish ? 'es' : 'en'] ?? '') ? t('Resumen en preparación', 'Summary in progress') : job.aiSummaryStates?.[spanish ? 'es' : 'en'] === 'SAVED' ? t('Ver resumen guardado', 'View saved summary') : t('Resumir esta oferta', 'Summarize this job')}</Link>}
       {!archived && <Button variant="secondary" disabled={busy} aria-pressed={saved} aria-describedby={titleId} onClick={saved ? onUnsave : onSave}>{saved ? t('Quitar de guardadas', 'Unsave job') : t('Guardar oferta', 'Save job')}</Button>}
       <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onArchive}>{archived ? t('Recuperar', 'Restore') : t('Archivar', 'Archive')}</Button>

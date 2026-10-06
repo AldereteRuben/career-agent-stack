@@ -65,7 +65,8 @@
 .resultCard h3 a:hover { text-decoration: underline; }
 .resultMeta { margin: 0; color: var(--ink); }
 .resultReason { margin: 0; color: var(--muted); font-size: .92rem; }
-.resultActions { justify-content: flex-end; max-width: 300px; }
+/* Two aligned columns (view/summarize, save/archive) instead of a ragged right-aligned wrap. */
+.resultActions { display: grid; grid-template-columns: repeat(2, max-content); justify-content: end; }
 .resultActions > * { max-width: 100%; }
 .moreReasons { grid-column: 1 / -1; color: var(--muted); font-size: .9rem; }
 .moreReasons summary { width: fit-content; min-height: 24px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
@@ -90,13 +91,15 @@
   .form { grid-template-columns: minmax(0, 1fr); } .providerOptions { grid-template-columns: minmax(0, 1fr); }
   .formCard, .coverage, .resultCard, .emptyResults { padding: 14px; }
   .resultCard { grid-template-columns: minmax(0, 1fr); }
-  .resultActions { max-width: none; justify-content: flex-start; }
+  .resultActions { grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; }
+  .resultActions > * { white-space: normal; text-align: center; }
   .sourceProgress li { display: grid; }
 }
 @media (max-width: 360px) {
   .actions { width: 100%; min-width: 0; }
   .actions > *, .cardActions > *, .resultActions > * { box-sizing: border-box; flex: 1 1 100%; width: 100%; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .resultsHead, .resultsHead > *, .sortControl { min-width: 0; max-width: 100%; }
+  .resultActions { grid-template-columns: minmax(0, 1fr); }
   .sortControl { width: 100%; justify-content: space-between; }
   .sortControl select { width: 100%; min-width: 0; }
   .filterTabs { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
