@@ -28,3 +28,19 @@ export function localeWithoutProvider(cookie: string, browserLanguage: string): 
   if (saved === 'es' || saved === 'en') return saved;
   return browserLanguage.toLowerCase().startsWith('es') ? 'es' : 'en';
 }
+
+const sameOrigin = (url: string | null | undefined, origin: string) => {
+  if (!url) return false;
+  try { return new URL(url).origin === origin; } catch { return false; }
+};
+
+/**
+ * Whether "go back" stays inside the app. A tab can hold earlier pages from another site (the person arrived from a link or
+ * typed address), and going back would leave Career Stack. The Navigation API names the previous entry exactly; where the
+ * browser lacks it (`previousEntryUrl` is undefined), the page that opened this document stands in. `null` means no previous entry.
+ */
+export function canGoBackInApp(env: { origin: string; historyLength: number; referrer: string; previousEntryUrl?: string | null }): boolean {
+  if (env.historyLength <= 1) return false;
+  if (env.previousEntryUrl !== undefined) return sameOrigin(env.previousEntryUrl, env.origin);
+  return sameOrigin(env.referrer, env.origin);
+}
