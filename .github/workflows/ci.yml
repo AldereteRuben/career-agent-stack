@@ -75,6 +75,7 @@ jobs:
           CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:clipboard
       - run: pnpm run test:process
+      - run: pnpm run test:install-marker
       - run: pnpm run test:backup
       - run: pnpm run test:backup-api
       - name: Install Chromium for synthetic browser tests

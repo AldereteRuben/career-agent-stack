@@ -16,7 +16,7 @@ import { relative, resolve } from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
-  RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
+  RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, markDependenciesCurrent, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
   pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
   waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
@@ -103,6 +103,7 @@ async function checkDependencies() {
     es: 'No se pudieron instalar las dependencias.', en: 'Dependencies could not be installed.',
     fixes: [fix('Comprueba tu conexión y ejecuta: pnpm install --frozen-lockfile', 'Check your connection and run: pnpm install --frozen-lockfile')],
   });
+  await markDependenciesCurrent(at('node_modules/.modules.yaml'));
 }
 
 async function loadEnvironment() {
