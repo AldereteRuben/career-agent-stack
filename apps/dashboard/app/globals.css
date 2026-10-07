@@ -583,6 +583,8 @@ main:focus {
 .page-header h1 {
   max-width: 800px;
   white-space: pre-line;
+  /* A single long word ("applications" at 200% text in a wide font) must not widen a 320px page. */
+  overflow-wrap: break-word;
   margin: 8px 0;
   font-family: var(--font-display);
   font-weight: 700;
