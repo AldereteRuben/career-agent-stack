@@ -133,3 +133,68 @@ jobs:
       - name: Verify AI foundations with synthetic processes (no provider account)
         run: pnpm run test:ai
       - run: pnpm run test:ui-logic
+  browser:
+    # Browser suites on a disposable stack (apps/api/e2e/isolation.ts). They run in parallel with the other jobs.
+    # Only fictional fixtures are used; failure screenshots are uploaded for a week. Fork pull requests run with the
+    # read-only token and no secrets, like the rest of this workflow.
+    name: Browser tests (${{ matrix.id }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: e2e
+            suite: test:e2e
+          - id: edge-cases
+            suite: test:edge-cases
+          - id: search-ui
+            suite: test:search-ui
+          - id: ai-ui
+            suite: test:ai-ui
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: career_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Install pinned pnpm
+        run: npm install --global pnpm@11.10.0
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium for the browser suites
+        run: pnpm --filter @career/api exec playwright install --with-deps chromium
+      - name: Install PDF text inspection
+        run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+      # The harness reads DATABASE_URL from .env as the "live" database it must never write to: an empty database
+      # on the service. Disposable databases are created and dropped through the maintenance connection.
+      - name: Point the harness at the PostgreSQL service
+        run: |
+          psql postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres --command 'create database career'
+          printf 'DATABASE_URL=postgresql://postgres:career_ci_only@127.0.0.1:5432/career\n' > .env
+      - name: Run ${{ matrix.suite }} against a production build of the dashboard
+        run: pnpm run ${{ matrix.suite }}
+        env:
+          E2E_PRODUCTION: '1'
+          E2E_ADMIN_DATABASE_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          NEXT_TELEMETRY_DISABLED: '1'
+      - name: Upload screenshots from the failed run
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-${{ matrix.id }}-screenshots
+          path: output/playwright/
+          retention-days: 7
+          if-no-files-found: ignore
