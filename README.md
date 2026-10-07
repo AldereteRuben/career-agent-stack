@@ -195,7 +195,7 @@ Bug reports, feature ideas, translations and pull requests are welcome in Englis
 ### Contributors
 
 <a href="https://github.com/AldereteRuben/career-agent-stack/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=AldereteRuben/career-agent-stack" alt="Contributors to Career Stack" />
+  <img src="https://raw.githubusercontent.com/AldereteRuben/career-agent-stack/contributors/contributors.svg" alt="Contributors to Career Stack" />
 </a>
 
 ## License
