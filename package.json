@@ -37,6 +37,7 @@
     "test:setup": "node scripts/test/setup-smoke.mjs",
     "test:bootstrap-db": "node --test scripts/test/bootstrap-database.test.mjs",
     "test:clipboard": "node --test scripts/test/clipboard.test.mjs",
+    "test:contributors": "node --test scripts/test/contributors-image.test.mjs",
     "test:process": "node --test scripts/test/process-detection.test.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
