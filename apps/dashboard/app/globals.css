@@ -696,6 +696,17 @@ main:focus {
   white-space: nowrap;
 }
 
+/* On narrow screens long labels wrap instead of overflowing: wider UI fonts (DejaVu Sans on Linux) do not fit. */
+@media (max-width: 640px) {
+  .button,
+  .tag {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+}
+
 .tag-green {
   background: var(--green-pale);
   color: var(--green);
