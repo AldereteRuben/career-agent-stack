@@ -84,7 +84,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 | `test:integration` | Yes, on Ubuntu | Backup and isolated restore plus the v0.4, v0.8 and v0.9 migrations, against the PostgreSQL 17 service with PostgreSQL 17 client tools (`CAREER_PG_BIN`). |
 | Sources, discovery, searches, bootstrap, backup, preparation and assisted applications | Yes, on Ubuntu | Disposable databases on the PostgreSQL service. |
 | `test:clipboard`, `test:contributors`, `test:process`, reviewed assistant PDFs (`test/ai-documents.test.ts`) | Yes, on Ubuntu | The PDF check installs Playwright Chromium and `pdftotext` (poppler). |
-| `test:e2e`, `test:edge-cases`, `test:search-ui`, `test:ai-ui` | **Local only** | The CI only type-checks the e2e harness. Run the browser suites locally before merging interface changes ([#34](https://github.com/AldereteRuben/career-agent-stack/issues/34) tracks moving them to CI). |
+| `test:e2e`, `test:edge-cases`, `test:search-ui`, `test:ai-ui` | Yes, on Ubuntu | Separate "Browser tests" jobs, one per suite, in parallel with the others, with `E2E_PRODUCTION=1`. The `.env` points at an empty `career` database on the PostgreSQL service as the "live" database the harness must not touch. When a suite fails, `output/playwright/` (fictional data only) is uploaded as the `browser-<suite>-screenshots` artifact for 7 days. |
 
 ## Last local verification
 
