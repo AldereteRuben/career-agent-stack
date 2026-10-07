@@ -1,0 +1,44 @@
+# Renders the README contributors image and publishes it to the `contributors` branch.
+# contrib.rocks caches its image for days, so new contributors waited to appear; this updates on every merge.
+# It never runs pull request code: only pushes to main, a weekly refresh (avatar changes) and manual runs.
+name: Contributors image
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: contributors-image
+  cancel-in-progress: true
+jobs:
+  render:
+    name: Render and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Render the image from the public contributor list
+        run: node scripts/contributors-image.mjs "$RUNNER_TEMP/contributors.svg"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Publish to the contributors branch when it changed
+        run: |
+          if git fetch --quiet --depth=1 origin contributors && git show FETCH_HEAD:contributors.svg > "$RUNNER_TEMP/current.svg" 2>/dev/null && cmp --silent "$RUNNER_TEMP/current.svg" "$RUNNER_TEMP/contributors.svg"; then
+            echo "Image unchanged; nothing to publish."
+            exit 0
+          fi
+          git switch --quiet --orphan contributors
+          cp "$RUNNER_TEMP/contributors.svg" contributors.svg
+          git add contributors.svg
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit --quiet -m "Update the contributors image from ${GITHUB_SHA::7}"
+          git push --quiet --force origin contributors
