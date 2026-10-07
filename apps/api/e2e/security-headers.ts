@@ -30,7 +30,7 @@ export const securityHeaderScenarios: Scenario[] = [{
       for (const directive of ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'", "default-src 'self'"]) assert.ok(policy.includes(directive), `page ${path} CSP must include ${directive}`);
       // Every script Next.js renders carries this response's nonce.
       const html = await response.text();
-      const scripts = [...html.matchAll(/<script\b[^>]*>/g)].map((match) => match[0]);
+      const scripts = [...html.matchAll(/<script\b[^>]*>/gi)].map((match) => match[0]);
       assert.ok(scripts.length > 0, `page ${path} should render scripts`);
       for (const tag of scripts) assert.ok(tag.includes(`nonce="${nonce}"`), `page ${path} script without the nonce: ${tag.slice(0, 120)}`);
     }
