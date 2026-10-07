@@ -11,3 +11,4 @@ export * from './version.js';
 export * from './ai.js';
 export * from './ai-documents.js';
 export * from './ai-budget.js';
+export * from './security-headers.js';

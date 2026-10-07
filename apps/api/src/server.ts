@@ -1,6 +1,6 @@
 import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
-import { RELEASE_VERSION } from '@career/domain';
+import { RELEASE_VERSION, securityHeaders } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
 import { DiscoveryError, refreshBoard, registerDiscoveryRoutes, startDiscoveryWorker } from './discovery.js';
@@ -47,6 +47,11 @@ catch {
   app.log.warn({ setupTokenPath }, 'First-run sign-in token written to a private local file');
 }
 
+// Browser security headers on every API response, including errors (shared with the dashboard, issue #24).
+app.addHook('onSend', async (_request, reply, payload) => {
+  for (const { key, value } of securityHeaders) reply.header(key, value);
+  return payload;
+});
 app.addHook('onRequest', async (request, reply) => {
   const rejected = enforceLocalRequest(request, reply);
   if (rejected) return;
