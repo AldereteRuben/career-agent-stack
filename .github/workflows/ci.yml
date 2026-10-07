@@ -178,6 +178,12 @@ jobs:
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
       - name: Install PDF text inspection
         run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+      # The settings scenario makes a real backup, which needs PostgreSQL 17 pg_dump for the PostgreSQL 17 service.
+      - name: Install the PostgreSQL 17 client tools from the PostgreSQL project
+        run: |
+          sudo apt-get install --yes postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install --yes postgresql-client-17
       # The harness reads DATABASE_URL from .env as the "live" database it must never write to: an empty database
       # on the service. Disposable databases are created and dropped through the maintenance connection.
       - name: Point the harness at the PostgreSQL service
@@ -188,6 +194,7 @@ jobs:
         run: pnpm run ${{ matrix.suite }}
         env:
           E2E_PRODUCTION: '1'
+          CAREER_PG_BIN: /usr/lib/postgresql/17/bin
           E2E_ADMIN_DATABASE_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           NEXT_TELEMETRY_DISABLED: '1'
       - name: Upload screenshots from the failed run
