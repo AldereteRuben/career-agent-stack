@@ -42,6 +42,8 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm --filter @career/api exec tsc --noEmit --project e2e/tsconfig.json
       - run: pnpm run test:unit
+      - name: Verify search relevance and ranking with synthetic cases
+        run: pnpm run test:evals
       - name: Verify AI foundations with synthetic processes (no provider account)
         run: pnpm run test:ai
         env:
@@ -61,18 +63,23 @@ jobs:
         env:
           CAREER_JOB_SEARCH_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_DISCOVERY_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
-      - name: Verify v0.8 additive migration
-        run: node --test scripts/test/v080-migration.test.mjs
+      # Backups need pg_dump/pg_restore at least as new as the PostgreSQL 17 service; Ubuntu 24.04 ships 16.
+      - name: Install the PostgreSQL 17 client tools from the PostgreSQL project
+        run: |
+          sudo apt-get install --yes postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install --yes postgresql-client-17
+      - name: Verify backup restore and the v0.4, v0.8 and v0.9 migrations
+        run: pnpm run test:integration
         env:
+          CAREER_PG_BIN: /usr/lib/postgresql/17/bin
+          CAREER_BACKUP_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_V080_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify bootstrap database creation with a non-superuser administrator
         run: pnpm run test:bootstrap-db
         env:
           CAREER_BOOTSTRAP_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
-      - name: Verify v0.9 additive migration
-        run: node --test scripts/test/v090-migration.test.mjs
-        env:
-          CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:clipboard
       - run: pnpm run test:contributors
       - run: pnpm run test:process
@@ -121,6 +128,8 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
       - run: pnpm run typecheck
       - run: pnpm run test:unit
+      - name: Verify search relevance and ranking with synthetic cases
+        run: pnpm run test:evals
       - name: Verify AI foundations with synthetic processes (no provider account)
         run: pnpm run test:ai
       - run: pnpm run test:ui-logic
