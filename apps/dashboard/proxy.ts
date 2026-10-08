@@ -18,8 +18,9 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [{
-    // Pages only: the API sets its own headers, and static files, PDF.js assets and prefetches need no policy.
-    source: '/((?!api/|_next/static|_next/image|pdf-assets/|favicon.ico).*)',
+    // Pages only: the API sets its own headers, and static files, metadata files (app/icon.svg), PDF.js assets and
+    // prefetches need no policy and keep their normal caching.
+    source: '/((?!api/|_next/static|_next/image|pdf-assets/|favicon.ico|icon.svg).*)',
     missing: [
       { type: 'header', key: 'next-router-prefetch' },
       { type: 'header', key: 'purpose', value: 'prefetch' },

@@ -42,6 +42,11 @@ export const securityHeaderScenarios: Scenario[] = [{
       assert.equal(headers['content-security-policy'], framingOnly, `${label} (${path}) must send the framing-only CSP`);
     }
 
+    // Metadata files such as the app icon skip proxy.ts: no per-request nonce, so they keep their normal caching.
+    const icon = await fetch('/icon.svg');
+    assert.equal(icon.status(), 200);
+    assert.doesNotMatch(icon.headers()['content-security-policy'] ?? '', /nonce-/, 'The app icon must not go through the nonce proxy');
+
     // The policy must not break the app: the harness fails on any console error, including CSP violations.
     await page.goto(new URL('/searches', uiUrl).toString());
     await page.getByRole('heading', { level: 1 }).first().waitFor();
