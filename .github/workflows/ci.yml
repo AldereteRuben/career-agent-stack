@@ -76,6 +76,11 @@ jobs:
           CAREER_BACKUP_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_V080_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_FACT_IMPORT_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify resume import with a disposable database
+        run: pnpm run test:fact-import
+        env:
+          CAREER_FACT_IMPORT_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify bootstrap database creation with a non-superuser administrator
         run: pnpm run test:bootstrap-db
         env:

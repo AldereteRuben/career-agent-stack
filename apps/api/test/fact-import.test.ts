@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { before, after, describe, test } from 'node:test';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
+
+// Resume import (ADR 018, task T1) against a disposable database. Fictional data only.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const requireDb = createRequire(join(root, 'packages/db/package.json'));
+const adminUrl = process.env.CAREER_FACT_IMPORT_TEST_ADMIN_URL;
+
+describe('resume import with a disposable database', { skip: !adminUrl && 'set CAREER_FACT_IMPORT_TEST_ADMIN_URL', concurrency: false }, () => {
+  type Client = { connect(): Promise<void>; end(): Promise<void>; query(sql: string, values?: unknown[]): Promise<{ rows: Array<Record<string, unknown>> }> };
+  const { Client: PgClient } = requireDb('pg') as { Client: new (options: { connectionString: string }) => Client };
+  const name = `career_import_${randomBytes(6).toString('hex')}`;
+  let admin: Client; let sql: Client; let directory: string; let app: FastifyInstance;
+  let closePool: (() => Promise<void>) | undefined;
+  let workspace = ''; const envBefore = { ...process.env };
+
+  before(async () => {
+    const url = new URL(adminUrl!);
+    assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname));
+    assert.ok(['postgres', 'template1'].includes(url.pathname.slice(1)), 'use maintenance DB only');
+    admin = new PgClient({ connectionString: url.toString() }); await admin.connect();
+    await admin.query(`create database "${name}"`);
+    url.pathname = `/${name}`; directory = await mkdtemp(join(tmpdir(), 'career-import-'));
+    process.env.DATABASE_URL = url.toString(); process.env.APP_ENCRYPTION_KEY = randomBytes(32).toString('hex'); process.env.APP_SESSION_SECRET = randomBytes(32).toString('hex');
+    process.env.DATA_LOCAL_PATH = directory; process.env.FILES_LOCAL_PATH = directory; process.env.NODE_ENV = 'test';
+    sql = new PgClient({ connectionString: url.toString() }); await sql.connect();
+    for (const file of (await readdir(join(root, 'packages/db/migrations'))).filter((n) => n.endsWith('.sql')).sort()) await sql.query(await readFile(join(root, 'packages/db/migrations', file), 'utf8'));
+    closePool = trackPgPoolCleanup((await import('@career/db')).pool);
+    app = Fastify();
+    (await import('../src/fact-import-routes.js')).registerFactImportRoutes(app, () => workspace);
+  });
+  after(async () => {
+    await app?.close(); await closePool?.(); await sql?.end();
+    if (admin) { await admin.query(`drop database if exists "${name}" with (force)`); await admin.end(); }
+    if (directory) await rm(directory, { recursive: true, force: true });
+    for (const key of Object.keys(process.env)) if (!(key in envBefore)) delete process.env[key];
+    Object.assign(process.env, envBefore);
+  });
+
+  async function fixture() {
+    workspace = randomUUID(); const profile = randomUUID(); const existing = randomUUID();
+    await sql.query('insert into workspaces(id,name) values($1,$2)', [workspace, 'Fictional']);
+    await sql.query('insert into profile_versions(id,workspace_id,revision,profile) values($1,$2,1,$3)', [profile, workspace, JSON.stringify({ identity: { fullName: 'Fictional Candidate', email: 'candidate@example.test' } })]);
+    await sql.query("insert into profile_facts(id,workspace_id,profile_version_id,kind,statement,approval_status) values($1,$2,$3,'skill','TypeScript','USER_APPROVED')", [existing, workspace, profile]);
+    return { profile, existing };
+  }
+  const post = (payload: unknown) => app.inject({ method: 'POST', url: '/api/v1/profile/facts/import', payload: payload as object });
+  const facts = async () => (await sql.query('select id,kind,statement,source,approval_status,import_id,profile_version_id from profile_facts where workspace_id=$1 order by created_at, statement', [workspace])).rows;
+
+  test('stores every entry as an unconfirmed imported suggestion on the current revision, in one import', async () => {
+    const { profile, existing } = await fixture(); const importId = randomUUID();
+    const response = await post({ importId, facts: [
+      { kind: 'skill', statement: 'typescript' },
+      { kind: 'achievement', statement: 'Shipped a fictional app.', source: 'USER_ENTERED', approvalStatus: 'USER_APPROVED' },
+      { kind: 'achievement', statement: 'shipped a  fictional app.' },
+      { kind: 'experience', statement: 'Built fictional tools.', employment: { role: 'Engineer', company: 'Fictional Co', startMonth: '2020-01', current: true, locale: 'en' } },
+    ] });
+    assert.equal(response.statusCode, 201, response.body);
+    const body = response.json() as { importId: string; facts: Array<{ id: string; source: string; approvalStatus: string; importId: string; duplicateOf: string | null; details: unknown }> };
+    assert.equal(body.importId, importId);
+    assert.equal(body.facts.length, 4);
+    for (const fact of body.facts) { assert.equal(fact.source, 'IMPORTED_SUGGESTION'); assert.equal(fact.approvalStatus, 'SUGGESTED', 'A claimed approval is ignored'); assert.equal(fact.importId, importId); }
+    assert.deepEqual(body.facts.map((fact) => fact.duplicateOf), [existing, null, body.facts[1]!.id, null], 'Duplicates are flagged, not dropped');
+    assert.ok(body.facts[3]!.details, 'Structured entries keep their details');
+    const stored = await facts();
+    assert.equal(stored.length, 5);
+    assert.ok(stored.filter((row) => row.import_id === importId).every((row) => row.profile_version_id === profile && row.approval_status === 'SUGGESTED'));
+    assert.equal(stored.find((row) => row.id === existing)!.import_id, null, 'Facts entered by hand keep a null import_id');
+  });
+
+  test('a retried request returns the stored import instead of creating it twice', async () => {
+    await fixture(); const importId = randomUUID(); const payload = { importId, facts: [{ kind: 'achievement', statement: 'Led a fictional migration.' }] };
+    assert.equal((await post(payload)).statusCode, 201);
+    const retry = await post(payload);
+    assert.equal(retry.statusCode, 200, retry.body);
+    assert.equal((retry.json() as { facts: unknown[] }).facts.length, 1);
+    assert.equal((await facts()).filter((row) => row.import_id === importId).length, 1);
+  });
+
+  test('an invalid batch stores nothing', async () => {
+    await fixture();
+    const tooMany = await post({ importId: randomUUID(), facts: Array.from({ length: 101 }, (_, index) => ({ kind: 'skill', statement: `Skill ${index}` })) });
+    assert.equal(tooMany.statusCode, 400); assert.equal((tooMany.json() as { error: string }).error, 'INVALID_INPUT');
+    const oneBad = await post({ importId: randomUUID(), facts: [{ kind: 'skill', statement: 'Fine' }, { kind: 'skill', statement: 'x'.repeat(4001) }] });
+    assert.equal(oneBad.statusCode, 400);
+    assert.equal((await post({ facts: [{ kind: 'skill', statement: 'No import id' }] })).statusCode, 400);
+    assert.equal((await facts()).length, 1, 'Only the fixture fact remains');
+  });
+
+  test('imports are scoped to the workspace', async () => {
+    const importId = randomUUID();
+    await fixture(); const first = workspace;
+    assert.equal((await post({ importId, facts: [{ kind: 'skill', statement: 'Fictional skill' }] })).statusCode, 201);
+    await fixture();
+    const other = await post({ importId, facts: [{ kind: 'skill', statement: 'Fictional skill' }] });
+    assert.equal(other.statusCode, 201, 'The same import id in another workspace is a new import');
+    assert.equal((other.json() as { facts: Array<{ duplicateOf: string | null }> }).facts[0]!.duplicateOf, null, 'Duplicates are never matched across workspaces');
+    assert.equal((await sql.query('select count(*)::int as n from profile_facts where import_id=$1 and workspace_id=$2', [importId, first])).rows[0]!.n, 1);
+  });
+});
