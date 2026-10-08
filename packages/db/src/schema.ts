@@ -28,8 +28,8 @@ export const profileVersions = pgTable('profile_versions', {
 
 export const profileFacts = pgTable('profile_facts', {
   details: jsonb('details').$type<import('@career/domain').StructuredEntry>(),
-  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), profileVersionId: uuid('profile_version_id').notNull(), kind: varchar('kind', { length: 64 }).notNull(), statement: text('statement').notNull(), tags: jsonb('tags').$type<string[]>().notNull().default([]), source: varchar('source', { length: 40 }).notNull().default('USER_ENTERED'), approvalStatus: factApprovalEnum('approval_status').notNull().default('SUGGESTED'), approvedAt: timestamp('approved_at', { withTimezone: true }), createdAt: created(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.profileVersionId], foreignColumns: [profileVersions.workspaceId, profileVersions.id], name: 'profile_facts_workspace_revision_fk' }).onDelete('cascade'), index('profile_facts_workspace_approval_idx').on(t.workspaceId, t.approvalStatus)]);
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), profileVersionId: uuid('profile_version_id').notNull(), kind: varchar('kind', { length: 64 }).notNull(), statement: text('statement').notNull(), tags: jsonb('tags').$type<string[]>().notNull().default([]), source: varchar('source', { length: 40 }).notNull().default('USER_ENTERED'), importId: uuid('import_id'), approvalStatus: factApprovalEnum('approval_status').notNull().default('SUGGESTED'), approvedAt: timestamp('approved_at', { withTimezone: true }), createdAt: created(),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.profileVersionId], foreignColumns: [profileVersions.workspaceId, profileVersions.id], name: 'profile_facts_workspace_revision_fk' }).onDelete('cascade'), index('profile_facts_workspace_approval_idx').on(t.workspaceId, t.approvalStatus), index('profile_facts_workspace_import_idx').on(t.workspaceId, t.importId).where(sql`${t.importId} is not null`)]);
 
 export const answerVersions = pgTable('answer_versions', {
   aiProvenance: jsonb('ai_provenance').$type<Record<string, unknown>>(),

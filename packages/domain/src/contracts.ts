@@ -36,6 +36,13 @@ export const factSchema = z.object({ kind: z.string().min(1).max(64), statement:
     return { ...fact, details, statement: details ? entryStatement(details) : fact.statement };
   }).refine((fact) => fact.statement.length <= 4000, { path: ['statement'], message: 'The complete entry must fit within 4000 characters.' });
 
+/**
+ * A batch of resume entries to store as suggestions (ADR 018, task T1). Each entry is validated like a fact entered by
+ * hand; the API stores every one as an unconfirmed IMPORTED_SUGGESTION, whatever source or status the request claims.
+ * The client generates importId once per import, so a retried request cannot create the import twice.
+ */
+export const maxImportedFacts = 100;
+export const factImportSchema = z.object({ importId: z.string().uuid(), facts: z.array(factSchema).min(1).max(maxImportedFacts) }).strict();
 export const answerSchema = z.object({ semanticKey: z.string().min(1).max(100), jurisdiction: z.string().length(2), questionScope: z.string().min(1).max(160), value: z.unknown().nullable(), strategy: z.enum(['EXACT_APPROVED', 'DERIVED_RULE', 'DRAFT_FOR_REVIEW', 'ASK_USER', 'LEAVE_OPTIONAL_BLANK']), approvalStatus: z.enum(['UNANSWERED', 'USER_APPROVED']).default('UNANSWERED'), reviewAfter: z.string().datetime().nullable().default(null), questionText: z.string().trim().max(500).nullable().default(null) }).strict();
 export const jobImportSchema = z.object({ title: z.string().min(1).max(300), company: z.string().min(1).max(200), location: z.string().max(300).nullable().default(null), description: z.string().max(50000).nullable().default(null), jobUrl: z.string().url(), applyUrl: z.string().url().nullable().default(null), sourcePostedAt: z.string().datetime().nullable().default(null) }).strict();
 export const applicationSchema = z.object({ jobId: z.string().uuid().nullable().default(null), company: z.string().min(1).max(200), role: z.string().min(1).max(300), location: z.string().max(300).nullable().default(null), canonicalUrl: z.string().url().nullable().default(null), state: z.enum(applicationState).default('DRAFT'), confirmationEvidence: z.literal('USER_ATTESTATION').optional(), recruitmentStage: z.enum(recruitmentStage).default('NO_RESPONSE'), shortlistDecision: z.enum(shortlistDecision).default('UNREVIEWED'), notes: z.string().max(10000).default('') }).strict();

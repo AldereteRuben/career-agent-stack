@@ -12,6 +12,7 @@ import { uxReviewScenarios } from './ux-review.js';
 import { a11yScenarios } from './a11y.js';
 import { profileContractScenarios } from './profile-contract.js';
 import { securityHeaderScenarios } from './security-headers.js';
+import { factImportScenarios } from './fact-import.js';
 import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
@@ -500,6 +501,8 @@ scenarios.push(...a11yScenarios);
 scenarios.push(...profileContractScenarios);
 
 scenarios.push(...securityHeaderScenarios);
+
+scenarios.push(...factImportScenarios);
 
 scenarios.push(...v041Scenarios);
 
