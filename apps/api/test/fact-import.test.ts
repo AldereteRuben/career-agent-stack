@@ -20,7 +20,7 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
   const name = `career_import_${randomBytes(6).toString('hex')}`;
   let admin: Client; let sql: Client; let directory: string; let app: FastifyInstance;
   let closePool: (() => Promise<void>) | undefined;
-  let workspace = ''; const envBefore = { ...process.env };
+  let workspace = ''; let rescores = 0; const envBefore = { ...process.env };
 
   before(async () => {
     const url = new URL(adminUrl!);
@@ -35,7 +35,7 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     for (const file of (await readdir(join(root, 'packages/db/migrations'))).filter((n) => n.endsWith('.sql')).sort()) await sql.query(await readFile(join(root, 'packages/db/migrations', file), 'utf8'));
     closePool = trackPgPoolCleanup((await import('@career/db')).pool);
     app = Fastify();
-    (await import('../src/fact-import-routes.js')).registerFactImportRoutes(app, () => workspace);
+    (await import('../src/fact-import-routes.js')).registerFactImportRoutes(app, () => workspace, { rescore: async () => { rescores++; } });
   });
   after(async () => {
     await app?.close(); await closePool?.(); await sql?.end();
@@ -104,5 +104,46 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     assert.equal(other.statusCode, 201, 'The same import id in another workspace is a new import');
     assert.equal((other.json() as { facts: Array<{ duplicateOf: string | null }> }).facts[0]!.duplicateOf, null, 'Duplicates are never matched across workspaces');
     assert.equal((await sql.query('select count(*)::int as n from profile_facts where import_id=$1 and workspace_id=$2', [importId, first])).rows[0]!.n, 1);
+  });
+
+  const approve = (factIds: string[]) => app.inject({ method: 'POST', url: '/api/v1/profile/facts/approve', payload: { factIds } });
+  const statuses = async () => Object.fromEntries((await sql.query('select id, approval_status from profile_facts where workspace_id=$1', [workspace])).rows.map((row) => [row.id, row.approval_status]));
+  async function suggestions(count: number) {
+    const response = await post({ importId: randomUUID(), facts: Array.from({ length: count }, (_, index) => ({ kind: 'achievement', statement: `Fictional achievement ${index}` })) });
+    return (response.json() as { facts: Array<{ id: string }> }).facts.map((fact) => fact.id);
+  }
+
+  test('approves every listed suggestion at once and rescores a single time', async () => {
+    const { existing } = await fixture(); const ids = await suggestions(3); rescores = 0;
+    const response = await approve([...ids, existing]);
+    assert.equal(response.statusCode, 200, response.body);
+    const body = response.json() as { approved: number; facts: Array<{ id: string; approvalStatus: string; approvedAt: string | null }> };
+    assert.equal(body.approved, 3, 'The already approved fact is not counted again');
+    assert.deepEqual(body.facts.map((fact) => fact.id), [...ids, existing], 'Facts come back in the requested order');
+    assert.ok(body.facts.every((fact) => fact.approvalStatus === 'USER_APPROVED'));
+    assert.ok(body.facts.filter((fact) => ids.includes(fact.id)).every((fact) => fact.approvedAt), 'Newly approved entries record when');
+    assert.equal(rescores, 1, 'Jobs are rescored once per batch');
+    const retry = await approve(ids);
+    assert.equal(retry.statusCode, 200); assert.equal((retry.json() as { approved: number }).approved, 0);
+    assert.equal(rescores, 1, 'A retry that changes nothing does not rescore');
+  });
+
+  test('approves nothing when any id is missing, foreign, archived or from an older revision', async () => {
+    const { profile } = await fixture(); const ids = await suggestions(2); rescores = 0;
+    const before = await statuses();
+    assert.equal((await approve([...ids, randomUUID()])).statusCode, 404, 'Unknown id');
+    const mine = workspace;
+    await fixture(); const foreign = await suggestions(1); workspace = mine;
+    assert.equal((await approve([...ids, foreign[0]!])).statusCode, 404, 'Another workspace');
+    const archived = randomUUID();
+    await sql.query("insert into profile_facts(id,workspace_id,profile_version_id,kind,statement,approval_status) values($1,$2,$3,'skill','Archived fictional skill','REJECTED')", [archived, workspace, profile]);
+    const archivedResponse = await approve([...ids, archived]);
+    assert.equal(archivedResponse.statusCode, 409); assert.equal((archivedResponse.json() as { error: string }).error, 'FACT_ARCHIVED');
+    await sql.query('insert into profile_versions(workspace_id,revision,profile) values($1,2,$2)', [workspace, '{}']);
+    const stale = await approve(ids);
+    assert.equal(stale.statusCode, 409); assert.equal((stale.json() as { error: string }).error, 'FACT_NOT_IN_CURRENT_REVISION');
+    assert.deepEqual(Object.fromEntries(Object.entries(await statuses()).filter(([id]) => id in before)), before, 'Nothing changed');
+    assert.equal(rescores, 0);
+    assert.equal((await approve([ids[0]!, ids[0]!])).statusCode, 400, 'Duplicate ids');
   });
 });

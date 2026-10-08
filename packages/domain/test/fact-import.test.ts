@@ -39,3 +39,14 @@ test('imported entries are flagged against the profile first, then against earli
   assert.deepEqual(findDuplicateFacts(imported, existing), ['e1', null, 'n2', null]);
   assert.deepEqual(findDuplicateFacts(imported, []), [null, null, 'n2', null]);
 });
+
+test('a batch approval names between 1 and 100 distinct fact ids', async () => {
+  const { factBatchApprovalSchema } = await import('../src/contracts.js');
+  const id = (n: number) => `0b6c1f9e-2d4a-4c7e-9f1a-${String(n).padStart(12, '0')}`;
+  assert.equal(factBatchApprovalSchema.safeParse({ factIds: [id(1), id(2)] }).success, true);
+  assert.equal(factBatchApprovalSchema.safeParse({ factIds: [] }).success, false);
+  assert.equal(factBatchApprovalSchema.safeParse({ factIds: [id(1), id(1)] }).success, false, 'Duplicate ids are refused');
+  assert.equal(factBatchApprovalSchema.safeParse({ factIds: Array.from({ length: 101 }, (_, n) => id(n)) }).success, false);
+  assert.equal(factBatchApprovalSchema.safeParse({ factIds: ['not-a-uuid'] }).success, false);
+  assert.equal(factBatchApprovalSchema.safeParse({ factIds: [id(1)], all: true }).success, false, 'No implicit "approve everything" option');
+});
