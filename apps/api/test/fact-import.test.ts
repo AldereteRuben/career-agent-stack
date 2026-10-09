@@ -160,7 +160,7 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     assert.equal((await approve([ids[0]!, ids[1]!])).statusCode, 200);
     const shown = await summaryOf(importId);
     assert.equal(shown.statusCode, 200, shown.body);
-    assert.deepEqual(shown.json(), { importId, pending: 2, confirmed: 2, archived: 0 });
+    assert.deepEqual(shown.json(), { importId, pending: 2, confirmed: 2, inactive: 0 });
     rescores = 0;
     const response = await undo(importId, 2, 2);
     assert.equal(response.statusCode, 200, response.body);
@@ -170,7 +170,7 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     assert.ok(ids.every((id) => status[id] === 'REJECTED'), 'Every entry of the import is discarded or archived');
     assert.equal(status[existing], 'USER_APPROVED', 'Entries outside the import are untouched');
     assert.equal(Object.keys(status).length, 5, 'Nothing is deleted');
-    assert.deepEqual((await summaryOf(importId)).json(), { importId, pending: 0, confirmed: 0, archived: 4 });
+    assert.deepEqual((await summaryOf(importId)).json(), { importId, pending: 0, confirmed: 0, inactive: 4 });
     const again = await undo(importId, 0, 0);
     assert.equal(again.statusCode, 200); assert.deepEqual(again.json(), { importId, discarded: 0, archived: 0 });
     assert.equal(rescores, 1, 'Undoing again changes nothing and does not rescore');
@@ -188,7 +188,7 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     const before = await statuses();
     const stale = await undo(importId, 3, 0);
     assert.equal(stale.statusCode, 409);
-    assert.deepEqual(stale.json(), { error: 'IMPORT_CHANGED', pending: 2, confirmed: 1, archived: 0 }, 'The current counts come back for a new confirmation');
+    assert.deepEqual(stale.json(), { error: 'IMPORT_CHANGED', pending: 2, confirmed: 1, inactive: 0 }, 'The current counts come back for a new confirmation');
     assert.deepEqual(await statuses(), before);
     assert.equal(rescores, 1, 'Only the approval rescored');
   });
@@ -204,7 +204,7 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     workspace = mine;
     // A corrected entry carries the import id on the current revision (see the correction route), so undo reaches it.
     await sql.query("insert into profile_facts(workspace_id,profile_version_id,kind,statement,source,approval_status,import_id) values($1,$2,'skill','Corrected fictional skill','USER_ENTERED','SUGGESTED',$3)", [workspace, profile, importId]);
-    assert.deepEqual((await summaryOf(importId)).json(), { importId, pending: 2, confirmed: 0, archived: 0 });
+    assert.deepEqual((await summaryOf(importId)).json(), { importId, pending: 2, confirmed: 0, inactive: 0 });
     assert.equal((await undo(importId, 2, 0)).statusCode, 200);
   });
 });

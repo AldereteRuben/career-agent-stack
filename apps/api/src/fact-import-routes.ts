@@ -79,11 +79,12 @@ export function registerFactImportRoutes(app: FastifyInstance, workspace: (reque
   const summary = (facts: Array<{ approvalStatus: string }>) => ({
     pending: facts.filter((fact) => fact.approvalStatus === 'SUGGESTED').length,
     confirmed: facts.filter((fact) => fact.approvalStatus === 'USER_APPROVED').length,
-    archived: facts.filter((fact) => fact.approvalStatus === 'REJECTED').length,
+    // Discarded suggestions and archived entries are both stored as REJECTED, so they are reported together.
+    inactive: facts.filter((fact) => fact.approvalStatus === 'REJECTED').length,
   });
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  /** Task T10: what undoing an import would do, for the confirmation message. */
+  /** Task T10: what undoing an import would do, for the confirmation message: pending, confirmed and inactive counts. */
   app.get('/api/v1/profile/imports/:importId', async (request, reply) => {
     const { importId } = request.params as { importId: string };
     if (!uuid.test(importId)) return reply.code(404).send({ error: 'NOT_FOUND' });
