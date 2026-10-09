@@ -13,3 +13,4 @@ export * from './ai-documents.js';
 export * from './ai-budget.js';
 export * from './security-headers.js';
 export * from './fact-import.js';
+export * from './profile-import.js';
