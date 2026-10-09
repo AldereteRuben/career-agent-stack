@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { db, profileFacts } from '@career/db';
-import { factBatchApprovalSchema, factImportSchema, findDuplicateFacts } from '@career/domain';
+import { factBatchApprovalSchema, factImportSchema, findDuplicateFacts, importUndoSchema } from '@career/domain';
 import { latestFacts, latestProfile, lockKey, profileLockKey, rescoreWorkspaceJobs } from './workspace-data.js';
 
 /**
@@ -69,5 +69,57 @@ export function registerFactImportRoutes(app: FastifyInstance, workspace: (reque
       try { await rescore(workspaceId); } catch (error) { request.log.error({ err: error, workspaceId }, 'Job rescoring failed'); }
     }
     return { approved: result.changed, facts: result.facts };
+  });
+
+  /** Facts of one import on the current revision. Older revisions are history and never change. */
+  const importFacts = async (executor: Parameters<typeof latestProfile>[0], workspaceId: string, importId: string) => {
+    const version = await latestProfile(executor, workspaceId);
+    return version ? executor.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, workspaceId), eq(profileFacts.profileVersionId, version.id), eq(profileFacts.importId, importId))) : [];
+  };
+  const summary = (facts: Array<{ approvalStatus: string }>) => ({
+    pending: facts.filter((fact) => fact.approvalStatus === 'SUGGESTED').length,
+    confirmed: facts.filter((fact) => fact.approvalStatus === 'USER_APPROVED').length,
+    // Discarded suggestions and archived entries are both stored as REJECTED, so they are reported together.
+    inactive: facts.filter((fact) => fact.approvalStatus === 'REJECTED').length,
+  });
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  /** Task T10: what undoing an import would do, for the confirmation message: pending, confirmed and inactive counts. */
+  app.get('/api/v1/profile/imports/:importId', async (request, reply) => {
+    const { importId } = request.params as { importId: string };
+    if (!uuid.test(importId)) return reply.code(404).send({ error: 'NOT_FOUND' });
+    const facts = await importFacts(db, workspace(request), importId);
+    if (!facts.length) return reply.code(404).send({ error: 'NOT_FOUND' });
+    return { importId, ...summary(facts) };
+  });
+
+  /**
+   * Task T10: reverts a whole import. Unconfirmed suggestions are discarded and confirmed entries are archived, the
+   * same actions the profile offers one by one; nothing is deleted, so generated PDFs keep their record and archived
+   * entries can be restored. The request repeats the counts the person confirmed; if they no longer match, nothing
+   * changes. Jobs are rescored once, and only when confirmed entries were archived.
+   */
+  app.post('/api/v1/profile/imports/:importId/undo', async (request, reply) => {
+    const { importId } = request.params as { importId: string };
+    if (!uuid.test(importId)) return reply.code(404).send({ error: 'NOT_FOUND' });
+    const parsed = importUndoSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_INPUT', detail: parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') });
+    const workspaceId = workspace(request);
+    const result = await db.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(workspaceId));
+      const facts = await importFacts(tx, workspaceId, importId);
+      if (!facts.length) return 'NOT_FOUND' as const;
+      const counts = summary(facts);
+      if (counts.pending !== parsed.data.expectedPending || counts.confirmed !== parsed.data.expectedConfirmed) return { changed: counts } as const;
+      const ids = facts.filter((fact) => fact.approvalStatus !== 'REJECTED').map((fact) => fact.id);
+      if (ids.length) await tx.update(profileFacts).set({ approvalStatus: 'REJECTED', approvedAt: null }).where(and(eq(profileFacts.workspaceId, workspaceId), inArray(profileFacts.id, ids)));
+      return { discarded: counts.pending, archived: counts.confirmed };
+    });
+    if (result === 'NOT_FOUND') return reply.code(404).send({ error: 'NOT_FOUND' });
+    if ('changed' in result) return reply.code(409).send({ error: 'IMPORT_CHANGED', ...result.changed });
+    if (result.archived) {
+      try { await rescore(workspaceId); } catch (error) { request.log.error({ err: error, workspaceId }, 'Job rescoring failed'); }
+    }
+    return { importId, ...result };
   });
 }

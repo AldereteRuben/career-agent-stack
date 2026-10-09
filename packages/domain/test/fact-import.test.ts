@@ -50,3 +50,12 @@ test('a batch approval names between 1 and 100 distinct fact ids', async () => {
   assert.equal(factBatchApprovalSchema.safeParse({ factIds: ['not-a-uuid'] }).success, false);
   assert.equal(factBatchApprovalSchema.safeParse({ factIds: [id(1)], all: true }).success, false, 'No implicit "approve everything" option');
 });
+
+test('undoing an import repeats the counts the person confirmed', async () => {
+  const { importUndoSchema } = await import('../src/contracts.js');
+  assert.equal(importUndoSchema.safeParse({ expectedPending: 3, expectedConfirmed: 0 }).success, true);
+  assert.equal(importUndoSchema.safeParse({ expectedPending: 3 }).success, false, 'Both counts are required');
+  assert.equal(importUndoSchema.safeParse({ expectedPending: -1, expectedConfirmed: 0 }).success, false);
+  assert.equal(importUndoSchema.safeParse({ expectedPending: 1.5, expectedConfirmed: 0 }).success, false);
+  assert.equal(importUndoSchema.safeParse({ expectedPending: 0, expectedConfirmed: 0, force: true }).success, false, 'No way to skip the check');
+});

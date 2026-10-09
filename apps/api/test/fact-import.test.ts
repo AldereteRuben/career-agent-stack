@@ -146,4 +146,65 @@ describe('resume import with a disposable database', { skip: !adminUrl && 'set C
     assert.equal(rescores, 0);
     assert.equal((await approve([ids[0]!, ids[0]!])).statusCode, 400, 'Duplicate ids');
   });
+
+  const undo = (importId: string, expectedPending: number, expectedConfirmed: number) => app.inject({ method: 'POST', url: `/api/v1/profile/imports/${importId}/undo`, payload: { expectedPending, expectedConfirmed } });
+  const summaryOf = async (importId: string) => (await app.inject({ method: 'GET', url: `/api/v1/profile/imports/${importId}` }));
+  async function importOf(count: number) {
+    const importId = randomUUID();
+    const ids = ((await post({ importId, facts: Array.from({ length: count }, (_, index) => ({ kind: 'achievement', statement: `Undo fictional ${index}` })) })).json() as { facts: Array<{ id: string }> }).facts.map((fact) => fact.id);
+    return { importId, ids };
+  }
+
+  test('undoing an import discards pending suggestions and archives confirmed entries, deleting nothing', async () => {
+    const { existing } = await fixture(); const { importId, ids } = await importOf(4);
+    assert.equal((await approve([ids[0]!, ids[1]!])).statusCode, 200);
+    const shown = await summaryOf(importId);
+    assert.equal(shown.statusCode, 200, shown.body);
+    assert.deepEqual(shown.json(), { importId, pending: 2, confirmed: 2, inactive: 0 });
+    rescores = 0;
+    const response = await undo(importId, 2, 2);
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json(), { importId, discarded: 2, archived: 2 });
+    assert.equal(rescores, 1, 'Archiving confirmed entries rescores once');
+    const status = await statuses();
+    assert.ok(ids.every((id) => status[id] === 'REJECTED'), 'Every entry of the import is discarded or archived');
+    assert.equal(status[existing], 'USER_APPROVED', 'Entries outside the import are untouched');
+    assert.equal(Object.keys(status).length, 5, 'Nothing is deleted');
+    assert.deepEqual((await summaryOf(importId)).json(), { importId, pending: 0, confirmed: 0, inactive: 4 });
+    const again = await undo(importId, 0, 0);
+    assert.equal(again.statusCode, 200); assert.deepEqual(again.json(), { importId, discarded: 0, archived: 0 });
+    assert.equal(rescores, 1, 'Undoing again changes nothing and does not rescore');
+  });
+
+  test('an undo with only pending suggestions does not rescore', async () => {
+    await fixture(); const { importId } = await importOf(2); rescores = 0;
+    assert.equal((await undo(importId, 2, 0)).statusCode, 200);
+    assert.equal(rescores, 0);
+  });
+
+  test('an undo changes nothing when the import changed since it was confirmed', async () => {
+    await fixture(); const { importId, ids } = await importOf(3); rescores = 0;
+    assert.equal((await approve([ids[0]!])).statusCode, 200);
+    const before = await statuses();
+    const stale = await undo(importId, 3, 0);
+    assert.equal(stale.statusCode, 409);
+    assert.deepEqual(stale.json(), { error: 'IMPORT_CHANGED', pending: 2, confirmed: 1, inactive: 0 }, 'The current counts come back for a new confirmation');
+    assert.deepEqual(await statuses(), before);
+    assert.equal(rescores, 1, 'Only the approval rescored');
+  });
+
+  test('unknown, malformed or foreign imports are not found, and corrected entries stay in their import', async () => {
+    const { profile } = await fixture(); const { importId } = await importOf(1);
+    assert.equal((await undo(randomUUID(), 0, 0)).statusCode, 404);
+    assert.equal((await undo('not-a-uuid', 0, 0)).statusCode, 404);
+    assert.equal((await summaryOf(randomUUID())).statusCode, 404);
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/profile/imports/${importId}/undo`, payload: { expectedPending: 1 } })).statusCode, 400);
+    const mine = workspace; await fixture();
+    assert.equal((await undo(importId, 1, 0)).statusCode, 404, 'Another workspace cannot see the import');
+    workspace = mine;
+    // A corrected entry carries the import id on the current revision (see the correction route), so undo reaches it.
+    await sql.query("insert into profile_facts(workspace_id,profile_version_id,kind,statement,source,approval_status,import_id) values($1,$2,'skill','Corrected fictional skill','USER_ENTERED','SUGGESTED',$3)", [workspace, profile, importId]);
+    assert.deepEqual((await summaryOf(importId)).json(), { importId, pending: 2, confirmed: 0, inactive: 0 });
+    assert.equal((await undo(importId, 2, 0)).statusCode, 200);
+  });
 });
