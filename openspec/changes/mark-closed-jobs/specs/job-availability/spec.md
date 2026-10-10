@@ -90,7 +90,7 @@ A job SHALL become `POSSIBLY_CLOSED` only when every source able to give absence
 - **THEN** its availability stays `UNKNOWN`
 
 ### Requirement: Reappearing jobs reopen automatically
-A `POSSIBLY_CLOSED` job SHALL become `OPEN` again as soon as any source sees it, unless the person marked it closed.
+A `POSSIBLY_CLOSED` job SHALL become `OPEN` again as soon as a source counts it as seen under the presence requirement (a fresh read in which every page succeeded), unless the person marked it closed. Partial refreshes and cached feeds SHALL NOT reopen it.
 
 #### Scenario: Job reappears on its board
 - **WHEN** a `POSSIBLY_CLOSED` job is listed again in a complete refresh of its board

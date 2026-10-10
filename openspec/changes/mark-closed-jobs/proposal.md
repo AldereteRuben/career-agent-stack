@@ -12,7 +12,7 @@ Job availability has four states (`OPEN`, `POSSIBLY_CLOSED`, `CLOSED`, `UNKNOWN`
 
   Partial, bounded, cached, stale and failed reads never count. Himalayas returns query results (at most three pages), so its absence never counts, though its presence does.
 - **`POSSIBLY_CLOSED` by a stated rule:** a job becomes `POSSIBLY_CLOSED` only when every source that can give absence evidence for it has missed it in **3 consecutive complete reads spanning at least 48 hours**, and no source has seen it since. Proposed defaults, recorded in an ADR; the same rule for every source.
-- **Back to `OPEN` automatically** when any source sees the job again, unless the person marked it closed.
+- **Back to `OPEN` automatically** when a source lists the job again in a fresh read in which every page succeeded (a complete board refresh, a newly downloaded complete Remotive or Arbeitnow feed, or a new Himalayas result), unless the person marked it closed. Partial refreshes and cached feeds give no presence (brief §5).
 - **The person can mark a job closed or reopen it**, from the job page. Their decision wins over sources:
   - a job they closed stays `CLOSED` even if a source still lists it, and the page says so;
   - reopening resets the absence count.
