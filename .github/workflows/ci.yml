@@ -88,6 +88,7 @@ jobs:
       - run: pnpm run test:clipboard
       - run: pnpm run test:contributors
       - run: pnpm run test:process
+      - run: pnpm run test:install-marker
       - run: pnpm run test:backup
       - run: pnpm run test:backup-api
       - name: Install Chromium for synthetic browser tests

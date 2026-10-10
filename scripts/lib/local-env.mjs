@@ -2,7 +2,7 @@
 // connection strings are reduced to host/port/database before they reach the terminal.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { access, chmod, link, mkdir, open, readFile, readdir, readlink, rename, stat, unlink } from 'node:fs/promises';
+import { access, chmod, link, mkdir, open, readFile, readdir, readlink, rename, stat, unlink, utimes } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { connect, createServer } from 'node:net';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -228,6 +228,19 @@ export async function newestMtime(paths) {
 
 export async function mtimeOf(path) {
   try { return (await stat(path)).mtimeMs; } catch { return 0; }
+}
+
+/**
+ * Records that the installed dependencies match the lockfile, by touching pnpm's marker (node_modules/.modules.yaml). pnpm leaves
+ * that file alone when an install has nothing to do, so after a `git pull` that changes pnpm-lock.yaml the lockfile would look
+ * newer for good and `status` would keep warning. The marker is set to now, but never older than the lockfile (a millisecond
+ * after it at least): file times keep finer detail than `Date.now()`, so "now" alone could land just below a lockfile written in
+ * the same millisecond. Returns false when there is no marker to touch.
+ */
+export async function markDependenciesCurrent(marker, lockfile) {
+  const lockfileTime = await mtimeOf(lockfile);
+  const target = Math.max(Date.now(), lockfileTime ? lockfileTime + 1 : 0) / 1000; // seconds, with fractions, as utimes takes them
+  try { await utimes(marker, target, target); return true; } catch { return false; }
 }
 
 /**
