@@ -1,6 +1,6 @@
 # 020 — Deleting data and uninstalling
 
-Status: **proposed** (issue [#25](https://github.com/AldereteRuben/career-agent-stack/issues/25)). Date: 2026-10-10.
+Status: **accepted**; T1 implemented (`pnpm run uninstall`, [guide](../operations/uninstall.md)), T2–T4 pending (issue [#25](https://github.com/AldereteRuben/career-agent-stack/issues/25)). Date: 2026-10-10.
 
 ## Context
 
