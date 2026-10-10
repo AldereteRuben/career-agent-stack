@@ -29,7 +29,7 @@ pnpm run uninstall --confirm <id> --include-backups   # also deletes backups/ an
 
 The order is: database, role, data and documents (including backups made from Settings in `data/backups/`), `backups/` if you asked, `.env`, and a temporary progress file. When it finishes, delete the project folder yourself: the script does not delete the code or `node_modules`.
 
-**If it stops halfway**, fix what it reports and run the same command again. A private progress file (`.uninstall-progress.json`) remembers what was already deleted, so it resumes, even if `.env` is already gone.
+**If it stops halfway**, fix what it reports and run the same command again. A private progress file (`.uninstall-progress.json`) remembers what was already deleted, so it resumes, even if `.env` is already gone. Without `.env`, it checks that nothing on the server still carries this installation's mark before it finishes, so `CAREER_ADMIN_DATABASE_URL` must point at the same server the installation used.
 
 ### What it refuses, and why
 
@@ -105,7 +105,7 @@ pnpm run uninstall --confirm <id> --include-backups   # borra también backups/ 
 
 El orden es: base de datos, usuario, datos y documentos (incluidas las copias hechas desde Ajustes en `data/backups/`), `backups/` si lo pediste, `.env` y un archivo temporal de progreso. Al terminar, borra tú la carpeta del proyecto: el script no borra el código ni `node_modules`.
 
-**Si se detiene a medias**, corrige lo que indique y ejecuta otra vez el mismo comando. Un archivo privado de progreso (`.uninstall-progress.json`) recuerda lo que ya se borró, así que retoma desde ahí, aunque `.env` ya no exista.
+**Si se detiene a medias**, corrige lo que indique y ejecuta otra vez el mismo comando. Un archivo privado de progreso (`.uninstall-progress.json`) recuerda lo que ya se borró, así que retoma desde ahí, aunque `.env` ya no exista. Sin `.env`, antes de terminar comprueba que nada en el servidor lleve todavía la marca de esta instalación, así que `CAREER_ADMIN_DATABASE_URL` debe apuntar al mismo servidor que usaba la instalación.
 
 ### Qué rechaza y por qué
 
