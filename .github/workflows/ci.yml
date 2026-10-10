@@ -89,6 +89,13 @@ jobs:
       - run: pnpm run test:contributors
       - run: pnpm run test:process
       - run: pnpm run test:backup
+      # The official age tool must decrypt a backup with the key file's identity (ADR 019); the flag stops a skip.
+      - name: Install the age tool for the backup encryption check
+        run: sudo apt-get update && sudo apt-get install --yes age
+      - name: Verify backup encryption, including decryption with the age tool
+        run: pnpm run test:backup-crypto
+        env:
+          CAREER_AGE_CLI_TEST: '1'
       - run: pnpm run test:backup-api
       - name: Install Chromium for synthetic browser tests
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
@@ -138,6 +145,9 @@ jobs:
       - name: Verify AI foundations with synthetic processes (no provider account)
         run: pnpm run test:ai
       - run: pnpm run test:ui-logic
+      # Includes the private temporary folder check, which uses a user-only ACL on Windows.
+      - name: Verify backup encryption on this system
+        run: pnpm run test:backup-crypto
   browser:
     # Browser suites on a disposable stack (apps/api/e2e/isolation.ts). They run in parallel with the other jobs.
     # Only fictional fixtures are used; failure screenshots are uploaded for a week. Fork pull requests run with the

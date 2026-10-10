@@ -27,8 +27,8 @@ async function fixture(run: BackupRunner) {
 }
 const artifacts: BackupRunner = async (dir) => {
   await mkdir(join(dir, 'keys'));
-  await writeFile(join(dir, 'career-backup-20261003T000000Z.tar'), 'archive-fixture');
-  await writeFile(join(dir, 'career-backup-20261003T000000Z.tar.sha256'), 'checksum-fixture');
+  await writeFile(join(dir, 'career-backup-20261003T000000Z.tar.age'), 'archive-fixture');
+  await writeFile(join(dir, 'career-backup-20261003T000000Z.tar.age.sha256'), 'checksum-fixture');
   await writeFile(join(dir, 'keys/career-key-abcdef123456.json'), 'key-fixture');
 };
 
@@ -68,6 +68,19 @@ test('failure never exposes credentials or partial artifacts and allows retry', 
     assert.deepEqual(await readdir(join(f.data, 'backups')), []);
     assert.equal((await f.request('GET', `/api/v1/backups/${failed.id}/archive`)).statusCode, 404);
     await f.request('POST', '/api/v1/backups'); assert.equal((await f.wait()).state, 'ready');
+  } finally { await f.close(); }
+});
+test('an unencrypted archive is never offered for download', async () => {
+  const f = await fixture(async (dir) => {
+    await mkdir(join(dir, 'keys'));
+    await writeFile(join(dir, 'career-backup-20261003T000000Z.tar'), 'plain-archive-fixture');
+    await writeFile(join(dir, 'career-backup-20261003T000000Z.tar.sha256'), 'checksum-fixture');
+    await writeFile(join(dir, 'keys/career-key-abcdef123456.json'), 'key-fixture');
+  });
+  try {
+    await f.request('POST', '/api/v1/backups'); const job = await f.wait();
+    assert.equal(job.state, 'failed');
+    assert.equal((await f.request('GET', `/api/v1/backups/${job.id}/archive`)).statusCode, 404);
   } finally { await f.close(); }
 });
 test('incomplete output is a failed backup', async () => {
