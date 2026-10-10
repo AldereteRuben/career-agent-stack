@@ -109,6 +109,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
       await q(`insert into job_occurrences (workspace_id, job_id, provider, region, tenant, external_job_id, job_url, source_payload) values ($1, $2, 'greenhouse', 'us', 'fictional', 'e1', 'https://example.test/j', '{}')`, [ws, job]);
       await q(`insert into job_search_sources (workspace_id, job_id, provider, external_id, source_url) values ($1, $2, 'remotive', 'e1', 'https://example.test/j')`, [ws, job]);
       await q(`insert into job_identity_members (workspace_id, job_id, identity_key, evidence) values ($1, $2, $3, '{}')`, [ws, job, `identity-${ws}`]);
+      await q(`insert into job_availability_events (workspace_id, job_id, from_state, to_state, reason) values ($1, $2, 'OPEN', 'POSSIBLY_CLOSED', 'ABSENT_FROM_SOURCES')`, [ws, job]);
       await q(`insert into document_versions (id, workspace_id, name, revision, media_type, storage_path, sha256, profile_revision_id, job_snapshot_id) values ($1, $2, 'Resume', 1, 'application/pdf', $3, $4, $5, $6)`, [doc, ws, `${ws}/resume.pdf`, 'c'.repeat(64), pv2, snapshot]);
       await q(`insert into applications (id, workspace_id, company, role, job_id, document_id) values ($1, $2, 'Fictional Co', 'Designer', $3, $4)`, [app, ws, job, doc]);
       await q(`insert into application_events (workspace_id, application_id, event_type, aggregate_version) values ($1, $2, 'CREATED', 1)`, [ws, app]);

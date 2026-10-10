@@ -2,9 +2,9 @@
 
 ## 1. Decision record and data model
 
-- [ ] 1.1 Add ADR `docs/decisions/021-job-availability.md` recording the rule (complete reads only, 3 misses over 48 hours, suspicious reads ignored, Himalayas presence-only, person's decision wins, no provider closure signal yet) and the limits from proposal.md; verify it links to #35 and to brief §5.
-- [ ] 1.2 Add migration `0013_job_availability.sql` (counters on `job_occurrences` and `job_search_sources`, `last_complete_count` on `boards` and `job_search_provider_cache`, `jobs.closed_by_user`, table `job_availability_events`), its journal entry and the Drizzle schema; verify `pnpm run typecheck` and `pnpm run test:integration` (all migrations in order) pass.
-- [ ] 1.3 Add `job_availability_events` to `DELETION_ORDER` in `apps/api/src/workspace-deletion.ts` and a history row to its proof fixture; verify `pnpm run test:deletion` passes (the coverage test fails without it).
+- [x] 1.1 Add ADR `docs/decisions/021-job-availability.md` recording the rule (complete reads only, 3 misses over 48 hours, suspicious reads ignored, Himalayas presence-only, person's decision wins, no provider closure signal yet) and the limits from proposal.md; verify it links to #35 and to brief §5.
+- [x] 1.2 Add migration `0013_job_availability.sql` (counters on `job_occurrences` and `job_search_sources`, `last_complete_count` on `boards` and `job_search_provider_cache`, `jobs.closed_by_user`, table `job_availability_events`), its journal entry and the Drizzle schema; verify `pnpm run typecheck` and `pnpm run test:integration` (all migrations in order) pass.
+- [x] 1.3 Add `job_availability_events` to `DELETION_ORDER` in `apps/api/src/workspace-deletion.ts` and a history row to its proof fixture; verify `pnpm run test:deletion` passes (the coverage test fails without it).
 
 ## 2. Decision rule (domain)
 
