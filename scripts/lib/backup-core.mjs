@@ -198,8 +198,8 @@ export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex'
 export function keyFileContent(key) {
   return `${JSON.stringify({
     format: KEY_FORMAT, formatVersion: 1, fingerprint: keyFingerprint(key), createdAt: new Date().toISOString(),
-    warning: 'APP_ENCRYPTION_KEY of a Career Agent Stack installation. Anyone holding this file and a backup can read and authenticate that backup. Store it separately from the backups (password manager or encrypted drive).',
-    aviso: 'APP_ENCRYPTION_KEY de una instalación de Career Agent Stack. Guárdalo aparte de las copias (gestor de contraseñas o disco cifrado).',
+    warning: 'APP_ENCRYPTION_KEY of a Career Agent Stack installation. It is needed to verify and restore backups of that installation. These backups are not encrypted: anyone with a backup can read it, with or without this file. Store this file separately from the backups (password manager or encrypted drive).',
+    aviso: 'APP_ENCRYPTION_KEY de una instalación de Career Agent Stack. Hace falta para verificar y restaurar sus copias. Estas copias no están cifradas: cualquiera que tenga una puede leerla, con o sin este archivo. Guárdalo aparte de las copias (gestor de contraseñas o disco cifrado).',
     APP_ENCRYPTION_KEY: key,
   }, null, 2)}\n`;
 }

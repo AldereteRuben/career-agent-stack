@@ -66,7 +66,7 @@ The app does not encrypt the active database or the PDFs in `data/files`. The do
 - A backup copied to a shared or cloud folder no longer exposes the profile, resumes or applications unless the key file is with it. Keeping the key file apart becomes the one thing that protects a backup.
 - Restoring needs a little more time and temporary space for decryption.
 - Changing `APP_ENCRYPTION_KEY` is still unsupported; backups made with an earlier key need the matching key file.
-- **Known limitation, separate from this decision:** the project's other private files (`.env`, the key file, backup and restore folders, restored documents) are protected only with POSIX modes today, which do not restrict access on Windows, and `looseBits` cannot see Windows ACLs. Windows support is still being completed ([#19](https://github.com/AldereteRuben/career-agent-stack/issues/19)); applying the same ACL approach to those files belongs in its own issue.
+- **Known limitation, separate from this decision:** the project's other private files (`.env`, the key file, backup and restore folders, restored documents) are protected only with POSIX modes today, which do not restrict access on Windows, and `looseBits` cannot see Windows ACLs. Windows support is still being completed ([#19](https://github.com/AldereteRuben/career-agent-stack/issues/19)); applying the same ACL approach to those files is tracked in [#94](https://github.com/AldereteRuben/career-agent-stack/issues/94).
 - Encryption protects backups, not the running installation: a person with access to the computer and the user account can still read the active data, unless the disk is encrypted and the computer is locked.
 
 ## Out of scope
