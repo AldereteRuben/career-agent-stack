@@ -28,6 +28,8 @@ const requireDb = createRequire(join(root, 'packages/db/package.json'));
 const tag = `career_bkt_${randomBytes(4).toString('hex')}`;
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const mode = async (path) => (await stat(path)).mode & 0o777;
+// Windows has no POSIX permission bits (stat always reports 0666); making these files private there is issue #98.
+const assertMode = async (path, expected) => { if (process.platform !== 'win32') assert.equal(await mode(path), expected); };
 
 /** A small valid PDF with fictional text. */
 function pdf(text) {
@@ -217,10 +219,10 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     archive = join(backupDir, names.find((name) => name.endsWith('.tar')));
     keyFile = join(backupDir, names.find((name) => name.startsWith('career-key-')));
     assert.deepEqual(names.filter((name) => name.startsWith('.')), [], 'no staging leftovers');
-    assert.equal(await mode(backupDir), 0o700);
-    assert.equal(await mode(archive), 0o600);
-    assert.equal(await mode(`${archive}.sha256`), 0o600);
-    assert.equal(await mode(keyFile), 0o600);
+    await assertMode(backupDir, 0o700);
+    await assertMode(archive, 0o600);
+    await assertMode(`${archive}.sha256`, 0o600);
+    await assertMode(keyFile, 0o600);
     assert.equal(JSON.parse(await readFile(keyFile, 'utf8')).APP_ENCRYPTION_KEY, secrets.encryptionKey);
     const bytes = await readFile(archive);
     assertNoSecrets(bytes.toString('latin1'));
@@ -348,10 +350,10 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.deepEqual((await query(database, 'select * from ai_run_tombstones')).rows, (await query(sourceDb, 'select * from ai_run_tombstones')).rows, 'deleted work stays deduplicated after restore');
     assert.equal((await query(sourceDb, 'select active from ai_connections')).rows[0].active, true, 'source connection is unchanged');
     // New installation folder.
-    assert.equal(await mode(target), 0o700);
-    assert.equal(await mode(join(target, '.env')), 0o600);
-    assert.equal(await mode(join(target, 'data')), 0o700);
-    assert.equal(await mode(join(target, 'data', 'setup-token')), 0o600);
+    await assertMode(target, 0o700);
+    await assertMode(join(target, '.env'), 0o600);
+    await assertMode(join(target, 'data'), 0o700);
+    await assertMode(join(target, 'data', 'setup-token'), 0o600);
     const envBytes = await readFile(join(target, '.env'), 'utf8');
     const { parseEnv } = await import('../lib/local-env.mjs');
     const env = parseEnv(envBytes);
@@ -369,7 +371,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     for (const document of documents) {
       const file = join(target, 'data', 'files', document.storagePath);
       assert.equal(sha(await readFile(file)), document.sha256);
-      assert.equal(await mode(file), 0o600);
+      await assertMode(file, 0o600);
     }
     assert.ok(!(await readdir(target)).some((name) => name.startsWith('.staging')));
     const report = JSON.parse(await readFile(join(target, 'restore-report.json'), 'utf8'));
