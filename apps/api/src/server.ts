@@ -5,7 +5,7 @@ import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
 import { DiscoveryError, refreshBoard, registerDiscoveryRoutes, startDiscoveryWorker } from './discovery.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, writeFile, chmod, unlink } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, chmod, unlink } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
@@ -13,7 +13,8 @@ import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
-import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
+import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
+import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
@@ -24,6 +25,7 @@ import { registerJobSearchRoutes } from './job-search-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
+import { setCodexTaskRoot } from './ai/codex.js';
 import { exportAiData } from './ai/export.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
@@ -34,9 +36,18 @@ const aiEnabled = config.CAREER_AI_ENABLED && process.platform === 'darwin';
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
 const localData = config.DATA_LOCAL_PATH;
+// Emptying the documents folder when all data is deleted must never reach the run records or the sign-in token (ADR 020).
+const filesProblem = filesPathProblem(config.FILES_LOCAL_PATH, localData);
+if (filesProblem) throw new Error(`${filesProblem} Change FILES_LOCAL_PATH or DATA_LOCAL_PATH in .env. / Cambia FILES_LOCAL_PATH o DATA_LOCAL_PATH en .env.`);
 await mkdir(localData, { recursive: true, mode: 0o700 });
+// Assistant prompt files of this installation only. Nothing can be running yet, so leftovers of a killed process go.
+const assistantTemporary = resolve(localData, 'tmp');
+await rm(assistantTemporary, { recursive: true, force: true });
+await mkdir(assistantTemporary, { recursive: true, mode: 0o700 });
+setCodexTaskRoot(assistantTemporary);
 const workspaceRows = await db.select().from(workspaces).limit(1);
 const workspaceId = workspaceRows[0]?.id ?? (await db.insert(workspaces).values({ name: 'My career workspace', timezone: 'Europe/Madrid' }).returning({ id: workspaces.id }))[0]!.id;
+setSessionGeneration(workspaceRows[0]?.sessionGeneration ?? 0);
 await db.insert(profileVersions).values({ workspaceId, revision: 1, profile: {} }).onConflictDoNothing();
 const setupTokenPath = resolve(localData, 'setup-token');
 let setupToken: string;
@@ -59,7 +70,10 @@ app.addHook('onRequest', async (request, reply) => {
   const path = request.url.split('?')[0];
   if (path === '/healthz' || path === '/api/v1/session') return;
   if (!workspaceFromRequest(request)) return reply.code(401).send({ error: 'SESSION_REQUIRED' });
+  // While all data is being deleted nothing else may read or write it.
+  if (deletingAllData) return reply.code(503).send({ error: 'DELETION_IN_PROGRESS' });
 });
+let deletingAllData = false;
 
 const workspace = (request: FastifyRequest) => workspaceFromRequest(request) ?? workspaceId;
 const isClosedApplication = (application: { state: string; recruitmentStage: string }) => application.state === 'CANCELLED' || ['REJECTED', 'WITHDRAWN'].includes(application.recruitmentStage);
@@ -364,7 +378,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
-registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
+const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
 app.get('/api/v1/applications', async (request, reply) => {
   const query = request.query as { offset?: string; limit?: string; q?: string };
@@ -593,16 +607,57 @@ app.setErrorHandler((error, _request, reply) => {
 
 registerPreparationRoutes(app, workspace);
 registerJobSearchRoutes(app, workspace, prepareApplication);
-const stopJobSearches = startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareApplication);
-app.addHook('onClose', stopJobSearches);
+const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareApplication);
+let stopJobSearches = startJobSearches();
+app.addHook('onClose', () => stopJobSearches());
 registerDiscoveryRoutes(app, workspace);
-const stopDiscovery = startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
-app.addHook('onClose', stopDiscovery);
+const startDiscovery = () => startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
+let stopDiscovery = startDiscovery();
+app.addHook('onClose', () => stopDiscovery());
 
 const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;
 
-await registerAiRuntime(app, workspace, { enabled: aiEnabled, identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH });
+const aiRuntime = await registerAiRuntime(app, workspace, { enabled: aiEnabled, identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH });
+
+// ---- Delete all my data (ADR 020, point 2) ----------------------------------------------------------------------
+const deletionPhrases = new Set(['BORRAR TODOS MIS DATOS', 'DELETE ALL MY DATA']);
+/** Deletes the files of a deletion job and records the outcome. Returns whether every file is gone. */
+async function completeDeletionFiles(jobId: string) {
+  try {
+    await deleteWorkspaceFiles({ filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData });
+    await finishDeletionJob(pool, jobId, 'COMPLETED');
+    return true;
+  } catch (error) {
+    app.log.error({ err: error, jobId }, 'Deleting the files of a deleted workspace failed; it is retried when the API starts');
+    await finishDeletionJob(pool, jobId, 'FILES_FAILED').catch(() => undefined);
+    return false;
+  }
+}
+app.post('/api/v1/workspace/delete-all', async (request, reply) => {
+  const confirmation = (request.body as { confirmation?: unknown } | null)?.confirmation;
+  if (typeof confirmation !== 'string' || !deletionPhrases.has(confirmation.trim())) return fail(reply, 400, 'CONFIRMATION_REQUIRED');
+  if (deletingAllData) return fail(reply, 409, 'DELETION_IN_PROGRESS');
+  if (backups.isRunning()) return fail(reply, 409, 'BACKUP_IN_PROGRESS', 'Wait until the backup finishes.');
+  deletingAllData = true;
+  const id = workspace(request);
+  try {
+    // Stop every kind of running work first, so nothing writes rows or files while they are deleted.
+    await stopJobSearches(); await stopDiscovery(); await aiRuntime.pause(); await stopAssistedBrowsers();
+    const { jobId, generation } = await deleteWorkspaceRows(pool, id);
+    setSessionGeneration(generation);
+    backups.forget();
+    const filesDeleted = await completeDeletionFiles(jobId);
+    reply.header('Set-Cookie', expiredSessionCookie());
+    if (!filesDeleted) return fail(reply, 500, 'DELETION_FILES_PENDING', 'Records were deleted; some files were not and are retried when the API starts.');
+    return { deleted: true };
+  } finally {
+    stopJobSearches = startJobSearches(); stopDiscovery = startDiscovery(); aiRuntime.resume();
+    deletingAllData = false;
+  }
+});
+// A deletion whose files were interrupted or failed is finished before the API serves anything.
+for (const jobId of await pendingDeletionJobs(pool, workspaceId)) await completeDeletionFiles(jobId);
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
 app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);
