@@ -160,6 +160,13 @@ export async function inspectRole(client, name) {
   return { exists: true, mark: role.mark, ownedDatabases: owned.rows.map((row) => row.datname), dependencies: elsewhere.rows };
 }
 
+/** Every database and role on the server that carries this mark, whatever the progress file says their names are. */
+export async function markedObjects(client, mark) {
+  const databases = await client.query(`select datname as name from pg_database where shobj_description(oid, 'pg_database') = $1 order by 1`, [mark]);
+  const roles = await client.query(`select rolname as name from pg_roles where shobj_description(oid, 'pg_authid') = $1 order by 1`, [mark]);
+  return [...databases.rows.map((row) => row.name), ...roles.rows.map((row) => row.name)];
+}
+
 const isSuperuser = async (client) => (await client.query('select rolsuper from pg_roles where rolname = current_user')).rows[0]?.rolsuper === true;
 
 /**

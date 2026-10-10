@@ -45,16 +45,16 @@ describe('pnpm run uninstall (disposable databases)', { skip: !adminUrl && 'set 
   const url = (role, password, database) => { const u = new URL(adminUrl); u.username = role; u.password = password; u.pathname = `/${database}`; return u.toString(); };
 
   /** A bootstrap-like installation: marked role and database, a .env, data with fictional documents, and backups. */
-  async function makeInstallation({ mode = 'created', creator = admin, data } = {}) {
+  async function makeInstallation({ mode = 'created', creator = admin, data, marked = true } = {}) {
     const id = `${prefix.slice('career_'.length)}_${counter += 1}`;
     const name = `career_${id}`;
     const password = randomBytes(12).toString('hex');
     await creator.query(`create role "${name}" login password '${password}'`);
-    await creator.query(`comment on role "${name}" is '${installMark(id)}'`);
+    if (marked) await creator.query(`comment on role "${name}" is '${installMark(id)}'`);
     if (creator !== admin) await creator.query(`grant "${name}" to current_user with set true, inherit false`);
     await creator.query(`create database "${name}" owner "${name}"`);
     const comment = `comment on database "${name}" is '${installMark(id)}'`;
-    if (creator === admin) await admin.query(comment);
+    if (!marked) { /* an external database, as with CAREER_DATABASE_URL: nothing carries the installation's mark */ } else if (creator === admin) await admin.query(comment);
     else { await creator.query(`set role "${name}"`); await creator.query(comment); await creator.query('reset role'); }
     const folder = await mkdtemp(join(tmpdir(), 'career-uninstall-'));
     folders.push(folder);
@@ -159,7 +159,7 @@ describe('pnpm run uninstall (disposable databases)', { skip: !adminUrl && 'set 
   });
 
   test('a provided database is refused unless --skip-database, which keeps it and deletes the rest', async () => {
-    const install = await makeInstallation({ mode: 'provided' });
+    const install = await makeInstallation({ mode: 'provided', marked: false });
     const refused = await uninstall(install.folder, ['--confirm', install.id]);
     assert.equal(refused.code, 1);
     assert.match(refused.out, /cannot be proven/);
@@ -349,15 +349,31 @@ describe('pnpm run uninstall (disposable databases)', { skip: !adminUrl && 'set 
     assert.ok(await databaseExists(install.name));
     assert.ok(await exists(join(install.folder, '.uninstall-progress.json')));
 
-    // The one legitimate case, a database the script never managed, is explicit, needs --skip-database again,
-    // and the output says the database was left for manual removal.
+    // Nor by calling this installation's own (marked) database "unmanaged".
     await write({ database: null, role: null, unmanaged: install.name });
-    const withoutFlag = await uninstall(install.folder, ['--confirm', install.id]);
+    const reclassified = await uninstall(install.folder, ['--confirm', install.id, '--skip-database']);
+    assert.equal(reclassified.code, 1);
+    assert.match(reclassified.out, /carrying this installation's mark still exist/);
+    assert.doesNotMatch(reclassified.out, /uninstalled/);
+    assert.ok(await databaseExists(install.name));
+    assert.ok(await exists(join(install.folder, '.uninstall-progress.json')));
+  });
+
+  test('without .env, a truly external database is left for manual removal, and only with --skip-database', async () => {
+    const external = await makeInstallation({ mode: 'provided', marked: false });
+    await rm(join(external.folder, '.env'));
+    await rm(join(external.folder, 'data'), { recursive: true });
+    await writeFile(join(external.folder, '.uninstall-progress.json'), JSON.stringify({
+      format: 'career-agent-stack-uninstall', version: 1, kind: 'install', id: external.id, folder: external.folder,
+      database: null, role: null, unmanaged: external.name, done: ['data', 'env'],
+    }), { mode: 0o600 });
+    const withoutFlag = await uninstall(external.folder, ['--confirm', external.id]);
     assert.equal(withoutFlag.code, 1);
-    const skipped = await uninstall(install.folder, ['--confirm', install.id, '--skip-database']);
+    const skipped = await uninstall(external.folder, ['--confirm', external.id, '--skip-database']);
     assert.equal(skipped.code, 0, skipped.out);
-    assert.match(skipped.out, new RegExp(`Database "${install.name}" and its role: bootstrap did not create them, so remove them by hand`));
-    assert.ok(await databaseExists(install.name), 'An unmanaged database is never dropped');
+    assert.match(skipped.out, new RegExp(`Database "${external.name}" and its role: bootstrap did not create them, so remove them by hand`));
+    assert.ok(await databaseExists(external.name), 'An unmanaged database is never dropped');
+    assert.equal(await exists(join(external.folder, '.uninstall-progress.json')), false);
   });
 
   test('a progress file that describes another database is refused', async () => {

@@ -19,7 +19,7 @@ import { parseArgs } from 'node:util';
 import { connect, databaseLabel, humanSize, isInside, projectPath, safeMessage, sameServer, shown } from './lib/backup-core.mjs';
 import { RecoveryError, alternateEnv, envPath, ok, pendingEnvPath, printRecovery, projectRoot, readLocalEnv, say, step, warn } from './lib/local-env.mjs';
 import {
-  checkDeletablePath, deletePath, dropDatabase, dropRole, identityOf, inspectDatabase, inspectRole, measure, PROGRESS_FORMAT,
+  checkDeletablePath, deletePath, dropDatabase, dropRole, identityOf, inspectDatabase, inspectRole, markedObjects, measure, PROGRESS_FORMAT,
   progressPath, readProgress, writeProgress,
 } from './lib/uninstall-core.mjs';
 
@@ -192,9 +192,15 @@ async function main() {
 
   let client = null;
   try {
-    if (plan.mustBeGone?.database || plan.mustBeGone?.role) {
-      // Without .env nothing is dropped, but a progress file claiming the database and role are gone must be true.
+    if (plan.mustBeGone) {
+      // Without .env nothing is dropped, and no name in the progress file is trusted: if any database or role on
+      // the server still carries this installation's mark, the uninstall did not finish, whatever the file says.
       client = await connect(adminUrl(), 'career-uninstall');
+      const marked = await markedObjects(client, identity.mark);
+      if (marked.length) throw new RecoveryError({
+        es: `Todavía existen bases o usuarios con la marca de esta instalación: ${marked.join(', ')}. No se borra nada.`, en: `Databases or roles carrying this installation's mark still exist: ${marked.join(', ')}. Nothing is deleted.`,
+        fixes: [fix('Sigue los pasos manuales de docs/operations/uninstall.md.', 'Follow the manual steps in docs/operations/uninstall.md.')],
+      });
       const left = [];
       if (plan.mustBeGone.database && (await inspectDatabase(client, plan.mustBeGone.database)).exists) left.push(plan.mustBeGone.database);
       if (plan.mustBeGone.role && (await inspectRole(client, plan.mustBeGone.role)).exists) left.push(plan.mustBeGone.role);
