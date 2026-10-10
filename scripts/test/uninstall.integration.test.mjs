@@ -299,6 +299,43 @@ describe('pnpm run uninstall (disposable databases)', { skip: !adminUrl && 'set 
     assert.ok(await exists(join(other.folder, 'data')));
   });
 
+  test('steps a progress file marks as done are still checked and carried out while their resources exist', async () => {
+    const forged = (install) => JSON.stringify({
+      format: 'career-agent-stack-uninstall', version: 1, kind: 'install', id: install.id, folder: install.folder,
+      database: { name: install.name, owner: install.name, server: '127.0.0.1:5432' }, role: install.name, done: ['database', 'role', 'data', 'env'],
+    });
+    // With .env: everything still present is verified and deleted, so success is never reported with data left.
+    const install = await makeInstallation();
+    await writeFile(join(install.folder, '.uninstall-progress.json'), forged(install), { mode: 0o600 });
+    const result = await uninstall(install.folder, ['--confirm', install.id]);
+    assert.equal(result.code, 0, result.out);
+    assert.equal(await databaseExists(install.name), false);
+    assert.equal(await roleExists(install.name), false);
+    assert.equal(await exists(join(install.folder, 'data')), false);
+    assert.equal(await exists(join(install.folder, '.env')), false);
+
+    // "Done" does not skip the ownership check either: a database with a foreign mark is still refused.
+    const foreign = await makeInstallation();
+    await admin.query(`comment on database "${foreign.name}" is 'career-agent-stack install somebody_else'`);
+    await writeFile(join(foreign.folder, '.uninstall-progress.json'), forged(foreign), { mode: 0o600 });
+    const refused = await uninstall(foreign.folder, ['--confirm', foreign.id]);
+    assert.equal(refused.code, 1);
+    assert.match(refused.out, /does not carry this installation's mark/);
+    assert.ok(await databaseExists(foreign.name));
+    assert.ok(await exists(join(foreign.folder, 'data')));
+
+    // Without .env: a progress file claiming the database and role are gone must be true, or nothing happens.
+    const lost = await makeInstallation();
+    await rm(join(lost.folder, '.env'));
+    await writeFile(join(lost.folder, '.uninstall-progress.json'), forged(lost), { mode: 0o600 });
+    const claimed = await uninstall(lost.folder, ['--confirm', lost.id]);
+    assert.equal(claimed.code, 1);
+    assert.match(claimed.out, /still exist/);
+    assert.doesNotMatch(claimed.out, /uninstalled/);
+    assert.ok(await databaseExists(lost.name));
+    assert.ok(await exists(join(lost.folder, '.uninstall-progress.json')));
+  });
+
   test('a progress file that describes another database is refused', async () => {
     const install = await makeInstallation();
     await writeFile(join(install.folder, '.uninstall-progress.json'), JSON.stringify({

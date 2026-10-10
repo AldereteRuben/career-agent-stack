@@ -102,14 +102,15 @@ async function verifyDatabase(client, plan, identity, resuming, databaseUrl) {
   const problems = [];
   if (!plan.database) return problems;
   if (databaseUrl && !sameServer(adminUrl(), databaseUrl)) problems.push(fix('CAREER_ADMIN_DATABASE_URL apunta a otro servidor que DATABASE_URL.', 'CAREER_ADMIN_DATABASE_URL points at another server than DATABASE_URL.'));
-  if (!plan.done.includes('database')) {
+  // A step recorded as done never skips a check: it only explains why something that is gone is gone.
+  {
     const database = await inspectDatabase(client, plan.database.name);
-    if (!database.exists && !resuming) problems.push(fix(`La base «${plan.database.name}» no existe; sin un archivo de progreso no se da por borrada por este script.`, `Database "${plan.database.name}" does not exist; without a progress file it is not assumed to have been dropped by this script.`));
+    if (!database.exists && !(resuming && plan.done.includes('database'))) problems.push(fix(`La base «${plan.database.name}» no existe; sin un archivo de progreso no se da por borrada por este script.`, `Database "${plan.database.name}" does not exist; without a progress file it is not assumed to have been dropped by this script.`));
     if (database.exists && (database.mark !== identity.mark || database.owner !== plan.database.owner)) problems.push(fix(`La base «${plan.database.name}» no lleva la marca de esta instalación (o su propietario no es ${plan.database.owner}).`, `Database "${plan.database.name}" does not carry this installation's mark (or is not owned by ${plan.database.owner}).`));
   }
-  if (plan.role && !plan.done.includes('role')) {
+  if (plan.role) {
     const role = await inspectRole(client, plan.role);
-    if (!role.exists && !resuming) problems.push(fix(`El usuario «${plan.role}» no existe; sin un archivo de progreso no se da por borrado por este script.`, `Role "${plan.role}" does not exist; without a progress file it is not assumed to have been dropped by this script.`));
+    if (!role.exists && !(resuming && plan.done.includes('role'))) problems.push(fix(`El usuario «${plan.role}» no existe; sin un archivo de progreso no se da por borrado por este script.`, `Role "${plan.role}" does not exist; without a progress file it is not assumed to have been dropped by this script.`));
     if (role.exists && role.mark !== identity.mark) problems.push(fix(`El usuario «${plan.role}» no lleva la marca de esta instalación.`, `Role "${plan.role}" does not carry this installation's mark.`));
   }
   return problems;
@@ -179,7 +180,7 @@ async function main() {
       en: `.env is missing, but ${shown(progressPath(folder))} does not show every step finished (${required.filter((step) => !progress.done.includes(step)).join(', ')}). Nothing is deleted.`,
       fixes: [fix('Sigue los pasos manuales de docs/operations/uninstall.md.', 'Follow the manual steps in docs/operations/uninstall.md.')],
     });
-    plan = { ...progress, database: null, role: null, paths: [], backups: null, envFiles: [], refused: [], done: [...progress.done] };
+    plan = { ...progress, database: null, role: null, paths: [], backups: null, envFiles: [], refused: [], done: [...progress.done], mustBeGone: { database: progress.database?.name ?? null, role: progress.role ?? null } };
     say('Se retoma una desinstalación interrumpida.', 'Resuming an interrupted uninstall.');
   }
   if (plan.unmanaged && !flags['skip-database']) throw new RecoveryError({
@@ -190,7 +191,18 @@ async function main() {
 
   let client = null;
   try {
-    if (plan.database && !(plan.done.includes('database') && (!plan.role || plan.done.includes('role')))) {
+    if (plan.mustBeGone?.database || plan.mustBeGone?.role) {
+      // Without .env nothing is dropped, but a progress file claiming the database and role are gone must be true.
+      client = await connect(adminUrl(), 'career-uninstall');
+      const left = [];
+      if (plan.mustBeGone.database && (await inspectDatabase(client, plan.mustBeGone.database)).exists) left.push(plan.mustBeGone.database);
+      if (plan.mustBeGone.role && (await inspectRole(client, plan.mustBeGone.role)).exists) left.push(plan.mustBeGone.role);
+      if (left.length) throw new RecoveryError({
+        es: `El archivo de progreso dice que se borraron, pero siguen existiendo: ${left.join(', ')}. No se borra nada.`, en: `The progress file says they were dropped, but they still exist: ${left.join(', ')}. Nothing is deleted.`,
+        fixes: [fix('Sigue los pasos manuales de docs/operations/uninstall.md.', 'Follow the manual steps in docs/operations/uninstall.md.')],
+      });
+    }
+    if (plan.database) {
       try { client = await connect(adminUrl(), 'career-uninstall'); } catch (error) {
         if (confirmed) throw new RecoveryError({
           es: `No se pudo conectar como administrador de PostgreSQL: ${safeMessage(error)}`, en: `Could not connect as the PostgreSQL administrator: ${safeMessage(error)}`,
@@ -223,17 +235,18 @@ async function main() {
     // The progress file holds names, paths and ids only: never DATABASE_URL, which contains the password.
     const record = { ...plan, refused: plan.refused ?? [] };
     const save = () => writeProgress(folder, record);
-    const done = async (name) => { record.done.push(name); await save(); };
+    const done = async (name) => { if (!record.done.includes(name)) record.done.push(name); await save(); };
     await save();
     try {
-      if (plan.database && !record.done.includes('database')) {
+      // Every step acts on what exists now, whatever the progress file says, and then records the step as done.
+      if (plan.database) {
         if ((await inspectDatabase(client, plan.database.name)).exists) {
           step(`Borrando la base de datos «${plan.database.name}»…`, `Dropping database "${plan.database.name}"…`);
           await dropDatabase(client, plan.database.name, plan.database.owner);
         }
         await done('database');
       }
-      if (plan.role && !record.done.includes('role')) {
+      if (plan.role) {
         const role = await inspectRole(client, plan.role);
         if (role.exists) {
           if (role.ownedDatabases.length || role.dependencies.length) throw new RecoveryError({
@@ -246,7 +259,7 @@ async function main() {
         }
         await done('role');
       }
-      if (!record.done.includes('data')) {
+      {
         const stopCommand = await launcherPostgres(plan.runDir);
         if (stopCommand) say(`  PostgreSQL lo inició el lanzador y sigue en marcha; para detenerlo: ${stopCommand}  (escribirá en su log borrado hasta que se reinicie).`, `PostgreSQL was started by the launcher and keeps running; to stop it: ${stopCommand}  (it writes to its deleted log until it restarts).`);
         for (const path of plan.paths) {
@@ -257,12 +270,12 @@ async function main() {
         }
         await done('data');
       }
-      if (plan.backups && !record.done.includes('backups')) {
+      if (plan.backups) {
         step(`Borrando las copias de seguridad de ${shown(plan.backups)}…`, `Deleting the backups in ${shown(plan.backups)}…`);
         await deletePath(plan.backups);
         await done('backups');
       }
-      if (!record.done.includes('env')) {
+      {
         for (const path of plan.envFiles) await deletePath(path);
         await done('env');
       }
