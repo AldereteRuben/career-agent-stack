@@ -13,6 +13,7 @@ import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
+import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
@@ -70,10 +71,12 @@ app.addHook('onRequest', async (request, reply) => {
   const path = request.url.split('?')[0];
   if (path === '/healthz' || path === '/api/v1/session') return;
   if (!workspaceFromRequest(request)) return reply.code(401).send({ error: 'SESSION_REQUIRED' });
-  // While all data is being deleted nothing else may read or write it.
-  if (deletingAllData) return reply.code(503).send({ error: 'DELETION_IN_PROGRESS' });
+  // While all data is being deleted nothing else may read or write it: the deletion closes this gate and waits for
+  // every request already admitted to finish before it deletes anything (ADR 020).
+  if (!requestGate.enter(request)) return reply.code(503).send({ error: 'DELETION_IN_PROGRESS' });
 });
-let deletingAllData = false;
+const requestGate = createRequestGate();
+releaseOnResponse(app, requestGate);
 
 const workspace = (request: FastifyRequest) => workspaceFromRequest(request) ?? workspaceId;
 const isClosedApplication = (application: { state: string; recruitmentStage: string }) => application.state === 'CANCELLED' || ['REJECTED', 'WITHDRAWN'].includes(application.recruitmentStage);
@@ -637,12 +640,15 @@ async function completeDeletionFiles(jobId: string) {
 app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   const confirmation = (request.body as { confirmation?: unknown } | null)?.confirmation;
   if (typeof confirmation !== 'string' || !deletionPhrases.has(confirmation.trim())) return fail(reply, 400, 'CONFIRMATION_REQUIRED');
-  if (deletingAllData) return fail(reply, 409, 'DELETION_IN_PROGRESS');
   if (backups.isRunning()) return fail(reply, 409, 'BACKUP_IN_PROGRESS', 'Wait until the backup finishes.');
-  deletingAllData = true;
   const id = workspace(request);
+  // Refuse new requests and wait for those already running, so none writes after the rows are deleted.
+  if (!await requestGate.close(30_000, request)) {
+    requestGate.open();
+    return fail(reply, 503, 'DELETION_BUSY', 'Other requests did not finish in time; nothing was deleted. Try again.');
+  }
   try {
-    // Stop every kind of running work first, so nothing writes rows or files while they are deleted.
+    // Then stop every kind of background work, so nothing writes rows or files while they are deleted.
     await stopJobSearches(); await stopDiscovery(); await aiRuntime.pause(); await stopAssistedBrowsers();
     const { jobId, generation } = await deleteWorkspaceRows(pool, id);
     setSessionGeneration(generation);
@@ -653,7 +659,7 @@ app.post('/api/v1/workspace/delete-all', async (request, reply) => {
     return { deleted: true };
   } finally {
     stopJobSearches = startJobSearches(); stopDiscovery = startDiscovery(); aiRuntime.resume();
-    deletingAllData = false;
+    requestGate.open();
   }
 });
 // A deletion whose files were interrupted or failed is finished before the API serves anything.
