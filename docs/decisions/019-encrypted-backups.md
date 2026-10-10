@@ -1,6 +1,6 @@
 # 019 — Encrypted operational backups and data at rest
 
-Status: **accepted**, implementation pending (issue [#84](https://github.com/AldereteRuben/career-agent-stack/issues/84)). Date: 2026-10-10.
+Status: **implemented** (issue [#84](https://github.com/AldereteRuben/career-agent-stack/issues/84)): documentation in #95, encrypted backups, restore and Settings in the pull request that closes #84. Date: 2026-10-10.
 
 ## Context
 

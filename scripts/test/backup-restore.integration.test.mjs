@@ -21,6 +21,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { buildHeader, extractArchive, writeArchive } from '../lib/backup-archive.mjs';
 import { keyFileContent, repoMigrations, manifestMac, withDatabase } from '../lib/backup-core.mjs';
+import { ageIdentity, decryptFile, encryptFile, isAgeFile } from '../lib/backup-crypto.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const adminUrl = process.env.CAREER_BACKUP_TEST_ADMIN_URL;
@@ -79,6 +80,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   let backupDir;
   let archive;
   let keyFile;
+  let plainTar; // the decrypted contents of `archive`, for tests that tamper with the inner tar
   const documents = [];
 
   const dbExists = async (name) => (await admin.query('select 1 from pg_database where datname = $1', [name])).rowCount === 1;
@@ -90,6 +92,12 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   const restoreEnv = () => ({ CAREER_RESTORE_ADMIN_URL: adminUrl, CAREER_RESTORE_APP_URL: appUrl });
   const assertNoSecrets = (output) => {
     for (const [name, value] of Object.entries(secrets)) assert.ok(!output.includes(value), `output leaked ${name}`);
+  };
+  /** Encrypts a (possibly tampered) inner tar with the installation key, as a real backup would be. */
+  const seal = async (tarPath) => {
+    const sealed = `${tarPath}.age`;
+    await encryptFile(tarPath, sealed, secrets.encryptionKey);
+    return sealed;
   };
 
   before(async () => {
@@ -214,19 +222,26 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assertNoSecrets(result.all);
     assert.match(result.stdout, /Verified backup/);
     const names = await readdir(backupDir);
-    archive = join(backupDir, names.find((name) => name.endsWith('.tar')));
+    archive = join(backupDir, names.find((name) => name.endsWith('.tar.age')));
     keyFile = join(backupDir, names.find((name) => name.startsWith('career-key-')));
     assert.deepEqual(names.filter((name) => name.startsWith('.')), [], 'no staging leftovers');
     assert.equal(await mode(backupDir), 0o700);
     assert.equal(await mode(archive), 0o600);
     assert.equal(await mode(`${archive}.sha256`), 0o600);
     assert.equal(await mode(keyFile), 0o600);
-    assert.equal(JSON.parse(await readFile(keyFile, 'utf8')).APP_ENCRYPTION_KEY, secrets.encryptionKey);
+    const keyJson = JSON.parse(await readFile(keyFile, 'utf8'));
+    assert.equal(keyJson.APP_ENCRYPTION_KEY, secrets.encryptionKey);
+    assert.equal(keyJson.formatVersion, 2);
+    assert.equal(keyJson.ageIdentity, ageIdentity(secrets.encryptionKey), 'The key file can decrypt the backup with the age tool');
     const bytes = await readFile(archive);
     assertNoSecrets(bytes.toString('latin1'));
+    assert.equal(await isAgeFile(archive), true, 'The backup is an age file');
+    for (const plaintext of ['%PDF', 'Ada Example', 'Fictional engineer', 'manifest.json', 'PGDMP']) assert.equal(bytes.includes(plaintext), false, `No plaintext in the backup: ${plaintext}`);
     assert.equal((await readFile(`${archive}.sha256`, 'utf8')).split(' ')[0], sha(bytes));
+    plainTar = join(work, 'decrypted.tar');
+    await decryptFile(archive, plainTar, secrets.encryptionKey);
     const staged = await mkdtemp(join(work, 'inspect-'));
-    const entries = await extractArchive(archive, staged);
+    const entries = await extractArchive(plainTar, staged);
     const manifest = JSON.parse(await readFile(entries.get('manifest.json').path, 'utf8'));
     assert.equal(manifest.documents.length, 3);
     assert.ok(![...entries.keys()].some((name) => name.includes('orphan')), 'unreferenced files are excluded');
@@ -260,7 +275,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       const result = await run('backup.mjs', ['--env-file', envFile, '--out-dir', join(work, 'busy-2')]);
       assert.equal(result.code, 1);
       assert.match(result.stderr, /could not be locked within 10 s/);
-      assert.deepEqual((await readdir(join(work, 'busy-2'))).filter((name) => name.endsWith('.tar')), []);
+      assert.deepEqual((await readdir(join(work, 'busy-2'))).filter((name) => name.includes('.tar')), []);
     } finally { await writer.query('rollback'); await writer.end(); }
   });
 
@@ -280,13 +295,28 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     } finally { await writeFile(victim, original, { mode: 0o600 }); }
   });
 
-  test('verify-only checks integrity, and authenticity with the key', async () => {
+  test('verify-only decrypts with the key and proves authenticity; an encrypted backup cannot be read without it', async () => {
     const withKey = await run('restore.mjs', ['--verify-only', '--archive', archive, '--key-file', keyFile]);
     assert.equal(withKey.code, 0, withKey.all);
+    assert.match(withKey.stdout, /Backup decrypted with this key file/);
     assert.match(withKey.stdout, /authentic backup/);
     const withoutKey = await run('restore.mjs', ['--verify-only', '--archive', archive]);
-    assert.equal(withoutKey.code, 0, withoutKey.all);
-    assert.match(withoutKey.all, /only integrity is checked/);
+    assert.equal(withoutKey.code, 1, withoutKey.all);
+    assert.match(withoutKey.stderr, /This backup is encrypted: its key file is needed/);
+  });
+
+  test('an old unencrypted backup is refused without --allow-unencrypted and verified with it', async () => {
+    const refused = await run('restore.mjs', ['--verify-only', '--archive', plainTar, '--key-file', keyFile]);
+    assert.equal(refused.code, 1, refused.all);
+    assert.match(refused.stderr, /This backup is NOT encrypted/);
+    assert.match(refused.all, /--allow-unencrypted/);
+    const allowed = await run('restore.mjs', ['--verify-only', '--allow-unencrypted', '--archive', plainTar, '--key-file', keyFile]);
+    assert.equal(allowed.code, 0, allowed.all);
+    assert.match(allowed.all, /Unencrypted backup \(made before encryption\)/);
+    assert.match(allowed.stdout, /authentic backup/);
+    const integrityOnly = await run('restore.mjs', ['--verify-only', '--allow-unencrypted', '--archive', plainTar]);
+    assert.equal(integrityOnly.code, 0, integrityOnly.all);
+    assert.match(integrityOnly.all, /only integrity is checked/);
   });
 
   test('isolated restore creates a new database and folder with safe defaults', async () => {
@@ -379,42 +409,65 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assertNoSecrets(JSON.stringify(report));
   });
 
+  test('an old unencrypted backup restores with --allow-unencrypted', async () => {
+    const database = `${tag}_legacy`;
+    databases.add(database);
+    const target = join(work, 'restored-legacy');
+    const result = await run('restore.mjs', ['--allow-unencrypted', '--archive', plainTar, '--key-file', keyFile, '--target', target, '--database', database, '--web-port', '3192', '--api-port', '3193', '--env-file', envFile], restoreEnv());
+    assert.equal(result.code, 0, result.all);
+    assert.match(result.all, /Unencrypted backup/);
+    assert.deepEqual((await query(database, 'select count(*)::int as n from workspaces')).rows, (await query(sourceDb, 'select count(*)::int as n from workspaces')).rows);
+  });
+
   describe('rejections leave nothing behind', () => {
     const attempt = async (archivePath, extra = [], { key = keyFile, env = restoreEnv() } = {}) => {
       const database = `${tag}_r${randomBytes(3).toString('hex')}`;
       databases.add(database);
       const target = join(work, `target-${randomBytes(3).toString('hex')}`);
-      const result = await run('restore.mjs', ['--archive', archivePath, '--key-file', key, '--target', target, '--database', database, '--env-file', envFile, ...extra], env);
+      // The decrypted tar goes to the system temporary folder: point it at an empty folder and check it afterwards.
+      const temporary = await mkdtemp(join(work, 'tmp-'));
+      const result = await run('restore.mjs', ['--archive', archivePath, '--key-file', key, '--target', target, '--database', database, '--env-file', envFile, ...extra], { ...env, TMPDIR: temporary, TEMP: temporary, TMP: temporary });
       assert.equal(result.code, 1, result.all);
       assertNoSecrets(result.all);
       assert.equal(await dbExists(database), false, 'no database left');
       await assert.rejects(stat(target), 'no folder left');
+      assert.deepEqual(await readdir(temporary), [], 'no decrypted plaintext left behind');
       return result;
     };
     const repack = async (name, change) => {
       const dir = await mkdtemp(join(work, 'repack-'));
-      const entries = await extractArchive(archive, dir);
+      const entries = await extractArchive(plainTar, dir);
       const list = [];
       for (const [entryName, entry] of entries) list.push({ name: entryName, buffer: await readFile(entry.path) });
       await change(list);
       const out = join(work, name);
       await writeArchive(out, list);
-      return out;
+      return seal(out);
     };
 
     test('a modified document is rejected by checksum', async () => {
       const tampered = await repack('tampered-doc.tar', (list) => { const doc = list.find((entry) => entry.name.endsWith('.pdf')); doc.buffer[20] ^= 0xff; });
-      const verify = await run('restore.mjs', ['--verify-only', '--archive', tampered]);
+      const verify = await run('restore.mjs', ['--verify-only', '--archive', tampered, '--key-file', keyFile]);
       assert.equal(verify.code, 1);
       assert.match(verify.stderr, /does not match the manifest/);
       assert.match((await attempt(tampered)).stderr, /does not match the manifest/);
     });
-    test('a byte flipped in the raw archive is rejected', async () => {
+    test('a byte flipped in the encrypted archive is rejected before anything is restored', async () => {
       const bytes = await readFile(archive);
-      bytes[bytes.indexOf('%PDF-1.4') + 30] ^= 0x01; // inside a document's data
-      const flipped = join(work, 'flipped.tar');
+      bytes[Math.floor(bytes.length / 2)] ^= 0x01;
+      const flipped = join(work, 'flipped.tar.age');
       await writeFile(flipped, bytes);
       const result = await run('restore.mjs', ['--verify-only', '--archive', flipped, '--key-file', keyFile]);
+      assert.equal(result.code, 1, result.all);
+      assert.match(result.stderr, /could not be decrypted/);
+      assert.match((await attempt(flipped)).stderr, /could not be decrypted/);
+    });
+    test('a byte flipped inside the decrypted tar is still rejected by the manifest checks', async () => {
+      const bytes = await readFile(plainTar);
+      bytes[bytes.indexOf('%PDF-1.4') + 30] ^= 0x01; // inside a document's data
+      const flipped = join(work, 'flipped-inner.tar');
+      await writeFile(flipped, bytes);
+      const result = await run('restore.mjs', ['--verify-only', '--archive', await seal(flipped), '--key-file', keyFile]);
       assert.equal(result.code, 1, result.all);
       assert.match(result.stderr, /Backup rejected/);
     });
@@ -430,7 +483,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
         manifest.documents.find((entry) => entry.archivePath === doc.name).sha256 = item.sha256;
         manifestEntry.buffer = Buffer.from(JSON.stringify(manifest, null, 2));
       });
-      assert.equal((await run('restore.mjs', ['--verify-only', '--archive', forged])).code, 0, 'integrity alone cannot detect a forger who recomputes hashes');
+      assert.equal((await run('restore.mjs', ['--verify-only', '--allow-unencrypted', '--archive', forged.replace(/\.age$/, '')])).code, 0, 'integrity alone cannot detect a forger who recomputes hashes');
       assert.match((await attempt(forged)).stderr, /invalid HMAC signature/);
     });
     test('a failure after the new database exists removes only that database and folder', async () => {
@@ -449,27 +502,37 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     });
     test('a different key is refused', async () => {
       const otherKey = join(work, 'other-key.json');
-      await writeFile(otherKey, keyFileContent(randomBytes(32).toString('base64')), { mode: 0o600 });
-      assert.match((await attempt(archive, [], { key: otherKey })).stderr, /not the key of the installation/);
+      const other = randomBytes(32).toString('base64');
+      await writeFile(otherKey, keyFileContent(other, ageIdentity(other)), { mode: 0o600 });
+      assert.match((await attempt(archive, [], { key: otherKey })).stderr, /could not be decrypted: the key file does not belong to this backup/);
+      // Without encryption in the way, the manifest check still names the wrong installation key.
+      assert.match((await attempt(plainTar, ['--allow-unencrypted'], { key: otherKey })).stderr, /not the key of the installation/);
     });
     test('path traversal and symlink entries are refused before anything is written', async () => {
-      const good = await readFile(archive);
+      const good = await readFile(plainTar);
       const evil = Buffer.concat([buildHeader('career-backup/../../escaped.txt', 4), Buffer.from('evil'.padEnd(512, '\0')), good]);
       const evilPath = join(work, 'traversal.tar');
       await writeFile(evilPath, evil);
-      assert.match((await attempt(evilPath)).stderr, /Path not allowed|escapes/);
+      assert.match((await attempt(await seal(evilPath))).stderr, /Path not allowed|escapes/);
       await assert.rejects(stat(join(work, 'escaped.txt')));
       await assert.rejects(stat(resolve(work, '..', 'escaped.txt')));
       const link = Buffer.concat([buildHeader('career-backup/files/x', 0, { type: '2', linkname: '/etc/passwd' }), good]);
       const linkPath = join(work, 'symlink.tar');
       await writeFile(linkPath, link);
-      assert.match((await attempt(linkPath)).stderr, /symlink/);
+      assert.match((await attempt(await seal(linkPath))).stderr, /symlink/);
     });
     test('a truncated archive is refused', async () => {
       const bytes = await readFile(archive);
-      const cut = join(work, 'cut.tar');
-      await writeFile(cut, bytes.subarray(0, Math.floor(bytes.length / 2 / 512) * 512));
-      assert.match((await attempt(cut)).stderr, /incomplete/);
+      const cut = join(work, 'cut.tar.age');
+      await writeFile(cut, bytes.subarray(0, Math.floor(bytes.length / 2)));
+      assert.match((await attempt(cut)).stderr, /could not be decrypted/);
+      const plain = await readFile(plainTar);
+      const cutPlain = join(work, 'cut.tar');
+      await writeFile(cutPlain, plain.subarray(0, Math.floor(plain.length / 2 / 512) * 512));
+      assert.match((await attempt(cutPlain, ['--allow-unencrypted'])).stderr, /incomplete/);
+    });
+    test('an old unencrypted backup is refused without --allow-unencrypted', async () => {
+      assert.match((await attempt(plainTar)).stderr, /This backup is NOT encrypted/);
     });
     test('an existing database is never written to', async () => {
       const target = join(work, 'target-existing-db');

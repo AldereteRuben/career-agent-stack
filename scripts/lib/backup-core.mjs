@@ -185,6 +185,9 @@ function derive(key, info, length) {
 /** Public identifier of APP_ENCRYPTION_KEY. Derived one-way, so it reveals nothing about the key. */
 export const keyFingerprint = (key) => derive(key, 'backup-key-fingerprint-v1', 16).toString('hex');
 
+/** 32 bytes for the age X25519 identity that encrypts backups (ADR 019). Independent of the HMAC and fingerprint keys. */
+export const ageIdentityBytes = (key) => derive(key, 'backup-age-identity-v1', 32);
+
 export const manifestMac = (key, manifestBytes) => createHmac('sha256', derive(key, 'backup-manifest-hmac-v1', 32)).update(manifestBytes).digest('hex');
 
 export function verifyManifestMac(key, manifestBytes, macText) {
@@ -195,12 +198,18 @@ export function verifyManifestMac(key, manifestBytes, macText) {
 
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
-export function keyFileContent(key) {
+/**
+ * Key file version 2 also carries the age identity derived from the key, so `age -d -i` can decrypt a backup without
+ * the app (ADR 019). It reveals nothing beyond APP_ENCRYPTION_KEY, from which it is derived. `ageIdentity` is passed
+ * in because encoding it needs the age library, which this module does not load.
+ */
+export function keyFileContent(key, ageIdentity) {
   return `${JSON.stringify({
-    format: KEY_FORMAT, formatVersion: 1, fingerprint: keyFingerprint(key), createdAt: new Date().toISOString(),
-    warning: 'APP_ENCRYPTION_KEY of a Career Agent Stack installation. It is needed to verify and restore backups of that installation. These backups are not encrypted: anyone with a backup can read it, with or without this file. Store this file separately from the backups (password manager or encrypted drive).',
-    aviso: 'APP_ENCRYPTION_KEY de una instalación de Career Agent Stack. Hace falta para verificar y restaurar sus copias. Estas copias no están cifradas: cualquiera que tenga una puede leerla, con o sin este archivo. Guárdalo aparte de las copias (gestor de contraseñas o disco cifrado).',
+    format: KEY_FORMAT, formatVersion: 2, fingerprint: keyFingerprint(key), createdAt: new Date().toISOString(),
+    warning: 'APP_ENCRYPTION_KEY of a Career Agent Stack installation. Backups of that installation are encrypted with it: without this file nobody can read or restore them, and anyone holding this file and a backup can read it. Store this file separately from the backups (password manager or encrypted drive). A lost key file cannot be recovered.',
+    aviso: 'APP_ENCRYPTION_KEY de una instalación de Career Agent Stack. Las copias de esa instalación están cifradas con ella: sin este archivo nadie puede leerlas ni restaurarlas, y quien tenga este archivo y una copia puede leerla. Guárdalo aparte de las copias (gestor de contraseñas o disco cifrado). Si se pierde, no se puede recuperar.',
     APP_ENCRYPTION_KEY: key,
+    ageIdentity,
   }, null, 2)}\n`;
 }
 
@@ -215,6 +224,7 @@ export async function readKeyFile(path) {
     fixes: [fix('Usa el archivo career-key-*.json creado por pnpm run backup.', 'Use the career-key-*.json file created by pnpm run backup.')],
   });
   if (parsed.fingerprint !== keyFingerprint(key)) throw new RecoveryError({ es: 'El archivo de clave está dañado (la huella no coincide).', en: 'The key file is damaged (fingerprint mismatch).' });
+  if (![1, 2].includes(parsed.formatVersion)) throw new RecoveryError({ es: 'El archivo de clave es de una versión que esta app no conoce.', en: 'The key file is from a version this app does not know.' });
   return { key, fingerprint: parsed.fingerprint, loose: await looseBits(path) };
 }
 
