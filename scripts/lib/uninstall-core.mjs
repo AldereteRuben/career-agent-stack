@@ -100,9 +100,15 @@ export function validProgress(progress, folder) {
   if (!progress || typeof progress !== 'object' || progress.format !== PROGRESS_FORMAT || progress.version !== 1) return false;
   if (!['install', 'restore'].includes(progress.kind) || typeof progress.id !== 'string' || !ID.test(progress.id) || progress.folder !== folder) return false;
   if (!Array.isArray(progress.done) || !progress.done.every((step) => STEPS.includes(step)) || new Set(progress.done).size !== progress.done.length) return false;
-  if (progress.database !== null && !(progress.database && NAME.test(progress.database.name ?? '') && NAME.test(progress.database.owner ?? '') && isText(progress.database.server))) return false;
-  if (progress.role !== null && !NAME.test(progress.role ?? '')) return false;
-  if (progress.kind === 'restore' && progress.role !== null) return false;
+  // The database is either one this script manages (named, with its owner) or explicitly one it does not manage
+  // (`unmanaged`, left in place with --skip-database). Missing names never mean "nothing to check".
+  const managed = progress.database !== null;
+  if (managed && !(progress.database && NAME.test(progress.database.name) && NAME.test(progress.database.owner) && isText(progress.database.server))) return false;
+  if (!managed && !(isText(progress.unmanaged) && progress.unmanaged.length <= 63)) return false;
+  if (managed && progress.unmanaged !== undefined && progress.unmanaged !== null) return false;
+  // A bootstrap installation drops the database's own role; a restored one never drops a role.
+  if (progress.kind === 'install' && managed && progress.role !== progress.database.owner) return false;
+  if ((progress.kind === 'restore' || !managed) && progress.role !== null) return false;
   return true;
 }
 

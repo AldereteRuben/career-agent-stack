@@ -95,6 +95,10 @@ test('the progress file is private, round-trips and refuses anything that is not
     { ...progress, database: { name: 'x"; drop', owner: 'career_abc123', server: 's' } },
     { ...progress, role: 42 },
     { ...progress, kind: 'restore' },
+    { ...progress, database: null, role: null },
+    { ...progress, database: null, role: 'career_abc123', unmanaged: 'career_abc123' },
+    { ...progress, role: 'career_other' },
+    { ...progress, unmanaged: 'career_abc123' },
   ]) {
     await writeFile(progressPath(root), JSON.stringify(edited));
     await assert.rejects(readProgress(root), /not a valid uninstall progress file/, JSON.stringify(edited).slice(0, 80));

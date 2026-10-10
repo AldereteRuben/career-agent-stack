@@ -153,7 +153,8 @@ async function main() {
   });
   const confirmed = flags.confirm === identity.id;
 
-  const runDir = env ? runDirOf(env) : progress?.runDir;
+  // Without .env the data folder, run records included, is already gone; nothing from the progress file is read as a path.
+  const runDir = env ? runDirOf(env) : null;
   const running = await runningServices(runDir);
   if (running.length) throw new RecoveryError({
     es: `La app sigue en marcha (${running.join(', ')}).`, en: `The app is still running (${running.join(', ')}).`,

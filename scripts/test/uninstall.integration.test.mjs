@@ -336,6 +336,30 @@ describe('pnpm run uninstall (disposable databases)', { skip: !adminUrl && 'set 
     assert.ok(await exists(join(lost.folder, '.uninstall-progress.json')));
   });
 
+  test('without .env, a progress file cannot avoid the database check by leaving the database out', async () => {
+    const install = await makeInstallation();
+    await rm(join(install.folder, '.env'));
+    const write = (fields) => writeFile(join(install.folder, '.uninstall-progress.json'), JSON.stringify({
+      format: 'career-agent-stack-uninstall', version: 1, kind: 'install', id: install.id, folder: install.folder, done: ['data', 'env'], ...fields,
+    }), { mode: 0o600 });
+    await write({ database: null, role: null });
+    const forged = await uninstall(install.folder, ['--confirm', install.id]);
+    assert.equal(forged.code, 1);
+    assert.match(forged.out, /not a valid uninstall progress file/);
+    assert.ok(await databaseExists(install.name));
+    assert.ok(await exists(join(install.folder, '.uninstall-progress.json')));
+
+    // The one legitimate case, a database the script never managed, is explicit, needs --skip-database again,
+    // and the output says the database was left for manual removal.
+    await write({ database: null, role: null, unmanaged: install.name });
+    const withoutFlag = await uninstall(install.folder, ['--confirm', install.id]);
+    assert.equal(withoutFlag.code, 1);
+    const skipped = await uninstall(install.folder, ['--confirm', install.id, '--skip-database']);
+    assert.equal(skipped.code, 0, skipped.out);
+    assert.match(skipped.out, new RegExp(`Database "${install.name}" and its role: bootstrap did not create them, so remove them by hand`));
+    assert.ok(await databaseExists(install.name), 'An unmanaged database is never dropped');
+  });
+
   test('a progress file that describes another database is refused', async () => {
     const install = await makeInstallation();
     await writeFile(join(install.folder, '.uninstall-progress.json'), JSON.stringify({
