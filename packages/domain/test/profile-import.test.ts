@@ -83,3 +83,25 @@ test('applying nothing returns the profile unchanged, and target titles stay wit
   const capped = applyProfileProposals(full, { targetTitles: ['New one', 'Another'] });
   assert.equal((capped.preferences as { targetTitles: string[] }).targetTitles.length, 30);
 });
+
+test('emails are found inside punctuation and plausible-looking non-emails are rejected', () => {
+  assert.equal(detectIdentity('Contact: (ana.garcia@example.test), Madrid').email, 'ana.garcia@example.test');
+  assert.equal(detectIdentity('Write to <john@mail.example.co.uk>.').email, 'john@mail.example.co.uk');
+  assert.equal(detectIdentity('handle @ana and a@b and x@y.1 and two@@example.test').email, undefined);
+});
+
+test('long hostile input is handled in linear time (CodeQL js/polynomial-redos)', () => {
+  const hostile = [
+    '%'.repeat(50_000),
+    `${'a.'.repeat(25_000)}@`,
+    `${'x'.repeat(10_000)}@${'.'.repeat(40_000)}`,
+    `${':'.repeat(50_000)}x`,
+    ` ${'Spain '.repeat(8_000)}`,
+    Array.from({ length: 12 }, () => ' '.repeat(199) + ':').join('\n'),
+  ];
+  for (const input of hostile) {
+    const started = performance.now();
+    detectIdentity(input);
+    assert.ok(performance.now() - started < 200, `took ${Math.round(performance.now() - started)} ms for ${input.slice(0, 12)}…`);
+  }
+});

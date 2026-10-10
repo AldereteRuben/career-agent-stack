@@ -21,7 +21,31 @@ const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 /** Section headings that end the resume header (Spanish and English). */
 const sectionHeading = /^(experiencia|experiencia laboral|experiencia profesional|formacion|formacion academica|educacion|estudios|habilidades|competencias|aptitudes|idiomas|certificaciones|proyectos|perfil|perfil profesional|resumen|sobre mi|experience|work experience|professional experience|employment|education|skills|languages|certifications|projects|profile|summary|about me|objective)\b/;
 const documentTitle = /^(curriculum|curriculum vitae|cv|resume|hoja de vida)$/;
-const emailPattern = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+const maxEmailLength = 254;
+const opening = new Set(['<', '(', '[', '{', '"', "'", '«']);
+const closing = new Set(['>', ')', ']', '}', '"', "'", '»', '.', ',', ';', ':']);
+const localPart = /^[A-Za-z0-9._%+-]+$/;
+const domainLabel = /^[A-Za-z0-9-]+$/;
+const topLevel = /^[A-Za-z]{2,}$/;
+/** Whether a single word is an email address. Simple character checks on split parts: no backtracking patterns. */
+function isEmail(word: string): boolean {
+  const parts = word.split('@');
+  if (parts.length !== 2 || !localPart.test(parts[0]!)) return false;
+  const labels = parts[1]!.split('.');
+  return labels.length >= 2 && labels.every((label) => domainLabel.test(label)) && topLevel.test(labels[labels.length - 1]!);
+}
+/** The first email address in the text, checking one whitespace-separated word at a time without its punctuation. */
+function firstEmail(resume: string): string | undefined {
+  for (const word of resume.split(/\s+/)) {
+    if (!word.includes('@') || word.length > maxEmailLength + 4) continue;
+    let from = 0; let to = word.length;
+    while (from < to && opening.has(word[from]!)) from++;
+    while (to > from && closing.has(word[to - 1]!)) to--;
+    const candidate = word.slice(from, to);
+    if (candidate.length <= maxEmailLength && isEmail(candidate)) return candidate;
+  }
+  return undefined;
+}
 const namePattern = /^[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*){1,4}$/u;
 /** Pseudo-regions and deprecated codes that are not useful as a work country (same as the dashboard picker). */
 const excludedRegions = new Set(['AC', 'AN', 'BU', 'CP', 'CQ', 'CS', 'DD', 'DG', 'DY', 'EA', 'EU', 'EZ', 'FX', 'HV', 'IC', 'NH', 'NT', 'QO', 'RH', 'SU', 'TA', 'TP', 'UK', 'UN', 'VD', 'XA', 'XB', 'YD', 'YU', 'ZR', 'ZZ']);
@@ -43,10 +67,20 @@ function countryNameIndex(): Array<[string, string]> {
   return countryNames;
 }
 
-/** The lines before the first section heading, at most the first twelve non-empty lines. */
+const maxHeaderLine = 200;
+/** A line without trailing colons and spaces, trimmed with a loop rather than a backtracking pattern. */
+function withoutTrailingColons(line: string): string {
+  let end = line.length;
+  while (end > 0 && (line[end - 1] === ':' || line[end - 1] === ' ')) end--;
+  return line.slice(0, end);
+}
+/**
+ * The lines before the first section heading, at most the first twelve non-empty lines. Lines longer than a header
+ * line could be (200 characters) are left out, which also keeps every later check on short text.
+ */
 function headerOf(resume: string): string[] {
-  const lines = resume.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, headerLines);
-  const end = lines.findIndex((line) => sectionHeading.test(fold(line).replace(/[:\s]+$/, '')));
+  const lines = resume.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && line.length <= maxHeaderLine).slice(0, headerLines);
+  const end = lines.findIndex((line) => sectionHeading.test(withoutTrailingColons(fold(line))));
   return end === -1 ? lines : lines.slice(0, end);
 }
 
@@ -57,8 +91,8 @@ function headerOf(resume: string): string[] {
  */
 export function detectIdentity(resume: string): DetectedIdentity {
   const detected: DetectedIdentity = {};
-  const email = emailPattern.exec(resume)?.[0];
-  if (email) detected.email = email.replace(/\.$/, '');
+  const email = firstEmail(resume);
+  if (email) detected.email = email;
   const header = headerOf(resume);
   for (const line of header) {
     const candidate = line.replace(/\s+/g, ' ');
