@@ -41,7 +41,7 @@ This is a script, not only a guide. Dropping a database by hand on a shared Post
 
 - **It shows the plan by default and changes nothing.** It lists exactly what it would delete, with sizes and paths, and what it will not touch.
 - **Deleting needs `--confirm <id>`.** The id must match the selected `.env` (its `CAREER_INSTALL_ID`, or `CAREER_RESTORE_ID` for a restored installation), so a command copied from another installation cannot delete this one.
-- **It refuses while the app is running.** If the run records show live services, it asks for `pnpm run stop` first. It does not stop them itself.
+- **It refuses while the app is running**, meaning the API and the web app. If their run records show them alive, it asks for `pnpm run stop` first and does not stop them itself. PostgreSQL may keep running, and must be, since the script connects to it to drop the database and role. `pnpm run stop` without `--database` leaves it on, as it does today.
 - **Ownership of the database:**
   - **Installations made by bootstrap** (`created`): the database named in `DATABASE_URL` and its role must both carry `career-agent-stack install <id>` with this id.
   - **Restored installations:** T1 changes `restore.mjs` to mark the database it creates with `career-agent-stack restore <restore id>` and to write `CAREER_RESTORE_ID` into the restored `.env`. The script drops that database only. **It never drops the role**, which belongs to the original installation.
@@ -85,9 +85,10 @@ Settings gets a "Delete all my data" action. It leaves the installation working 
   - It deletes every row of the workspace in an explicit order that respects the foreign keys above, children before parents. The order lives in one list in the code.
   - It also clears `search_query_cache` and `job_search_provider_cache`. `search_provider_budget` stays: it holds no personal data, and resetting it would let the app exceed the providers' request limits.
 - **What survives, and nothing else:**
-  - The workspace row, with every column except `id` set back to its default (today `name`, `timezone` and `discovery_enabled`, which returns to `false`) and its session generation increased. The test compares every column with the schema's defaults, so a column added later is covered too.
+  - The workspace row, with every column except `id` and the session generation set back to its default (today `name`, `timezone` and `discovery_enabled`, which returns to `false`), and the session generation increased. The test compares every other column with the schema's defaults, so a column added later is covered too, and checks separately that the session generation is greater than before the deletion.
   - The `deletion_jobs` row for this operation: `id`, `workspace_id`, `status` and two timestamps. The workspace id is a random UUID with no personal meaning. Keeping it is what lets an interrupted deletion of files resume, as §19's preference for minimal identifiers allows.
 - **Files**, in the selected `DATA_LOCAL_PATH` and `FILES_LOCAL_PATH`, never assuming the checkout's `data/`:
+  - `FILES_LOCAL_PATH` must be a different folder from `DATA_LOCAL_PATH`, and must neither contain nor be inside `run/`, `backups/`, `logs/`, `tmp/` or `setup-token` of the data folder. T2 makes the API refuse to start with a clear message in Spanish and English when it is not, and the deletion checks it again before removing anything. So emptying the documents folder can never delete the run records or the sign-in token.
   - After the transaction commits, it deletes the contents of `FILES_LOCAL_PATH`, `backups/` and `logs/`. A new `setup-token` replaces the old one. `run/` stays, because it only holds the process records that `pnpm run stop` needs.
   - A failure here leaves the `deletion_jobs` row in a pending state, retried when the API next starts, so files cannot outlive their records silently.
   - **Codex prompts:** T2 moves the temporary folder of each Codex run into the installation's own data folder (`tmp/codex-task-*` in `DATA_LOCAL_PATH`, private like the rest of it), instead of the system's temporary directory shared by every installation of the same user. The API empties that folder when it starts, when no run of this installation can be active (one API per installation), and during this deletion, after the runs have been cancelled. It never removes anything in the system's temporary directory, where it could hit another installation's active run.
@@ -124,7 +125,7 @@ An application, a job or a generated PDF can be deleted where the interface show
      - resuming after a failure in each step, with and without the progress file, including after `.env` is gone;
      - `--include-backups`.
    - Then a manual run on a disposable installation.
-2. **T2 — Delete all data from the app** (maintainer, 🔒): the session generation (schema and API), the deletion order, the job and its retry, Codex prompts in the installation's data folder, the Settings interface (Spanish and English, keyboard, mobile), and the proof tests in point 2.
+2. **T2 — Delete all data from the app** (maintainer, 🔒): the session generation (schema and API), the deletion order, the job and its retry, Codex prompts in the installation's data folder, the check that `FILES_LOCAL_PATH` does not overlap the control files, the Settings interface (Spanish and English, keyboard, mobile), and the proof tests in point 2.
 3. **T3 — Delete single items**: application, job and PDF, one pull request each, after T2. Open to contributors.
 4. **T4 — Backup retention**: the policy in Settings, with tests on fictional backups showing that only expired folders are deleted, unexpired ones stay, and nothing outside `data/backups/` is touched.
 
