@@ -37,13 +37,14 @@ See proposal.md (Why) and specs/job-availability/spec.md (requirements). What th
    - **Data:**
      - `job_occurrences` and `job_search_sources` get `missed_complete_reads integer not null default 0`;
      - the board (`boards`) and the provider cache (`job_search_provider_cache`) get `last_complete_count integer` for the suspicious-read check.
-   - **On each counting read:**
-     - seen → `last_seen_at = now`, counter 0;
-     - missing → counter + 1.
+   - **Presence** (brief §5): only a read made now in which every page read succeeded can mark a job seen (`last_seen_at = now`, counter 0): a `COMPLETE` board refresh, a freshly downloaded `COMPLETE` Remotive or Arbeitnow feed, or a freshly downloaded Himalayas result. This changes today's behavior, where a partial board refresh also updates `last_seen_at`. Suspicious complete reads still give presence for the jobs they list.
+   - **Absence:** missing from a non-suspicious counting read → counter + 1.
    - **Alternative rejected:** storing every read's job list and computing streaks. It is exact but grows without bound and holds job lists the app does not otherwise need.
 2. **Where absence is counted.**
    - **Boards:** inside the existing `refreshBoard` transaction, after the listed jobs are written, only when coverage is `COMPLETE` and the read is not suspicious. Every occurrence of that board that was not listed gets its counter increased.
    - **Remotive and Arbeitnow:** inside `loadProviderFeed`, in the same transaction that stores a **freshly downloaded** `COMPLETE` feed, so it happens exactly once per download however many searches use the feed. Cached reuse never counts.
+     - The cache is global per provider, while `job_search_sources` rows belong to workspaces. A download is a public fact, so it updates that provider's source rows in **every** workspace, whichever search triggered it.
+     - Re-evaluation and history are done per workspace (`workspace_id` on every query and event), so no workspace's rows or events mention another's.
    - **Himalayas:** only sets `last_seen_at` on matched sources; never counts absence.
 3. **A pure decision function in `packages/domain`:**
    - `nextAvailability({ current, closedByUser, sources, now })`, where each source carries `canGiveAbsence`, `missedCompleteReads` and `lastSeenAt`;

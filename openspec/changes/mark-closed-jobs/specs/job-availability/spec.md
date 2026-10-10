@@ -40,16 +40,31 @@ A complete read SHALL NOT count as absence when it lists no jobs while the previ
 - **WHEN** a Remotive feed whose previous complete download listed 1,000 jobs is downloaded complete with 300
 - **THEN** no absence count changes, and the 300 listed jobs count as seen
 
-### Requirement: Presence resets absence
-When any source's read includes a job, the system SHALL record that source as having seen it and reset that source's absence count for the job to zero, whatever the read's coverage.
+### Requirement: Only fresh, successful reads give presence evidence
+A job SHALL count as seen by a source, resetting that source's absence count to zero, only when it is listed in a read made now in which every page read succeeded: a complete board refresh, a newly downloaded complete Remotive or Arbeitnow feed, or a newly downloaded Himalayas result. Partial refreshes, bounded, cached, stale and failed reads SHALL NOT count as presence.
 
-#### Scenario: Job reappears in a partial read
-- **WHEN** a job with an absence count of 2 on a board appears in a partial refresh of that board
+#### Scenario: Job listed in a complete refresh
+- **WHEN** a job with an absence count of 2 on a board is listed in a complete refresh of that board
 - **THEN** its absence count for that board becomes 0
 
+#### Scenario: Job listed in a partial refresh
+- **WHEN** a job with an absence count of 2 on a board is listed in a partial refresh of that board
+- **THEN** its absence count and availability do not change
+
+#### Scenario: Job listed in a cached feed
+- **WHEN** a `POSSIBLY_CLOSED` job is listed in a Remotive feed served from cache
+- **THEN** its availability stays `POSSIBLY_CLOSED`
+
 #### Scenario: Job seen by Himalayas
-- **WHEN** a Himalayas search returns a job
+- **WHEN** a newly downloaded Himalayas result lists a job
 - **THEN** the job counts as seen by that source
+
+### Requirement: A shared feed updates every workspace
+A Remotive or Arbeitnow feed is public and shared by every saved search. A newly downloaded complete feed SHALL update the matching sources of every workspace in the installation, and each workspace's jobs SHALL be re-evaluated and recorded separately.
+
+#### Scenario: Two workspaces know the same job
+- **WHEN** two workspaces each matched the same Remotive job and it is missing from 3 complete Remotive downloads over 48 hours
+- **THEN** each workspace's job becomes `POSSIBLY_CLOSED`, with one history entry in each workspace, and no entry in either refers to the other
 
 ### Requirement: Jobs become possibly closed by a stated rule
 A job SHALL become `POSSIBLY_CLOSED` only when every source able to give absence evidence for it has an absence count of at least 3 and at least 48 hours have passed since any source last saw it. Jobs whose sources cannot give absence evidence (manual imports, Himalayas only) SHALL keep their availability.
@@ -78,7 +93,7 @@ A job SHALL become `POSSIBLY_CLOSED` only when every source able to give absence
 A `POSSIBLY_CLOSED` job SHALL become `OPEN` again as soon as any source sees it, unless the person marked it closed.
 
 #### Scenario: Job reappears on its board
-- **WHEN** a `POSSIBLY_CLOSED` job appears again in a refresh of its board
+- **WHEN** a `POSSIBLY_CLOSED` job is listed again in a complete refresh of its board
 - **THEN** its availability becomes `OPEN`
 
 ### Requirement: The person can close and reopen a job
