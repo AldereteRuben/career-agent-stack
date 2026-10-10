@@ -42,7 +42,10 @@ The age identity is derived from `APP_ENCRYPTION_KEY` with HKDF-SHA-256 (salt `c
 
 A **format version 2** backup is the current version 1 tar (manifest, `manifest.hmac`, database dump, documents) encrypted as a whole: `career-backup-<UTC time>.tar.age`. Its `.sha256` file covers the encrypted file.
 
-Nothing inside the tar changes, so the existing verification (manifest, HMAC, sizes and hashes of every entry) still runs after decryption. A wrong key or any alteration fails during decryption, before any restored data is written. The plaintext is decrypted only into a private temporary directory (`0700`) for verification and restore, and removed afterwards, including on failure.
+Nothing inside the tar changes, so the existing verification (manifest, HMAC, sizes and hashes of every entry) still runs after decryption. A wrong key or any alteration fails during decryption, before any restored data is written. The plaintext is decrypted only into a private temporary directory for verification and restore, and removed afterwards, including on failure. "Private" depends on the system:
+
+- **macOS and Linux:** the directory is created with mode `0700` (files `0600`).
+- **Windows:** POSIX modes do not restrict access there ([Node.js `fs` documentation](https://nodejs.org/api/fs.html): `chmod` cannot set owner, group and others separately). The directory is created inside the current user's own temporary folder, inheritance is removed and access is granted only to the current user, and the ACL is checked before anything is written. If it cannot be restricted or checked, the restore stops instead of writing plaintext.
 
 ### 4. Old unencrypted backups stay restorable, with a warning
 
@@ -55,7 +58,7 @@ The app does not encrypt the active database or the PDFs in `data/files`. The do
 ## Implementation plan
 
 1. **Documentation** (no behavior change): describe what is and is not protected, as in the table above, in `README.md`, `README.es.md`, `SECURITY.md` and `docs/operations/backup-restore.md`, in English and Spanish, and correct the three misleading texts.
-2. **Encrypted backups:** add `age-encryption`; derive the identity; write format version 2 and key file version 2; decrypt, verify and restore; refuse version 1 without `--allow-unencrypted`. Tests with fictional data and disposable databases: round trip, wrong key, truncated or altered file, old version 1 backup with and without the flag, and no plaintext left behind after a failure.
+2. **Encrypted backups:** add `age-encryption`; derive the identity; write format version 2 and key file version 2; decrypt, verify and restore; refuse version 1 without `--allow-unencrypted`. Tests with fictional data and disposable databases: round trip, wrong key, truncated or altered file, old version 1 backup with and without the flag, no plaintext left behind after a failure, and the temporary directory's protection on each system (mode `0700` on Linux and macOS; on the Windows CI runner, an ACL that grants access only to the current user).
 3. **Settings:** the backup downloaded from Settings is the encrypted `.tar.age`, the key file is still downloaded separately, and the text explains both in Spanish and English.
 
 ## Consequences
@@ -63,6 +66,7 @@ The app does not encrypt the active database or the PDFs in `data/files`. The do
 - A backup copied to a shared or cloud folder no longer exposes the profile, resumes or applications unless the key file is with it. Keeping the key file apart becomes the one thing that protects a backup.
 - Restoring needs a little more time and temporary space for decryption.
 - Changing `APP_ENCRYPTION_KEY` is still unsupported; backups made with an earlier key need the matching key file.
+- **Known limitation, separate from this decision:** the project's other private files (`.env`, the key file, backup and restore folders, restored documents) are protected only with POSIX modes today, which do not restrict access on Windows, and `looseBits` cannot see Windows ACLs. Windows support is still being completed ([#19](https://github.com/AldereteRuben/career-agent-stack/issues/19)); applying the same ACL approach to those files belongs in its own issue.
 - Encryption protects backups, not the running installation: a person with access to the computer and the user account can still read the active data, unless the disk is encrypted and the computer is locked.
 
 ## Out of scope
