@@ -121,7 +121,7 @@ async function pendingConfiguration() {
     const line = new RegExp(`^${key}=.*$`, 'm');
     text = line.test(text) ? text.replace(line, () => `${key}=${value}`) : `${text.trimEnd()}\n${key}=${value}\n`;
   }
-  text = `# Private configuration of this installation, created by scripts/bootstrap.mjs. Never share or commit it.\n# APP_ENCRYPTION_KEY protects stored data: keep it, and back it up with the database.\n${text}`;
+  text = `# Private configuration of this installation, created by scripts/bootstrap.mjs. Never share or commit it.\n# APP_ENCRYPTION_KEY authenticates your backups and is needed to restore them; it does not encrypt stored data. Keep it, and keep the key file that pnpm run backup creates.\n${text}`;
   await writePrivateFileAtomic(pendingEnvPath, text);
   ok(`Configuración privada preparada en .env.pending (puertos ${ports.web}/${ports.api}; las claves no se muestran)`, `Private configuration prepared in .env.pending (ports ${ports.web}/${ports.api}; keys not shown)`);
   return parseEnv(text);
