@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@career/domain": "workspace:*",
-    "next": "16.3.8",
-    "pdfjs-dist": "6.3.289",
+    "next": "16.4.0",
+    "pdfjs-dist": "6.4.299",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
