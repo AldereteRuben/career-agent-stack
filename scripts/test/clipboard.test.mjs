@@ -8,6 +8,13 @@ test('macOS always uses pbcopy and pbpaste', () => {
   assert.deepEqual(clipboardTools({ platform: 'darwin', env: {}, has: installed() }), { copy: ['pbcopy', []], paste: ['pbpaste', []] });
 });
 
+test('Windows uses clip.exe to copy and PowerShell to read back', () => {
+  const tools = clipboardTools({ platform: 'win32', env: {}, has: installed() });
+  assert.deepEqual(tools.copy, ['clip.exe', []]);
+  assert.equal(tools.paste[0], 'powershell.exe');
+  assert.ok(tools.paste[1].includes('Get-Clipboard -Raw'));
+});
+
 test('a Wayland session prefers wl-clipboard', () => {
   const tools = clipboardTools({ platform: 'linux', env: { WAYLAND_DISPLAY: 'wayland-0' }, has: installed('wl-copy', 'xclip') });
   assert.equal(tools.copy[0], 'wl-copy');

@@ -350,7 +350,7 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
   ok(`Aplicación web lista en ${webOrigin}`, `Web app ready on ${webOrigin}`);
 }
 
-const availableClipboardTools = () => clipboardTools({ has: (tool) => spawnSync('which', [tool], { stdio: 'ignore' }).status === 0 });
+const availableClipboardTools = () => clipboardTools({ has: (tool) => spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', [tool], { stdio: 'ignore' }).status === 0 });
 
 // Runs detached after the launcher exits: clears the clipboard only if it still holds the token.
 // It receives a SHA-256 of the token, never the token itself, so nothing secret appears in `ps`.

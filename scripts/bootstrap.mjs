@@ -155,6 +155,7 @@ async function ensureServer(database) {
   const label = `${database.host}:${database.port}`;
   if (await portIsOpen(database.host, database.port)) return ok(`PostgreSQL responde en ${label}`, `PostgreSQL answers on ${label}`);
   const fixes = [
+    ...(process.platform === 'win32' ? [fix('En Windows, con el servicio de PostgreSQL 17 (terminal como administrador): Start-Service postgresql-x64-17', 'On Windows, with the PostgreSQL 17 service (terminal as administrator): Start-Service postgresql-x64-17')] : []),
     fix('Con Homebrew: brew install postgresql@17 && brew services start postgresql@17', 'With Homebrew: brew install postgresql@17 && brew services start postgresql@17'),
     fix('O con Docker Desktop abierto: docker compose up -d --wait postgres, y CAREER_ADMIN_DATABASE_URL=postgresql://career:career@127.0.0.1:5432/postgres', 'Or with Docker Desktop open: docker compose up -d --wait postgres, and CAREER_ADMIN_DATABASE_URL=postgresql://career:career@127.0.0.1:5432/postgres'),
     rerun,
