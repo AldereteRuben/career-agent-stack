@@ -34,7 +34,7 @@ CAREER_ADMIN_DATABASE_URL="postgresql://$USER:YOUR_PASSWORD@127.0.0.1:5432/postg
 
 ## Windows 11 (partial) / Windows 11 (parcial)
 
-**English.** Native Windows can prepare an installation and run the tests that need a database. `pnpm start` and `pnpm run stop` do not work yet because the launcher still depends on Unix process tools ([issue #19](https://github.com/AldereteRuben/career-agent-stack/issues/19)). Not verified: Docker Desktop and WSL 2.
+**English.** Native Windows can prepare an installation, start it with `pnpm start`, check it with `pnpm run status`, stop it with `pnpm run stop` and run the tests that need a database. Verified by hand on Windows 11 with a local PostgreSQL 17 service. Differences from macOS and Linux: Windows has no process groups or readable working directories, so a process is recognised by its exact start time and absolute entry path, and `pnpm run stop` ends the process tree forcefully because a console program without a window cannot be asked to close; `pnpm start --copy-token` has no clipboard tool there, so read the token from `data\setup-token`. Not verified: Docker Desktop, WSL 2, and the `.command` launchers (macOS only).
 
 ```powershell
 # Node 24 (https://nodejs.org) and pnpm 11.10.0
@@ -52,7 +52,7 @@ pnpm run bootstrap
 
 Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. File permission bits do not exist on Windows, so the backup writer test (`pnpm run test:backup`) fails there; that is a known limit, not a data problem.
 
-**Español.** En Windows nativo se puede preparar una instalación y ejecutar las pruebas que necesitan base de datos. `pnpm start` y `pnpm run stop` todavía no funcionan porque el lanzador depende de herramientas de procesos de Unix ([issue #19](https://github.com/AldereteRuben/career-agent-stack/issues/19)). Sin verificar: Docker Desktop y WSL 2.
+**Español.** En Windows nativo se puede preparar una instalación, iniciarla con `pnpm start`, comprobarla con `pnpm run status`, detenerla con `pnpm run stop` y ejecutar las pruebas que necesitan base de datos. Comprobado a mano en Windows 11 con un servicio local de PostgreSQL 17. Diferencias con macOS y Linux: Windows no tiene grupos de procesos ni directorios de trabajo legibles, así que un proceso se reconoce por su hora de inicio exacta y la ruta absoluta de su archivo de entrada, y `pnpm run stop` cierra el árbol de procesos a la fuerza porque un programa de consola sin ventana no puede recibir una petición de cierre; `pnpm start --copy-token` no tiene herramienta de portapapeles allí, así que lee el token en `data\setup-token`. Sin verificar: Docker Desktop, WSL 2 y los lanzadores `.command` (solo macOS).
 
 ```powershell
 # Node 24 (https://nodejs.org) y pnpm 11.10.0

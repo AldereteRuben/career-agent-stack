@@ -145,7 +145,7 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 - PostgreSQL stores records; `data/files/` stores generated documents. The Docker database uses the persistent `career-postgres` volume. Do not remove the volume to troubleshoot a startup issue.
 - External board discovery is opt-in and requires an explicit review of the employer association and public-read permission. It searches configured boards only, not the whole job market.
 - Operational backups include the database and PDFs, with hashes and a signed manifest. Restoration requires the separate key file and creates a new database and folder; it never overwrites an existing workspace. The archive is **not encrypted**. See [backup and restore](docs/operations/backup-restore.md).
-- Full installation, recovery and browser verification was performed on macOS. CI checks compilation and domain logic on Linux and Windows; this does not validate their full installation or desktop launchers. The local launcher currently relies on Unix process tools, so native Windows startup/shutdown is not supported. Linux/WSL installation remains unverified end to end.
+- Full installation, recovery and browser verification was performed on macOS. CI checks compilation and domain logic on Linux and Windows; this does not validate their full installation or desktop launchers. Native Windows 11 start, status and stop were verified by hand with a local PostgreSQL 17 service (see [local setup](docs/operations/local-setup.md)); Docker Desktop and WSL are not. Linux/WSL installation remains unverified end to end.
 
 ## Back up your work
 

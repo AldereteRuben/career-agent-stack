@@ -153,7 +153,7 @@ Al iniciar una API detenida se aplican las migraciones pendientes y se recompila
 - PostgreSQL almacena los registros; `data/files/` contiene los documentos. Docker utiliza el volumen persistente `career-postgres`: no lo elimines para resolver un problema de arranque.
 - Las fuentes externas necesitan una revisión explícita de la empresa y del permiso de lectura pública. Las búsquedas guardadas utilizan los catálogos públicos integrados; las empresas que sigues necesitan revisión. No cubrimos todo el mercado laboral.
 - Las copias incluyen la base de datos y los PDF, con huellas y un manifiesto firmado. La restauración necesita el archivo de clave separado y crea una base y carpeta nuevas; nunca sobrescribe un espacio existente. El archivo **no está cifrado**. Consulta la [guía de recuperación](docs/operations/backup-restore.md).
-- La instalación completa, recuperación y uso en navegador se han comprobado en macOS. CI comprueba compilación y lógica en Linux y Windows; eso no valida sus instalaciones completas. El lanzador depende de utilidades de procesos Unix: el inicio y cierre nativos en Windows no están soportados. La instalación en Linux/WSL sigue sin validación de extremo a extremo.
+- La instalación completa, recuperación y uso en navegador se han comprobado en macOS. CI comprueba compilación y lógica en Linux y Windows; eso no valida sus instalaciones completas. El inicio, estado y cierre nativos en Windows 11 se comprobaron a mano con un servicio local de PostgreSQL 17 (ver [instalación local](docs/operations/local-setup.md)); Docker Desktop y WSL no. La instalación en Linux/WSL sigue sin validación de extremo a extremo.
 
 ## Guarda una copia de tu trabajo
 

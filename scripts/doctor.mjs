@@ -3,7 +3,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, say, spawnTool } from './lib/local-env.mjs';
+import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, say, spawnTool, whoUsesPort } from './lib/local-env.mjs';
 
 let failed = 0;
 const pass = (es, en) => say(`✓ ${es}`, `✓ ${en}`);
@@ -78,8 +78,8 @@ async function checkDatabase(env, label, port) {
     else fail(`Faltan migraciones (${applied}/${journal})`, `Migrations pending (${applied}/${journal})`, 'pnpm start (las aplica sin borrar datos) o pnpm run bootstrap', 'pnpm start (applies them without deleting data) or pnpm run bootstrap');
   } catch (error) {
     fail(`PostgreSQL responde en ${label} pero rechaza las credenciales de .env (${error.code ?? 'error'})`, `PostgreSQL answers on ${label} but refuses the .env credentials (${error.code ?? 'error'})`,
-      `Comprueba que es el servidor correcto: lsof -nP -iTCP:${port} -sTCP:LISTEN. No borres .env.`,
-      `Check it is the right server: lsof -nP -iTCP:${port} -sTCP:LISTEN. Do not delete .env.`);
+      `Comprueba que es el servidor correcto: ${whoUsesPort(port)}. No borres .env.`,
+      `Check it is the right server: ${whoUsesPort(port)}. Do not delete .env.`);
   } finally { await client.end().catch(() => undefined); }
 }
 

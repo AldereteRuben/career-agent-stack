@@ -9,6 +9,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
+import { windowsListeningPid, windowsParentArgs, windowsProcessIdentity } from './windows-process.mjs';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -261,6 +262,7 @@ function linuxStartMs(pid) {
  */
 export async function processIdentity(pid) {
   if (!Number.isInteger(pid) || pid <= 1) return null;
+  if (process.platform === 'win32') return windowsProcessIdentity(pid);
   const ps = spawnSync('ps', ['-o', 'pgid=,lstart=,args=', '-p', String(pid)], { encoding: 'utf8' });
   const match = ps.status === 0 ? ps.stdout.trim().match(/^(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$/) : null;
   if (!match) return null;
@@ -282,6 +284,7 @@ export async function processIdentity(pid) {
  * contains nested parentheses, which is how Next.js renames its server ("next-server (v16.3.8)").
  */
 export function listeningPid(port) {
+  if (process.platform === 'win32') return windowsListeningPid(port);
   if (process.platform === 'linux') {
     const ss = spawnSync('ss', ['-H', '-ltnp', `sport = :${port}`], { encoding: 'utf8' });
     // Only a line for this port: if `ss` ignored the `sport` filter, another listener's pid must not be taken.
@@ -294,7 +297,13 @@ export function listeningPid(port) {
   return lsof.status === 0 && Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
+/** Command that shows what listens on a port, for the recovery hints. */
+export const whoUsesPort = (port) => process.platform === 'win32'
+  ? `Get-NetTCPConnection -LocalPort ${port} -State Listen | Select-Object LocalAddress,OwningProcess`
+  : `lsof -nP -iTCP:${port} -sTCP:LISTEN`;
+
 export function parentArgs(pid) {
+  if (process.platform === 'win32') return windowsParentArgs(pid);
   const ppid = Number(spawnSync('ps', ['-o', 'ppid=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim());
   if (!Number.isInteger(ppid) || ppid <= 1) return '';
   return spawnSync('ps', ['-o', 'args=', '-p', String(ppid)], { encoding: 'utf8' }).stdout.trim();

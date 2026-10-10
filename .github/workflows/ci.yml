@@ -140,6 +140,8 @@ jobs:
       - run: pnpm run test:ui-logic
       - name: Verify the launcher scripts can start pnpm on every platform
         run: pnpm run test:spawn-tool
+      - name: Verify Windows process inspection
+        run: pnpm run test:windows-process
   browser:
     # Browser suites on a disposable stack (apps/api/e2e/isolation.ts). They run in parallel with the other jobs.
     # Only fictional fixtures are used; failure screenshots are uploaded for a week. Fork pull requests run with the
