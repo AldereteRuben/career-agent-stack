@@ -54,13 +54,13 @@ describe('writer and reader', () => {
     const archive = join(work, 'ok.tar');
     const longName = `files/${'a'.repeat(36)}/${'b'.repeat(36)}.pdf`;
     const written = await writeArchive(archive, [{ name: 'manifest.json', buffer: Buffer.from('{}') }, { name: longName, path: source }]);
-    assert.equal((await stat(archive)).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal((await stat(archive)).mode & 0o777, 0o600); // no POSIX modes on Windows (#98)
     const dest = await fresh('roundtrip');
     const entries = await extractArchive(archive, dest);
     assert.deepEqual([...entries.keys()], ['manifest.json', longName]);
     assert.equal(entries.get(longName).sha256, written[1].sha256);
     assert.deepEqual(await readFile(entries.get(longName).path), pdf);
-    assert.equal((await stat(entries.get(longName).path)).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal((await stat(entries.get(longName).path)).mode & 0o777, 0o600); // no POSIX modes on Windows (#98)
   });
 
   test('writer refuses a file whose content differs from the expected hash', async () => {
