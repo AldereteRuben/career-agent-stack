@@ -97,7 +97,7 @@ async function checkDependencies() {
   const installed = await mtimeOf(at('node_modules/.modules.yaml'));
   const lockfile = await mtimeOf(at('pnpm-lock.yaml'));
   if (installed && installed >= lockfile) return ok('Dependencias instaladas', 'Dependencies installed');
-  if (checkOnly) return problem('Faltan dependencias o están desactualizadas (pnpm install --frozen-lockfile)', 'Dependencies missing or outdated (pnpm install --frozen-lockfile)');
+  if (checkOnly) return problem('Faltan dependencias o están desactualizadas (ejecuta: pnpm start)', 'Dependencies missing or outdated (run: pnpm start)');
   step('Instalando dependencias…', 'Installing dependencies…');
   if (run('pnpm', ['install', '--frozen-lockfile']).status !== 0) throw new RecoveryError({
     es: 'No se pudieron instalar las dependencias.', en: 'Dependencies could not be installed.',
