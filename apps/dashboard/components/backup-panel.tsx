@@ -42,11 +42,11 @@ export function BackupPanel() {
         <li><a className="button button-secondary" href={`/api/v1/backups/${job.id}/archive`} download>{c('Descargar copia', 'Download backup')}</a></li>
         <li><a className="button button-secondary" href={`/api/v1/backups/${job.id}/key`} download>{c('Descargar clave de recuperación', 'Download recovery key')}</a></li>
       </ol>
-      <p>{c('Necesitas ambos para recuperar tu espacio. Guarda la clave en una ubicación privada separada de la copia. Descargarla no confirma que ya la hayas guardado.', 'You need both to recover your workspace. Keep the key in a separate private location from the backup. Downloading it does not confirm that you have stored it safely.')}</p>
+      <p>{c('Necesitas ambos para recuperar tu espacio: la copia está cifrada y solo se puede abrir con su clave. Guarda la clave en una ubicación privada separada de la copia. Descargarla no confirma que ya la hayas guardado.', 'You need both to recover your workspace: the backup is encrypted and only its key can open it. Keep the key in a separate private location from the backup. Downloading it does not confirm that you have stored it safely.')}</p>
       <a href={`/api/v1/backups/${job.id}/checksum`} download>{c('Descargar archivo de comprobación (opcional)', 'Download checksum file (optional)')}</a>
       <small>{c('Descarga los archivos antes de crear otra copia o reiniciar la app. También se conservan en data/backups, dentro de la carpeta de instalación.', 'Download the files before creating another backup or restarting the app. They are also kept in data/backups inside the installation folder.')}</small>
     </>}
     <div><Button disabled={loading || starting || job.state === 'running'} onClick={() => void create()}>{loading ? c('Consultando copias…', 'Checking backups…') : starting || job.state === 'running' ? c('Preparando copia…', 'Preparing backup…') : job.state === 'ready' ? c('Crear otra copia', 'Create another backup') : c('Crear copia de seguridad', 'Create backup')}</Button></div>
-    <small>{c('La copia contiene datos personales y no está cifrada. Guárdala en una ubicación privada. La restauración aún requiere la terminal.', 'The backup contains personal data and is not encrypted. Keep it in a private location. Restoring it still requires a terminal.')}</small>
+    <small>{c('La copia está cifrada: sin su clave nadie puede leerla. Quien tenga la copia y la clave puede leer tus datos, así que guárdalas por separado. La restauración aún requiere la terminal.', 'The backup is encrypted: without its key nobody can read it. Anyone with both the backup and the key can read your data, so keep them apart. Restoring it still requires a terminal.')}</small>
   </div>;
 }

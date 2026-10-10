@@ -80,7 +80,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 | Suite | CI | Notes |
 |---|---|---|
-| `test:unit`, `test:evals`, `test:ai`, `test:ui-logic` | Yes, on Ubuntu and Windows | No database. `test:evals` checks synthetic relevance and ranking cases. |
+| `test:unit`, `test:evals`, `test:ai`, `test:ui-logic`, `test:backup-crypto` | Yes, on Ubuntu and Windows | No database. `test:evals` checks synthetic relevance and ranking cases. `test:backup-crypto` checks backup encryption and the private temporary folder (a user-only ACL on Windows); on Ubuntu it also decrypts with the official `age` tool (`CAREER_AGE_CLI_TEST=1`). |
 | `test:integration` | Yes, on Ubuntu | Backup and isolated restore plus the v0.4, v0.8, v0.9 and resume-import (0011) migrations, against the PostgreSQL 17 service with PostgreSQL 17 client tools (`CAREER_PG_BIN`). |
 | Sources, discovery, searches, bootstrap, backup, resume import (`test:fact-import`), preparation and assisted applications | Yes, on Ubuntu | Disposable databases on the PostgreSQL service. |
 | `test:clipboard`, `test:contributors`, `test:process`, reviewed assistant PDFs (`test/ai-documents.test.ts`) | Yes, on Ubuntu | The PDF check installs Playwright Chromium and `pdftotext` (poppler). |

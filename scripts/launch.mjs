@@ -18,7 +18,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
   pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
-  spawnTool, waitFor, warn, whoUsesPort, writePrivateFileAtomic,
+  runPnpm, waitFor, warn, whoUsesPort, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { clipboardTools, missingClipboardAdvice } from './lib/clipboard.mjs';
 
@@ -33,7 +33,8 @@ const problem = (es, en) => { attention += 1; warn(es, en); };
 const at = (...parts) => resolve(projectRoot, ...parts);
 
 const fix = (es, en) => ({ es, en });
-const run = (command, commandArgs, options = {}) => spawnTool(command, commandArgs, { cwd: projectRoot, stdio: 'inherit', ...options });
+const run = (command, commandArgs, options = {}) => spawnSync(command, commandArgs, { cwd: projectRoot, stdio: 'inherit', ...options });
+const pnpm = (args, options = {}) => runPnpm(args, { cwd: projectRoot, stdio: 'inherit', ...options });
 const exists = async (path) => { try { await access(path); return true; } catch { return false; } };
 
 // One launcher per checkout: migrations, dependency installation and .next are shared,
@@ -89,8 +90,8 @@ function checkNode() {
 }
 
 async function checkDependencies() {
-  const pnpm = spawnTool('pnpm', ['--version'], { encoding: 'utf8' });
-  if (pnpm.error || pnpm.status !== 0) throw new RecoveryError({
+  const version = runPnpm(['--version'], { encoding: 'utf8' });
+  if (version.error || version.status !== 0) throw new RecoveryError({
     es: 'No se encontró pnpm.', en: 'pnpm was not found.',
     fixes: [fix('Actívalo con: corepack enable', 'Enable it with: corepack enable'), fix('O instálalo: npm install -g pnpm@11', 'Or install it: npm install -g pnpm@11')],
   });
@@ -99,7 +100,7 @@ async function checkDependencies() {
   if (installed && installed >= lockfile) return ok('Dependencias instaladas', 'Dependencies installed');
   if (checkOnly) return problem('Faltan dependencias o están desactualizadas (pnpm install --frozen-lockfile)', 'Dependencies missing or outdated (pnpm install --frozen-lockfile)');
   step('Instalando dependencias…', 'Installing dependencies…');
-  if (run('pnpm', ['install', '--frozen-lockfile']).status !== 0) throw new RecoveryError({
+  if (pnpm(['install', '--frozen-lockfile']).status !== 0) throw new RecoveryError({
     es: 'No se pudieron instalar las dependencias.', en: 'Dependencies could not be installed.',
     fixes: [fix('Comprueba tu conexión y ejecuta: pnpm install --frozen-lockfile', 'Check your connection and run: pnpm install --frozen-lockfile')],
   });
@@ -182,8 +183,8 @@ async function ensureDatabase({ database }) {
   ok(`PostgreSQL iniciado (${method})`, `PostgreSQL started (${method})`);
 }
 
-function runQuiet(command, commandArgs, env) {
-  const result = spawnTool(command, commandArgs, { cwd: projectRoot, encoding: 'utf8', env });
+function pnpmQuiet(args, env) {
+  const result = runPnpm(args, { cwd: projectRoot, encoding: 'utf8', env });
   if (result.status !== 0) process.stderr.write(maskSecrets(`${result.stdout ?? ''}\n${result.stderr ?? ''}`).split('\n').slice(-25).join('\n') + '\n');
   return result.status === 0;
 }
@@ -288,13 +289,13 @@ async function ensureApi({ apiBase, apiPort, childEnv }) {
   if (checkOnly) return problem(`API detenida${needsBuild ? ' (necesita compilarse)' : ''}`, `API stopped${needsBuild ? ' (needs a build)' : ''}`);
 
   step('Aplicando migraciones pendientes de la base de datos (no borra datos existentes)…', 'Applying pending database migrations (existing data is kept)…');
-  if (!runQuiet('pnpm', ['run', '--silent', 'db:migrate'], childEnv)) throw new RecoveryError({
+  if (!pnpmQuiet(['run', '--silent', 'db:migrate'], childEnv)) throw new RecoveryError({
     es: 'No se pudieron aplicar las migraciones.', en: 'Database migrations could not be applied.',
     fixes: [fix('Comprueba que PostgreSQL acepta las credenciales de .env: pnpm run doctor', 'Check that PostgreSQL accepts the .env credentials: pnpm run doctor')],
   });
   if (needsBuild) {
     step('Compilando la API…', 'Building the API…');
-    if (run('pnpm', ['run', 'build:shared'], { env: childEnv }).status !== 0 || run('pnpm', ['--filter', '@career/api', 'build'], { env: childEnv }).status !== 0) throw new RecoveryError({
+    if (pnpm(['run', 'build:shared'], { env: childEnv }).status !== 0 || pnpm(['--filter', '@career/api', 'build'], { env: childEnv }).status !== 0) throw new RecoveryError({
       es: 'La API no compila.', en: 'The API does not build.', fixes: [fix('Revisa el error anterior o ejecuta: pnpm run typecheck', 'Review the error above or run: pnpm run typecheck')],
     });
   }
@@ -333,7 +334,7 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
   const env = installEnv({}, { API_BASE_URL: apiBase, NEXT_TELEMETRY_DISABLED: '1' });
   if (needsBuild) {
     step('Compilando la aplicación web (la primera vez tarda unos minutos)…', 'Building the web app (the first time takes a few minutes)…');
-    if (run('pnpm', ['--filter', '@career/dashboard', 'build'], { env }).status !== 0) throw new RecoveryError({
+    if (pnpm(['--filter', '@career/dashboard', 'build'], { env }).status !== 0) throw new RecoveryError({
       es: 'La aplicación web no compila.', en: 'The web app does not build.', fixes: [fix('Revisa el error anterior o ejecuta: pnpm run typecheck', 'Review the error above or run: pnpm run typecheck')],
     });
     await writePrivateFileAtomic(dashboardStamp, `${apiBase}\n`);

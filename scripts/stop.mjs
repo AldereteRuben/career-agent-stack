@@ -51,6 +51,7 @@ async function stopProcess(record) {
   if (reason) return { outcome: 'refused', reason };
   await signal(record, 'SIGTERM');
   for (let attempt = 0; attempt < 40 && alive(record.pid); attempt += 1) await delay(250);
+  if (alive(record.pid) && process.platform === 'win32') return { outcome: 'failed' }; // the first step was already forceful (taskkill /F), so there is nothing stronger to try
   if (alive(record.pid)) {
     warn(`${record.name} no se detuvo con SIGTERM; se fuerza el cierre.`, `${record.name} did not stop on SIGTERM; forcing it.`);
     await signal(record, 'SIGKILL');
@@ -89,6 +90,11 @@ async function main() {
       warn(`${record.name}: no se detiene el PID ${record.pid} porque no se puede confirmar que sea el que inició el lanzador.`, `${record.name}: PID ${record.pid} is not stopped because it cannot be confirmed as the one the launcher started (${reason}).`);
       const inspect = process.platform === 'win32' ? `Get-CimInstance Win32_Process -Filter 'ProcessId=${record.pid}' | Select-Object ProcessId,CreationDate,CommandLine` : `ps -o pid,lstart,args -p ${record.pid}`;
       say(`    Compruébalo con: ${inspect}   y detenlo tú si corresponde; luego: pnpm run stop --forget`, `Check it with: ${inspect}   and stop it yourself if appropriate; then: pnpm run stop --forget`, process.stderr);
+      continue;
+    }
+    if (outcome === 'failed') {
+      warn(`${record.name}: el PID ${record.pid} sigue en marcha; no se pudo detener.`, `${record.name}: PID ${record.pid} is still running; it could not be stopped.`);
+      process.exitCode = 1;
       continue;
     }
     ok(`${record.name}: ${outcome === 'stopped' ? 'detenido' : 'ya no estaba en marcha'}`, `${record.name}: ${outcome === 'stopped' ? 'stopped' : 'was not running'}`);

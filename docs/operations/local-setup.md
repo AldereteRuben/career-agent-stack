@@ -34,7 +34,7 @@ CAREER_ADMIN_DATABASE_URL="postgresql://$USER:YOUR_PASSWORD@127.0.0.1:5432/postg
 
 ## Windows 11 (partial) / Windows 11 (parcial)
 
-**English.** Native Windows can prepare an installation, start it with `pnpm start`, check it with `pnpm run status`, stop it with `pnpm run stop` and run the tests that need a database. Verified by hand on Windows 11 with a local PostgreSQL 17 service. Differences from macOS and Linux: Windows has no process groups or readable working directories, so a process is recognised by its exact start time and absolute entry path, and `pnpm run stop` ends the process tree forcefully because a console program without a window cannot be asked to close; `pnpm start --copy-token` has no clipboard tool there, so read the token from `data\setup-token`. Not verified: Docker Desktop, WSL 2, and the `.command` launchers (macOS only).
+**English.** Native Windows can prepare an installation, start it with `pnpm start`, check it with `pnpm run status`, stop it with `pnpm run stop` and run the tests that need a database. Verified by hand on Windows 11 with a local PostgreSQL 17 service. Differences from macOS and Linux: Windows has no process groups or readable working directories, so a process is recognised by its exact start time and absolute entry path, and `pnpm run stop` ends the process tree forcefully because a console program without a window cannot be asked to close; `pnpm start --copy-token` copies the token with `clip.exe` and clears it after two minutes like on the other systems (or read it from `data\setup-token`). Not verified: Docker Desktop, WSL 2, and the `.command` launchers (macOS only).
 
 ```powershell
 # Node 24 (https://nodejs.org) and pnpm 11.10.0
@@ -52,7 +52,7 @@ pnpm run bootstrap
 
 Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. File permission bits do not exist on Windows, so the backup writer test (`pnpm run test:backup`) fails there; that is a known limit, not a data problem.
 
-**Español.** En Windows nativo se puede preparar una instalación, iniciarla con `pnpm start`, comprobarla con `pnpm run status`, detenerla con `pnpm run stop` y ejecutar las pruebas que necesitan base de datos. Comprobado a mano en Windows 11 con un servicio local de PostgreSQL 17. Diferencias con macOS y Linux: Windows no tiene grupos de procesos ni directorios de trabajo legibles, así que un proceso se reconoce por su hora de inicio exacta y la ruta absoluta de su archivo de entrada, y `pnpm run stop` cierra el árbol de procesos a la fuerza porque un programa de consola sin ventana no puede recibir una petición de cierre; `pnpm start --copy-token` no tiene herramienta de portapapeles allí, así que lee el token en `data\setup-token`. Sin verificar: Docker Desktop, WSL 2 y los lanzadores `.command` (solo macOS).
+**Español.** En Windows nativo se puede preparar una instalación, iniciarla con `pnpm start`, comprobarla con `pnpm run status`, detenerla con `pnpm run stop` y ejecutar las pruebas que necesitan base de datos. Comprobado a mano en Windows 11 con un servicio local de PostgreSQL 17. Diferencias con macOS y Linux: Windows no tiene grupos de procesos ni directorios de trabajo legibles, así que un proceso se reconoce por su hora de inicio exacta y la ruta absoluta de su archivo de entrada, y `pnpm run stop` cierra el árbol de procesos a la fuerza porque un programa de consola sin ventana no puede recibir una petición de cierre; `pnpm start --copy-token` copia el token con `clip.exe` y lo borra a los 2 minutos como en los demás sistemas (o léelo en `data\setup-token`). Sin verificar: Docker Desktop, WSL 2 y los lanzadores `.command` (solo macOS).
 
 ```powershell
 # Node 24 (https://nodejs.org) y pnpm 11.10.0
@@ -171,7 +171,7 @@ Messages are printed in Spanish and English. Spanish comes first when the system
 | `pnpm run stop` refuses a PID | Check the process with `ps -o pid,lstart,args -p <pid>` and stop it yourself if it is ours, then run `pnpm run stop --forget`. |
 | API or web app not ready in time | Read `data/logs/api.log` or `data/logs/dashboard.log`, then run `pnpm run doctor`. |
 
-Never delete `.env` to "reset" the installation: it holds the key that protects stored data.
+Never delete `.env` to "reset" the installation: it holds the database connection and `APP_ENCRYPTION_KEY`, which your backups need to be restored. That key does not encrypt stored data; the app relies on your disk encryption for that (see [SECURITY.md](../../SECURITY.md#data-at-rest)).
 
 ## No-AI operation
 
