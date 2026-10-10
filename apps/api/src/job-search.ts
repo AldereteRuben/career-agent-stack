@@ -2,6 +2,7 @@ import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identit
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { countCompleteFeedRead, type Queryable } from './job-availability.js';
 import * as schema from '@career/db/schema';
 import { db, jobs, jobSearchProviderCache, jobSearchSources, jobSnapshots, pool, savedJobSearches, savedJobSearchMatches } from '@career/db';
 import { JOB_SEARCH_INTERVAL_MS, JOB_SEARCH_PROVIDER_COOLDOWN_MS, JOB_SEARCH_FAILURE_MAX_MS } from './job-search-constants.js';
@@ -66,7 +67,17 @@ export async function loadProviderFeed(provider: JobSearchProvider, reader: Feed
     cached = (await executor.select().from(jobSearchProviderCache).where(eq(jobSearchProviderCache.provider, provider)).limit(1))[0];
     try {
       const read = await reader(provider); const listing = Array.isArray(read) ? read : read.jobs; const coverage = Array.isArray(read) ? 'COMPLETE' : read.coverage;
-      await executor.update(jobSearchProviderCache).set({ payload: listing as unknown as Record<string, unknown>[], coverage, fetchedAt: new Date(), nextFetchAt: new Date(Date.now() + JOB_SEARCH_PROVIDER_COOLDOWN_MS), failureCount: 0, lastError: null, updatedAt: new Date() }).where(eq(jobSearchProviderCache.provider, provider));
+      // The new listing and what it says about each known job (ADR 021) are stored together: a complete feed just
+      // downloaded is the only feed read that gives presence or absence, once however many searches use it.
+      await connection.query('begin');
+      try {
+        if (coverage === 'COMPLETE') {
+          const { suspicious } = await countCompleteFeedRead(connection as unknown as Queryable, provider, listing.map((job) => job.externalId), cached?.lastCompleteCount ?? null);
+          if (!suspicious) await connection.query('update job_search_provider_cache set last_complete_count = $2 where provider = $1', [provider, listing.length]);
+        }
+        await executor.update(jobSearchProviderCache).set({ payload: listing as unknown as Record<string, unknown>[], coverage, fetchedAt: new Date(), nextFetchAt: new Date(Date.now() + JOB_SEARCH_PROVIDER_COOLDOWN_MS), failureCount: 0, lastError: null, updatedAt: new Date() }).where(eq(jobSearchProviderCache.provider, provider));
+        await connection.query('commit');
+      } catch (error) { await connection.query('rollback').catch(() => undefined); throw error; }
       return { jobs: listing, state: 'FRESH', fetchedAt: new Date(), coverage };
     } catch (error) {
       const failures = (cached?.failureCount ?? 0) + 1; const retryAt = error instanceof ProviderReadError ? error.retryAt : 0;
