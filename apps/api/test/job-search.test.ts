@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { matchesSearch } from '../src/job-search.js';
+import { JOB_SEARCH_FAILURE_MAX_MS, JOB_SEARCH_INTERVAL_MS, JOB_SEARCH_PROVIDER_COOLDOWN_MS } from '../src/job-search-constants.js';
 import { normalizePublicJobs, parseRetryAfter, readPublicFeed, readPublicJobs, ProviderReadError, type JobSearchProvider } from '../src/job-search-sources.js';
 
 const remotiveFixture = { jobs: [{ id: 42, title: 'Senior Product Designer', company_name: 'Northwind Studio', candidate_required_location: 'Europe', publication_date: '2026-09-30', url: 'https://remotive.com/remote-jobs/design/senior-product-designer-42', remote: true, description: '<p>Design accessible products</p><script>secret()</script>' }] };
@@ -90,4 +91,11 @@ test('escaped feed HTML becomes readable paragraphs and lists without executable
     const [job] = normalizePublicJobs('remotive', { jobs: [{ ...remotiveFixture.jobs[0], description }] });
     assert.equal(job?.description, 'Design & quality\n\n• First requirement\n• Second requirement');
   }
+});
+
+test('public feeds are read at most four times a day, as Remotive\'s API terms require', () => {
+  const sixHours = 6 * 60 * 60 * 1000;
+  assert.ok(JOB_SEARCH_PROVIDER_COOLDOWN_MS >= sixHours, 'Shortening the provider cooldown would exceed Remotive\'s limit of four requests a day');
+  assert.ok(JOB_SEARCH_INTERVAL_MS >= sixHours, 'The first retry after a failure must not come sooner than a normal read');
+  assert.ok(JOB_SEARCH_FAILURE_MAX_MS >= JOB_SEARCH_INTERVAL_MS, 'Backoff only lengthens the wait');
 });
