@@ -643,8 +643,10 @@ app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   if (backups.isRunning()) return fail(reply, 409, 'BACKUP_IN_PROGRESS', 'Wait until the backup finishes.');
   const id = workspace(request);
   // Refuse new requests and wait for those already running, so none writes after the rows are deleted.
-  if (!await requestGate.close(30_000, request)) {
-    requestGate.open();
+  const gate = await requestGate.close(30_000, request);
+  if (gate === 'busy') return fail(reply, 409, 'DELETION_IN_PROGRESS');
+  if (gate === 'timeout') {
+    requestGate.open(request);
     return fail(reply, 503, 'DELETION_BUSY', 'Other requests did not finish in time; nothing was deleted. Try again.');
   }
   try {
@@ -659,7 +661,7 @@ app.post('/api/v1/workspace/delete-all', async (request, reply) => {
     return { deleted: true };
   } finally {
     stopJobSearches = startJobSearches(); stopDiscovery = startDiscovery(); aiRuntime.resume();
-    requestGate.open();
+    requestGate.open(request);
   }
 });
 // A deletion whose files were interrupted or failed is finished before the API serves anything.

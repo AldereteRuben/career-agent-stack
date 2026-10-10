@@ -6,15 +6,17 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 export type RequestGate = ReturnType<typeof createRequestGate>;
 
+export type GateClose = 'drained' | 'timeout' | 'busy';
+
 export function createRequestGate() {
-  let closed = false;
+  let owner: FastifyRequest | null = null;
   const admitted = new Set<FastifyRequest>();
   let waiters: Array<() => void> = [];
   const settle = () => { if (!admitted.size) for (const done of waiters.splice(0)) done(); };
   return {
     /** Admits a request; false when the gate is closed and the request must be refused. */
     enter(request: FastifyRequest) {
-      if (closed) return false;
+      if (owner) return false;
       admitted.add(request);
       return true;
     },
@@ -23,20 +25,23 @@ export function createRequestGate() {
       if (admitted.delete(request)) settle();
     },
     /**
-     * Stops admitting requests and waits for the admitted ones to finish. Resolves true once none is left, or false
-     * after `timeoutMs` (the gate then stays closed until `open`). `except` is the closing request itself.
+     * Closes the gate for `request`, which becomes its only owner, and waits for the other admitted requests to
+     * finish: 'drained' once none is left, 'timeout' after `timeoutMs` (still closed until the owner opens it).
+     * 'busy' when another request already owns it: that one is running, so this one must not proceed.
      */
-    async close(timeoutMs: number, except?: FastifyRequest) {
-      closed = true;
-      if (except) admitted.delete(except);
-      if (!admitted.size) return true;
+    async close(timeoutMs: number, request: FastifyRequest): Promise<GateClose> {
+      if (owner) return 'busy';
+      owner = request;
+      admitted.delete(request);
+      if (!admitted.size) return 'drained';
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const drained = new Promise<boolean>((resolve) => { waiters.push(() => resolve(true)); });
-      const expired = new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); });
+      const drained = new Promise<GateClose>((resolve) => { waiters.push(() => resolve('drained')); });
+      const expired = new Promise<GateClose>((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs); });
       try { return await Promise.race([drained, expired]); } finally { clearTimeout(timer); waiters = []; }
     },
-    open() { closed = false; },
-    get closed() { return closed; },
+    /** Opens the gate again; only its owner can. */
+    open(request: FastifyRequest) { if (owner === request) owner = null; },
+    get closed() { return owner !== null; },
     get active() { return admitted.size; },
   };
 }
