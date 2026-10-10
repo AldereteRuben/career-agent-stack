@@ -152,8 +152,8 @@ export default function OverviewPage() {
       <p>{dailyAction.detail}</p>
       <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
       <div role="status" aria-live="polite" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 18 }}>
-        <span><strong>{inbox?.total ?? '—'}</strong> {c('ofertas nuevas por revisar', 'new jobs to review')}</span>
-        <span><strong>{pendingResumes}</strong> {c('CV pendientes de revisión', 'resumes waiting for review')}</span>
+        <span><strong>{inbox?.total ?? '—'}</strong> {inbox?.total === 1 ? c('oferta nueva por revisar', 'new job to review') : c('ofertas nuevas por revisar', 'new jobs to review')}</span>
+        <span><strong>{pendingResumes}</strong> {pendingResumes === 1 ? c('CV pendiente de revisión', 'resume waiting for review') : c('CV pendientes de revisión', 'resumes waiting for review')}</span>
       </div>
       {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
       {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')} style={{ marginTop: 18 }}>

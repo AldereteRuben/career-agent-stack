@@ -214,7 +214,7 @@ try {
   await page.goto(new URL('/overview', ui).toString());
   await setLocale(page, 'es');
   await page.getByText(/TU SIGUIENTE PASO|YOUR NEXT STEP/i).waitFor();
-  await page.getByText('1 CV pendientes de revisión', { exact: true }).waitFor();
+  await page.getByText('1 CV pendiente de revisión', { exact: true }).waitFor();
   await page.getByRole('link', { name: /Review resumes|Revisar CV/i }).waitFor();
   await page.screenshot({ path: join(artifacts, 'home-inbox-es.png'), fullPage: true });
   await page.goto(new URL('/searches?search=all&view=new', ui).toString());
