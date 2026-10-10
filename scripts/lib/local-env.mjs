@@ -11,6 +11,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+/**
+ * spawnSync that also finds pnpm on Windows, where it is a pnpm.cmd shim: Node cannot start a .cmd file without a
+ * shell. Only pnpm goes through cmd.exe, and only with fixed arguments written in these scripts (never user input).
+ */
+export function spawnTool(command, args, options = {}) {
+  if (process.platform === 'win32' && command === 'pnpm') return spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'pnpm', ...args], options);
+  return spawnSync(command, args, options);
+}
 const checkoutEnvPath = resolve(projectRoot, '.env');
 
 // CAREER_ENV_FILE selects another installation's configuration (for example a restored workspace) to run with

@@ -32,6 +32,44 @@ CAREER_ADMIN_DATABASE_URL="postgresql://$USER:YOUR_PASSWORD@127.0.0.1:5432/postg
 
 `pnpm start --copy-token` needs a clipboard tool: `wl-clipboard` on Wayland or `xclip` on X11 (`sudo apt install wl-clipboard`). Without one it prints where the token file is. The `.command` launchers are macOS-only; use `pnpm start`.
 
+## Windows 11 (partial) / Windows 11 (parcial)
+
+**English.** Native Windows can prepare an installation and run the tests that need a database. `pnpm start` and `pnpm run stop` do not work yet because the launcher still depends on Unix process tools ([issue #19](https://github.com/AldereteRuben/career-agent-stack/issues/19)). Not verified: Docker Desktop and WSL 2.
+
+```powershell
+# Node 24 (https://nodejs.org) and pnpm 11.10.0
+npm install -g pnpm@11.10.0
+
+# PostgreSQL 17 from the official installer. Skip Stack Builder and the PEM agent: they are not needed.
+winget install --id PostgreSQL.PostgreSQL.17 --source winget
+# Choose the postgres password yourself and keep it private. Open a new terminal afterwards.
+
+# Bootstrap creates this installation's own role and database, using the postgres administrator once.
+# URL-encode special characters in the password (for example @ becomes %40).
+$env:CAREER_ADMIN_DATABASE_URL = "postgresql://postgres:YOUR_PASSWORD@127.0.0.1:5432/postgres"
+pnpm run bootstrap
+```
+
+Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. File permission bits do not exist on Windows, so the backup writer test (`pnpm run test:backup`) fails there; that is a known limit, not a data problem.
+
+**Español.** En Windows nativo se puede preparar una instalación y ejecutar las pruebas que necesitan base de datos. `pnpm start` y `pnpm run stop` todavía no funcionan porque el lanzador depende de herramientas de procesos de Unix ([issue #19](https://github.com/AldereteRuben/career-agent-stack/issues/19)). Sin verificar: Docker Desktop y WSL 2.
+
+```powershell
+# Node 24 (https://nodejs.org) y pnpm 11.10.0
+npm install -g pnpm@11.10.0
+
+# PostgreSQL 17 con el instalador oficial. Omite Stack Builder y el agente PEM: no hacen falta.
+winget install --id PostgreSQL.PostgreSQL.17 --source winget
+# Elige tú la contraseña de postgres y mantenla privada. Abre una terminal nueva después.
+
+# Bootstrap crea el rol y la base de datos propios de esta instalación, usando una vez al administrador postgres.
+# Codifica en la URL los caracteres especiales de la contraseña (por ejemplo @ pasa a %40).
+$env:CAREER_ADMIN_DATABASE_URL = "postgresql://postgres:TU_CONTRASEÑA@127.0.0.1:5432/postgres"
+pnpm run bootstrap
+```
+
+Las copias de seguridad necesitan `pg_dump` y `pg_restore`: añade `C:\Program Files\PostgreSQL\17\bin` al `PATH`. En Windows no existen los permisos de archivo, así que la prueba del escritor de copias (`pnpm run test:backup`) falla allí; es un límite conocido, no un problema con tus datos.
+
 ## First run
 
 The tested default is **macOS with Homebrew PostgreSQL 17** (`brew install postgresql@17 && brew services start postgresql@17`). Docker Compose is a fallback that bootstrap uses only when nothing answers on the database port and Docker is running; it was not available on the machine where v0.2 was verified. CI checks builds on Linux and Windows; complete installation and browser journeys on those systems have not been verified.
