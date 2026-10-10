@@ -1,6 +1,7 @@
-// Verified operational backup of the local workspace: PostgreSQL custom dump + generated documents + signed manifest.
+// Verified, encrypted operational backup of the local workspace: PostgreSQL custom dump + generated documents +
+// signed manifest in a tar, encrypted with age for an identity derived from APP_ENCRYPTION_KEY (ADR 019).
 //
-//   pnpm run backup                       write backups/career-backup-<UTC time>.tar and its .sha256
+//   pnpm run backup                       write backups/career-backup-<UTC time>.tar.age and its .sha256
 //   pnpm run backup --out-dir <dir>    write somewhere else (for example an encrypted external drive)
 //   pnpm run backup --key-dir <dir>    write the separate key file somewhere else
 //   pnpm run backup --env-file <path>  back up the installation described by another .env
@@ -8,9 +9,11 @@
 // Consistency: the database is read inside one REPEATABLE READ snapshot (pg_export_snapshot + pg_dump --snapshot);
 // the document list, row counts and migrations come from that same snapshot, and every document file is hashed
 // while it is copied and must match the hash the snapshot recorded. The application can keep running.
-// The archive is re-opened and fully verified before the command reports success.
+// The plain tar only exists in a private temporary folder (see privateTempDir). The encrypted archive is decrypted
+// again into another private folder and fully verified before the command reports success.
 // Never included: .env, APP_SESSION_SECRET, sign-in tokens, logs, run records, browser state.
-// APP_ENCRYPTION_KEY is written to a separate private key file (career-key-<fingerprint>.json), never into the archive.
+// APP_ENCRYPTION_KEY is written to a separate private key file (career-key-<fingerprint>.json), never into the archive;
+// without that file the backup can be neither read nor restored.
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink } from 'node:fs/promises';
@@ -26,6 +29,7 @@ import {
   runPgTool, safeMessage, shown, tableCounts, toolVersion, writePrivateFile,
 } from './lib/backup-core.mjs';
 import { archiveRecovery, openArchive } from './lib/backup-verify.mjs';
+import { ENCRYPTED_SUFFIX, ageIdentity, decryptFile, encryptFile, privateTempDir } from './lib/backup-crypto.mjs';
 
 const usage = () => {
   say('Uso: pnpm run backup [--out-dir <carpeta>] [--key-dir <carpeta>] [--env-file <ruta>]', 'Usage: pnpm run backup [--out-dir <folder>] [--key-dir <folder>] [--env-file <path>]');
@@ -96,12 +100,13 @@ async function main() {
   await privateDir(keyDir, { es: 'La carpeta de la clave', en: 'The key folder' });
 
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const archiveName = `career-backup-${stamp}.tar`;
+  const archiveName = `career-backup-${stamp}.tar${ENCRYPTED_SUFFIX}`;
   const archivePath = join(outDir, archiveName);
   try { await lstat(archivePath); throw new RecoveryError({ es: `Ya existe ${shown(archivePath)}; espera un segundo y repite.`, en: `${shown(archivePath)} already exists; wait a second and retry.` }); }
   catch (error) { if (error instanceof RecoveryError) throw error; }
 
-  const staging = await mkdtemp(join(outDir, '.backup-staging-'));
+  // The dump, the documents and the plain tar are personal data in clear: they only live in a private folder.
+  const staging = await privateTempDir('.backup-staging-', { parent: outDir });
   const partial = join(outDir, `.${archiveName}.partial`);
   let client;
   try {
@@ -186,8 +191,9 @@ async function main() {
     };
     const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
 
-    step(`Escribiendo la copia con ${documentEntries.length} documento(s)…`, `Writing the backup with ${documentEntries.length} document(s)…`);
-    const written = await writeArchive(partial, [
+    step(`Escribiendo la copia cifrada con ${documentEntries.length} documento(s)…`, `Writing the encrypted backup with ${documentEntries.length} document(s)…`);
+    const plainTar = join(staging, 'backup.tar');
+    const written = await writeArchive(plainTar, [
       { name: MANIFEST_NAME, buffer: manifestBytes },
       { name: MANIFEST_MAC_NAME, buffer: Buffer.from(`${manifestMac(key, manifestBytes)}\n`) },
       { name: DUMP_NAME, path: dumpPath, sha256: dumpEntry.sha256 },
@@ -200,13 +206,19 @@ async function main() {
     await client.query('commit');
     await client.end();
     client = null;
+    await encryptFile(plainTar, partial, key);
+    await rm(plainTar, { force: true });
     await publishArchive(partial, archivePath); // fails instead of overwriting if the name appeared meanwhile
     await unlink(partial);
 
-    step('Verificando la copia escrita (estructura, hashes, firma y volcado)…', 'Verifying the written backup (structure, hashes, signature and dump)…');
-    const verifyDir = await mkdtemp(join(outDir, '.backup-verify-'));
+    step('Verificando la copia escrita (descifrado, estructura, hashes, firma y volcado)…', 'Verifying the written backup (decryption, structure, hashes, signature and dump)…');
+    const verifyDir = await privateTempDir('.backup-verify-', { parent: outDir });
     let verified;
-    try { verified = await openArchive(archivePath, verifyDir, { key }); }
+    try {
+      const decrypted = join(verifyDir, 'backup.tar');
+      await decryptFile(archivePath, decrypted, key);
+      verified = await openArchive(decrypted, await mkdtemp(join(verifyDir, 'entries-')), { key });
+    }
     catch (error) {
       await rm(archivePath, { force: true });
       throw archiveRecovery(error);
@@ -222,7 +234,7 @@ async function main() {
       if ((await readKeyFile(keyPath)).fingerprint !== keyFingerprint(key)) throw new RecoveryError({ es: `${shown(keyPath)} contiene otra clave; no se sobrescribe.`, en: `${shown(keyPath)} contains a different key; it is not overwritten.` });
       keyLine = ['ya existía con la misma clave; se reutiliza', 'already existed with the same key; reused'];
     } else {
-      await writePrivateFile(keyPath, keyFileContent(key));
+      await writePrivateFile(keyPath, keyFileContent(key, ageIdentity(key)));
     }
 
     const archiveSize = (await stat(archivePath)).size;
@@ -236,8 +248,8 @@ async function main() {
     if (orphanFiles) say(`  ${orphanFiles} archivo(s) sin registro en la base de datos no se incluyeron.`, `${orphanFiles} file(s) not recorded in the database were not included.`);
     process.stdout.write('\n');
     say('  Importante:', 'Important:');
-    say('   – La copia contiene tus datos personales sin cifrar: guárdala en un disco cifrado o carpeta privada.', 'The backup contains your personal data unencrypted: keep it on an encrypted drive or private folder.');
-    say('   – Guarda el archivo de clave APARTE de las copias (gestor de contraseñas). Sin él no se puede restaurar.', 'Keep the key file SEPARATE from the backups (password manager). Without it the backup cannot be restored.');
+    say('   – La copia está cifrada: sin el archivo de clave nadie puede leerla ni restaurarla, tampoco tú.', 'The backup is encrypted: without the key file nobody can read or restore it, including you.');
+    say('   – Guarda el archivo de clave APARTE de las copias (gestor de contraseñas). Quien tenga los dos puede leer tus datos.', 'Keep the key file SEPARATE from the backups (password manager). Anyone with both can read your data.');
     say('   – Prueba la restauración: pnpm run restore --verify-only --archive <copia> --key-file <clave>', 'Test the restore: pnpm run restore --verify-only --archive <backup> --key-file <key>');
   } catch (error) {
     if (client) { await client.query('rollback').catch(() => {}); await client.end().catch(() => {}); }
