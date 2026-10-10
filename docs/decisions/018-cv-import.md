@@ -53,6 +53,8 @@ Name, email and country found in the resume are shown apart from the facts and a
 
 The one to three most recent job titles are offered as optional **target titles**, shown separately and **unchecked by default**. They are added to the person's target titles only if checked, and never replace existing ones.
 
+Detection and application are pure functions in `@career/domain` (`profile-import.ts`: `detectIdentity`, `suggestTargetTitles`, `profileProposals`, `applyProfileProposals`) that run in the browser, next to the resume text. The chosen result is saved with the existing `PUT /api/v1/profile`, which validates the profile shape and the revision; no new API route is involved, and the resume text still never leaves the browser. A country is proposed only when exactly one country is named in the resume header, and anything uncertain is left out rather than guessed.
+
 ### 7. Professional summary and links are not imported yet
 
 There are no profile fields for a professional summary or links. They are left out of the import rather than stored under a new fact kind, and will be mapped once [#45](https://github.com/AldereteRuben/career-agent-stack/issues/45) adds those fields. Certifications and languages already have fact kinds and can be imported; the profile form will offer them once [#26](https://github.com/AldereteRuben/career-agent-stack/issues/26) lands.
