@@ -3,6 +3,7 @@ import { pool } from '@career/db';
 type QueryClient = { query: typeof pool.query };
 import { evaluateSearchMatch, providerSearchRole } from '@career/domain';
 import { normalizeHimalayasCountry, readHimalayasSearch } from './himalayas-source.js';
+import { reevaluateJobs, type Queryable } from './job-availability.js';
 import { loadProviderFeed, type OnPrepare } from './job-search.js';
 import { readPublicFeed, type PublicJob, type SearchWorkMode, ProviderReadError } from './job-search-sources.js';
 import { identityUrl, jobIdentity } from './job-identity.js';
@@ -119,6 +120,9 @@ async function ingest(run: Run, provider: SearchProvider, feed: Feed): Promise<n
       await client.query(`DELETE FROM search_run_results WHERE run_id=$1 AND workspace_id=$2 AND sources='[]'::jsonb`, [run.id,run.workspace_id]);
     }
     let found = 0;
+    // A fresh Himalayas result is presence; so is a fresh complete feed for the jobs it lists (ADR 021).
+    const freshPresence = feed.state === 'FRESH' && provider === 'himalayas';
+    const seenJobs = new Set<string>();
     for (const item of feed.jobs) {
       const outcome = evaluateSearchMatch({ ...item, ...(Array.isArray(item.raw.__careerStackCountries) ? {countries: item.raw.__careerStackCountries as string[]} : {}), worldwide: item.raw.__careerStackWorldwide === true }, run.criteria);
       if (!outcome.matched) continue;
@@ -138,8 +142,13 @@ async function ingest(run: Run, provider: SearchProvider, feed: Feed): Promise<n
       }
       const posted = item.postedAt && Number.isFinite(Date.parse(item.postedAt)) ? new Date(item.postedAt) : null;
       const attributionUrl = provider === 'himalayas' && typeof item.raw.__careerStackSourceUrl === 'string' ? item.raw.__careerStackSourceUrl : item.url;
-      if (provider !== 'boards') await client.query(`INSERT INTO job_search_sources(workspace_id,job_id,provider,external_id,source_url,posted_at,raw) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)
-        ON CONFLICT(workspace_id,provider,external_id) DO UPDATE SET source_url=excluded.source_url,posted_at=excluded.posted_at,last_seen_at=now(),raw=excluded.raw`, [run.workspace_id,jobId,provider,item.externalId,attributionUrl,posted,JSON.stringify({ ...item.raw, __careerStackWorkMode: item.workMode })]);
+      // ADR 021: a new source records when its listing was really read. An existing one is marked seen only by a
+      // newly downloaded Himalayas result; Remotive and Arbeitnow presence is counted once per download elsewhere.
+      if (provider !== 'boards') await client.query(`INSERT INTO job_search_sources(workspace_id,job_id,provider,external_id,source_url,posted_at,raw,last_seen_at) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$9)
+        ON CONFLICT(workspace_id,provider,external_id) DO UPDATE SET source_url=excluded.source_url,posted_at=excluded.posted_at,raw=excluded.raw,
+        last_seen_at=CASE WHEN $8::boolean THEN now() ELSE job_search_sources.last_seen_at END,missed_complete_reads=CASE WHEN $8::boolean THEN 0 ELSE job_search_sources.missed_complete_reads END`,
+        [run.workspace_id,jobId,provider,item.externalId,attributionUrl,posted,JSON.stringify({ ...item.raw, __careerStackWorkMode: item.workMode }),freshPresence,feed.fetchedAt ?? new Date()]);
+      seenJobs.add(jobId);
       const attribution = { provider, name: item.sourceName ?? sourceName(provider), url: attributionUrl, postedAt: posted?.toISOString() ?? null, fetchedAt: item.checkedAt ?? feed.fetchedAt?.toISOString() ?? null };
       await client.query(`INSERT INTO search_run_results(workspace_id,run_id,search_id,job_id,score,reasons,location_status,unknown_location,posted_at,sources)
         VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb) ON CONFLICT(workspace_id,run_id,job_id) DO UPDATE SET
@@ -156,6 +165,7 @@ async function ingest(run: Run, provider: SearchProvider, feed: Feed): Promise<n
     }
     await client.query(`UPDATE search_run_sources SET status=$3,coverage=$4,fetched_at=$5,next_fetch_at=$6,found=$7,error=NULL WHERE run_id=$1 AND provider=$2`, [run.id,provider,feed.state,feed.coverage,feed.fetchedAt,feed.nextFetchAt ?? null,found]);
     await client.query(`UPDATE search_runs SET status='PARTIAL' WHERE id=$1 AND owner=$2 AND finished_at IS NULL`, [run.id,run.owner]);
+    if (feed.state === 'FRESH' && (provider === 'himalayas' || feed.coverage === 'COMPLETE')) await reevaluateJobs(client as unknown as Queryable, run.workspace_id, seenJobs);
     await client.query('COMMIT'); return found;
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
 }

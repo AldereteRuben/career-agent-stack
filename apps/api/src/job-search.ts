@@ -175,9 +175,10 @@ export async function refreshSavedJobSearch(workspaceId: string, searchId: strin
           if (latestSnapshot?.snapshotHash !== currentHash) await tx.insert(jobSnapshots).values({ workspaceId, jobId: jobRow.id, occurrenceId: null, title: item.title, descriptionText: item.description, snapshotHash: currentHash });
         }
         const postedAt = item.postedAt && Number.isFinite(Date.parse(item.postedAt)) ? new Date(item.postedAt) : null;
-        if (source) await tx.update(jobSearchSources).set({ sourceUrl: item.url, postedAt, lastSeenAt: now, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).where(eq(jobSearchSources.id, source.id));
+        // Presence for these feeds is counted once per download in loadProviderFeed (ADR 021), never per search.
+        if (source) await tx.update(jobSearchSources).set({ sourceUrl: item.url, postedAt, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).where(eq(jobSearchSources.id, source.id));
         else {
-          const insertedSource = await tx.insert(jobSearchSources).values({ workspaceId, jobId: jobRow.id, provider, externalId: item.externalId, sourceUrl: item.url, postedAt, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).returning();
+          const insertedSource = await tx.insert(jobSearchSources).values({ workspaceId, jobId: jobRow.id, provider, externalId: item.externalId, sourceUrl: item.url, postedAt, lastSeenAt: feeds[provider]?.fetchedAt ?? now, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).returning();
           source = insertedSource[0]; if (source) sourceByExternal.set(`${provider}:${item.externalId}`, source);
         }
         const priorMatch = matchByJob.get(jobRow.id);

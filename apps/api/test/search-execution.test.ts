@@ -34,6 +34,34 @@ describe('v0.8 persisted search execution in disposable database',{skip:!adminUr
   if(options.applicationState) await client.query(`INSERT INTO applications(workspace_id,job_id,company,role,state,shortlist_decision,notes) VALUES($1,$2,'Fictional','QA Engineer',$3,'SHORTLISTED','selected manually')`,[workspaceId,jobId,options.applicationState]);
   return jobId;
  };
+ // ADR 021: what the v2 writer may and may not say about a job's availability.
+ const himalayas=(jobs:PublicJob[],state='FRESH')=>({jobs,state,coverage:'COMPLETE' as const,fetchedAt:new Date()});
+ const sourceRow=async(externalId:string)=>(await client.query(`SELECT s.last_seen_at,s.missed_complete_reads,j.availability,j.id AS job_id FROM job_search_sources s JOIN jobs j ON j.id=s.job_id WHERE s.workspace_id=$1 AND s.external_id=$2`,[workspace,externalId])).rows[0];
+ const rerun=async(searchId:string,reader:Parameters<typeof execution.runSearchExecutionTick>[0])=>{await execution.enqueueSearch(client,workspace,searchId,true);await execution.runSearchExecutionTick(reader);};
+ test('a fresh Himalayas result reopens a possibly closed job, never a closed one, and its absence changes nothing',async()=>{const app=server();try{
+  const {search}=await createSearch(app,{providerIds:['himalayas']});
+  await execution.runSearchExecutionTick(async()=>himalayas([job('h1')]));
+  const first=await sourceRow('h1');assert.equal(first.availability,'OPEN');
+  await client.query(`UPDATE jobs SET availability='POSSIBLY_CLOSED' WHERE id=$1`,[first.job_id]);
+  await rerun(search.id,async()=>himalayas([job('h1')]));
+  assert.equal((await sourceRow('h1')).availability,'OPEN','Seen again in a fresh Himalayas result');
+  assert.deepEqual((await client.query(`SELECT reason FROM job_availability_events WHERE job_id=$1`,[first.job_id])).rows.map(r=>r.reason),['SEEN_AGAIN']);
+  await rerun(search.id,async()=>himalayas([]));
+  const missed=await sourceRow('h1');assert.equal(missed.availability,'OPEN');assert.equal(missed.missed_complete_reads,0,'A Himalayas miss counts nothing');
+  await client.query(`UPDATE jobs SET availability='CLOSED',closed_by_user=true WHERE id=$1`,[first.job_id]);
+  await rerun(search.id,async()=>himalayas([job('h1')]));
+  assert.equal((await sourceRow('h1')).availability,'CLOSED','The person\'s decision wins');
+ }finally{await app.close();}});
+ test('a cached feed records when a new source was really read and never marks an existing one seen',async()=>{const app=server();try{
+  const {search}=await createSearch(app,{providerIds:['remotive']});const readAt=new Date(Date.now()-3*86_400_000);
+  const cached=async()=>({jobs:[job('r1')],state:'CACHED',coverage:'COMPLETE' as const,fetchedAt:readAt});
+  await execution.runSearchExecutionTick(cached);
+  assert.equal((await sourceRow('r1')).last_seen_at.toISOString(),readAt.toISOString(),'A new source keeps the time its listing was read');
+  await client.query(`UPDATE job_search_sources SET last_seen_at=now()-interval '9 days' WHERE external_id='r1'`);
+  const before=(await sourceRow('r1')).last_seen_at;
+  await rerun(search.id,cached);
+  assert.deepEqual((await sourceRow('r1')).last_seen_at,before,'A cached feed is not presence');
+ }finally{await app.close();}});
  test('create is immediate and idempotent; workers group strong duplicate identities for review',async()=>{const app=server();try{const p=payload();const [a,b]=await Promise.all([app.inject({method:'POST',url:'/api/v1/job-searches',payload:p}),app.inject({method:'POST',url:'/api/v1/job-searches',payload:p})]);assert.equal(a.statusCode,201,a.body);assert.equal(b.statusCode,201,b.body);assert.equal(a.json().search.id,b.json().search.id);assert.equal(a.json().runId,b.json().runId);assert.equal((await client.query('SELECT count(*)::int n FROM search_runs')).rows[0].n,1);await execution.runSearchExecutionTick(async p=>feed([job(p,{url:`https://example.test/jobs/shared?utm_source=${p}`})]));const result=await app.inject(`/api/v1/job-searches/${a.json().search.id}/results?view=new`);assert.equal(result.statusCode,200,result.body);assert.equal(result.json().latestRun.status,'SUCCEEDED',JSON.stringify(result.json().latestRun));assert.equal(result.json().total,1);assert.equal(result.json().items[0].duplicateCount,1);assert.equal(result.json().items[0].sources.length,2);const jid=result.json().items[0].id;assert.equal((await app.inject({method:'POST',url:`/api/v1/job-searches/${a.json().search.id}/results/${jid}/review`})).statusCode,200);assert.equal((await app.inject(`/api/v1/job-searches/${a.json().search.id}/results?view=new`)).json().total,0);assert.equal((await app.inject('/api/v1/job-searches/results?view=all')).json().total,1);}finally{await app.close();}});
  test('revision conflicts and pause fence a late source response',async()=>{const app=server();try{const a=(await app.inject({method:'POST',url:'/api/v1/job-searches',payload:payload()})).json();let release!:()=>void;let started!:()=>void;const ready=new Promise<void>(r=>started=r),wait=new Promise<void>(r=>release=r);const tick=execution.runSearchExecutionTick(async()=>{started();await wait;return feed([job()]);});await ready;const edit=await app.inject({method:'PATCH',url:`/api/v1/job-searches/${a.search.id}`,payload:{expectedRevision:1,enabled:false}});assert.equal(edit.statusCode,200,edit.body);assert.equal((await app.inject({method:'PATCH',url:`/api/v1/job-searches/${a.search.id}`,payload:{expectedRevision:1,role:'designer'}})).statusCode,409);release();await tick;assert.equal((await client.query('SELECT count(*)::int n FROM jobs')).rows[0].n,0);assert.equal((await client.query('SELECT status FROM search_runs')).rows[0].status,'CANCELLED');}finally{await app.close();}});
  test('partial results visible before slow provider, failed refresh preserves prior publication',async()=>{const app=server();try{const a=(await app.inject({method:'POST',url:'/api/v1/job-searches',payload:payload()})).json();let release!:()=>void;const wait=new Promise<void>(r=>release=r);const tick=execution.runSearchExecutionTick(async p=>{if(p==='arbeitnow')await wait;return feed([job(p)]);});for(let i=0;i<100;i++){if((await client.query('SELECT count(*)::int n FROM search_run_results')).rows[0].n)break;await new Promise(r=>setTimeout(r,10));}const partial=(await app.inject(`/api/v1/job-searches/${a.search.id}/results`)).json();assert.equal(partial.total,1);assert.equal(partial.latestRun.finishedAt,null);release();await tick;await app.inject({method:'POST',url:`/api/v1/job-searches/${a.search.id}/refresh`});await execution.runSearchExecutionTick(async()=>{throw new Error('fixture timeout');});const result=(await app.inject(`/api/v1/job-searches/${a.search.id}/results`)).json();assert.equal(result.total,2);assert.equal(result.latestRun.status,'FAILED');}finally{await app.close();}});
