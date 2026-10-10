@@ -19,8 +19,14 @@ export function enforceLocalRequest(request: FastifyRequest, reply: FastifyReply
   }
 }
 
+// The workspace's session generation (ADR 020). The API loads it at start and raises it when all data is deleted:
+// a cookie from an earlier generation stops working, in every browser. One API process serves an installation, so
+// this in-memory value is the current one. Cookies issued before generations existed count as generation 0.
+let currentGeneration = 0;
+export function setSessionGeneration(generation: number) { currentGeneration = generation; }
+
 export function issueSession(workspaceId: string) {
-  const payload = Buffer.from(JSON.stringify({ workspaceId, exp: Date.now() + 1000 * 60 * 60 * 24 * 14 })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ workspaceId, generation: currentGeneration, exp: Date.now() + 1000 * 60 * 60 * 24 * 14 })).toString('base64url');
   return `${payload}.${mac(payload)}`;
 }
 
@@ -33,8 +39,8 @@ export function workspaceFromRequest(request: FastifyRequest): string | null {
   const actual = Buffer.from(signature);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
   try {
-    const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { workspaceId: string; exp: number };
-    return value.exp > Date.now() ? value.workspaceId : null;
+    const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { workspaceId: string; exp: number; generation?: number };
+    return value.exp > Date.now() && (value.generation ?? 0) === currentGeneration ? value.workspaceId : null;
   } catch { return null; }
 }
 

@@ -84,4 +84,10 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
     return reply.type('application/octet-stream').send(createReadStream(path));
   });
   app.addHook('onClose', async () => { controller?.abort(); await task; });
+  return {
+    /** Whether a backup is being written; deleting all data waits for it instead of racing it. */
+    isRunning: () => current?.state === 'running',
+    /** Forgets the last backup after its folder was deleted with the rest of the data. */
+    forget: () => { if (current?.state !== 'running') current = undefined; },
+  };
 }

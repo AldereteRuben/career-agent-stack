@@ -124,6 +124,12 @@ export function createCodexOutputParser(): { onLine: (line: string) => void; fin
  * saving a result. This function never grants consent, adopts a draft, changes a profile or retries a dispatched task.
  * The installed CLI is pinned; native isolation has been demonstrated on macOS only. Other OSes stay unavailable.
  */
+// Folder for each run's prompt files (ADR 020). The API points it at the installation's own data folder
+// (DATA_LOCAL_PATH/tmp), so emptying it can never touch another installation's active run. Defaults to the
+// system's temporary directory for code that runs without the API (tests, probes).
+let taskRoot = tmpdir();
+export function setCodexTaskRoot(folder: string) { taskRoot = folder; }
+
 export async function executeCodex(
   input: AiSourceSnapshot,
   expectedAccountFingerprint: string,
@@ -160,7 +166,7 @@ export async function executeCodex(
   checkAccount(before, expectedAccountFingerprint, 'NO');
   if (signal?.aborted) throw new CodexExecutionError('CANCELLED', 'NO');
   let directory: string;
-  try { directory = await mkdtemp(path.join(tmpdir(), 'career-codex-task-')); }
+  try { directory = await mkdtemp(path.join(taskRoot, 'codex-task-')); }
   catch { throw new CodexExecutionError('INTERNAL', 'NO'); }
   let invoked = false;
   const parser = createCodexOutputParser();
