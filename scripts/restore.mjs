@@ -30,6 +30,8 @@ import {
 import { archiveRecovery, openArchive } from './lib/backup-verify.mjs';
 import { decryptFile, isAgeFile, privateTempDir } from './lib/backup-crypto.mjs';
 import { disconnectRestoredAi } from './lib/ai-restore.mjs';
+import { allowAdminToUseRole, runAsRole } from './lib/bootstrap-database.mjs';
+import { restoreMark } from './lib/uninstall-core.mjs';
 
 const DATABASE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 
@@ -170,6 +172,17 @@ function envText(template, values) {
   return `${lines.join('\n').replace(/\n+$/, '')}\n`;
 }
 
+/**
+ * Marks the new database as this restore's (ADR 020), so pnpm run uninstall can prove it may drop it and never
+ * touches the original installation's role. Only the owner may comment on a database: an administrator that is
+ * not a superuser acts as the owner for that statement, as bootstrap does. Returns false if it cannot be marked.
+ */
+async function markRestoredDatabase(client, database, owner, restoreId) {
+  const statement = () => client.query(`comment on database ${client.escapeIdentifier(database)} is ${client.escapeLiteral(restoreMark(restoreId))}`);
+  try { await statement(); return true; } catch (error) { if (error?.code !== '42501') return false; }
+  try { await allowAdminToUseRole(client, owner); await runAsRole(client, owner, statement); return true; } catch { return false; }
+}
+
 async function restore(options) {
   const archive = resolve(required(options.archive, '--archive'));
   const keyFile = resolve(required(options['key-file'], '--key-file'));
@@ -203,6 +216,7 @@ async function restore(options) {
   const appRole = decodeURIComponent(new URL(appBaseUrl).username);
 
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const restoreId = randomBytes(6).toString('hex'); // CAREER_RESTORE_ID: names this restored installation for pnpm run uninstall
   const databaseName = options.database ?? `career_restore_${stamp}`;
   if (!DATABASE_NAME.test(databaseName)) throw new RecoveryError({ es: '--database solo admite minúsculas, dígitos y _ (máx. 63, sin empezar por dígito).', en: '--database accepts lowercase letters, digits and _ only (max 63, not starting with a digit).' });
   if (liveDatabase && databaseName === liveDatabase.database) throw new RecoveryError({ es: `"${databaseName}" es la base de datos activa; la restauración nunca la sobrescribe.`, en: `"${databaseName}" is the live database; restore never overwrites it.` });
@@ -254,6 +268,10 @@ async function restore(options) {
     step(`Creando la base de datos nueva "${databaseName}" (propietario ${appRole})…`, `Creating the new database "${databaseName}" (owner ${appRole})…`);
     await adminClient.query(`create database ${adminClient.escapeIdentifier(databaseName)} owner ${adminClient.escapeIdentifier(appRole)} template template0 encoding 'UTF8'`);
     createdDatabase = true;
+    if (!(await markRestoredDatabase(adminClient, databaseName, appRole, restoreId))) warn(
+      `No se pudo marcar la base "${databaseName}" como de esta restauración; pnpm run uninstall no podrá borrarla y habrá que hacerlo a mano.`,
+      `Database "${databaseName}" could not be marked as this restore's; pnpm run uninstall will not be able to drop it, so it has to be removed by hand.`,
+    );
 
     const restoredUrl = withDatabase(appBaseUrl, databaseName);
     step('Restaurando el volcado en la base nueva (una sola transacción)…', 'Restoring the dump into the new database (single transaction)…');
@@ -341,7 +359,7 @@ async function restore(options) {
       NODE_ENV: 'development', WORKSPACE_MODE: 'local',
       WEB_HOST: '127.0.0.1', WEB_PORT: String(webPort), WEB_ORIGIN: `http://127.0.0.1:${webPort}`,
       API_HOST: '127.0.0.1', API_PORT: String(apiPort), API_BASE_URL: `http://127.0.0.1:${apiPort}`,
-      DATABASE_URL: restoredUrl, APP_ENCRYPTION_KEY: key, APP_SESSION_SECRET: sessionSecret,
+      DATABASE_URL: restoredUrl, APP_ENCRYPTION_KEY: key, APP_SESSION_SECRET: sessionSecret, CAREER_RESTORE_ID: restoreId,
       AI_PROVIDER: 'none', AI_ALLOW_PAID_FALLBACK: 'false', APPLICATION_WRITES_ENABLED: 'false', AUTOMATION_SUBMIT_ENABLED: 'false',
       AUTOMATION_DAILY_SUBMIT_CAP: '0', EMAIL_INTEGRATION_ENABLED: 'false', DIAGNOSTICS_ENABLED: 'false',
       FILES_DRIVER: 'local', FILES_LOCAL_PATH: filesDir, DATA_LOCAL_PATH: dataDir,

@@ -102,6 +102,17 @@ test('a Windows folder is accepted only when its ACL lists the current user alon
   assert.throws(() => restrictToCurrentUser(path, fake('')), /could not be restricted/);
 });
 
+test('a single file gets full control for the user without folder inheritance flags', () => {
+  const calls = [];
+  const path = 'C:\\Temp\\.uninstall-progress.json';
+  restrictToCurrentUser(path, (command, args) => {
+    calls.push([command, ...args].join(' '));
+    if (command === 'whoami') return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
+    return args.length === 1 ? `${path} DESKTOP-1\\ana:(F)\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n` : 'processed';
+  }, { file: true });
+  assert.ok(calls.includes(`icacls ${path} /inheritance:r /grant:r *S-1-5-21-1-2-3-1001:F`));
+});
+
 test('explicit entries for other principals, which /inheritance:r keeps, are removed one by one', () => {
   const path = 'C:\\Temp\\career-restore-abc';
   const removed = [];
