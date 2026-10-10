@@ -16,7 +16,7 @@ Status: **proposed** (issue [#25](https://github.com/AldereteRuben/career-agent-
 | Backups made from Settings | `data/backups/<id>/`: `career-backup-….tar.age`, its `.sha256`, and the key file in `keys/` | No; they are never removed |
 | Backups made with `pnpm run backup` | `backups/` by default: `.tar.age` archives and **one** key file per installation key, reused by every later backup | No |
 | Sign-in token, run records, logs | `setup-token`, `run/` and `logs/` in `DATA_LOCAL_PATH`; `postgres.log` there only when the launcher started a Homebrew server | No |
-| Prompts sent to Codex | A temporary folder `career-codex-task-*` in the system's temporary directory, removed when each run ends (`apps/api/src/ai/codex.ts`) | Left behind if the API process is killed during a run |
+| Prompts sent to Codex | A temporary folder `career-codex-task-*` in the system's temporary directory, removed when each run ends (`apps/api/src/ai/codex.ts`). The name does not say which installation created it. | Left behind if the API process is killed during a run |
 | Configuration and keys | `.env` (and `.env.pending` during a first run) | The documentation only says **not** to delete `.env` |
 | Session | Stateless signed cookie (`APP_SESSION_SECRET`), valid for 14 days, carrying the workspace id; only its signature and expiry are checked | Signing out clears the cookie in that browser only |
 | Restored installations | Their own folder and `.env`, a new database `career_restore_<UTC time>` (or `--database`) **owned by the original installation's role**, not marked by bootstrap (`scripts/restore.mjs`) | No |
@@ -64,12 +64,15 @@ This is a script, not only a guide. Dropping a database by hand on a shared Post
 
 **Order and resuming**
 
-- **Order:** database, then role, then documents and data (including `data/backups`), then the backup folder (only if asked), and finally `.env`, `.env.pending` and the progress file.
+- **Order:** database, then role, then documents and data (including `data/backups`), then the backup folder (only if asked), then `.env.pending` and `.env`, and finally the progress file.
 - **Resuming after a failure:**
   - Once every check has passed, and before the first deletion, the script writes a private progress file (`.uninstall-progress.json`, mode `0600`) next to the `.env`. It records the id, the database, role and folder names it verified, and each step as it completes.
   - On a later run with the same id, a step marked done is skipped. An object recorded as verified that no longer exists counts as done, and the checks are repeated for everything still present.
   - Without a progress file, a missing database or role is never assumed to be ours. The script says so and stops.
-- **What it never touches:** the checkout's code and `node_modules` (the guide says to delete the folder), the PostgreSQL server and its `postgres.log`, the Playwright browser cache, the Codex or Claude configuration, and anything outside the paths above.
+  - **Finishing without `.env`:** the progress file stays in the installation folder until it is the only thing left, and it records the id and that every earlier step is done. If deleting it fails after `.env` is gone, a later run finds it in the same folder (the checkout, or the folder of the `CAREER_ENV_FILE` path, which still exists), checks that `--confirm` matches the id it records, and deletes it. The progress file holds names and ids, never keys or passwords.
+  - **On Windows**, where `0600` does not restrict access, the progress file gets the same user-only ACL as the decryption folder of ADR 019 (`restrictToCurrentUser`), as the rest of #98 will do for the other private files.
+- **`postgres.log`** is inside `DATA_LOCAL_PATH` when the launcher started a Homebrew server, so it is deleted with that folder. The server itself stays installed and running. Before deleting `run/`, the script prints the command that stops it, taken from the launcher's record, and notes that the server keeps writing to the deleted log until it restarts.
+- **What it never touches:** the checkout's code and `node_modules` (the guide says to delete the folder), the PostgreSQL server (its installation and its data), the Playwright browser cache, the Codex or Claude configuration, and anything outside the paths above.
 - **Output** names paths and counts, never contents, and every message is in Spanish and English.
 
 ### 2. Delete all data from the app
@@ -82,12 +85,12 @@ Settings gets a "Delete all my data" action. It leaves the installation working 
   - It deletes every row of the workspace in an explicit order that respects the foreign keys above, children before parents. The order lives in one list in the code.
   - It also clears `search_query_cache` and `job_search_provider_cache`. `search_provider_budget` stays: it holds no personal data, and resetting it would let the app exceed the providers' request limits.
 - **What survives, and nothing else:**
-  - The workspace row, with its name and time zone reset to the defaults and its session generation increased.
+  - The workspace row, with every column except `id` set back to its default (today `name`, `timezone` and `discovery_enabled`, which returns to `false`) and its session generation increased. The test compares every column with the schema's defaults, so a column added later is covered too.
   - The `deletion_jobs` row for this operation: `id`, `workspace_id`, `status` and two timestamps. The workspace id is a random UUID with no personal meaning. Keeping it is what lets an interrupted deletion of files resume, as §19's preference for minimal identifiers allows.
 - **Files**, in the selected `DATA_LOCAL_PATH` and `FILES_LOCAL_PATH`, never assuming the checkout's `data/`:
   - After the transaction commits, it deletes the contents of `FILES_LOCAL_PATH`, `backups/` and `logs/`. A new `setup-token` replaces the old one. `run/` stays, because it only holds the process records that `pnpm run stop` needs.
   - A failure here leaves the `deletion_jobs` row in a pending state, retried when the API next starts, so files cannot outlive their records silently.
-  - The API also removes leftover `career-codex-task-*` folders of its own user from the temporary directory, when it starts and when this deletion runs, so a prompt left by a killed process is not kept.
+  - **Codex prompts:** T2 moves the temporary folder of each Codex run into the installation's own data folder (`tmp/codex-task-*` in `DATA_LOCAL_PATH`, private like the rest of it), instead of the system's temporary directory shared by every installation of the same user. The API empties that folder when it starts, when no run of this installation can be active (one API per installation), and during this deletion, after the runs have been cancelled. It never removes anything in the system's temporary directory, where it could hit another installation's active run.
 - **Sessions:** the workspace row stores a session generation number. The cookie carries it, and every authenticated request compares it with the stored value, cached in memory and refreshed when it changes. Deleting increments it, so every existing cookie stops working, in every browser. The person signs in again with the new token into the empty workspace.
 - **Proof:**
   - The tests read the table list from the schema and require that, after deletion, every table holds zero rows for that workspace, except the two rows listed above. Those must hold exactly the stated columns and values.
@@ -102,7 +105,7 @@ An application, a job or a generated PDF can be deleted where the interface show
 
 - **Off by default.** The app keeps every backup until the person chooses a policy; the project does not invent a period.
 - **The policy is visible and chosen in Settings:** keep the last N backups made from Settings, for example. The policy and the next deletion are shown next to the backups.
-- **Unit of deletion:** a backup made from Settings is its folder, `data/backups/<id>/`, deleted as a whole: the `.tar.age` archive, its `.sha256` and the key file in `keys/`. Someone who copied that folder elsewhere keeps both the archive and its key file; the guide says to store the key file apart.
+- **Unit of deletion:** a backup made from Settings is its folder, `data/backups/<id>/`, deleted as a whole: the `.tar.age` archive, its `.sha256` and the key file in `keys/`. Someone who copied that folder elsewhere keeps both the archive and its key file, and anyone who obtains that copy can decrypt it: the encryption of ADR 019 only protects a backup stored apart from its key file. The guide says to store the key file apart.
 - **Backups made with `pnpm run backup`** share one key file per installation key, and that file is also needed for future backups. Retention never deletes it. Retention for the backup folder stays manual and documented, with `pnpm run uninstall --include-backups` as the way to remove everything.
 - **Backups outside the installation** (downloaded or copied elsewhere) are never touched, and the app says so.
 
@@ -118,10 +121,10 @@ An application, a job or a generated PDF can be deleted where the interface show
      - a role with dependencies in another database;
      - services running;
      - each refused path: reserved, overlapping the backup folder, outside the installation, through a symbolic link;
-     - resuming after a failure in each step, with and without the progress file;
+     - resuming after a failure in each step, with and without the progress file, including after `.env` is gone;
      - `--include-backups`.
    - Then a manual run on a disposable installation.
-2. **T2 — Delete all data from the app** (maintainer, 🔒): the session generation (schema and API), the deletion order, the job and its retry, the Settings interface (Spanish and English, keyboard, mobile), and the proof tests in point 2.
+2. **T2 — Delete all data from the app** (maintainer, 🔒): the session generation (schema and API), the deletion order, the job and its retry, Codex prompts in the installation's data folder, the Settings interface (Spanish and English, keyboard, mobile), and the proof tests in point 2.
 3. **T3 — Delete single items**: application, job and PDF, one pull request each, after T2. Open to contributors.
 4. **T4 — Backup retention**: the policy in Settings, with tests on fictional backups showing that only expired folders are deleted, unexpired ones stay, and nothing outside `data/backups/` is touched.
 
