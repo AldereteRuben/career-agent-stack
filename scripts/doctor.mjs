@@ -3,7 +3,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, say, spawnTool } from './lib/local-env.mjs';
+import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, runPnpm, say } from './lib/local-env.mjs';
 
 let failed = 0;
 const pass = (es, en) => say(`✓ ${es}`, `✓ ${en}`);
@@ -17,7 +17,7 @@ async function main() {
   if (node === 24) pass(`Node ${process.versions.node}`, `Node ${process.versions.node}`);
   else fail(`Node ${process.versions.node}: se necesita 24.x`, `Node ${process.versions.node}: 24.x is required`, 'fnm install 24 && fnm use 24', 'fnm install 24 && fnm use 24');
 
-  const pnpm = spawnTool('pnpm', ['--version'], { encoding: 'utf8' });
+  const pnpm = runPnpm(['--version'], { encoding: 'utf8' });
   if (pnpm.status === 0 && pnpm.stdout.trim().startsWith('11.')) pass(`pnpm ${pnpm.stdout.trim()}`, `pnpm ${pnpm.stdout.trim()}`);
   else fail('pnpm 11 no encontrado', 'pnpm 11 not found', 'corepack enable', 'corepack enable');
 

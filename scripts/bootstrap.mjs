@@ -29,13 +29,13 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, installEnv, loadPg, loopbackHosts, mtimeOf, ok, parseEnv, pendingEnvPath, portIsFree, portIsOpen,
-  printRecovery, projectRoot, promoteWithoutOverwrite, say, spawnTool, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
+  printRecovery, projectRoot, promoteWithoutOverwrite, runPnpm, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
-const run = (command, args, env = process.env) => spawnTool(command, args, { cwd: projectRoot, stdio: 'inherit', env });
+const pnpm = (args, env = process.env) => runPnpm(args, { cwd: projectRoot, stdio: 'inherit', env });
 const readText = async (path) => { try { return await readFile(path, 'utf8'); } catch { return null; } };
 // Written on the role and database this script creates, so a re-run can tell them apart from anything else.
 const ownerMark = (id) => `career-agent-stack install ${id}`;
@@ -46,21 +46,21 @@ function checkTools() {
     es: `Se necesita Node.js 24; este terminal usa ${process.versions.node}.`, en: `Node.js 24 is required; this terminal uses ${process.versions.node}.`,
     fixes: [fix('fnm install 24 && fnm use 24  (o nvm install 24 && nvm use 24)', 'fnm install 24 && fnm use 24  (or nvm install 24 && nvm use 24)')],
   });
-  const pnpm = spawnTool('pnpm', ['--version'], { encoding: 'utf8' });
-  const major = Number(pnpm.stdout?.trim().split('.')[0]);
-  if (pnpm.error || pnpm.status !== 0 || major !== 11) throw new RecoveryError({
-    es: pnpm.status === 0 ? `Se necesita pnpm 11; está instalado ${pnpm.stdout.trim()}.` : 'No se encontró pnpm.',
-    en: pnpm.status === 0 ? `pnpm 11 is required; ${pnpm.stdout.trim()} is installed.` : 'pnpm was not found.',
+  const version = runPnpm(['--version'], { encoding: 'utf8' });
+  const major = Number(version.stdout?.trim().split('.')[0]);
+  if (version.error || version.status !== 0 || major !== 11) throw new RecoveryError({
+    es: version.status === 0 ? `Se necesita pnpm 11; está instalado ${version.stdout.trim()}.` : 'No se encontró pnpm.',
+    en: version.status === 0 ? `pnpm 11 is required; ${version.stdout.trim()} is installed.` : 'pnpm was not found.',
     fixes: [fix('corepack enable  (usa la versión fijada en package.json)', 'corepack enable  (uses the version pinned in package.json)'), fix('O: npm install -g pnpm@11', 'Or: npm install -g pnpm@11')],
   });
-  ok(`Node ${process.versions.node} y pnpm ${pnpm.stdout.trim()}`, `Node ${process.versions.node} and pnpm ${pnpm.stdout.trim()}`);
+  ok(`Node ${process.versions.node} y pnpm ${version.stdout.trim()}`, `Node ${process.versions.node} and pnpm ${version.stdout.trim()}`);
 }
 
 async function ensureDependencies() {
   const installed = await mtimeOf(at('node_modules/.modules.yaml'));
   if (installed && installed >= await mtimeOf(at('pnpm-lock.yaml')) && loadPg()) return ok('Dependencias instaladas', 'Dependencies installed');
   step('Instalando dependencias (pnpm install --frozen-lockfile)…', 'Installing dependencies (pnpm install --frozen-lockfile)…');
-  if (run('pnpm', ['install', '--frozen-lockfile']).status !== 0 || !loadPg()) throw new RecoveryError({
+  if (pnpm(['install', '--frozen-lockfile']).status !== 0 || !loadPg()) throw new RecoveryError({
     es: 'No se pudieron instalar las dependencias.', en: 'Dependencies could not be installed.',
     fixes: [fix('Comprueba la conexión y ejecuta: pnpm install --frozen-lockfile', 'Check the connection and run: pnpm install --frozen-lockfile'), rerun],
   });
@@ -271,7 +271,7 @@ async function checkCredentials(values, origin) {
 
 function migrate(values) {
   step('Aplicando migraciones pendientes (los datos existentes se conservan)…', 'Applying pending migrations (existing data is kept)…');
-  if (run('pnpm', ['run', '--silent', 'db:migrate'], installEnv(values)).status !== 0) throw new RecoveryError({
+  if (pnpm(['run', '--silent', 'db:migrate'], installEnv(values)).status !== 0) throw new RecoveryError({
     es: 'Las migraciones no se aplicaron.', en: 'The migrations were not applied.', fixes: [rerun],
   });
 }
@@ -279,7 +279,7 @@ function migrate(values) {
 function installBrowser() {
   if (process.env.CAREER_SKIP_BROWSER_INSTALL === '1') return warn('Chromium no se instaló (CAREER_SKIP_BROWSER_INSTALL=1): exportar PDF fallará hasta instalarlo.', 'Chromium was not installed (CAREER_SKIP_BROWSER_INSTALL=1): PDF export fails until it is.');
   step('Instalando Chromium para generar PDF localmente…', 'Installing Chromium for local PDF rendering…');
-  if (run('pnpm', ['--filter', '@career/api', 'exec', 'playwright', 'install', 'chromium']).status !== 0) warn(
+  if (pnpm(['--filter', '@career/api', 'exec', 'playwright', 'install', 'chromium']).status !== 0) warn(
     'Chromium no se pudo instalar: la aplicación funciona, pero exportar PDF fallará. Reinténtalo con: pnpm --filter @career/api exec playwright install chromium',
     'Chromium could not be installed: the app works, but PDF export will fail. Retry with: pnpm --filter @career/api exec playwright install chromium',
   );

@@ -12,13 +12,19 @@ import process from 'node:process';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
+/** Whether cmd.exe would treat part of this argument as syntax instead of text. */
+export const cmdWouldInterpret = (argument) => /[\s"&|<>^%!()]/.test(argument);
+
 /**
- * spawnSync that also finds pnpm on Windows, where it is a pnpm.cmd shim: Node cannot start a .cmd file without a
- * shell. Only pnpm goes through cmd.exe, and only with fixed arguments written in these scripts (never user input).
+ * Runs pnpm. On Windows pnpm is a pnpm.cmd shim, which Node cannot start without a shell, so it goes through
+ * cmd.exe. This is the only code that ever starts cmd.exe. cmd.exe interprets whitespace, quotes and & | < > ^ % ! ( ),
+ * so an argument containing one of them is refused instead of being handed over. Everything else the scripts start
+ * (node, docker, the PostgreSQL tools) uses spawnSync directly and never reaches a shell.
  */
-export function spawnTool(command, args, options = {}) {
-  if (process.platform === 'win32' && command === 'pnpm') return spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'pnpm', ...args], options);
-  return spawnSync(command, args, options);
+export function runPnpm(args, options = {}) {
+  if (process.platform !== 'win32') return spawnSync('pnpm', args, options);
+  if (args.some(cmdWouldInterpret)) throw new Error('A pnpm argument contains characters that cmd.exe would interpret; refusing to run it.');
+  return spawnSync('cmd.exe', ['/d', '/s', '/c', 'pnpm', ...args], options);
 }
 const checkoutEnvPath = resolve(projectRoot, '.env');
 
