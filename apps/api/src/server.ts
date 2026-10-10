@@ -1,6 +1,6 @@
 import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
-import { RELEASE_VERSION } from '@career/domain';
+import { RELEASE_VERSION, securityHeaders } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
 import { DiscoveryError, refreshBoard, registerDiscoveryRoutes, startDiscoveryWorker } from './discovery.js';
@@ -12,6 +12,7 @@ import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
+import { registerFactImportRoutes } from './fact-import-routes.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
@@ -47,6 +48,11 @@ catch {
   app.log.warn({ setupTokenPath }, 'First-run sign-in token written to a private local file');
 }
 
+// Browser security headers on every API response, including errors (shared with the dashboard, issue #24).
+app.addHook('onSend', async (_request, reply, payload) => {
+  for (const { key, value } of securityHeaders) reply.header(key, value);
+  return payload;
+});
 app.addHook('onRequest', async (request, reply) => {
   const rejected = enforceLocalRequest(request, reply);
   if (rejected) return;
@@ -185,7 +191,9 @@ app.put('/api/v1/profile/facts/:id', async (request, reply) => {
     const created = (await tx.insert(profileVersions).values({ workspaceId: id, revision: latest.revision + 1, locale: latest.locale, profile: latest.profile }).returning())[0]!;
     const unchanged = facts.filter((fact) => fact.id !== factId);
     if (unchanged.length) await tx.insert(profileFacts).values(unchanged.map((fact) => ({ ...omit(fact, 'id'), profileVersionId: created.id })));
-    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, details: parsed.details, tags: parsed.tags, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }).returning())[0]!;
+    // A corrected imported entry stays in its import, so undoing that import (ADR 018) still reaches it.
+    const original = facts.find((fact) => fact.id === factId)!;
+    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, details: parsed.details, tags: parsed.tags, source: 'USER_ENTERED', importId: original.importId, approvalStatus: 'SUGGESTED' }).returning())[0]!;
   });
   if (typeof result === 'string') return fail(reply, 409, result);
   await rescoreAfterChange(id);
@@ -355,6 +363,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 });
 
 registerResumeJourney(app, workspace);
+registerFactImportRoutes(app, workspace);
 registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
 app.get('/api/v1/applications', async (request, reply) => {

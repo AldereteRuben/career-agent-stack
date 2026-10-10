@@ -201,7 +201,7 @@ Aceptamos issues, propuestas, traducciones y pull requests en español o inglés
 ### Personas que contribuyen
 
 <a href="https://github.com/AldereteRuben/career-agent-stack/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=AldereteRuben/career-agent-stack" alt="Personas que contribuyen a Career Stack" />
+  <img src="https://raw.githubusercontent.com/AldereteRuben/career-agent-stack/contributors/contributors.svg" alt="Personas que contribuyen a Career Stack" />
 </a>
 
 ## Licencia

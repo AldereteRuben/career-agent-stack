@@ -76,6 +76,16 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 - The type check runs without starting anything: `pnpm --filter @career/api exec tsc -p e2e/tsconfig.json`.
 - Browser and fixture requests share pacing below the production rate limit. Production limits stay enabled.
 
+## What runs in CI
+
+| Suite | CI | Notes |
+|---|---|---|
+| `test:unit`, `test:evals`, `test:ai`, `test:ui-logic` | Yes, on Ubuntu and Windows | No database. `test:evals` checks synthetic relevance and ranking cases. |
+| `test:integration` | Yes, on Ubuntu | Backup and isolated restore plus the v0.4, v0.8, v0.9 and resume-import (0011) migrations, against the PostgreSQL 17 service with PostgreSQL 17 client tools (`CAREER_PG_BIN`). |
+| Sources, discovery, searches, bootstrap, backup, resume import (`test:fact-import`), preparation and assisted applications | Yes, on Ubuntu | Disposable databases on the PostgreSQL service. |
+| `test:clipboard`, `test:contributors`, `test:process`, reviewed assistant PDFs (`test/ai-documents.test.ts`) | Yes, on Ubuntu | The PDF check installs Playwright Chromium and `pdftotext` (poppler). |
+| `test:e2e`, `test:edge-cases`, `test:search-ui`, `test:ai-ui` | Yes, on Ubuntu | Separate "Browser tests" jobs, one per suite, in parallel with the others, with `E2E_PRODUCTION=1`. The `.env` points at an empty `career` database on the PostgreSQL service as the "live" database the harness must not touch. When a suite fails, `output/playwright/` (fictional data only) is uploaded as the `browser-<suite>-screenshots` artifact for 7 days. |
+
 ## Last local verification
 
 2026-10-04: v0.8.0 passed **31/31** general scenarios in run `c7fb6b4421e6` and **10/10** edge cases in `5b1711b7ec7d`, after adding a deterministic late-response regression. Disposable-stack teardown and isolation checks passed. The 241 domain/source/discovery/search/backup/integration/preparation/assisted checks also passed without skips. The additional v0.8 UI harness covers real cached execution plus mocked failure states, ES/EN, five viewport widths and 200% text scaling. Native Windows launch/stop, full Linux/WSL installation and a new-user study remain outside this local validation. See [v0.8.0 validation and limits](../releases/v0.8.0-validation.md).

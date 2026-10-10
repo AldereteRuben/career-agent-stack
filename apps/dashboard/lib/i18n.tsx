@@ -354,6 +354,8 @@ export function localizedError(code: string, locale: Locale) {
     ANSWER_REVISION_STALE: 'Existe una versión más reciente de esta respuesta. Recarga los datos y revisa la última versión.',
     PROFILE_REVISION_CONFLICT: 'Tu perfil cambió en otra pestaña o ventana. Recarga la última versión; tus cambios sin guardar se conservan para que puedas guardarlos de nuevo.',
     FACT_NOT_IN_CURRENT_REVISION: 'Este hecho pertenece a una revisión anterior del perfil. Recarga la última versión e inténtalo de nuevo.',
+    FACT_ARCHIVED: 'Una de las entradas está archivada. Restáurala por separado antes de confirmarla.',
+    IMPORT_CHANGED: 'La importación ha cambiado desde que la revisaste. Vuelve a abrirla para ver qué se deshará.',
   };
   const english: Record<string, string> = {
     AI_ARTIFACT_NOT_FOUND: 'We could not find that draft. It may have been replaced; refresh the page.', AI_CONSENT_NOT_FOUND: 'We could not find your permission to use the assistant. Check it in Settings and try again.',
@@ -397,6 +399,8 @@ export function localizedError(code: string, locale: Locale) {
     ANSWER_REVISION_STALE: 'A newer version of this answer exists. Reload the data and review the latest version.',
     PROFILE_REVISION_CONFLICT: 'Your profile changed in another tab or window. Reload the latest version; your unsaved edits are kept so you can save them again.',
     FACT_NOT_IN_CURRENT_REVISION: 'This fact belongs to an older profile revision. Reload the latest version and try again.',
+    FACT_ARCHIVED: 'One of the entries is archived. Restore it separately before confirming it.',
+    IMPORT_CHANGED: 'The import changed since you reviewed it. Open it again to see what will be undone.',
   };
   if (code.startsWith('SOURCE_HTTP_')) return (locale === 'en' ? english : spanish)[code] ?? (locale === 'en' ? 'The job board provider returned an error. Try again later.' : 'El proveedor de empleo devolvió un error. Inténtalo más tarde.');
   const messages = locale === 'en' ? english : spanish;
