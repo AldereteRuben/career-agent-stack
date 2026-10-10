@@ -86,7 +86,27 @@ export async function deletePath(path) {
 
 export const progressPath = (folder) => join(folder, PROGRESS_NAME);
 
-/** The progress of an interrupted uninstall in this folder, or null. A file that is not ours is refused. */
+/** Steps the uninstaller records as done, in order. */
+export const STEPS = ['database', 'role', 'data', 'backups', 'env'];
+const NAME_PATTERN = /^[A-Za-z0-9_]{1,63}$/;
+const NAME = { test: (value) => typeof value === 'string' && NAME_PATTERN.test(value) };
+const isText = (value) => typeof value === 'string' && value.length > 0 && value.length < 4096;
+
+/**
+ * Whether a progress file has exactly the expected shape for this folder. Its contents are never trusted to say
+ * WHAT to delete (the caller rebuilds that from .env); this only rejects files that are not ours or were edited.
+ */
+export function validProgress(progress, folder) {
+  if (!progress || typeof progress !== 'object' || progress.format !== PROGRESS_FORMAT || progress.version !== 1) return false;
+  if (!['install', 'restore'].includes(progress.kind) || typeof progress.id !== 'string' || !ID.test(progress.id) || progress.folder !== folder) return false;
+  if (!Array.isArray(progress.done) || !progress.done.every((step) => STEPS.includes(step)) || new Set(progress.done).size !== progress.done.length) return false;
+  if (progress.database !== null && !(progress.database && NAME.test(progress.database.name ?? '') && NAME.test(progress.database.owner ?? '') && isText(progress.database.server))) return false;
+  if (progress.role !== null && !NAME.test(progress.role ?? '')) return false;
+  if (progress.kind === 'restore' && progress.role !== null) return false;
+  return true;
+}
+
+/** The progress of an interrupted uninstall in this folder, or null. A file that is not ours, or was edited, is refused. */
 export async function readProgress(folder) {
   let text;
   try { text = await readFile(progressPath(folder), 'utf8'); } catch (error) {
@@ -95,7 +115,7 @@ export async function readProgress(folder) {
   }
   let progress;
   try { progress = JSON.parse(text); } catch { progress = null; }
-  if (progress?.format !== PROGRESS_FORMAT || progress.version !== 1 || !ID.test(progress.id ?? '') || !['install', 'restore'].includes(progress.kind) || !Array.isArray(progress.done)) {
+  if (!validProgress(progress, folder)) {
     throw new RecoveryError({
       es: `${progressPath(folder)} no es un archivo de progreso de desinstalación válido; no se toca nada.`,
       en: `${progressPath(folder)} is not a valid uninstall progress file; nothing is touched.`,

@@ -88,6 +88,17 @@ test('the progress file is private, round-trips and refuses anything that is not
   } else {
     assert.equal((await stat(progressPath(root))).mode & 0o777, 0o600);
   }
+  for (const edited of [
+    { ...progress, folder: tmpdir() },
+    { ...progress, done: ['database', 'rm -rf'] },
+    { ...progress, done: ['database', 'database'] },
+    { ...progress, database: { name: 'x"; drop', owner: 'career_abc123', server: 's' } },
+    { ...progress, role: 42 },
+    { ...progress, kind: 'restore' },
+  ]) {
+    await writeFile(progressPath(root), JSON.stringify(edited));
+    await assert.rejects(readProgress(root), /not a valid uninstall progress file/, JSON.stringify(edited).slice(0, 80));
+  }
   await writeFile(progressPath(root), JSON.stringify({ format: 'something-else', version: 1, kind: 'install', id: 'abc123', done: [] }));
   await assert.rejects(readProgress(root), /not a valid uninstall progress file/);
   await writeFile(progressPath(root), 'not json');

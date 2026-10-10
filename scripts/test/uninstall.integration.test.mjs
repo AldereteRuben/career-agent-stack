@@ -270,6 +270,47 @@ describe('pnpm run uninstall (disposable databases)', { skip: !adminUrl && 'set 
     assert.equal(await exists(join(install.folder, '.uninstall-progress.json')), false);
   });
 
+  test('a progress file can never make it delete a path outside the installation', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'career-uninstall-victim-'));
+    folders.push(outside);
+    await writeFile(join(outside, 'precious.txt'), 'fictional but precious');
+    const install = await makeInstallation();
+    const forged = (done) => JSON.stringify({
+      format: 'career-agent-stack-uninstall', version: 1, kind: 'install', id: install.id, folder: install.folder, runDir: outside,
+      database: { name: install.name, owner: install.name, server: '127.0.0.1:5432' }, role: install.name,
+      paths: [outside], backups: outside, envFiles: [join(outside, 'precious.txt')], refused: [], done,
+    });
+    // With .env present, what to delete comes from .env; the forged paths are ignored.
+    await writeFile(join(install.folder, '.uninstall-progress.json'), forged([]), { mode: 0o600 });
+    const withEnv = await uninstall(install.folder, ['--confirm', install.id, '--include-backups']);
+    assert.equal(withEnv.code, 0, withEnv.out);
+    assert.ok(await exists(join(outside, 'precious.txt')), 'Nothing outside the installation is deleted');
+    assert.equal(await exists(join(install.folder, 'backups')), false, 'Its own backups/ is what --include-backups deletes');
+
+    // Without .env, a progress file that has not finished every destructive step deletes nothing at all.
+    const other = await makeInstallation();
+    await rm(join(other.folder, '.env'));
+    await writeFile(join(other.folder, '.uninstall-progress.json'), forged([]).replaceAll(install.folder, other.folder).replaceAll(install.id, other.id).replaceAll(install.name, other.name), { mode: 0o600 });
+    const withoutEnv = await uninstall(other.folder, ['--confirm', other.id]);
+    assert.equal(withoutEnv.code, 1);
+    assert.match(withoutEnv.out, /does not show every step finished/);
+    assert.ok(await exists(join(outside, 'precious.txt')));
+    assert.ok(await databaseExists(other.name));
+    assert.ok(await exists(join(other.folder, 'data')));
+  });
+
+  test('a progress file that describes another database is refused', async () => {
+    const install = await makeInstallation();
+    await writeFile(join(install.folder, '.uninstall-progress.json'), JSON.stringify({
+      format: 'career-agent-stack-uninstall', version: 1, kind: 'install', id: install.id, folder: install.folder,
+      database: { name: 'career_someone_else', owner: 'career_someone_else', server: '127.0.0.1:5432' }, role: 'career_someone_else', done: ['database'],
+    }), { mode: 0o600 });
+    const result = await uninstall(install.folder, ['--confirm', install.id]);
+    assert.equal(result.code, 1);
+    assert.match(result.out, /describes another database or role/);
+    assert.ok(await databaseExists(install.name));
+  });
+
   test('a non-superuser administrator that created the installation can uninstall it', async () => {
     const adminRole = `${prefix}_admin`;
     const adminPassword = randomBytes(12).toString('hex');

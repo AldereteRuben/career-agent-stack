@@ -159,9 +159,30 @@ async function main() {
     fixes: [fix('Detenla con: pnpm run stop   (PostgreSQL puede seguir en marcha). Si los registros son antiguos: pnpm run stop --forget', 'Stop it with: pnpm run stop   (PostgreSQL may keep running). If the records are stale: pnpm run stop --forget')],
   });
 
-  const plan = progress ?? await buildPlan(env, identity, flags);
-  if (progress) say('Se retoma una desinstalación interrumpida.', 'Resuming an interrupted uninstall.');
-  if (!progress && plan.unmanaged && !flags['skip-database']) throw new RecoveryError({
+  // What to delete always comes from .env, never from the progress file: the progress file only says which of
+  // those steps already finished, and only if it describes the same database and role.
+  let plan;
+  if (env) {
+    plan = await buildPlan(env, identity, flags);
+    if (progress) {
+      if ((progress.database?.name ?? null) !== (plan.database?.name ?? null) || (progress.database?.owner ?? null) !== (plan.database?.owner ?? null) || (progress.role ?? null) !== (plan.role ?? null)) throw new RecoveryError({
+        es: `${shown(progressPath(folder))} describe otra base de datos o usuario que el .env; no se toca nada.`, en: `${shown(progressPath(folder))} describes another database or role than .env; nothing is touched.`,
+      });
+      plan.done = [...progress.done];
+      say('Se retoma una desinstalación interrumpida.', 'Resuming an interrupted uninstall.');
+    }
+  } else {
+    // .env is gone, which happens only after every destructive step. All that may be left is the progress file.
+    const required = [...(progress.database ? ['database'] : []), ...(progress.role ? ['role'] : []), 'data', 'env'];
+    if (!required.every((step) => progress.done.includes(step))) throw new RecoveryError({
+      es: `Falta el .env, pero ${shown(progressPath(folder))} no muestra terminados todos los pasos (${required.filter((step) => !progress.done.includes(step)).join(', ')}). No se borra nada.`,
+      en: `.env is missing, but ${shown(progressPath(folder))} does not show every step finished (${required.filter((step) => !progress.done.includes(step)).join(', ')}). Nothing is deleted.`,
+      fixes: [fix('Sigue los pasos manuales de docs/operations/uninstall.md.', 'Follow the manual steps in docs/operations/uninstall.md.')],
+    });
+    plan = { ...progress, database: null, role: null, paths: [], backups: null, envFiles: [], refused: [], done: [...progress.done] };
+    say('Se retoma una desinstalación interrumpida.', 'Resuming an interrupted uninstall.');
+  }
+  if (plan.unmanaged && !flags['skip-database']) throw new RecoveryError({
     es: `No se puede comprobar que la base de datos «${plan.unmanaged}» sea de esta instalación (no la creó bootstrap o no lleva su marca), así que no se toca nada.`,
     en: `It cannot be proven that database "${plan.unmanaged}" belongs to this installation (bootstrap did not create it, or it is not marked), so nothing is touched.`,
     fixes: [fix('Bórrala a mano siguiendo docs/operations/uninstall.md y vuelve a ejecutar con --skip-database para borrar lo demás.', 'Remove it by hand following docs/operations/uninstall.md, then run again with --skip-database to delete the rest.')],
