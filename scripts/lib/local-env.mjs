@@ -72,7 +72,8 @@ export class RecoveryError extends Error {
   }
 }
 
-export function printRecovery(error) {
+/** Prints a recovery message. `untouched: false` drops the closing promise that nothing was changed (for steps that already deleted something). */
+export function printRecovery(error, { untouched = true } = {}) {
   process.stderr.write('\n');
   if (error instanceof RecoveryError) {
     say(`✗ ${error.es}`, error.en, process.stderr);
@@ -84,7 +85,7 @@ export function printRecovery(error) {
     say('✗ Error inesperado.', 'Unexpected error.', process.stderr);
     process.stderr.write(`  ${maskSecrets(error instanceof Error ? error.message : String(error))}\n`);
   }
-  say('  No se ha borrado ni modificado ningún dato.', 'No data was deleted or modified.', process.stderr);
+  if (untouched) say('  No se ha borrado ni modificado ningún dato.', 'No data was deleted or modified.', process.stderr);
 }
 
 /** Removes credentials from connection strings and long base64-like values before printing. */

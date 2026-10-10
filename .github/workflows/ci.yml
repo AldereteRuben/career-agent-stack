@@ -96,6 +96,10 @@ jobs:
         run: pnpm run test:backup-crypto
         env:
           CAREER_AGE_CLI_TEST: '1'
+      - name: Verify uninstall with disposable databases and folders
+        run: pnpm run test:uninstall
+        env:
+          CAREER_UNINSTALL_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:backup-api
       - name: Install Chromium for synthetic browser tests
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
@@ -150,6 +154,8 @@ jobs:
       # Includes the private temporary folder check, which uses a user-only ACL on Windows.
       - name: Verify backup encryption on this system
         run: pnpm run test:backup-crypto
+      - name: Verify which folders uninstall may delete, and its private progress file, on this system
+        run: node --test scripts/test/uninstall-paths.test.mjs
   browser:
     # Browser suites on a disposable stack (apps/api/e2e/isolation.ts). They run in parallel with the other jobs.
     # Only fictional fixtures are used; failure screenshots are uploaded for a week. Fork pull requests run with the
