@@ -141,7 +141,8 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 ## Your data and current limits
 
 - Services listen on `127.0.0.1`. Do not expose them to your network as a multiuser service.
-- Keep `.env`, `data/`, exports, and backups private. These local files are excluded from Git. **Do not delete `.env` to reset the app**: it contains your encryption key.
+- Keep `.env`, `data/`, exports, and backups private. These local files are excluded from Git. **Do not delete `.env` to reset the app**: it holds the database connection and `APP_ENCRYPTION_KEY`, which your backups need to be restored.
+- **The app does not encrypt your data.** The documents in `data/files/` and the app's other files are protected only by file permissions for your user, and the database files by whatever your PostgreSQL installation (Homebrew or the Docker volume) sets, so turn on disk encryption: FileVault on macOS, BitLocker on Windows, LUKS on Linux. `APP_ENCRYPTION_KEY` does not encrypt anything stored; it authenticates your backups. On Windows, private files are not yet restricted to your user ([#94](https://github.com/AldereteRuben/career-agent-stack/issues/94)). Encrypted backups are planned ([#84](https://github.com/AldereteRuben/career-agent-stack/issues/84)).
 - PostgreSQL stores records; `data/files/` stores generated documents. The Docker database uses the persistent `career-postgres` volume. Do not remove the volume to troubleshoot a startup issue.
 - External board discovery is opt-in and requires an explicit review of the employer association and public-read permission. It searches configured boards only, not the whole job market.
 - Operational backups include the database and PDFs, with hashes and a signed manifest. Restoration requires the separate key file and creates a new database and folder; it never overwrites an existing workspace. The archive is **not encrypted**. See [backup and restore](docs/operations/backup-restore.md).

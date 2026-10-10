@@ -133,7 +133,7 @@ Messages are printed in Spanish and English. Spanish comes first when the system
 | `pnpm run stop` refuses a PID | Check the process with `ps -o pid,lstart,args -p <pid>` and stop it yourself if it is ours, then run `pnpm run stop --forget`. |
 | API or web app not ready in time | Read `data/logs/api.log` or `data/logs/dashboard.log`, then run `pnpm run doctor`. |
 
-Never delete `.env` to "reset" the installation: it holds the key that protects stored data.
+Never delete `.env` to "reset" the installation: it holds the database connection and `APP_ENCRYPTION_KEY`, which your backups need to be restored. That key does not encrypt stored data; the app relies on your disk encryption for that (see [SECURITY.md](../../SECURITY.md#data-at-rest)).
 
 ## No-AI operation
 
