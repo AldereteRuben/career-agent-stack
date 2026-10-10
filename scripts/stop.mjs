@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
 import { ok, printRecovery, processIdentity, projectRoot, runDir, say, warn } from './lib/local-env.mjs';
+import { windowsStopTree } from './lib/windows-process.mjs';
 
 const stopDatabase = process.argv.includes('--database');
 const forget = process.argv.includes('--forget');
@@ -21,12 +22,14 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (error
 
 /** Returns null when the running process is exactly the recorded one, otherwise the reason it is not. */
 async function mismatch(record) {
-  if (record.version !== 2 || !record.lstart || !record.cwd || !record.entry || !Number.isInteger(record.pgid)) return 'record from an older launcher without a verifiable identity';
+  // Windows cannot read another process's working directory, so there the exact start time and the absolute entry path stand in for it.
+  const needsCwd = process.platform !== 'win32';
+  if (record.version !== 2 || !record.lstart || (needsCwd && !record.cwd) || !record.entry || !Number.isInteger(record.pgid)) return 'record from an older launcher without a verifiable identity';
   if (record.projectRoot !== projectRoot) return 'record belongs to another checkout';
   const current = await processIdentity(record.pid);
   if (!current) return 'identity of the running process cannot be read';
   if (current.lstart !== record.lstart) return 'PID now belongs to a process started at another time';
-  if (current.cwd !== record.cwd) return 'working directory differs';
+  if (needsCwd && current.cwd !== record.cwd) return 'working directory differs';
   if (current.pgid !== record.pgid) return 'process group differs';
   const titles = Array.isArray(record.titles) ? record.titles : [];
   if (!current.args.includes(record.entry) && !titles.some((title) => current.args.startsWith(title))) return 'command line differs';
@@ -36,6 +39,7 @@ async function mismatch(record) {
 async function signal(record, name) {
   // Re-verify immediately before every signal, so a PID reused in between is never hit.
   if (await mismatch(record)) return false;
+  if (process.platform === 'win32') return windowsStopTree(record.pid); // no signals or process groups: end the process tree
   const group = record.pgid === record.pid;
   try { process.kill(group ? -record.pgid : record.pid, name); } catch { return false; }
   return true;
@@ -83,7 +87,8 @@ async function main() {
       }
       refused += 1;
       warn(`${record.name}: no se detiene el PID ${record.pid} porque no se puede confirmar que sea el que inició el lanzador.`, `${record.name}: PID ${record.pid} is not stopped because it cannot be confirmed as the one the launcher started (${reason}).`);
-      say(`    Compruébalo con: ps -o pid,lstart,args -p ${record.pid}   y detenlo tú si corresponde; luego: pnpm run stop --forget`, `Check it with: ps -o pid,lstart,args -p ${record.pid}   and stop it yourself if appropriate; then: pnpm run stop --forget`, process.stderr);
+      const inspect = process.platform === 'win32' ? `Get-CimInstance Win32_Process -Filter 'ProcessId=${record.pid}' | Select-Object ProcessId,CreationDate,CommandLine` : `ps -o pid,lstart,args -p ${record.pid}`;
+      say(`    Compruébalo con: ${inspect}   y detenlo tú si corresponde; luego: pnpm run stop --forget`, `Check it with: ${inspect}   and stop it yourself if appropriate; then: pnpm run stop --forget`, process.stderr);
       continue;
     }
     ok(`${record.name}: ${outcome === 'stopped' ? 'detenido' : 'ya no estaba en marcha'}`, `${record.name}: ${outcome === 'stopped' ? 'stopped' : 'was not running'}`);

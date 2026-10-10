@@ -1,10 +1,9 @@
 // Read-only diagnosis of this installation (pnpm run doctor). Changes nothing, starts nothing, prints no secrets.
 // Exits 1 when something blocks a start, with the next step for each problem in Spanish and English.
-import { spawnSync } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
-import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, say } from './lib/local-env.mjs';
+import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, say, spawnTool, whoUsesPort } from './lib/local-env.mjs';
 
 let failed = 0;
 const pass = (es, en) => say(`✓ ${es}`, `✓ ${en}`);
@@ -18,7 +17,7 @@ async function main() {
   if (node === 24) pass(`Node ${process.versions.node}`, `Node ${process.versions.node}`);
   else fail(`Node ${process.versions.node}: se necesita 24.x`, `Node ${process.versions.node}: 24.x is required`, 'fnm install 24 && fnm use 24', 'fnm install 24 && fnm use 24');
 
-  const pnpm = spawnSync('pnpm', ['--version'], { encoding: 'utf8' });
+  const pnpm = spawnTool('pnpm', ['--version'], { encoding: 'utf8' });
   if (pnpm.status === 0 && pnpm.stdout.trim().startsWith('11.')) pass(`pnpm ${pnpm.stdout.trim()}`, `pnpm ${pnpm.stdout.trim()}`);
   else fail('pnpm 11 no encontrado', 'pnpm 11 not found', 'corepack enable', 'corepack enable');
 
@@ -79,8 +78,8 @@ async function checkDatabase(env, label, port) {
     else fail(`Faltan migraciones (${applied}/${journal})`, `Migrations pending (${applied}/${journal})`, 'pnpm start (las aplica sin borrar datos) o pnpm run bootstrap', 'pnpm start (applies them without deleting data) or pnpm run bootstrap');
   } catch (error) {
     fail(`PostgreSQL responde en ${label} pero rechaza las credenciales de .env (${error.code ?? 'error'})`, `PostgreSQL answers on ${label} but refuses the .env credentials (${error.code ?? 'error'})`,
-      `Comprueba que es el servidor correcto: lsof -nP -iTCP:${port} -sTCP:LISTEN. No borres .env.`,
-      `Check it is the right server: lsof -nP -iTCP:${port} -sTCP:LISTEN. Do not delete .env.`);
+      `Comprueba que es el servidor correcto: ${whoUsesPort(port)}. No borres .env.`,
+      `Check it is the right server: ${whoUsesPort(port)}. Do not delete .env.`);
   } finally { await client.end().catch(() => undefined); }
 }
 

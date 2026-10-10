@@ -29,13 +29,13 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, installEnv, loadPg, loopbackHosts, mtimeOf, ok, parseEnv, pendingEnvPath, portIsFree, portIsOpen,
-  printRecovery, projectRoot, promoteWithoutOverwrite, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
+  printRecovery, projectRoot, promoteWithoutOverwrite, say, spawnTool, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
-const run = (command, args, env = process.env) => spawnSync(command, args, { cwd: projectRoot, stdio: 'inherit', env });
+const run = (command, args, env = process.env) => spawnTool(command, args, { cwd: projectRoot, stdio: 'inherit', env });
 const readText = async (path) => { try { return await readFile(path, 'utf8'); } catch { return null; } };
 // Written on the role and database this script creates, so a re-run can tell them apart from anything else.
 const ownerMark = (id) => `career-agent-stack install ${id}`;
@@ -46,7 +46,7 @@ function checkTools() {
     es: `Se necesita Node.js 24; este terminal usa ${process.versions.node}.`, en: `Node.js 24 is required; this terminal uses ${process.versions.node}.`,
     fixes: [fix('fnm install 24 && fnm use 24  (o nvm install 24 && nvm use 24)', 'fnm install 24 && fnm use 24  (or nvm install 24 && nvm use 24)')],
   });
-  const pnpm = spawnSync('pnpm', ['--version'], { encoding: 'utf8' });
+  const pnpm = spawnTool('pnpm', ['--version'], { encoding: 'utf8' });
   const major = Number(pnpm.stdout?.trim().split('.')[0]);
   if (pnpm.error || pnpm.status !== 0 || major !== 11) throw new RecoveryError({
     es: pnpm.status === 0 ? `Se necesita pnpm 11; está instalado ${pnpm.stdout.trim()}.` : 'No se encontró pnpm.',
@@ -155,6 +155,7 @@ async function ensureServer(database) {
   const label = `${database.host}:${database.port}`;
   if (await portIsOpen(database.host, database.port)) return ok(`PostgreSQL responde en ${label}`, `PostgreSQL answers on ${label}`);
   const fixes = [
+    ...(process.platform === 'win32' ? [fix('En Windows, con el servicio de PostgreSQL 17 (terminal como administrador): Start-Service postgresql-x64-17', 'On Windows, with the PostgreSQL 17 service (terminal as administrator): Start-Service postgresql-x64-17')] : []),
     fix('Con Homebrew: brew install postgresql@17 && brew services start postgresql@17', 'With Homebrew: brew install postgresql@17 && brew services start postgresql@17'),
     fix('O con Docker Desktop abierto: docker compose up -d --wait postgres, y CAREER_ADMIN_DATABASE_URL=postgresql://career:career@127.0.0.1:5432/postgres', 'Or with Docker Desktop open: docker compose up -d --wait postgres, and CAREER_ADMIN_DATABASE_URL=postgresql://career:career@127.0.0.1:5432/postgres'),
     rerun,

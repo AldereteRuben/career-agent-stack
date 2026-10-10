@@ -18,7 +18,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
   pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
-  waitFor, warn, writePrivateFileAtomic,
+  spawnTool, waitFor, warn, whoUsesPort, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { clipboardTools, missingClipboardAdvice } from './lib/clipboard.mjs';
 
@@ -33,7 +33,7 @@ const problem = (es, en) => { attention += 1; warn(es, en); };
 const at = (...parts) => resolve(projectRoot, ...parts);
 
 const fix = (es, en) => ({ es, en });
-const run = (command, commandArgs, options = {}) => spawnSync(command, commandArgs, { cwd: projectRoot, stdio: 'inherit', ...options });
+const run = (command, commandArgs, options = {}) => spawnTool(command, commandArgs, { cwd: projectRoot, stdio: 'inherit', ...options });
 const exists = async (path) => { try { await access(path); return true; } catch { return false; } };
 
 // One launcher per checkout: migrations, dependency installation and .next are shared,
@@ -89,7 +89,7 @@ function checkNode() {
 }
 
 async function checkDependencies() {
-  const pnpm = spawnSync('pnpm', ['--version'], { encoding: 'utf8' });
+  const pnpm = spawnTool('pnpm', ['--version'], { encoding: 'utf8' });
   if (pnpm.error || pnpm.status !== 0) throw new RecoveryError({
     es: 'No se encontró pnpm.', en: 'pnpm was not found.',
     fixes: [fix('Actívalo con: corepack enable', 'Enable it with: corepack enable'), fix('O instálalo: npm install -g pnpm@11', 'Or install it: npm install -g pnpm@11')],
@@ -183,7 +183,7 @@ async function ensureDatabase({ database }) {
 }
 
 function runQuiet(command, commandArgs, env) {
-  const result = spawnSync(command, commandArgs, { cwd: projectRoot, encoding: 'utf8', env });
+  const result = spawnTool(command, commandArgs, { cwd: projectRoot, encoding: 'utf8', env });
   if (result.status !== 0) process.stderr.write(maskSecrets(`${result.stdout ?? ''}\n${result.stderr ?? ''}`).split('\n').slice(-25).join('\n') + '\n');
   return result.status === 0;
 }
@@ -216,7 +216,7 @@ async function startDetached(name, command, commandArgs, { cwd, env, entry, titl
   const logPath = resolve(logDir, `${name}.log`);
   const log = await open(logPath, 'a', 0o600);
   await chmod(logPath, 0o600);
-  const child = spawn(command, commandArgs, { cwd, env, detached: true, stdio: ['ignore', log.fd, log.fd] });
+  const child = spawn(command, commandArgs, { cwd, env, detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref();
   await log.close();
   let identity = null;
@@ -280,7 +280,7 @@ async function ensureApi({ apiBase, apiPort, childEnv }) {
     es: `El puerto ${apiPort} está ocupado pero la API no responde como sana.`, en: `Port ${apiPort} is busy but the API does not report healthy.`,
     fixes: [
       fix('Si lo inició este lanzador: pnpm run stop y vuelve a probar', 'If this launcher started it: pnpm run stop and try again'),
-      fix(`Para ver quién lo usa: lsof -nP -iTCP:${apiPort} -sTCP:LISTEN`, `To see what uses it: lsof -nP -iTCP:${apiPort} -sTCP:LISTEN`),
+      fix(`Para ver quién lo usa: ${whoUsesPort(apiPort)}`, `To see what uses it: ${whoUsesPort(apiPort)}`),
       fix('Si la API responde pero la base de datos no, inicia PostgreSQL primero', 'If the API answers but the database does not, start PostgreSQL first'),
     ],
   });
@@ -324,7 +324,7 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
     es: `El puerto ${webPort} está ocupado por otra cosa.`, en: `Port ${webPort} is used by something else.`,
     fixes: [
       fix('Si lo inició este lanzador: pnpm run stop', 'If this launcher started it: pnpm run stop'),
-      fix(`Para ver quién lo usa: lsof -nP -iTCP:${webPort} -sTCP:LISTEN`, `To see what uses it: lsof -nP -iTCP:${webPort} -sTCP:LISTEN`),
+      fix(`Para ver quién lo usa: ${whoUsesPort(webPort)}`, `To see what uses it: ${whoUsesPort(webPort)}`),
     ],
   });
   const needsBuild = await dashboardNeedsBuild(apiBase);
@@ -350,7 +350,7 @@ async function ensureDashboard({ webOrigin, webPort, apiBase }) {
   ok(`Aplicación web lista en ${webOrigin}`, `Web app ready on ${webOrigin}`);
 }
 
-const availableClipboardTools = () => clipboardTools({ has: (tool) => spawnSync('which', [tool], { stdio: 'ignore' }).status === 0 });
+const availableClipboardTools = () => clipboardTools({ has: (tool) => spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', [tool], { stdio: 'ignore' }).status === 0 });
 
 // Runs detached after the launcher exits: clears the clipboard only if it still holds the token.
 // It receives a SHA-256 of the token, never the token itself, so nothing secret appears in `ps`.
@@ -419,8 +419,9 @@ async function main() {
   await signInHint();
   say('  Para detener solo lo que inició este lanzador: pnpm run stop', 'To stop only what this launcher started: pnpm run stop');
   if (openBrowser) {
-    const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
-    if (spawnSync(opener, [`${settings.webOrigin}/`], { stdio: 'ignore' }).status !== 0) say(`  Abre ${settings.webOrigin} en tu navegador.`, `Open ${settings.webOrigin} in your browser.`);
+    // explorer.exe reports failure even when it opens the page, so Windows goes through `start`.
+    const [opener, openerArgs] = process.platform === 'win32' ? ['cmd.exe', ['/d', '/c', 'start', '']] : [process.platform === 'darwin' ? 'open' : 'xdg-open', []];
+    if (spawnSync(opener, [...openerArgs, `${settings.webOrigin}/`], { stdio: 'ignore' }).status !== 0) say(`  Abre ${settings.webOrigin} en tu navegador.`, `Open ${settings.webOrigin} in your browser.`);
   }
 }
 
