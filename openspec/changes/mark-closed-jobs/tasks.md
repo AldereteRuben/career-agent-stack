@@ -8,8 +8,8 @@
 
 ## 2. Decision rule (domain)
 
-- [ ] 2.1 Implement `nextAvailability` with `ABSENCE_READS = 3` and `ABSENCE_MIN_HOURS = 48` in `packages/domain`; verify unit tests in `packages/domain/test/job-availability.test.ts` cover every scenario of the "possibly closed", "reappearing", "person's decision" and "manual job" requirements, plus the boundaries (2 vs 3 misses, 47 vs 48 hours, Himalayas-only seen recently vs long ago), with `pnpm run test:unit`.
-- [ ] 2.2 Implement the suspicious-read check (empty after a non-empty complete read, or under half the previous complete count) as a pure function; verify unit tests for empty, 49%, 50% and first-ever read pass with `pnpm run test:unit`.
+- [x] 2.1 Implement `nextAvailability` with `ABSENCE_READS = 3` and `ABSENCE_MIN_HOURS = 48` in `packages/domain`; verify unit tests in `packages/domain/test/job-availability.test.ts` cover every scenario of the "possibly closed", "reappearing", "person's decision" and "manual job" requirements, plus the boundaries (2 vs 3 misses, 47 vs 48 hours, Himalayas-only seen recently vs long ago), with `pnpm run test:unit`.
+- [x] 2.2 Implement the suspicious-read check (empty after a non-empty complete read, or under half the previous complete count) as a pure function; verify unit tests for empty, 49%, 50% and first-ever read pass with `pnpm run test:unit`.
 
 ## 3. Counting absence in the readers
 
