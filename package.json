@@ -33,6 +33,7 @@
     "test:sources": "pnpm --filter @career/api exec tsx --test test/sources.test.ts",
     "verify:sources": "pnpm --filter @career/api exec tsx scripts/verify-sources.ts",
     "test:backup": "node --test scripts/test/backup-archive.test.mjs",
+    "test:backup-crypto": "node --test scripts/test/backup-crypto.test.mjs",
     "test:backup-api": "pnpm --filter @career/api exec tsx --test test/backup-routes.test.ts",
     "test:setup": "node scripts/test/setup-smoke.mjs",
     "test:bootstrap-db": "node --test scripts/test/bootstrap-database.test.mjs",
@@ -55,5 +56,9 @@
     "eslint-plugin-jsx-a11y": "6.10.2",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.71.1"
+  },
+  "dependencies": {
+    "@scure/base": "2.4.0",
+    "age-encryption": "0.3.1"
   }
 }
