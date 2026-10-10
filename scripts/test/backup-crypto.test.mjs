@@ -102,6 +102,20 @@ test('a Windows folder is accepted only when its ACL lists the current user alon
   assert.throws(() => restrictToCurrentUser(path, fake('')), /could not be restricted/);
 });
 
+test('explicit entries for other principals, which /inheritance:r keeps, are removed one by one', () => {
+  const path = 'C:\\Temp\\career-restore-abc';
+  const removed = [];
+  const run = (command, args) => {
+    if (command === 'whoami') return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
+    if (args[1] === '/remove:g') { removed.push(args[2]); return 'processed'; }
+    if (args.length > 1) return 'processed';
+    const entries = ['NT AUTHORITY\\SYSTEM:(OI)(CI)(F)', 'BUILTIN\\Administrators:(OI)(CI)(F)', 'DESKTOP-1\\ana:(OI)(CI)(F)'].filter((entry) => !removed.some((name) => entry.startsWith(`${name}:`)));
+    return `${path} ${entries.join('\r\n    ')}\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n`;
+  };
+  restrictToCurrentUser(path, run);
+  assert.deepEqual(removed, ['NT AUTHORITY\\SYSTEM', 'BUILTIN\\Administrators']);
+});
+
 test('the temporary folder for decrypted backups is private on this system', async () => {
   const folder = await privateTempDir('career-crypto-private-');
   try {

@@ -88,15 +88,20 @@ export function parseIcacls(output, path) {
 }
 
 /**
- * Restricts a Windows folder to the current user: inheritance removed, full control for the user only. Throws unless
- * `icacls` then lists exactly that user, so a failure stops the caller before any plaintext is written.
+ * Restricts a Windows folder to the current user: inheritance removed, full control for the user, and any other
+ * entry removed (a folder can carry explicit entries for SYSTEM or Administrators, which `/inheritance:r` keeps).
+ * Throws unless `icacls` then lists exactly that user, so a failure stops the caller before any plaintext is written.
  */
 export function restrictToCurrentUser(path, run = execFileSync) {
   const user = windowsUser(run);
-  run('icacls', [path, '/inheritance:r', '/grant:r', `*${user.sid}:(OI)(CI)F`], { encoding: 'utf8', windowsHide: true });
-  const principals = parseIcacls(run('icacls', [path], { encoding: 'utf8', windowsHide: true }), path);
-  if (principals.length !== 1 || principals[0].toLowerCase() !== user.name.toLowerCase()) {
-    throw new Error(`The temporary folder could not be restricted to ${user.name} (found: ${principals.join(', ') || 'no entries'}).`);
+  const icacls = (...args) => run('icacls', [path, ...args], { encoding: 'utf8', windowsHide: true });
+  const others = (listing) => parseIcacls(listing, path).filter((name) => name.toLowerCase() !== user.name.toLowerCase());
+  icacls('/inheritance:r', '/grant:r', `*${user.sid}:(OI)(CI)F`);
+  for (const other of others(icacls())) icacls('/remove:g', other);
+  const listing = icacls();
+  const principals = parseIcacls(listing, path);
+  if (principals.length !== 1 || others(listing).length) {
+    throw new Error(`The temporary folder could not be restricted to ${user.name} (found: ${principals.join(', ') || 'no entries'}).\n${listing.trim()}`);
   }
 }
 
