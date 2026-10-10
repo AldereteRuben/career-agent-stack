@@ -358,3 +358,11 @@ Encrypted operational backups ([ADR 019](docs/decisions/019-encrypted-backups.md
 | `@noble/hashes` | 2.0.1, 2.4.0 | MIT |
 | `@noble/post-quantum` | 0.5.4 | MIT |
 | `@scure/base` | 2.4.0 | MIT |
+
+## Agent workflow templates
+
+The OpenSpec spec-driven workflow adds generated agent instructions to the repository: `.claude/commands/opsx/`, `.claude/skills/openspec-*/` and `.agents/skills/openspec-*/`. They are templates written by `openspec init` and are development tooling only; they are not part of the application or its installed dependencies. `openspec/config.yaml` is project-authored.
+
+| Tool | Version used | Declared license |
+| --- | --- | --- |
+| `@fission-ai/openspec` | 1.14.1 | MIT |
