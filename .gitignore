@@ -16,6 +16,7 @@ test-results/
 .playwright-cli/
 storage/
 backups/
+.uninstall-progress.json
 *.pem
 *.key
 *.sqlite*

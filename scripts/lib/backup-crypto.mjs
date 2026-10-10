@@ -88,15 +88,16 @@ export function parseIcacls(output, path) {
 }
 
 /**
- * Restricts a Windows folder to the current user: inheritance removed, full control for the user, and any other
- * entry removed (a folder can carry explicit entries for SYSTEM or Administrators, which `/inheritance:r` keeps).
- * Throws unless `icacls` then lists exactly that user, so a failure stops the caller before any plaintext is written.
+ * Restricts a Windows folder (or, with `{ file: true }`, a file) to the current user: inheritance removed, full
+ * control for the user, and any other entry removed (a folder can carry explicit entries for SYSTEM or
+ * Administrators, which `/inheritance:r` keeps). Throws unless `icacls` then lists exactly that user, so a failure
+ * stops the caller before anything private is written.
  */
-export function restrictToCurrentUser(path, run = execFileSync) {
+export function restrictToCurrentUser(path, run = execFileSync, { file = false } = {}) {
   const user = windowsUser(run);
   const icacls = (...args) => run('icacls', [path, ...args], { encoding: 'utf8', windowsHide: true });
   const others = (listing) => parseIcacls(listing, path).filter((name) => name.toLowerCase() !== user.name.toLowerCase());
-  icacls('/inheritance:r', '/grant:r', `*${user.sid}:(OI)(CI)F`);
+  icacls('/inheritance:r', '/grant:r', `*${user.sid}:${file ? '' : '(OI)(CI)'}F`);
   for (const other of others(icacls())) icacls('/remove:g', other);
   const listing = icacls();
   const principals = parseIcacls(listing, path);
