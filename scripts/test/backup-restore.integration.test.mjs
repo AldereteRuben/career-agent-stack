@@ -391,6 +391,9 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal(env.APP_ENCRYPTION_KEY, secrets.encryptionKey);
     assert.ok(env.APP_SESSION_SECRET.length >= 32 && env.APP_SESSION_SECRET !== secrets.sessionSecret, 'fresh session secret');
     assert.equal(new URL(env.DATABASE_URL).pathname, `/${database}`);
+    // ADR 020: the restored installation has its own id, and its database carries that id's mark for pnpm run uninstall.
+    assert.match(env.CAREER_RESTORE_ID, /^[a-f0-9]{12}$/);
+    assert.equal((await admin.query(`select shobj_description(oid, 'pg_database') as mark from pg_database where datname = $1`, [database])).rows[0].mark, `career-agent-stack restore ${env.CAREER_RESTORE_ID}`);
     assert.equal(env.WEB_ORIGIN, 'http://127.0.0.1:3190');
     assert.equal(env.API_PORT, '3191');
     for (const flag of ['APPLICATION_WRITES_ENABLED', 'AUTOMATION_SUBMIT_ENABLED', 'EMAIL_INTEGRATION_ENABLED']) assert.equal(env[flag], 'false');
