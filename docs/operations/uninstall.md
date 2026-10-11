@@ -6,6 +6,8 @@
 
 ## English
 
+**To delete your data but keep the app**, use **Settings → Delete all my data** instead: it empties this installation, signs every browser out and leaves the app ready to start again.
+
 ### 1. Before you start
 
 - **Make a backup and keep it, with its key file, outside this folder** if you might want your data again ([backup guide](backup-restore.md)). Uninstalling cannot be undone.
@@ -81,6 +83,8 @@ docker compose down -v    # only if the list above is empty
 - The PostgreSQL server, the Playwright browsers and the project's code: delete them yourself if you no longer need them.
 
 ## Español
+
+**Para borrar tus datos sin quitar la app**, usa **Ajustes → Borrar todos mis datos**: vacía esta instalación, cierra la sesión en todos los navegadores y deja la app lista para empezar de nuevo.
 
 ### 1. Antes de empezar
 

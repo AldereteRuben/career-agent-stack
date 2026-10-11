@@ -198,6 +198,41 @@ try {
     await page.locator('#search-form-error').waitFor(); assert.match(await page.locator('#search-form-error').innerText(), /200 characters/);
     assert.equal(await hasHorizontalOverflow(page), false);
   });
+  // Last: it deletes everything in the isolated workspace (ADR 020).
+  await run('delete-all-data-signs-out-and-empties', async () => {
+    await setLocale(page, 'es'); await page.setViewportSize({ width: 1096, height: 800 });
+    const oldCookie = (await context.cookies()).find((cookie) => cookie.name === 'career_session');
+    assert.ok(oldCookie, 'Signed in before deleting');
+    await page.goto('/settings');
+    await page.getByText('Borrar todos mis datos', { exact: true }).first().click();
+    const phrase = page.getByLabel(/Para confirmar, escribe BORRAR TODOS MIS DATOS/);
+    const submit = page.getByRole('button', { name: 'Borrar todos mis datos', exact: true });
+    await phrase.fill('borrar algo'); assert.equal(await submit.isDisabled(), true, 'A wrong phrase cannot delete');
+    await phrase.fill('BORRAR TODOS MIS DATOS'); assert.equal(await submit.isDisabled(), false);
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await hasHorizontalOverflow(page), false, 'The panel fits a phone screen');
+    await submit.scrollIntoViewIfNeeded(); await page.screenshot({ path: join(output, 'delete-all-panel-mobile.png'), fullPage: false });
+    await page.setViewportSize({ width: 1096, height: 800 });
+    const done = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith('/api/v1/workspace/delete-all'));
+    await submit.click();
+    assert.equal((await done).status(), 200);
+    await page.getByText('Se borraron todos tus datos de esta instalación', { exact: false }).waitFor();
+    await page.screenshot({ path: join(output, 'delete-all-done.png'), fullPage: false });
+    // Every session stops working: this browser's cookie is cleared, and the old cookie is rejected anywhere.
+    assert.equal((await api.get<{ authenticated: boolean }>('/session')).authenticated, false);
+    const stale = await browser.newContext({ baseURL: stack.uiUrl });
+    try {
+      await stale.addCookies([oldCookie!]);
+      const response = await stale.request.get(`${stack.uiUrl}/api/v1/applications`, { headers: { Origin: stack.uiUrl } });
+      assert.equal(response.status(), 401, 'An old session cookie no longer works');
+    } finally { await stale.close(); }
+    // A new single-use code signs in to an empty workspace.
+    await signIn(page, stack.uiUrl, await stack.readToken());
+    const emptied = await api.get<{ revision: number; profile: { identity?: { fullName?: string } } }>('/profile');
+    assert.equal(emptied.revision, 1); assert.equal(emptied.profile.identity?.fullName, undefined);
+    const rows = await stack.db.query("select (select count(*) from jobs)::int as jobs, (select count(*) from applications)::int as applications, (select count(*) from document_versions)::int as documents, (select count(*) from profile_facts)::int as facts");
+    assert.deepEqual(rows.rows[0], { jobs: 0, applications: 0, documents: 0, facts: 0 });
+  });
   await context.close(); await stack.assertLiveUntouched();
 } finally {
   await browser.close(); await stack.teardown();
