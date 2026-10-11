@@ -18,6 +18,8 @@ export const workspaces = pgTable('workspaces', {
   discoveryEnabled: boolean('discovery_enabled').notNull().default(false),
   name: varchar('name', { length: 160 }).notNull().default('My career workspace'),
   timezone: varchar('timezone', { length: 100 }).notNull().default('Europe/Madrid'),
+  // Increased by "delete all my data" (ADR 020); session cookies carry it, so older sessions stop working.
+  sessionGeneration: integer('session_generation').notNull().default(0),
   createdAt: created(), updatedAt: changed(),
 });
 
