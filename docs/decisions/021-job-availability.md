@@ -40,7 +40,7 @@ The sources read today:
    - The person's decision wins over sources: a job they closed stays `CLOSED` even if a source still lists it, and the job page says so.
    - Reopening resets every absence count of the job.
 7. **History:** every change is recorded with its reason (absent from sources, seen again, closed by the person, reopened by the person). It holds no job content.
-8. **Applications never change:** availability never cancels, submits, changes or blocks an application. Preparing one for a job that is not `OPEN` shows a warning.
+8. **Applications never change:** availability never cancels, submits, changes or blocks an application. Person-initiated preparation for a job that is not `OPEN` shows a warning and remains possible. Automatic preparation only attempts `OPEN` jobs; it skips `POSSIBLY_CLOSED`, `CLOSED`, and `UNKNOWN` without recording a failed attempt. A skipped job can enter the automatic queue if it becomes `OPEN` again.
 9. **A shared Remotive or Arbeitnow download updates every workspace's sources**, because the feed is public. Each workspace is evaluated and recorded separately.
 
 The thresholds (`3` reads, `48` hours, `50%` shrinkage) are constants next to the decision function in `packages/domain`. Changing them is a new decision.

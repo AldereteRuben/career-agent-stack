@@ -25,7 +25,7 @@
 ## 5. Interface
 
 - [x] 5.1 Job page (`apps/dashboard/app/jobs/[id]/page.tsx`): state with its latest reason, history list, Close and Reopen buttons, "a source still lists it" note; Spanish and English labels in `apps/dashboard/lib/labels.ts`; verify with `pnpm run test:ui-logic` and a browser scenario in `apps/api/e2e/edge-cases.ts` at desktop and 390 px (no horizontal scroll, keyboard reachable).
-- [ ] 5.2 Text badges for non-`OPEN` jobs in job lists and My applications, and a warning (not a block) when preparing an application for a non-`OPEN` job; verify in the same browser scenario, including that filtering by `POSSIBLY_CLOSED` returns exactly those jobs.
+- [x] 5.2 Text badges for non-`OPEN` jobs in job lists and My applications, and a warning (not a block) when preparing an application for a non-`OPEN` job; verify in the same browser scenario, including that filtering by `POSSIBLY_CLOSED` returns exactly those jobs.
 - [ ] 5.3 Update README and README.es "current limits" (how availability is decided and what stays manual); verify both languages say the same.
 
 ## 6. Integration check

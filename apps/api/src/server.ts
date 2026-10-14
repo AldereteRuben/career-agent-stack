@@ -9,7 +9,7 @@ import { mkdir, readFile, rm, writeFile, chmod, unlink } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql, getTableColumns } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
@@ -388,9 +388,11 @@ const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: 
 
 app.get('/api/v1/applications', async (request, reply) => {
   const query = request.query as { offset?: string; limit?: string; q?: string };
-  const scoped = eq(applications.workspaceId, workspace(request));
+  const workspaceId = workspace(request); const scoped = eq(applications.workspaceId, workspaceId);
+  const selection = { ...getTableColumns(applications), jobAvailability: jobs.availability };
+  const matchingJob = and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId));
   // Preserve the existing array contract for internal clients. The tracker requests pages explicitly.
-  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select().from(applications).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
+  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
   const offset = Number(query.offset ?? 0); const limit = Number(query.limit ?? 25);
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || typeof (query.q ?? '') !== 'string' || (query.q?.length ?? 0) > 200) return fail(reply, 400, 'INVALID_INPUT');
   const term = query.q?.trim() ?? '';
@@ -399,7 +401,7 @@ app.get('/api/v1/applications', async (request, reply) => {
   const counts = await db.select({ total: sql<number>`count(*)::int` }).from(applications).where(where);
   const total = counts[0]?.total ?? 0;
   const pageOffset = Math.min(offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-  const items = await db.select().from(applications).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
+  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
   return { items, total, offset: pageOffset, limit };
 });
 app.post('/api/v1/applications', async (request, reply) => {
@@ -426,7 +428,7 @@ app.post('/api/v1/applications', async (request, reply) => {
 });
 app.get('/api/v1/applications/:id', async (request, reply) => {
   const id = workspace(request); const { id: applicationId } = request.params as { id: string };
-  const row = (await db.select().from(applications).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
+  const row = (await db.select({ ...getTableColumns(applications), jobAvailability: jobs.availability }).from(applications).leftJoin(jobs, and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId))).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
   if (!row) return fail(reply, 404, 'NOT_FOUND');
   const document = row.documentId ? (await db.select({ approvalStatus: documentVersions.approvalStatus }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.id, row.documentId))).limit(1))[0] : null;
   return { ...row, documentApprovalStatus: document?.approvalStatus ?? null };
@@ -612,8 +614,9 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
-registerJobSearchRoutes(app, workspace, prepareApplication);
-const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareApplication);
+const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
+registerJobSearchRoutes(app, workspace, prepareAutomatically);
+const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
 let stopJobSearches = startJobSearches();
 app.addHook('onClose', () => stopJobSearches());
 registerDiscoveryRoutes(app, workspace);

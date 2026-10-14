@@ -221,6 +221,13 @@ export async function runJobSearchTick(onPrepare?: OnPrepare): Promise<void> {
 }
 
 const preparationRetryAt = (attempt: number, now = Date.now()) => new Date(now + Math.min(24 * 60 * 60 * 1000, 60_000 * 2 ** Math.min(Math.max(0, attempt - 1), 10)));
+type PreparationQueryExecutor = Pick<typeof db, 'select'>;
+export async function findPendingJobPreparationCandidate(executor: PreparationQueryExecutor, candidate: { workspaceId: string; searchId: string; jobId: string }, now = new Date()) {
+  return (await executor.select({ locale: savedJobSearches.language, attempts: savedJobSearchMatches.autoPrepareAttempts }).from(savedJobSearchMatches)
+    .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
+    .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
+    .where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), eq(jobs.availability, 'OPEN'), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`)).limit(1))[0];
+}
 /** Claims and attempts at most five opted-in, non-archived preparations per worker tick. */
 export async function processPendingJobPreparations(onPrepare: OnPrepare, batchSize = 5): Promise<{ attempted: number; prepared: number; failed: number }> {
   const limit = Math.max(1, Math.min(5, Math.trunc(batchSize) || 5)); const now = new Date();
@@ -228,7 +235,7 @@ export async function processPendingJobPreparations(onPrepare: OnPrepare, batchS
     .from(savedJobSearchMatches)
     .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
     .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
-    .where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`))
+    .where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), eq(jobs.availability, 'OPEN'), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`))
     .orderBy(asc(savedJobSearchMatches.autoPrepareNextAttemptAt), asc(savedJobSearchMatches.matchedAt)).limit(limit);
   let attempted = 0; let prepared = 0; let failed = 0;
   for (const candidate of candidates) {
@@ -237,15 +244,19 @@ export async function processPendingJobPreparations(onPrepare: OnPrepare, batchS
     try {
       locked = (await connection.query<{ acquired: boolean }>('select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired', [lockId])).rows[0]?.acquired ?? false;
       if (!locked) continue;
-      const pending = (await executor.select({ locale: savedJobSearches.language, attempts: savedJobSearchMatches.autoPrepareAttempts }).from(savedJobSearchMatches)
-        .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
-        .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
-        .where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, new Date())), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`)).limit(1))[0];
-      if (!pending) continue;
+      const pending = await findPendingJobPreparationCandidate(executor, candidate);
+      if (!pending) {
+        await executor.update(savedJobSearchMatches).set({ autoPrepareError: null, autoPrepareNextAttemptAt: null }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt), eq(savedJobSearchMatches.autoPrepareError, 'PREPARING')));
+        continue;
+      }
       await executor.update(savedJobSearchMatches).set({ autoPrepareError: 'PREPARING', autoPrepareNextAttemptAt: new Date(Date.now() + 5 * 60_000) }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt)));
       attempted++;
       try {
-        await onPrepare(candidate.workspaceId, candidate.jobId, pending.locale === 'es' ? 'es' : 'en');
+        const outcome = await onPrepare(candidate.workspaceId, candidate.jobId, pending.locale === 'es' ? 'es' : 'en');
+        if (outcome && typeof outcome === 'object' && 'status' in outcome && outcome.status === 'BLOCKED' && 'reason' in outcome && outcome.reason === 'JOB_NOT_OPEN') {
+          await executor.update(savedJobSearchMatches).set({ autoPrepareError: null, autoPrepareNextAttemptAt: null }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt)));
+          continue;
+        }
         await executor.update(savedJobSearchMatches).set({ autoPreparedAt: new Date(), autoPrepareError: null, autoPrepareNextAttemptAt: null }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt)));
         prepared++;
       } catch {

@@ -298,7 +298,7 @@ export async function maintainSearchData(): Promise<void> {
 export async function processV2Preparations(onPrepare: OnPrepare): Promise<void> {
   const candidates = (await pool.query(`SELECT m.workspace_id,m.search_id,m.job_id,s.language,s.revision FROM saved_job_search_matches m JOIN saved_job_searches s ON s.workspace_id=m.workspace_id AND s.id=m.search_id
     JOIN jobs j ON j.workspace_id=m.workspace_id AND j.id=m.job_id
-    WHERE s.matcher_version=2 AND s.enabled AND s.auto_prepare AND m.auto_prepared_at IS NULL AND m.auto_prepare_error IS DISTINCT FROM 'EXISTING_APPLICATION' AND (m.auto_prepare_next_attempt_at IS NULL OR m.auto_prepare_next_attempt_at<=now()) AND j.shortlist_decision NOT IN ('ARCHIVED','SKIPPED')
+    WHERE s.matcher_version=2 AND s.enabled AND s.auto_prepare AND m.auto_prepared_at IS NULL AND m.auto_prepare_error IS DISTINCT FROM 'EXISTING_APPLICATION' AND (m.auto_prepare_next_attempt_at IS NULL OR m.auto_prepare_next_attempt_at<=now()) AND j.availability='OPEN' AND j.shortlist_decision NOT IN ('ARCHIVED','SKIPPED')
     AND EXISTS(SELECT 1 FROM (
       SELECT x.id FROM search_runs x WHERE x.workspace_id=s.workspace_id AND x.search_id=s.id AND x.revision=s.revision
         AND x.criteria @> jsonb_build_object('role',s.role,'company',s.company,'location',s.location,'workMode',s.work_mode,
@@ -363,6 +363,10 @@ export async function processV2Preparations(onPrepare: OnPrepare): Promise<void>
           if (state === 'NEEDS_REVIEW' || state === 'BLOCKED') {
             const reason = outcome && typeof outcome === 'object' && 'reason' in outcome && typeof (outcome as { reason?: unknown }).reason === 'string'
               ? (outcome as { reason: string }).reason : '';
+            if (state === 'BLOCKED' && reason === 'JOB_NOT_OPEN') {
+              await client.query(`UPDATE saved_job_search_matches SET auto_prepare_error=NULL,auto_prepare_next_attempt_at=NULL WHERE workspace_id=$1 AND job_id=$2 AND auto_prepared_at IS NULL`, [c.workspace_id,c.job_id]);
+              continue;
+            }
             const safeReason = /^[A-Z0-9_:-]{1,80}$/.test(reason) ? reason : state === 'NEEDS_REVIEW' ? 'NEEDS_REVIEW' : 'PREPARATION_BLOCKED';
             await client.query(`UPDATE saved_job_search_matches SET auto_prepare_error=$3,auto_prepare_attempts=auto_prepare_attempts+1,auto_prepare_next_attempt_at=now()+interval '24 hours' WHERE workspace_id=$1 AND job_id=$2`, [c.workspace_id,c.job_id,safeReason]);
             continue;
