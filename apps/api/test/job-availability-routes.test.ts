@@ -91,6 +91,30 @@ describe('closing and reopening jobs (disposable database)', { skip: !adminUrl &
     assert.equal((await post(app, job, { action: 'reopen', expectedAvailability: 'OPEN' })).json().error, 'JOB_NOT_CLOSED');
   });
 
+  test('availability changes leave a submitted application untouched', async () => {
+    const app = server();
+    const applicationId = randomUUID();
+    await client.query(`insert into applications (id, workspace_id, company, role, job_id, state, recruitment_stage, version)
+      values ($1, $2, 'Fictional', 'QA Engineer', $3, 'CONFIRMED', 'INTERVIEW', 7)`, [applicationId, workspace, job]);
+    const application = async () => (await client.query('select state, recruitment_stage, version from applications where id = $1', [applicationId])).rows[0];
+    const unchanged = { state: 'CONFIRMED', recruitment_stage: 'INTERVIEW', version: 7 };
+    try {
+      // A complete source read missed the job three times; the old sighting is beyond the 48-hour threshold.
+      await client.query(`update job_search_sources set missed_complete_reads = 3, last_seen_at = now() - interval '50 hours' where job_id = $1`, [job]);
+      assert.equal(await availability.reevaluateJobs(dbmod.pool, workspace, [job]), 1);
+      assert.equal((await row(job)).availability, 'POSSIBLY_CLOSED');
+      assert.deepEqual(await application(), unchanged);
+
+      const closed = await post(app, job, { action: 'close', expectedAvailability: 'POSSIBLY_CLOSED' });
+      assert.equal(closed.statusCode, 200); assert.equal(closed.json().availability, 'CLOSED');
+      assert.deepEqual(await application(), unchanged);
+
+      const reopened = await post(app, job, { action: 'reopen', expectedAvailability: 'CLOSED' });
+      assert.equal(reopened.statusCode, 200); assert.equal(reopened.json().availability, 'OPEN');
+      assert.deepEqual(await application(), unchanged);
+    } finally { await app.close(); }
+  });
+
   test('a stale request is refused with the current availability and changes nothing', async () => {
     const app = server();
     await client.query(`update jobs set availability = 'POSSIBLY_CLOSED' where id = $1`, [job]);

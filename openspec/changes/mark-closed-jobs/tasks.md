@@ -20,7 +20,7 @@
 ## 4. The person's actions and history (API)
 
 - [x] 4.1 Add `POST /api/v1/jobs/:id/availability` (`close` / `reopen`, `expectedAvailability`, `409 STALE_JOB_AVAILABILITY`) and the history plus "a source still lists it" in the job detail response; verify with route tests against a disposable database: close, reopen resets counters, stale request, other workspace's job refused (`pnpm run test:searches` or a new `test:job-availability` script wired into CI).
-- [ ] 4.2 Verify that no availability change touches applications: a test closes, possibly-closes and reopens a job with a submitted application and asserts its state, stage and version are unchanged.
+- [x] 4.2 Verify that no availability change touches applications: a test closes, possibly-closes and reopens a job with a submitted application and asserts its state, stage and version are unchanged.
 
 ## 5. Interface
 
