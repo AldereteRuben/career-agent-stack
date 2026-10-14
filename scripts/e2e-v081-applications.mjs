@@ -72,6 +72,7 @@ function jobDetail(jobId) {
     snapshots: job.description ? [{ id: `${jobId.slice(0, -2)}5e`, title: job.title, descriptionText: job.description, fetchedAt: ISO }] : [],
     sources: [], searchSources: [],
     applications: job.applicationId ? [{ id: job.applicationId, state: 'REVIEW_REQUIRED', recruitmentStage: 'NO_RESPONSE', updatedAt: ISO }] : [],
+    closedByUser: false, availabilityHistory: [], stillListedBySource: false,
   };
 }
 
