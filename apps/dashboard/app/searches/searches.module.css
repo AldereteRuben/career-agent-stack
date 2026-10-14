@@ -30,11 +30,11 @@
 .sourceProgress li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); font-size: .9rem; }
 
 /* Search selector and secondary management. */
-.scopeBar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; justify-content: space-between; min-width: 0; }
-.scopeField { display: grid; gap: 4px; min-width: 0; flex: 1 1 260px; max-width: 460px; }
-.scopeField label { font-weight: 600; font-size: .9rem; }
-.scopeField select, .sortControl select { box-sizing: border-box; min-height: 44px; max-width: 100%; padding: 8px 32px 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface, white); font: inherit; }
-.scopeField select { width: 100%; }
+.scopeBar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; justify-content: space-between; min-width: 0; }
+.scopeField { display: grid; gap: 4px; min-width: 0; flex: 1 1 320px; }
+/* Line up the actions with the first row of choices, below the one-line "Your searches" label. */
+.scopeBar > .actions { padding-top: calc(var(--text-base) * var(--leading) + 4px); }
+.sortControl select { box-sizing: border-box; min-height: 44px; max-width: 100%; padding: 8px 32px 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface, white); font: inherit; }
 .managePanel { border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px; min-width: 0; }
 .manageList { list-style: none; margin: 0; padding: 0; display: grid; }
 .manageRow { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px 16px; padding: 12px 0; min-width: 0; overflow-wrap: anywhere; }
@@ -65,7 +65,8 @@
 .resultCard h3 a:hover { text-decoration: underline; }
 .resultMeta { margin: 0; color: var(--ink); }
 .resultReason { margin: 0; color: var(--muted); font-size: .92rem; }
-.resultActions { justify-content: flex-end; max-width: 300px; }
+/* Two aligned columns (view/summarize, save/archive) instead of a ragged right-aligned wrap. */
+.resultActions { display: grid; grid-template-columns: repeat(2, max-content); justify-content: end; }
 .resultActions > * { max-width: 100%; }
 .moreReasons { grid-column: 1 / -1; color: var(--muted); font-size: .9rem; }
 .moreReasons summary { width: fit-content; min-height: 24px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
@@ -75,6 +76,7 @@
 .sources a { font-size: .9rem; }
 .warning { color: var(--amber); margin: 0; font-size: .92rem; }
 .applicationStatus { margin: 0; border-inline-start: 3px solid var(--blue); padding-inline-start: 10px; font-size: .92rem; }
+.applicationStatus a { color: var(--blue-dark); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .emptyResults { padding: 22px; }
 
 .providerFieldset { border: 1px solid var(--line); border-radius: 9px; padding: 12px; }
@@ -90,14 +92,15 @@
   .form { grid-template-columns: minmax(0, 1fr); } .providerOptions { grid-template-columns: minmax(0, 1fr); }
   .formCard, .coverage, .resultCard, .emptyResults { padding: 14px; }
   .resultCard { grid-template-columns: minmax(0, 1fr); }
-  .resultActions { max-width: none; justify-content: flex-start; }
-  .scopeField { max-width: none; }
+  .resultActions { grid-template-columns: repeat(2, minmax(0, 1fr)); justify-content: stretch; }
+  .resultActions > * { white-space: normal; text-align: center; }
   .sourceProgress li { display: grid; }
 }
 @media (max-width: 360px) {
   .actions { width: 100%; min-width: 0; }
   .actions > *, .cardActions > *, .resultActions > * { box-sizing: border-box; flex: 1 1 100%; width: 100%; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .resultsHead, .resultsHead > *, .sortControl { min-width: 0; max-width: 100%; }
+  .resultActions { grid-template-columns: minmax(0, 1fr); }
   .sortControl { width: 100%; justify-content: space-between; }
   .sortControl select { width: 100%; min-width: 0; }
   .filterTabs { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
@@ -135,9 +138,11 @@
 .scopeChoices small { display: block; font-weight: 400; font-size: .75rem; color: var(--muted); }
 @media (max-width: 620px) {
   .scopeChoices { flex-wrap: nowrap; overflow-x: auto; padding: 3px; }
-  .scopeChoices button { flex: 0 0 auto; max-width: 260px; }
+  /* Equal-height cards in the scroll strip, with their text at the top instead of centred. */
+  .scopeChoices button { flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; justify-content: flex-start; }
   .scopeField { width: 100%; }
   .scopeBar { gap: 4px; }
+  .scopeBar > .actions { padding-top: 0; }
 }
 
 .results, .scopeField, .aiHelp { grid-template-columns: minmax(0, 1fr); }

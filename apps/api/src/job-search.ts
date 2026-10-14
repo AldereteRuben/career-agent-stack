@@ -2,6 +2,7 @@ import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identit
 import { createHash } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { countCompleteFeedRead, type Queryable } from './job-availability.js';
 import * as schema from '@career/db/schema';
 import { db, jobs, jobSearchProviderCache, jobSearchSources, jobSnapshots, pool, savedJobSearches, savedJobSearchMatches } from '@career/db';
 import { JOB_SEARCH_INTERVAL_MS, JOB_SEARCH_PROVIDER_COOLDOWN_MS, JOB_SEARCH_FAILURE_MAX_MS } from './job-search-constants.js';
@@ -66,7 +67,17 @@ export async function loadProviderFeed(provider: JobSearchProvider, reader: Feed
     cached = (await executor.select().from(jobSearchProviderCache).where(eq(jobSearchProviderCache.provider, provider)).limit(1))[0];
     try {
       const read = await reader(provider); const listing = Array.isArray(read) ? read : read.jobs; const coverage = Array.isArray(read) ? 'COMPLETE' : read.coverage;
-      await executor.update(jobSearchProviderCache).set({ payload: listing as unknown as Record<string, unknown>[], coverage, fetchedAt: new Date(), nextFetchAt: new Date(Date.now() + JOB_SEARCH_PROVIDER_COOLDOWN_MS), failureCount: 0, lastError: null, updatedAt: new Date() }).where(eq(jobSearchProviderCache.provider, provider));
+      // The new listing and what it says about each known job (ADR 021) are stored together: a complete feed just
+      // downloaded is the only feed read that gives presence or absence, once however many searches use it.
+      await connection.query('begin');
+      try {
+        if (coverage === 'COMPLETE') {
+          const { suspicious } = await countCompleteFeedRead(connection as unknown as Queryable, provider, listing.map((job) => job.externalId), cached?.lastCompleteCount ?? null);
+          if (!suspicious) await connection.query('update job_search_provider_cache set last_complete_count = $2 where provider = $1', [provider, listing.length]);
+        }
+        await executor.update(jobSearchProviderCache).set({ payload: listing as unknown as Record<string, unknown>[], coverage, fetchedAt: new Date(), nextFetchAt: new Date(Date.now() + JOB_SEARCH_PROVIDER_COOLDOWN_MS), failureCount: 0, lastError: null, updatedAt: new Date() }).where(eq(jobSearchProviderCache.provider, provider));
+        await connection.query('commit');
+      } catch (error) { await connection.query('rollback').catch(() => undefined); throw error; }
       return { jobs: listing, state: 'FRESH', fetchedAt: new Date(), coverage };
     } catch (error) {
       const failures = (cached?.failureCount ?? 0) + 1; const retryAt = error instanceof ProviderReadError ? error.retryAt : 0;
@@ -164,9 +175,10 @@ export async function refreshSavedJobSearch(workspaceId: string, searchId: strin
           if (latestSnapshot?.snapshotHash !== currentHash) await tx.insert(jobSnapshots).values({ workspaceId, jobId: jobRow.id, occurrenceId: null, title: item.title, descriptionText: item.description, snapshotHash: currentHash });
         }
         const postedAt = item.postedAt && Number.isFinite(Date.parse(item.postedAt)) ? new Date(item.postedAt) : null;
-        if (source) await tx.update(jobSearchSources).set({ sourceUrl: item.url, postedAt, lastSeenAt: now, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).where(eq(jobSearchSources.id, source.id));
+        // Presence for these feeds is counted once per download in loadProviderFeed (ADR 021), never per search.
+        if (source) await tx.update(jobSearchSources).set({ sourceUrl: item.url, postedAt, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).where(eq(jobSearchSources.id, source.id));
         else {
-          const insertedSource = await tx.insert(jobSearchSources).values({ workspaceId, jobId: jobRow.id, provider, externalId: item.externalId, sourceUrl: item.url, postedAt, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).returning();
+          const insertedSource = await tx.insert(jobSearchSources).values({ workspaceId, jobId: jobRow.id, provider, externalId: item.externalId, sourceUrl: item.url, postedAt, lastSeenAt: feeds[provider]?.fetchedAt ?? now, raw: { ...item.raw, __careerStackWorkMode: item.workMode } }).returning();
           source = insertedSource[0]; if (source) sourceByExternal.set(`${provider}:${item.externalId}`, source);
         }
         const priorMatch = matchByJob.get(jobRow.id);
@@ -209,6 +221,13 @@ export async function runJobSearchTick(onPrepare?: OnPrepare): Promise<void> {
 }
 
 const preparationRetryAt = (attempt: number, now = Date.now()) => new Date(now + Math.min(24 * 60 * 60 * 1000, 60_000 * 2 ** Math.min(Math.max(0, attempt - 1), 10)));
+type PreparationQueryExecutor = Pick<typeof db, 'select'>;
+export async function findPendingJobPreparationCandidate(executor: PreparationQueryExecutor, candidate: { workspaceId: string; searchId: string; jobId: string }, now = new Date()) {
+  return (await executor.select({ locale: savedJobSearches.language, attempts: savedJobSearchMatches.autoPrepareAttempts }).from(savedJobSearchMatches)
+    .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
+    .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
+    .where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), eq(jobs.availability, 'OPEN'), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`)).limit(1))[0];
+}
 /** Claims and attempts at most five opted-in, non-archived preparations per worker tick. */
 export async function processPendingJobPreparations(onPrepare: OnPrepare, batchSize = 5): Promise<{ attempted: number; prepared: number; failed: number }> {
   const limit = Math.max(1, Math.min(5, Math.trunc(batchSize) || 5)); const now = new Date();
@@ -216,7 +235,7 @@ export async function processPendingJobPreparations(onPrepare: OnPrepare, batchS
     .from(savedJobSearchMatches)
     .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
     .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
-    .where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`))
+    .where(and(eq(savedJobSearches.matcherVersion, 1), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), eq(jobs.availability, 'OPEN'), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, now)), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`))
     .orderBy(asc(savedJobSearchMatches.autoPrepareNextAttemptAt), asc(savedJobSearchMatches.matchedAt)).limit(limit);
   let attempted = 0; let prepared = 0; let failed = 0;
   for (const candidate of candidates) {
@@ -225,15 +244,19 @@ export async function processPendingJobPreparations(onPrepare: OnPrepare, batchS
     try {
       locked = (await connection.query<{ acquired: boolean }>('select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired', [lockId])).rows[0]?.acquired ?? false;
       if (!locked) continue;
-      const pending = (await executor.select({ locale: savedJobSearches.language, attempts: savedJobSearchMatches.autoPrepareAttempts }).from(savedJobSearchMatches)
-        .innerJoin(savedJobSearches, and(eq(savedJobSearches.id, savedJobSearchMatches.searchId), eq(savedJobSearches.workspaceId, savedJobSearchMatches.workspaceId)))
-        .innerJoin(jobs, and(eq(jobs.id, savedJobSearchMatches.jobId), eq(jobs.workspaceId, savedJobSearchMatches.workspaceId)))
-        .where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), eq(savedJobSearches.enabled, true), eq(savedJobSearches.autoPrepare, true), isNull(savedJobSearchMatches.autoPreparedAt), or(isNull(savedJobSearchMatches.autoPrepareNextAttemptAt), lte(savedJobSearchMatches.autoPrepareNextAttemptAt, new Date())), sql`${jobs.shortlistDecision} <> 'ARCHIVED'`)).limit(1))[0];
-      if (!pending) continue;
+      const pending = await findPendingJobPreparationCandidate(executor, candidate);
+      if (!pending) {
+        await executor.update(savedJobSearchMatches).set({ autoPrepareError: null, autoPrepareNextAttemptAt: null }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt), eq(savedJobSearchMatches.autoPrepareError, 'PREPARING')));
+        continue;
+      }
       await executor.update(savedJobSearchMatches).set({ autoPrepareError: 'PREPARING', autoPrepareNextAttemptAt: new Date(Date.now() + 5 * 60_000) }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt)));
       attempted++;
       try {
-        await onPrepare(candidate.workspaceId, candidate.jobId, pending.locale === 'es' ? 'es' : 'en');
+        const outcome = await onPrepare(candidate.workspaceId, candidate.jobId, pending.locale === 'es' ? 'es' : 'en');
+        if (outcome && typeof outcome === 'object' && 'status' in outcome && outcome.status === 'BLOCKED' && 'reason' in outcome && outcome.reason === 'JOB_NOT_OPEN') {
+          await executor.update(savedJobSearchMatches).set({ autoPrepareError: null, autoPrepareNextAttemptAt: null }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt)));
+          continue;
+        }
         await executor.update(savedJobSearchMatches).set({ autoPreparedAt: new Date(), autoPrepareError: null, autoPrepareNextAttemptAt: null }).where(and(eq(savedJobSearchMatches.workspaceId, candidate.workspaceId), eq(savedJobSearchMatches.searchId, candidate.searchId), eq(savedJobSearchMatches.jobId, candidate.jobId), isNull(savedJobSearchMatches.autoPreparedAt)));
         prepared++;
       } catch {

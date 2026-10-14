@@ -107,6 +107,54 @@ describe('automatic discovery with a disposable database and fictional sources',
     await due(); await module.refreshBoard(workspace, board, false, async () => report(0));
     assert.equal((await client.query("select count(*)::int as n from jobs where availability = 'OPEN'")).rows[0].n, 2);
   });
+  // ADR 021: availability follows complete refreshes only.
+  const occurrence = async (externalId: string) => (await client.query('select o.missed_complete_reads, o.last_seen_at, j.availability, j.id as job_id from job_occurrences o join jobs j on j.id = o.job_id where o.external_job_id = $1', [externalId])).rows[0];
+  const events = async () => (await client.query('select from_state, to_state, reason from job_availability_events order by created_at')).rows;
+  const refresh = async (count: number, skipped = 0) => { await due(); await module.refreshBoard(workspace, board, false, async () => report(count, skipped)); };
+  test('three complete refreshes without a job over 48 hours make it possibly closed; it reopens when listed again', async () => {
+    await refresh(2);
+    await refresh(1); await refresh(1);
+    assert.equal((await occurrence('fictional-1')).missed_complete_reads, 2);
+    assert.equal((await occurrence('fictional-1')).availability, 'OPEN', 'Two misses are not enough');
+    await refresh(1);
+    assert.equal((await occurrence('fictional-1')).missed_complete_reads, 3);
+    assert.equal((await occurrence('fictional-1')).availability, 'OPEN', 'Three misses within a day are not enough');
+    await client.query("update job_occurrences set last_seen_at = now() - interval '50 hours' where external_job_id = 'fictional-1'");
+    await refresh(1);
+    assert.equal((await occurrence('fictional-1')).availability, 'POSSIBLY_CLOSED');
+    assert.equal((await occurrence('fictional-0')).availability, 'OPEN', 'The job still listed stays open');
+    await refresh(2);
+    const back = await occurrence('fictional-1');
+    assert.equal(back.availability, 'OPEN'); assert.equal(back.missed_complete_reads, 0);
+    assert.deepEqual(await events(), [{ from_state: 'OPEN', to_state: 'POSSIBLY_CLOSED', reason: 'ABSENT_FROM_SOURCES' }, { from_state: 'POSSIBLY_CLOSED', to_state: 'OPEN', reason: 'SEEN_AGAIN' }]);
+  });
+  test('a partial refresh neither counts absence nor gives presence', async () => {
+    await refresh(2); await refresh(1); await refresh(1);
+    const before = await occurrence('fictional-0');
+    await client.query("update job_occurrences set last_seen_at = now() - interval '60 hours' where external_job_id = 'fictional-0'");
+    await refresh(1, 1);
+    const after = await occurrence('fictional-0');
+    assert.equal((await row()).last_run_status, 'PARTIAL');
+    assert.ok(after.last_seen_at.getTime() < before.last_seen_at.getTime(), 'A partial refresh does not update when the job was last seen');
+    assert.equal((await occurrence('fictional-1')).missed_complete_reads, 2, 'Nor count the missing job');
+  });
+  test('a failed refresh and a suspicious empty refresh change no counts', async () => {
+    await refresh(2); await refresh(1);
+    await due(); await assert.rejects(module.refreshBoard(workspace, board, false, async () => { throw new SourceHttpError(503, null); }));
+    assert.equal((await occurrence('fictional-1')).missed_complete_reads, 1);
+    await refresh(0);
+    assert.equal((await occurrence('fictional-0')).missed_complete_reads, 0, 'An empty complete refresh after a non-empty one is suspicious');
+    assert.equal((await occurrence('fictional-1')).missed_complete_reads, 1);
+    assert.equal((await row()).last_complete_count, 1, 'A suspicious refresh does not update the comparison count');
+  });
+  test('a job the person closed stays closed while the board still lists it', async () => {
+    await refresh(1);
+    const { job_id: jobId } = await occurrence('fictional-0');
+    await client.query("update jobs set availability = 'CLOSED', closed_by_user = true where id = $1", [jobId]);
+    await refresh(1);
+    assert.equal((await occurrence('fictional-0')).availability, 'CLOSED');
+    assert.deepEqual(await events(), []);
+  });
   test('failure persists backoff and Retry-After without leaking source error details', async () => {
     await enable(); const retry = Date.now() + 24 * hour;
     await module.runDiscoveryTick(async () => { throw new SourceHttpError(429, new Date(retry).toUTCString()); });

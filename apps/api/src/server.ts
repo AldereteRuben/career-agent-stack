@@ -1,18 +1,21 @@
 import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
-import { RELEASE_VERSION } from '@career/domain';
+import { RELEASE_VERSION, securityHeaders } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { config, projectRoot } from './config.js';
 import { DiscoveryError, refreshBoard, registerDiscoveryRoutes, startDiscoveryWorker } from './discovery.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, writeFile, chmod, unlink } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile, chmod, unlink } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql, getTableColumns } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
-import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, workspaceFromRequest } from './session.js';
+import { registerFactImportRoutes } from './fact-import-routes.js';
+import { createRequestGate, releaseOnResponse } from './request-gate.js';
+import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
+import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { renderResume } from './document-renderer.js';
@@ -20,9 +23,11 @@ import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
+import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
+import { setCodexTaskRoot } from './ai/codex.js';
 import { exportAiData } from './ai/export.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
@@ -33,9 +38,18 @@ const aiEnabled = config.CAREER_AI_ENABLED && process.platform === 'darwin';
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
 const localData = config.DATA_LOCAL_PATH;
+// Emptying the documents folder when all data is deleted must never reach the run records or the sign-in token (ADR 020).
+const filesProblem = filesPathProblem(config.FILES_LOCAL_PATH, localData);
+if (filesProblem) throw new Error(`${filesProblem} Change FILES_LOCAL_PATH or DATA_LOCAL_PATH in .env. / Cambia FILES_LOCAL_PATH o DATA_LOCAL_PATH en .env.`);
 await mkdir(localData, { recursive: true, mode: 0o700 });
+// Assistant prompt files of this installation only. Nothing can be running yet, so leftovers of a killed process go.
+const assistantTemporary = resolve(localData, 'tmp');
+await rm(assistantTemporary, { recursive: true, force: true });
+await mkdir(assistantTemporary, { recursive: true, mode: 0o700 });
+setCodexTaskRoot(assistantTemporary);
 const workspaceRows = await db.select().from(workspaces).limit(1);
 const workspaceId = workspaceRows[0]?.id ?? (await db.insert(workspaces).values({ name: 'My career workspace', timezone: 'Europe/Madrid' }).returning({ id: workspaces.id }))[0]!.id;
+setSessionGeneration(workspaceRows[0]?.sessionGeneration ?? 0);
 await db.insert(profileVersions).values({ workspaceId, revision: 1, profile: {} }).onConflictDoNothing();
 const setupTokenPath = resolve(localData, 'setup-token');
 let setupToken: string;
@@ -47,13 +61,23 @@ catch {
   app.log.warn({ setupTokenPath }, 'First-run sign-in token written to a private local file');
 }
 
+// Browser security headers on every API response, including errors (shared with the dashboard, issue #24).
+app.addHook('onSend', async (_request, reply, payload) => {
+  for (const { key, value } of securityHeaders) reply.header(key, value);
+  return payload;
+});
 app.addHook('onRequest', async (request, reply) => {
   const rejected = enforceLocalRequest(request, reply);
   if (rejected) return;
   const path = request.url.split('?')[0];
   if (path === '/healthz' || path === '/api/v1/session') return;
   if (!workspaceFromRequest(request)) return reply.code(401).send({ error: 'SESSION_REQUIRED' });
+  // While all data is being deleted nothing else may read or write it: the deletion closes this gate and waits for
+  // every request already admitted to finish before it deletes anything (ADR 020).
+  if (!requestGate.enter(request)) return reply.code(503).send({ error: 'DELETION_IN_PROGRESS' });
 });
+const requestGate = createRequestGate();
+releaseOnResponse(app, requestGate);
 
 const workspace = (request: FastifyRequest) => workspaceFromRequest(request) ?? workspaceId;
 const isClosedApplication = (application: { state: string; recruitmentStage: string }) => application.state === 'CANCELLED' || ['REJECTED', 'WITHDRAWN'].includes(application.recruitmentStage);
@@ -185,7 +209,9 @@ app.put('/api/v1/profile/facts/:id', async (request, reply) => {
     const created = (await tx.insert(profileVersions).values({ workspaceId: id, revision: latest.revision + 1, locale: latest.locale, profile: latest.profile }).returning())[0]!;
     const unchanged = facts.filter((fact) => fact.id !== factId);
     if (unchanged.length) await tx.insert(profileFacts).values(unchanged.map((fact) => ({ ...omit(fact, 'id'), profileVersionId: created.id })));
-    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, details: parsed.details, tags: parsed.tags, source: 'USER_ENTERED', approvalStatus: 'SUGGESTED' }).returning())[0]!;
+    // A corrected imported entry stays in its import, so undoing that import (ADR 018) still reaches it.
+    const original = facts.find((fact) => fact.id === factId)!;
+    return (await tx.insert(profileFacts).values({ workspaceId: id, profileVersionId: created.id, kind: parsed.kind, statement: parsed.statement, details: parsed.details, tags: parsed.tags, source: 'USER_ENTERED', importId: original.importId, approvalStatus: 'SUGGESTED' }).returning())[0]!;
   });
   if (typeof result === 'string') return fail(reply, 409, result);
   await rescoreAfterChange(id);
@@ -308,16 +334,17 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const { id: jobId } = request.params as { id: string }; const id = workspace(request);
   const job = (await db.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))).limit(1))[0];
   if (!job) return fail(reply, 404, 'NOT_FOUND');
-  const [snapshots, occurrences, applicationsForJob, searchSources] = await Promise.all([
+  const [snapshots, occurrences, applicationsForJob, searchSources, availability] = await Promise.all([
     db.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), eq(jobSnapshots.jobId, jobId))).orderBy(desc(jobSnapshots.fetchedAt)),
     db.select().from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), eq(jobOccurrences.jobId, jobId))),
     db.select().from(applications).where(and(eq(applications.workspaceId, id), or(eq(applications.jobId, jobId), sql`${applications.jobId} IN(SELECT m.job_id FROM job_identity_members m JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key WHERE target.workspace_id=${id} AND target.job_id=${jobId}::uuid)`))).orderBy(desc(applications.updatedAt)),
     db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), eq(jobSearchSources.jobId, jobId))),
+    availabilityDetail(pool, id, jobId),
   ]);
   const [scored] = await scoreJobs(db, id, await withEffectiveSeenAt(db, id, [job]));
   // Present legacy feed snapshots as readable text without rewriting their evidence/hash.
   const readableSnapshots = searchSources.length ? snapshots.map((snapshot) => ({ ...snapshot, descriptionText: plainDescription(snapshot.descriptionText) })) : snapshots;
-  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob };
+  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, closedByUser: availability.closedByUser, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
 });
 /** Reviewing from /jobs also clears the job from every search inbox and from strong-identity duplicates. */
 app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
@@ -331,7 +358,7 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
   const now = new Date();
-  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
+  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
     await lockKey(tx, `discovery:${id}`);
     await lockJobIdentity(tx,id);
@@ -354,14 +381,18 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   return await decideJob(workspace(request), jobId, String(body!.decision)) ?? fail(reply,404,'NOT_FOUND');
 });
 
+registerJobAvailabilityRoutes(app, workspace);
 registerResumeJourney(app, workspace);
-registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
+registerFactImportRoutes(app, workspace);
+const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
 app.get('/api/v1/applications', async (request, reply) => {
   const query = request.query as { offset?: string; limit?: string; q?: string };
-  const scoped = eq(applications.workspaceId, workspace(request));
+  const workspaceId = workspace(request); const scoped = eq(applications.workspaceId, workspaceId);
+  const selection = { ...getTableColumns(applications), jobAvailability: jobs.availability };
+  const matchingJob = and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId));
   // Preserve the existing array contract for internal clients. The tracker requests pages explicitly.
-  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select().from(applications).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
+  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
   const offset = Number(query.offset ?? 0); const limit = Number(query.limit ?? 25);
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || typeof (query.q ?? '') !== 'string' || (query.q?.length ?? 0) > 200) return fail(reply, 400, 'INVALID_INPUT');
   const term = query.q?.trim() ?? '';
@@ -370,7 +401,7 @@ app.get('/api/v1/applications', async (request, reply) => {
   const counts = await db.select({ total: sql<number>`count(*)::int` }).from(applications).where(where);
   const total = counts[0]?.total ?? 0;
   const pageOffset = Math.min(offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-  const items = await db.select().from(applications).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
+  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
   return { items, total, offset: pageOffset, limit };
 });
 app.post('/api/v1/applications', async (request, reply) => {
@@ -397,7 +428,7 @@ app.post('/api/v1/applications', async (request, reply) => {
 });
 app.get('/api/v1/applications/:id', async (request, reply) => {
   const id = workspace(request); const { id: applicationId } = request.params as { id: string };
-  const row = (await db.select().from(applications).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
+  const row = (await db.select({ ...getTableColumns(applications), jobAvailability: jobs.availability }).from(applications).leftJoin(jobs, and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId))).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
   if (!row) return fail(reply, 404, 'NOT_FOUND');
   const document = row.documentId ? (await db.select({ approvalStatus: documentVersions.approvalStatus }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.id, row.documentId))).limit(1))[0] : null;
   return { ...row, documentApprovalStatus: document?.approvalStatus ?? null };
@@ -583,17 +614,64 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
-registerJobSearchRoutes(app, workspace, prepareApplication);
-const stopJobSearches = startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareApplication);
-app.addHook('onClose', stopJobSearches);
+const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
+registerJobSearchRoutes(app, workspace, prepareAutomatically);
+const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
+let stopJobSearches = startJobSearches();
+app.addHook('onClose', () => stopJobSearches());
 registerDiscoveryRoutes(app, workspace);
-const stopDiscovery = startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
-app.addHook('onClose', stopDiscovery);
+const startDiscovery = () => startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
+let stopDiscovery = startDiscovery();
+app.addHook('onClose', () => stopDiscovery());
 
 const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;
 
-await registerAiRuntime(app, workspace, { enabled: aiEnabled, identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH });
+const aiRuntime = await registerAiRuntime(app, workspace, { enabled: aiEnabled, identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH });
+
+// ---- Delete all my data (ADR 020, point 2) ----------------------------------------------------------------------
+const deletionPhrases = new Set(['BORRAR TODOS MIS DATOS', 'DELETE ALL MY DATA']);
+/** Deletes the files of a deletion job and records the outcome. Returns whether every file is gone. */
+async function completeDeletionFiles(jobId: string) {
+  try {
+    await deleteWorkspaceFiles({ filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData });
+    await finishDeletionJob(pool, jobId, 'COMPLETED');
+    return true;
+  } catch (error) {
+    app.log.error({ err: error, jobId }, 'Deleting the files of a deleted workspace failed; it is retried when the API starts');
+    await finishDeletionJob(pool, jobId, 'FILES_FAILED').catch(() => undefined);
+    return false;
+  }
+}
+app.post('/api/v1/workspace/delete-all', async (request, reply) => {
+  const confirmation = (request.body as { confirmation?: unknown } | null)?.confirmation;
+  if (typeof confirmation !== 'string' || !deletionPhrases.has(confirmation.trim())) return fail(reply, 400, 'CONFIRMATION_REQUIRED');
+  if (backups.isRunning()) return fail(reply, 409, 'BACKUP_IN_PROGRESS', 'Wait until the backup finishes.');
+  const id = workspace(request);
+  // Refuse new requests and wait for those already running, so none writes after the rows are deleted.
+  const gate = await requestGate.close(30_000, request);
+  if (gate === 'busy') return fail(reply, 409, 'DELETION_IN_PROGRESS');
+  if (gate === 'timeout') {
+    requestGate.open(request);
+    return fail(reply, 503, 'DELETION_BUSY', 'Other requests did not finish in time; nothing was deleted. Try again.');
+  }
+  try {
+    // Then stop every kind of background work, so nothing writes rows or files while they are deleted.
+    await stopJobSearches(); await stopDiscovery(); await aiRuntime.pause(); await stopAssistedBrowsers();
+    const { jobId, generation } = await deleteWorkspaceRows(pool, id);
+    setSessionGeneration(generation);
+    backups.forget();
+    const filesDeleted = await completeDeletionFiles(jobId);
+    reply.header('Set-Cookie', expiredSessionCookie());
+    if (!filesDeleted) return fail(reply, 500, 'DELETION_FILES_PENDING', 'Records were deleted; some files were not and are retried when the API starts.');
+    return { deleted: true };
+  } finally {
+    stopJobSearches = startJobSearches(); stopDiscovery = startDiscovery(); aiRuntime.resume();
+    requestGate.open(request);
+  }
+});
+// A deletion whose files were interrupted or failed is finished before the API serves anything.
+for (const jobId of await pendingDeletionJobs(pool, workspaceId)) await completeDeletionFiles(jobId);
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
 app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);

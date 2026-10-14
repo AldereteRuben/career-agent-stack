@@ -42,7 +42,8 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
       await run(job.directory, signal);
       const files = await readdir(job.directory);
       const keys = await readdir(join(job.directory, 'keys'));
-      const archive = files.find((name) => /^career-backup-[\w-]+\.tar$/.test(name));
+      // Backups are always encrypted (ADR 019); a plain tar here would mean an older writer, so it is not offered.
+      const archive = files.find((name) => /^career-backup-[\w-]+\.tar\.age$/.test(name));
       const key = keys.find((name) => /^career-key-[a-f0-9]+\.json$/.test(name));
       if (!archive || !key || !files.includes(`${archive}.sha256`)) throw new Error('Missing artifacts');
       job.artifacts = { archive, key: `keys/${key}`, checksum: `${archive}.sha256` };
@@ -83,4 +84,10 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
     return reply.type('application/octet-stream').send(createReadStream(path));
   });
   app.addHook('onClose', async () => { controller?.abort(); await task; });
+  return {
+    /** Whether a backup is being written; deleting all data waits for it instead of racing it. */
+    isRunning: () => current?.state === 'running',
+    /** Forgets the last backup after its folder was deleted with the rest of the data. */
+    forget: () => { if (current?.state !== 'running') current = undefined; },
+  };
 }

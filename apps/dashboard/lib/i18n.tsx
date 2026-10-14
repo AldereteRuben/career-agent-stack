@@ -320,6 +320,7 @@ export function localizedError(code: string, locale: Locale) {
     INVALID_PREPARATION_REQUEST: 'No se pudo preparar la solicitud. Revisa los datos elegidos e inténtalo de nuevo.', INVALID_SEARCH_PROFILE: 'Pon un nombre de hasta 160 caracteres para esta búsqueda.',
     SETUP_TOKEN_REQUIRED: 'Pega el código de acceso para continuar.', SEARCH_DISABLED: 'Esta búsqueda está pausada. Actívala para actualizar sus ofertas.',
     SEARCH_REFRESH_FAILED: 'No pudimos actualizar esta búsqueda ahora. Tu búsqueda sigue guardada; inténtalo más tarde.',
+    CONFIRMATION_REQUIRED: 'Escribe la frase de confirmación exactamente como se muestra.', DELETION_IN_PROGRESS: 'Se están borrando los datos de este espacio. Espera unos segundos.', DELETION_BUSY: 'Otras acciones no terminaron a tiempo, así que no se borró nada. Inténtalo de nuevo.',
     BACKUP_IN_PROGRESS: 'Ya hay una copia en preparación. Espera a que termine.', BACKUP_NOT_AVAILABLE: 'Esta descarga ya no está disponible. Crea otra copia desde Ajustes.',
     INVALID_INPUT: 'Revisa los campos e inténtalo de nuevo.', INVALID_PROFILE: 'No se pudo guardar el perfil. Revisa los datos.', SESSION_REQUIRED: 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
     INVALID_SETUP_TOKEN: 'El código no es válido. Comprueba que lo copiaste completo e inténtalo de nuevo.', SETUP_TOKEN_ALREADY_USED: 'Este código ya se utilizó. Abre la ayuda de esta pantalla para obtener uno nuevo.',
@@ -337,6 +338,7 @@ export function localizedError(code: string, locale: Locale) {
     REVIEW_ACKNOWLEDGEMENT_REQUIRED: 'Marca las dos confirmaciones antes de aprobar la fuente.', REFERENCE_URL_INVALID: 'El enlace de referencia de la fuente no es válido.',
     BOARD_REFRESH_ALREADY_RUNNING: 'Ya hay una búsqueda en curso para esta fuente. Espera a que termine.', BOARD_REFRESH_FAILED: 'No pudimos leer la fuente. No se cerró ninguna oferta; inténtalo más tarde o revisa el enlace.',
     JOB_NOT_FOUND: 'La oferta ya no existe en tu espacio. Elige otra o crea una versión base.', INVALID_SHORTLIST_DECISION: 'No se pudo actualizar la lista de ofertas guardadas.',
+    STALE_JOB_AVAILABILITY: 'La disponibilidad cambió en otra pestaña. Actualizamos el estado; revísalo antes de volver a intentarlo.', JOB_ALREADY_CLOSED: 'Ya cerraste esta oferta.', JOB_NOT_CLOSED: 'Esta oferta ya no figura como cerrada. Actualizamos su estado.',
     REVISION_CONFLICT: 'Esta búsqueda cambió en otra pestaña. Conservamos tu texto; carga la versión actual antes de guardar de nuevo.', IDEMPOTENCY_CONFLICT: 'Esta búsqueda ya se guardó con otros datos. Revisa tus búsquedas antes de crear otra.',
     APPLICATION_CREATION_STATE_UNSUPPORTED: 'Una solicitud nueva solo puede empezar como borrador o como enviada por ti.', APPLICATION_ALREADY_EXISTS: 'Ya tienes una solicitud para esta oferta.',
     INVALID_STATE_TRANSITION: 'Ese cambio de estado no está permitido desde el estado actual.', CONFIRMATION_EVIDENCE_REQUIRED: 'Confirma que enviaste la solicitud para marcarla como enviada.',
@@ -354,6 +356,8 @@ export function localizedError(code: string, locale: Locale) {
     ANSWER_REVISION_STALE: 'Existe una versión más reciente de esta respuesta. Recarga los datos y revisa la última versión.',
     PROFILE_REVISION_CONFLICT: 'Tu perfil cambió en otra pestaña o ventana. Recarga la última versión; tus cambios sin guardar se conservan para que puedas guardarlos de nuevo.',
     FACT_NOT_IN_CURRENT_REVISION: 'Este hecho pertenece a una revisión anterior del perfil. Recarga la última versión e inténtalo de nuevo.',
+    FACT_ARCHIVED: 'Una de las entradas está archivada. Restáurala por separado antes de confirmarla.',
+    IMPORT_CHANGED: 'La importación ha cambiado desde que la revisaste. Vuelve a abrirla para ver qué se deshará.',
   };
   const english: Record<string, string> = {
     AI_ARTIFACT_NOT_FOUND: 'We could not find that draft. It may have been replaced; refresh the page.', AI_CONSENT_NOT_FOUND: 'We could not find your permission to use the assistant. Check it in Settings and try again.',
@@ -363,6 +367,7 @@ export function localizedError(code: string, locale: Locale) {
     INVALID_PREPARATION_REQUEST: 'The application could not be prepared. Check the chosen details and try again.', INVALID_SEARCH_PROFILE: 'Enter a name of up to 160 characters for this search.',
     SETUP_TOKEN_REQUIRED: 'Paste the access code to continue.', SEARCH_DISABLED: 'This search is paused. Turn it on to update its jobs.',
     SEARCH_REFRESH_FAILED: 'We could not update this search right now. Your search is still saved; try again later.',
+    CONFIRMATION_REQUIRED: 'Type the confirmation phrase exactly as shown.', DELETION_IN_PROGRESS: 'This workspace\'s data is being deleted. Wait a few seconds.', DELETION_BUSY: 'Other actions did not finish in time, so nothing was deleted. Try again.',
     BACKUP_IN_PROGRESS: 'A backup is already being prepared. Wait for it to finish.', BACKUP_NOT_AVAILABLE: 'This download is no longer available. Create another backup in Settings.',
     INVALID_INPUT: 'Check the fields and try again.', INVALID_PROFILE: 'We could not save your profile. Check the details.', SESSION_REQUIRED: 'Your session expired. Sign in again.',
     INVALID_SETUP_TOKEN: 'That code is not valid. Check that you copied the entire code and try again.', SETUP_TOKEN_ALREADY_USED: 'This code has already been used. Open the help on this screen to get a new one.',
@@ -380,6 +385,7 @@ export function localizedError(code: string, locale: Locale) {
     REVIEW_ACKNOWLEDGEMENT_REQUIRED: 'Tick both confirmations before approving this source.', REFERENCE_URL_INVALID: 'The source reference link is not valid.',
     BOARD_REFRESH_ALREADY_RUNNING: 'A search is already running for this source. Wait for it to finish.', BOARD_REFRESH_FAILED: 'We could not read this source. No jobs were closed; try again later or check the link.',
     JOB_NOT_FOUND: 'That job no longer exists in your workspace. Choose another or create a base version.', INVALID_SHORTLIST_DECISION: 'We could not update your saved jobs.',
+    STALE_JOB_AVAILABILITY: 'Availability changed in another tab. We updated the status; review it before trying again.', JOB_ALREADY_CLOSED: 'You have already closed this job.', JOB_NOT_CLOSED: 'This job is no longer listed as closed. We updated its status.',
     REVISION_CONFLICT: 'This search changed in another tab. Your text is preserved; load the current version before saving again.', IDEMPOTENCY_CONFLICT: 'This search was already saved with different details. Check your searches before creating another.',
     APPLICATION_CREATION_STATE_UNSUPPORTED: 'A new application can only start as a draft or as applied by you.', APPLICATION_ALREADY_EXISTS: 'You already have an application for this job.',
     INVALID_STATE_TRANSITION: 'That status change is not allowed from the current status.', CONFIRMATION_EVIDENCE_REQUIRED: 'Confirm that you sent the application to mark it as applied.',
@@ -397,6 +403,8 @@ export function localizedError(code: string, locale: Locale) {
     ANSWER_REVISION_STALE: 'A newer version of this answer exists. Reload the data and review the latest version.',
     PROFILE_REVISION_CONFLICT: 'Your profile changed in another tab or window. Reload the latest version; your unsaved edits are kept so you can save them again.',
     FACT_NOT_IN_CURRENT_REVISION: 'This fact belongs to an older profile revision. Reload the latest version and try again.',
+    FACT_ARCHIVED: 'One of the entries is archived. Restore it separately before confirming it.',
+    IMPORT_CHANGED: 'The import changed since you reviewed it. Open it again to see what will be undone.',
   };
   if (code.startsWith('SOURCE_HTTP_')) return (locale === 'en' ? english : spanish)[code] ?? (locale === 'en' ? 'The job board provider returned an error. Try again later.' : 'El proveedor de empleo devolvió un error. Inténtalo más tarde.');
   const messages = locale === 'en' ? english : spanish;

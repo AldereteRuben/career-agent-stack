@@ -24,7 +24,7 @@ async function main() {
 
   const installed = await mtimeOf(at('node_modules/.modules.yaml'));
   if (installed && installed >= await mtimeOf(at('pnpm-lock.yaml'))) pass('Dependencias instaladas', 'Dependencies installed');
-  else fail('Dependencias ausentes o desactualizadas', 'Dependencies missing or outdated', 'pnpm install --frozen-lockfile', 'pnpm install --frozen-lockfile');
+  else fail('Dependencias ausentes o desactualizadas', 'Dependencies missing or outdated', 'pnpm start (instala lo que falte y deja el aviso al día)', 'pnpm start (installs what is missing and clears the warning)');
 
   const env = await readLocalEnv();
   if (!env && alternateEnv) return fail(`No existe ${envPath} (CAREER_ENV_FILE)`, `${envPath} (CAREER_ENV_FILE) does not exist`);

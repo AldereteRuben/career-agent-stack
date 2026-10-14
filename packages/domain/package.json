@@ -7,7 +7,8 @@
   "exports": {
     ".": { "types": "./src/index.ts", "import": "./dist/index.js" },
     "./matching": { "types": "./src/matching.ts", "import": "./dist/matching.js" },
-    "./states": { "types": "./src/states.ts", "import": "./dist/states.js" }
+    "./states": { "types": "./src/states.ts", "import": "./dist/states.js" },
+    "./security-headers": { "types": "./src/security-headers.ts", "import": "./dist/security-headers.js", "default": "./dist/security-headers.js" }
   },
   "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "eslint src" },
   "dependencies": { "zod": "^4.1.12" },

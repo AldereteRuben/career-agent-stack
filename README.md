@@ -141,10 +141,12 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 ## Your data and current limits
 
 - Services listen on `127.0.0.1`. Do not expose them to your network as a multiuser service.
-- Keep `.env`, `data/`, exports, and backups private. These local files are excluded from Git. **Do not delete `.env` to reset the app**: it contains your encryption key.
+- Keep `.env`, `data/`, exports, and backups private. These local files are excluded from Git. **Do not delete `.env` to reset the app**: it holds the database connection and `APP_ENCRYPTION_KEY`, which your backups need to be restored. To remove the app and its data, use `pnpm run uninstall` ([guide](docs/operations/uninstall.md)): it shows what it would delete first and only deletes what belongs to this installation. To delete your data but keep the app, use **Settings → Delete all my data**.
+- **The app does not encrypt your data.** The documents in `data/files/` and the app's other files are protected only by file permissions for your user, and the database files by whatever your PostgreSQL installation (Homebrew or the Docker volume) sets, so turn on disk encryption: FileVault on macOS, BitLocker on Windows, LUKS on Linux. `APP_ENCRYPTION_KEY` does not encrypt anything stored; it authenticates your backups. On Windows, private files are not yet restricted to your user ([#94](https://github.com/AldereteRuben/career-agent-stack/issues/94)).
 - PostgreSQL stores records; `data/files/` stores generated documents. The Docker database uses the persistent `career-postgres` volume. Do not remove the volume to troubleshoot a startup issue.
 - External board discovery is opt-in and requires an explicit review of the employer association and public-read permission. It searches configured boards only, not the whole job market.
-- Operational backups include the database and PDFs, with hashes and a signed manifest. Restoration requires the separate key file and creates a new database and folder; it never overwrites an existing workspace. The archive is **not encrypted**. See [backup and restore](docs/operations/backup-restore.md).
+- Availability is decided only from complete reads ([ADR 021](docs/decisions/021-job-availability.md)). A job becomes **May be closed** when every followed company board or Remotive/Arbeitnow feed that knew it has missed it in 3 consecutive complete reads and at least 48 hours have passed since a source last saw it. It returns to **Open** if a source lists it again. Partial, cached or failed reads, and reads that suddenly list far fewer jobs, never count. Himalayas results and jobs you imported by hand cannot show that a job is gone, so they keep their state (**Not checked** for manual imports). The app makes no extra requests to confirm a closure and only counts reads that happen while it runs, so a computer that sleeps delays the change. Only you can mark a job **Closed**; it stays closed until you reopen it, even if a source still lists it. Availability never changes an application: preparing one for a job that is not open shows a warning, and automatic preparation only tries open jobs. History starts with this version.
+- Operational backups include the database and PDFs, with hashes and a signed manifest, and are **encrypted** with the age format. Keep the separate key file away from the backups: without it nobody can read or restore a backup, and anyone with both can. Restoration creates a new database and folder; it never overwrites an existing workspace. Backups made before encryption are not protected. See [backup and restore](docs/operations/backup-restore.md).
 - Full installation, recovery and browser verification was performed on macOS. CI checks compilation and domain logic on Linux and Windows; this does not validate their full installation or desktop launchers. The local launcher currently relies on Unix process tools, so native Windows startup/shutdown is not supported. Linux/WSL installation remains unverified end to end.
 
 ## Back up your work
@@ -195,7 +197,7 @@ Bug reports, feature ideas, translations and pull requests are welcome in Englis
 ### Contributors
 
 <a href="https://github.com/AldereteRuben/career-agent-stack/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=AldereteRuben/career-agent-stack" alt="Contributors to Career Stack" />
+  <img src="https://raw.githubusercontent.com/AldereteRuben/career-agent-stack/contributors/contributors.svg" alt="Contributors to Career Stack" />
 </a>
 
 ## License

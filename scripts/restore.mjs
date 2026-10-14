@@ -1,11 +1,12 @@
 // Isolated restore of a verified backup into a NEW database and a NEW installation folder.
 // The live workspace (its database, .env and data folder) is never written to.
 //
-//   pnpm run restore --verify-only --archive <backup.tar> [--key-file <career-key-*.json>]
-//       Checks the archive without creating anything. With the key file it also proves the manifest is authentic.
+//   pnpm run restore --verify-only --archive <backup.tar.age> --key-file <career-key-*.json>
+//       Checks the archive without creating anything: decrypts it and proves the manifest is authentic.
+//       Backups made before encryption (plain .tar) need --allow-unencrypted, and the key file is then optional.
 //
 //   CAREER_RESTORE_ADMIN_URL=postgresql://<admin>@127.0.0.1:5432/postgres \
-//   pnpm run restore --archive <backup.tar> --key-file <career-key-*.json> --target <new folder>
+//   pnpm run restore --archive <backup.tar.age> --key-file <career-key-*.json> --target <new folder>
 //       [--database <new database name>] [--web-port 3100] [--api-port 3101] [--env-file <path>]
 //
 // Order: everything is verified first (archive, signature, dump, schema compatibility, names and folders);
@@ -16,7 +17,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { chmod, lstat, mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { pipeline } from 'node:stream/promises';
@@ -28,15 +28,18 @@ import {
   runPgTool, safeMessage, sameServer, shown, tableCounts, withDatabase, writePrivateFile,
 } from './lib/backup-core.mjs';
 import { archiveRecovery, openArchive } from './lib/backup-verify.mjs';
+import { decryptFile, isAgeFile, privateTempDir } from './lib/backup-crypto.mjs';
 import { disconnectRestoredAi } from './lib/ai-restore.mjs';
+import { allowAdminToUseRole, runAsRole } from './lib/bootstrap-database.mjs';
+import { restoreMark } from './lib/uninstall-core.mjs';
 
 const DATABASE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 
 const usage = () => {
   say('Uso:', 'Usage:');
-  say('  pnpm run restore --verify-only --archive <copia.tar> [--key-file <clave.json>]', 'pnpm run restore --verify-only --archive <backup.tar> [--key-file <key.json>]');
-  say('  CAREER_RESTORE_ADMIN_URL=postgresql://<admin>@127.0.0.1:5432/postgres pnpm run restore --archive <copia.tar> --key-file <clave.json> --target <carpeta nueva> [--database <nombre>] [--web-port 3100] [--api-port 3101]',
-    'CAREER_RESTORE_ADMIN_URL=postgresql://<admin>@127.0.0.1:5432/postgres pnpm run restore --archive <backup.tar> --key-file <key.json> --target <new folder> [--database <name>] [--web-port 3100] [--api-port 3101]');
+  say('  pnpm run restore --verify-only --archive <copia.tar.age> --key-file <clave.json> [--allow-unencrypted]', 'pnpm run restore --verify-only --archive <backup.tar.age> --key-file <key.json> [--allow-unencrypted]');
+  say('  CAREER_RESTORE_ADMIN_URL=postgresql://<admin>@127.0.0.1:5432/postgres pnpm run restore --archive <copia.tar.age> --key-file <clave.json> --target <carpeta nueva> [--database <nombre>] [--web-port 3100] [--api-port 3101]',
+    'CAREER_RESTORE_ADMIN_URL=postgresql://<admin>@127.0.0.1:5432/postgres pnpm run restore --archive <backup.tar.age> --key-file <key.json> --target <new folder> [--database <name>] [--web-port 3100] [--api-port 3101]');
   say('  Siempre crea una base de datos y una carpeta NUEVAS; nunca toca la instalación activa. Ver docs/operations/backup-restore.md', 'Always creates a NEW database and folder; never touches the live installation. See docs/operations/backup-restore.md');
 };
 
@@ -49,7 +52,7 @@ function parseOptions() {
       args,
       options: {
         archive: { type: 'string' }, 'key-file': { type: 'string' }, target: { type: 'string' }, database: { type: 'string' },
-        'web-port': { type: 'string' }, 'api-port': { type: 'string' }, 'env-file': { type: 'string' }, 'verify-only': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+        'web-port': { type: 'string' }, 'api-port': { type: 'string' }, 'env-file': { type: 'string' }, 'verify-only': { type: 'boolean' }, 'allow-unencrypted': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
       },
       allowPositionals: false,
     }).values;
@@ -98,14 +101,51 @@ async function checkSchema(manifest) {
   return known.length - manifest.migrations.length;
 }
 
+/**
+ * Opens a backup for verification or restore (ADR 019). An encrypted backup (.tar.age) is decrypted with the key into
+ * a private temporary folder, then verified as before; the decrypted tar is removed by `close`, also after a failure.
+ * A plain tar from before encryption is refused unless --allow-unencrypted was given, and then a warning is shown.
+ */
+async function openBackup(archive, extractDir, { key, allowUnencrypted }) {
+  if (await isAgeFile(archive)) {
+    if (!key) throw new RecoveryError({
+      es: 'Esta copia está cifrada: hace falta su archivo de clave para leerla.', en: 'This backup is encrypted: its key file is needed to read it.',
+      fixes: [fix('Añade --key-file <career-key-*.json> (el archivo creado junto con la copia).', 'Add --key-file <career-key-*.json> (the file created with the backup).')],
+    });
+    const decryptDir = await privateTempDir('career-restore-');
+    const close = () => rm(decryptDir, { recursive: true, force: true });
+    try {
+      const decrypted = join(decryptDir, 'backup.tar');
+      try { await decryptFile(archive, decrypted, key); } catch {
+        throw new RecoveryError({
+          es: 'No se pudo descifrar la copia: el archivo de clave no es el de esta copia, o la copia está incompleta o modificada.',
+          en: 'The backup could not be decrypted: the key file does not belong to this backup, or the backup is incomplete or modified.',
+          fixes: [fix('Usa el archivo career-key-*.json creado junto con esta copia.', 'Use the career-key-*.json file created with this backup.'), fix('Si la copia viajó por red o USB, compárala con su archivo .sha256.', 'If the backup travelled over a network or USB drive, compare it with its .sha256 file.')],
+        });
+      }
+      return { ...(await openArchive(decrypted, extractDir, { key })), encrypted: true, close };
+    } catch (error) { await close(); throw error; }
+  }
+  if (!allowUnencrypted) throw new RecoveryError({
+    es: 'Esta copia NO está cifrada: se hizo antes de que las copias se cifraran, y su contenido nunca estuvo protegido.',
+    en: 'This backup is NOT encrypted: it was made before backups were encrypted, and its contents were never protected.',
+    fixes: [fix('Si es tuya y confías en ella, repite el comando con --allow-unencrypted. Después, haz una copia nueva (cifrada) y borra esta.', 'If it is yours and you trust it, run the command again with --allow-unencrypted. Then make a new (encrypted) backup and delete this one.')],
+  });
+  warn('Copia sin cifrar (anterior al cifrado): su contenido nunca estuvo protegido. Haz una copia nueva y borra esta cuando termines.', 'Unencrypted backup (made before encryption): its contents were never protected. Make a new backup and delete this one when you are done.');
+  return { ...(await openArchive(archive, extractDir, { key })), encrypted: false, close: async () => {} };
+}
+
 async function verifyOnly(options) {
   const archive = resolve(required(options.archive, '--archive'));
   const key = options['key-file'] ? (await readKeyFile(resolve(options['key-file']))).key : undefined;
-  const staging = await mkdtemp(join(tmpdir(), 'career-verify-'));
+  // Extracted entries are personal data in clear, so they go to a private folder too.
+  const staging = await privateTempDir('career-verify-');
   try {
     step(`Verificando ${shown(archive)} sin crear nada…`, `Verifying ${shown(archive)} without creating anything…`);
-    const result = await openArchive(archive, staging, { key });
+    const result = await openBackup(archive, staging, { key, allowUnencrypted: options['allow-unencrypted'] });
+    await result.close();
     const pending = await checkSchema(result.manifest);
+    if (result.encrypted) ok('Copia descifrada con este archivo de clave.', 'Backup decrypted with this key file.');
     ok('Copia íntegra: estructura, tamaños, hashes SHA-256 y volcado de PostgreSQL correctos.', 'Backup intact: structure, sizes, SHA-256 hashes and PostgreSQL dump are correct.');
     if (result.authenticated) ok('Firma del manifiesto válida con este archivo de clave (copia auténtica).', 'Manifest signature valid with this key file (authentic backup).');
     else warn('Sin --key-file solo se comprueba la integridad, no la autenticidad, y no se sabe si tienes la clave correcta.', 'Without --key-file only integrity is checked, not authenticity, and it is unknown whether you hold the right key.');
@@ -130,6 +170,17 @@ function envText(template, values) {
   });
   for (const [name, value] of Object.entries(values)) if (!seen.has(name)) lines.push(`${name}=${quote(value)}`);
   return `${lines.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+/**
+ * Marks the new database as this restore's (ADR 020), so pnpm run uninstall can prove it may drop it and never
+ * touches the original installation's role. Only the owner may comment on a database: an administrator that is
+ * not a superuser acts as the owner for that statement, as bootstrap does. Returns false if it cannot be marked.
+ */
+async function markRestoredDatabase(client, database, owner, restoreId) {
+  const statement = () => client.query(`comment on database ${client.escapeIdentifier(database)} is ${client.escapeLiteral(restoreMark(restoreId))}`);
+  try { await statement(); return true; } catch (error) { if (error?.code !== '42501') return false; }
+  try { await allowAdminToUseRole(client, owner); await runAsRole(client, owner, statement); return true; } catch { return false; }
 }
 
 async function restore(options) {
@@ -165,6 +216,7 @@ async function restore(options) {
   const appRole = decodeURIComponent(new URL(appBaseUrl).username);
 
   const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  const restoreId = randomBytes(6).toString('hex'); // CAREER_RESTORE_ID: names this restored installation for pnpm run uninstall
   const databaseName = options.database ?? `career_restore_${stamp}`;
   if (!DATABASE_NAME.test(databaseName)) throw new RecoveryError({ es: '--database solo admite minúsculas, dígitos y _ (máx. 63, sin empezar por dígito).', en: '--database accepts lowercase letters, digits and _ only (max 63, not starting with a digit).' });
   if (liveDatabase && databaseName === liveDatabase.database) throw new RecoveryError({ es: `"${databaseName}" es la base de datos activa; la restauración nunca la sobrescribe.`, en: `"${databaseName}" is the live database; restore never overwrites it.` });
@@ -199,7 +251,9 @@ async function restore(options) {
     const staging = await mkdtemp(join(target, '.staging-'));
 
     step(`Verificando ${shown(archive)} (estructura, hashes, firma, volcado)…`, `Verifying ${shown(archive)} (structure, hashes, signature, dump)…`);
-    const { manifest, dumpPath, files } = await openArchive(archive, staging, { key });
+    const opened = await openBackup(archive, staging, { key, allowUnencrypted: options['allow-unencrypted'] });
+    await opened.close(); // the extracted entries in the private staging folder are all the restore needs
+    const { manifest, dumpPath, files } = opened;
     const pendingMigrations = await checkSchema(manifest);
     ok('Copia íntegra y auténtica', 'Backup intact and authentic');
     summarise(manifest);
@@ -214,6 +268,10 @@ async function restore(options) {
     step(`Creando la base de datos nueva "${databaseName}" (propietario ${appRole})…`, `Creating the new database "${databaseName}" (owner ${appRole})…`);
     await adminClient.query(`create database ${adminClient.escapeIdentifier(databaseName)} owner ${adminClient.escapeIdentifier(appRole)} template template0 encoding 'UTF8'`);
     createdDatabase = true;
+    if (!(await markRestoredDatabase(adminClient, databaseName, appRole, restoreId))) warn(
+      `No se pudo marcar la base "${databaseName}" como de esta restauración; pnpm run uninstall no podrá borrarla y habrá que hacerlo a mano.`,
+      `Database "${databaseName}" could not be marked as this restore's; pnpm run uninstall will not be able to drop it, so it has to be removed by hand.`,
+    );
 
     const restoredUrl = withDatabase(appBaseUrl, databaseName);
     step('Restaurando el volcado en la base nueva (una sola transacción)…', 'Restoring the dump into the new database (single transaction)…');
@@ -301,7 +359,7 @@ async function restore(options) {
       NODE_ENV: 'development', WORKSPACE_MODE: 'local',
       WEB_HOST: '127.0.0.1', WEB_PORT: String(webPort), WEB_ORIGIN: `http://127.0.0.1:${webPort}`,
       API_HOST: '127.0.0.1', API_PORT: String(apiPort), API_BASE_URL: `http://127.0.0.1:${apiPort}`,
-      DATABASE_URL: restoredUrl, APP_ENCRYPTION_KEY: key, APP_SESSION_SECRET: sessionSecret,
+      DATABASE_URL: restoredUrl, APP_ENCRYPTION_KEY: key, APP_SESSION_SECRET: sessionSecret, CAREER_RESTORE_ID: restoreId,
       AI_PROVIDER: 'none', AI_ALLOW_PAID_FALLBACK: 'false', APPLICATION_WRITES_ENABLED: 'false', AUTOMATION_SUBMIT_ENABLED: 'false',
       AUTOMATION_DAILY_SUBMIT_CAP: '0', EMAIL_INTEGRATION_ENABLED: 'false', DIAGNOSTICS_ENABLED: 'false',
       FILES_DRIVER: 'local', FILES_LOCAL_PATH: filesDir, DATA_LOCAL_PATH: dataDir,

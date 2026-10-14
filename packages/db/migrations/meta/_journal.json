@@ -78,6 +78,27 @@
       "when": 1791117600000,
       "tag": "0010_ai_persistence",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791446400000,
+      "tag": "0011_fact_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791619200000,
+      "tag": "0012_session_generation",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791705600000,
+      "tag": "0013_job_availability",
+      "breakpoints": true
     }
   ]
 }

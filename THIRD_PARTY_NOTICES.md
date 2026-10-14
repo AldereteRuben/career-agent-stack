@@ -342,6 +342,27 @@ The local PDF viewer adds the following installed packages to the inventory abov
 
 | Package | Installed version | Declared license |
 | --- | --- | --- |
-| `pdfjs-dist` | 6.3.289 | Apache-2.0 |
+| `pdfjs-dist` | 6.4.299 | Apache-2.0 |
 | `@napi-rs/canvas-darwin-arm64` | 1.0.10 | MIT |
 | `@napi-rs/canvas` | 1.0.10 | MIT |
+
+## Encrypted backup dependency additions
+
+Encrypted operational backups ([ADR 019](docs/decisions/019-encrypted-backups.md)) add the following installed packages to the inventory above. `age-encryption` is the official TypeScript implementation of the age format and is pinned to an exact version; review its updates like any security-sensitive dependency.
+
+| Package | Installed version | Declared license |
+| --- | --- | --- |
+| `age-encryption` | 0.3.1 | BSD-3-Clause |
+| `@noble/ciphers` | 2.4.0 | MIT |
+| `@noble/curves` | 2.0.1, 2.4.0 | MIT |
+| `@noble/hashes` | 2.0.1, 2.4.0 | MIT |
+| `@noble/post-quantum` | 0.5.4 | MIT |
+| `@scure/base` | 2.4.0 | MIT |
+
+## Agent workflow templates
+
+The OpenSpec spec-driven workflow adds generated agent instructions to the repository: `.claude/commands/opsx/`, `.claude/skills/openspec-*/` and `.agents/skills/openspec-*/`. They are templates written by `openspec init` and are development tooling only; they are not part of the application or its installed dependencies. `openspec/config.yaml` is project-authored.
+
+| Tool | Version used | Declared license |
+| --- | --- | --- |
+| `@fission-ai/openspec` | 1.14.1 | MIT |

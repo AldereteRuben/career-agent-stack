@@ -27,9 +27,13 @@ The assisted Lever workflow opens a visible ephemeral Chromium browser and fills
 
 Do not commit `.env`, `data/`, `storage/`, `backups/`, exports, resumes, application receipts, or session material. Logs redact cookie and authorization headers; keep logs private. The assisted browser stores no cookies, storage state, traces or screenshots. Attempt snapshots and user outcome notes are personal data. Exports are personal data and should be encrypted at rest by the user.
 
+## Data at rest
+
+The app **does not encrypt** the data it uses: the PostgreSQL database and the generated documents in `data/files/` are readable by anyone who can read those files. Operational backups are encrypted (see below). On macOS and Linux the app creates its own folders and files (`data/`, documents, backups) with permissions for your user only; on Windows those permissions do not restrict access yet ([#94](https://github.com/AldereteRuben/career-agent-stack/issues/94)). The database files themselves are managed by your PostgreSQL installation (Homebrew or the Docker volume), not by the app. Turn on disk encryption (FileVault on macOS, BitLocker on Windows, LUKS on Linux) and lock your computer when you leave it. `APP_ENCRYPTION_KEY` does not encrypt the data in use: it encrypts and authenticates backups ([ADR 019](docs/decisions/019-encrypted-backups.md)) and derives the AI account fingerprint.
+
 ## Recovery artifacts
 
-Operational backups include a database dump and generated documents. The archive is **not encrypted**; keep it on an encrypted drive or in a private location. A separate key file authenticates the manifest and preserves the installation encryption key. Restoring requires that key, creates a new database and data folder, resets source permissions, and generates fresh sign-in credentials. See [backup and restore](docs/operations/backup-restore.md).
+Operational backups include a database dump and generated documents. The archive is **encrypted** with the age format for an identity derived from `APP_ENCRYPTION_KEY`, which travels in a separate key file. Keep that file away from the backups: anyone holding both can read the backup, and without it nobody can read or restore it. Backups made before encryption are not protected and restore only with `--allow-unencrypted`. Restoring requires that key, creates a new database and data folder, resets source permissions, and generates fresh sign-in credentials. See [backup and restore](docs/operations/backup-restore.md).
 
 ## Reporting a vulnerability
 
@@ -49,4 +53,6 @@ No publiques vulnerabilidades, tokens ni datos personales en issues, conversacio
 
 La aplicación está pensada para un único espacio privado en un solo equipo local. No expongas la API, PostgreSQL, Ollama ni un puerto de depuración del navegador a la red local o a internet.
 
-No subas a Git `.env`, `data/`, `storage/`, `backups/`, exportaciones, CVs, comprobantes de solicitudes ni material de sesión. Las copias de seguridad **no están cifradas**: guárdalas en un disco cifrado o en un lugar privado, junto con su archivo de clave por separado. Las exportaciones y los registros contienen datos personales. Consulta la [guía de copias de seguridad](docs/operations/backup-restore.md).
+**Datos guardados:** la app **no cifra** lo que guarda. La base de datos y los documentos de `data/files/` los puede leer cualquiera con acceso a esos archivos; las copias, en cambio, están cifradas. En macOS y Linux la app crea sus carpetas y archivos (`data/`, documentos y copias) con permisos solo para tu usuario; en Windows esos permisos todavía no restringen el acceso ([#94](https://github.com/AldereteRuben/career-agent-stack/issues/94)). Los archivos de la base de datos los gestiona tu instalación de PostgreSQL (Homebrew o el volumen de Docker), no la app. Activa el cifrado de disco (FileVault, BitLocker o LUKS) y bloquea el equipo cuando no lo uses. `APP_ENCRYPTION_KEY` no cifra los datos en uso: cifra y autentica las copias ([ADR 019](docs/decisions/019-encrypted-backups.md)) y deriva la huella de la cuenta de IA.
+
+No subas a Git `.env`, `data/`, `storage/`, `backups/`, exportaciones, CVs, comprobantes de solicitudes ni material de sesión. Las copias de seguridad **están cifradas** con el formato age: guarda su archivo de clave por separado, porque quien tenga los dos puede leerlas y sin la clave nadie puede. Las copias anteriores al cifrado no están protegidas. Las exportaciones y los registros contienen datos personales. Consulta la [guía de copias de seguridad](docs/operations/backup-restore.md).
