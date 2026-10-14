@@ -30,7 +30,7 @@
 
 ## 6. Integration check
 
-- [ ] 6.1 Run the full local suite (`lint`, `typecheck`, `test:unit`, `test:discovery`, `test:searches`, `test:deletion`, `test:integration`, `test:ui-logic`, `test:edge-cases`) and confirm CI is green on the pull request.
+- [x] 6.1 Run the full local suite (`lint`, `typecheck`, `test:unit`, `test:discovery`, `test:searches`, `test:deletion`, `test:integration`, `test:ui-logic`, `test:edge-cases`) and confirm CI is green on the pull request.
 
 ## Workflow follow-up
 
