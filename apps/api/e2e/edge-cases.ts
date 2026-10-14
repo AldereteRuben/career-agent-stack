@@ -182,6 +182,38 @@ try {
     await page.getByLabel('Nombre', { exact: true }).waitFor();
   });
 
+  await run('job-availability-history-actions-desktop-and-mobile', async () => {
+    const candidate = await api.post<{ id: string; canonicalUrl: string }>('/jobs/import', { title: 'Availability test designer', company: `Availability ${stack.marker}`, jobUrl: `https://jobs.lever.co/availability-${stack.marker}/33ef6bcd-2bb9-455f-9229-7b94d86be221`, description: 'Fictional job for availability controls.' });
+    await page.setViewportSize({ width: 1096, height: 800 }); await setLocale(page, 'es');
+    await page.goto(`/jobs/${candidate.id}`);
+    await page.getByRole('heading', { name: 'Estado de la oferta', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Cerrar oferta', exact: true }).count(), 1);
+    const close = page.getByRole('button', { name: 'Cerrar oferta', exact: true });
+    await close.focus(); assert.equal(await close.evaluate((element) => element === document.activeElement), true, 'Close action is keyboard focusable');
+    const closed = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith(`/api/v1/jobs/${candidate.id}/availability`));
+    await page.keyboard.press('Enter'); assert.equal((await closed).status(), 200);
+    await page.locator('[class*="availabilityLatest"]').filter({ hasText: 'La cerraste tú.' }).waitFor();
+    await page.getByRole('button', { name: 'Reabrir oferta', exact: true }).waitFor();
+    await stack.db.query(`insert into job_search_sources(workspace_id, job_id, provider, external_id, source_url, missed_complete_reads, last_seen_at) select workspace_id, id, 'remotive', $2, $3, 0, now() + interval '1 minute' from jobs where id = $1`, [candidate.id, `availability-${stack.marker}`, candidate.canonicalUrl]);
+    await page.reload();
+    await page.getByText('Una fuente todavía muestra esta oferta como publicada.', { exact: false }).waitFor();
+    assert.equal(await hasHorizontalOverflow(page), false, 'Desktop layout has no horizontal overflow');
+
+    await setLocale(page, 'en'); await page.setViewportSize({ width: 390, height: 844 }); await page.reload();
+    await page.getByRole('heading', { name: 'Job status', exact: true }).waitFor();
+    await page.getByText('A source still lists this job as published.', { exact: false }).waitFor();
+    await page.locator('[class*="availabilityLatest"]').filter({ hasText: 'You closed it.' }).waitFor();
+    assert.equal(await hasHorizontalOverflow(page), false, 'Mobile layout has no horizontal overflow at 390 px');
+    const reopen = page.getByRole('button', { name: 'Reopen job', exact: true });
+    await reopen.focus(); assert.equal(await reopen.evaluate((element) => element === document.activeElement), true, 'Reopen action is keyboard focusable');
+    await reopen.click();
+    await page.locator('[class*="availabilityLatest"]').filter({ hasText: 'You reopened it.' }).waitFor();
+    await page.locator('[class*="availabilityHistory"] summary').click();
+    await page.locator('[class*="availabilityHistory"]').getByText('You closed it.', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Reopen job', exact: true }).count(), 0);
+    assert.equal(await hasHorizontalOverflow(page), false, 'Reopened mobile layout still has no horizontal overflow');
+  });
+
   await run('english-mobile-tracker-and-search-errors', async () => {
     await setLocale(page, 'en'); await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/applications?id=${app.id}`);

@@ -10,7 +10,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppShell, PageHeader, WorkspaceGate, DetailTitle } from '@/components/shell';
 import { Button, Card, Icon, Notice, Tag } from '@/components/ui';
-import { api, errorMessage, formatDate } from '@/lib/api';
+import { ApiError, api, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor } from '@/lib/labels';
 import styles from '../jobs.module.css';
 
@@ -18,10 +18,12 @@ type Match = { titleAlignment: number | null; matchedTargetTitle: string | null;
 type Job = { discoveredAt: string | null; seenAt: string | null; id: string; title: string; company: string; location: string | null; canonicalUrl: string | null; fitScore: number | null; evidenceCoverage: number | null; eligibility: string; reasons: string[]; shortlistDecision: string; availability: string; createdAt: string; provisional?: boolean; match?: Match | null };
 type Snapshot = { id: string; title: string; descriptionText: string | null; fetchedAt: string };
 type JobApplication = { id: string; state: string; recruitmentStage?: string; updatedAt?: string };
-type Detail = { searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[] };
+type AvailabilityEvent = { fromState: string; toState: string; reason: string; createdAt: string };
+type Detail = { searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[]; closedByUser: boolean; availabilityHistory: AvailabilityEvent[]; stillListedBySource: boolean };
 
 export default function JobDetailPage() {
   const { locale } = useLocale(); const c = copy(locale);
+  const formatAvailabilityDate = (value: string) => new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
   const { id } = useParams<{ id: string }>(); const router = useRouter();
   const searchParams = useSearchParams(); const returnTo = searchOrigin(searchParams.get('returnTo'));
   const backHref = returnTo === '/jobs' || returnTo.startsWith('/jobs?') || returnTo === '/searches' || returnTo.startsWith('/searches?') ? returnTo : '/jobs';
@@ -97,6 +99,20 @@ export default function JobDetailPage() {
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
   };
 
+  const updateAvailability = async (action: 'close' | 'reopen') => {
+    if (!job || busy) return;
+    setBusy('availability'); setError(''); setMessage('');
+    try {
+      await api(`/jobs/${job.id}/availability`, { method: 'POST', body: JSON.stringify({ action, expectedAvailability: job.availability }) });
+      await load();
+      setMessage(action === 'close' ? c('Oferta cerrada. Puedes reabrirla cuando quieras.', 'Job closed. You can reopen it whenever you want.') : c('Oferta reabierta.', 'Job reopened.'));
+    } catch (err) {
+      const message = errorMessage(err);
+      if (err instanceof ApiError && err.status === 409) await load();
+      setError(message);
+    } finally { setBusy(null); }
+  };
+
   const archive = async () => {
     if (!job) return;
     const restoring = job.shortlistDecision === 'ARCHIVED';
@@ -121,6 +137,27 @@ export default function JobDetailPage() {
       </ul>
       {job.availability === 'CLOSED' && <Notice tone="warning">{c('Esta oferta figura como cerrada. Comprueba el enlace original antes de preparar una solicitud.', 'This job is listed as closed. Check the original post before preparing an application.')}</Notice>}
       {job.availability === 'POSSIBLY_CLOSED' && <Notice tone="warning">{c('Puede que esta oferta ya esté cerrada. Compruébalo en el enlace original antes de preparar tu solicitud.', 'This job may already be closed. Check the original post before preparing your application.')}</Notice>}
+      <Card className={styles.availabilityPanel}>
+        <div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('DISPONIBILIDAD', 'AVAILABILITY')}</div><h2 id="availability-heading">{c('Estado de la oferta', 'Job status')}</h2></div><Tag tone={job.availability === 'OPEN' ? 'green' : job.availability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(job.availability, locale)}</Tag></div>
+        {data?.availabilityHistory.length ? <>
+          <p className={styles.availabilityLatest}><strong>{c('Último cambio:', 'Latest change:')}</strong> {labelFor.availabilityReason(data.availabilityHistory.at(-1)!.reason, locale)} <time dateTime={data.availabilityHistory.at(-1)!.createdAt}>{formatAvailabilityDate(data.availabilityHistory.at(-1)!.createdAt)}</time></p>
+          <details className={styles.availabilityHistory}>
+            <summary>{c(`Historial (${data.availabilityHistory.length})`, `History (${data.availabilityHistory.length})`)}</summary>
+            <ol aria-label={c('Historial de disponibilidad', 'Availability history')}>
+              {data.availabilityHistory.map((event, index) => <li key={`${event.createdAt}-${index}`}>
+                <time dateTime={event.createdAt}>{formatAvailabilityDate(event.createdAt)}</time>
+                <span>{labelFor.availability(event.fromState, locale)} → {labelFor.availability(event.toState, locale)}</span>
+                <strong>{labelFor.availabilityReason(event.reason, locale)}</strong>
+              </li>)}
+            </ol>
+          </details>
+        </> : <p className={styles.availabilityLatest}>{c('Aún no hay cambios registrados.', 'No changes have been recorded yet.')}</p>}
+        {data?.closedByUser && data.stillListedBySource && <Notice tone="info">{c('Una fuente todavía muestra esta oferta como publicada. Puedes reabrirla cuando quieras.', 'A source still lists this job as published. You can reopen it whenever you want.')}</Notice>}
+        <div className={styles.availabilityActions}>
+          {!data?.closedByUser && <Button variant="secondary" disabled={busy !== null} onClick={() => void updateAvailability('close')}>{busy === 'availability' ? c('Actualizando…', 'Updating…') : c('Cerrar oferta', 'Close job')}</Button>}
+          {(job.availability === 'CLOSED' || job.availability === 'POSSIBLY_CLOSED') && <Button variant={data?.closedByUser ? 'primary' : 'quiet'} disabled={busy !== null} onClick={() => void updateAvailability('reopen')}>{busy === 'availability' ? c('Actualizando…', 'Updating…') : c('Reabrir oferta', 'Reopen job')}</Button>}
+        </div>
+      </Card>
       {job.eligibility === 'FAIL' && <Notice tone="warning">{c('Según los datos de la oferta, puede que no cumplas algún requisito para postular. Revisa la descripción antes de continuar.', 'Based on the job data, you may not meet a requirement to apply. Check the description before continuing.')}</Notice>}
       {job.discoveredAt && !job.seenAt && job.shortlistDecision === 'UNREVIEWED' && <Notice actions={<Button variant="secondary" disabled={busy !== null} onClick={(event) => void markReviewed(event.currentTarget)}>{busy === 'seen' ? c('Guardando…', 'Saving…') : c('Marcar como revisada', 'Mark as reviewed')}</Button>}>{c('Oferta nueva · pendiente de revisar.', 'New job · waiting for your review.')}</Notice>}
       {job.discoveredAt && job.seenAt && <Notice tone="success" actions={<Link ref={reviewContinuation} href={backHref} className="button button-secondary">{c('Volver a la lista de ofertas', 'Back to the job list')}</Link>}>{job.shortlistDecision === 'ARCHIVED' ? c('Oferta revisada. Sigue guardada en Archivadas.', 'Job reviewed. It is still saved under Archived.') : c('Oferta revisada. Puedes volver a encontrarla en Todas las encontradas.', 'Job reviewed. You can find it again under All found jobs.')}</Notice>}
