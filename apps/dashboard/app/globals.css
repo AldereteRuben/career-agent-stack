@@ -905,7 +905,7 @@ main:focus {
   margin-bottom: 8px;
 }
 
-.empty h3 {
+.empty :is(h2, h3, h4, h5, h6) {
   margin: 4px 0;
   font-family: var(--font-display);
   font-size: var(--text-lg);
