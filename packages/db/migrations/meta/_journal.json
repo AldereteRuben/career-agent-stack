@@ -92,6 +92,13 @@
       "when": 1791619200000,
       "tag": "0012_session_generation",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791705600000,
+      "tag": "0013_job_availability",
+      "breakpoints": true
     }
   ]
 }

@@ -39,7 +39,7 @@ function answerSuggestions(rows: Awaited<ReturnType<typeof latestReusableAnswers
 }
 
 /** Deterministically prepares a review draft from the current approved profile facts and saved job snapshot. */
-export async function prepareApplication(workspaceId: string, jobId: string, locale: PreparationLocale = 'en') : Promise<PreparationResult> {
+export async function prepareApplication(workspaceId: string, jobId: string, locale: PreparationLocale = 'en', options: { automatic?: boolean } = {}) : Promise<PreparationResult> {
   let generatedFilePath: string | null = null;
   try {
     const result = await db.transaction(async (tx) => {
@@ -48,6 +48,7 @@ export async function prepareApplication(workspaceId: string, jobId: string, loc
       await lockKey(tx, `application:${workspaceId}:${jobId}`);
       const job = (await tx.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, workspaceId))).limit(1))[0];
       if (!job) return blocked(jobId, 'JOB_NOT_FOUND');
+      if (options.automatic && job.availability !== 'OPEN') return blocked(jobId, 'JOB_NOT_OPEN');
       const grouped = await tx.execute(sql`SELECT a.id,a.document_id FROM applications a JOIN job_identity_members m ON m.workspace_id=a.workspace_id AND m.job_id=a.job_id
         JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key
         WHERE target.workspace_id=${workspaceId} AND target.job_id=${jobId}::uuid AND a.job_id<>${jobId}::uuid ORDER BY a.created_at LIMIT 2`);
@@ -79,7 +80,7 @@ export async function prepareApplication(workspaceId: string, jobId: string, loc
       const linkedDocument = current?.documentId ? (await tx.select({ id: documentVersions.id, approvalStatus: documentVersions.approvalStatus }).from(documentVersions).where(and(eq(documentVersions.workspaceId, workspaceId), eq(documentVersions.id, current.documentId))).limit(1))[0] : undefined;
       const replaceableGeneratedDocument = generatedDocumentId && linkedDocument?.approvalStatus === 'PENDING_REVIEW' ? generatedDocumentId : null;
       // Protect user decisions before consulting a cached preparation result.
-      const protectedReason = applicationPreparationBlockReason(current, replaceableGeneratedDocument) ?? (job.availability === 'CLOSED' ? 'JOB_CLOSED' : null);
+      const protectedReason = applicationPreparationBlockReason(current, replaceableGeneratedDocument);
       if (protectedReason) {
         const result = { ...blocked(jobId, protectedReason, profileRevisionId, snapshotId), applicationId: current?.id ?? null };
         if (current) await tx.insert(applicationEvents).values({ workspaceId, applicationId: current.id, eventType: 'PREPARATION_CREATED', reason: null, evidence: { preparationKey: key, profileRevisionId, snapshotId, gaps: [], selectedFacts: [], answers: [], result }, aggregateVersion: current.version });
@@ -179,18 +180,17 @@ export function registerPreparationRoutes(app: FastifyInstance, workspace: (requ
         : application.state === 'UNKNOWN' ? 'UNCERTAIN'
         : application.state === 'IN_PROGRESS' ? 'IN_PROGRESS'
         : application.state === 'CANCELLED' || closedStages.includes(application.recruitmentStage) ? 'CLOSED'
-        : job?.availability === 'CLOSED' ? 'JOB_CLOSED'
         : doc?.assistReady ? 'READY'
         : doc?.reviewReady ? 'REVIEW_DOCUMENT'
         : doc ? 'STALE_DOCUMENT'
         : currentGaps.length ? 'NEEDS_DETAILS' : 'NEEDS_PREPARATION';
-      const needsAttention = !['SUBMITTED', 'CLOSED', 'IN_PROGRESS', 'JOB_CLOSED'].includes(queueState);
+      const needsAttention = !['SUBMITTED', 'CLOSED', 'IN_PROGRESS'].includes(queueState);
       const canPrepare = !['CONFIRMED', 'UNKNOWN', 'IN_PROGRESS', 'CANCELLED'].includes(application.state)
-        && !closedStages.includes(application.recruitmentStage) && job?.availability !== 'CLOSED'
+        && !closedStages.includes(application.recruitmentStage)
         && (!application.documentId || Boolean(sameDocument && doc?.approvalStatus === 'PENDING_REVIEW'));
-      return [{ ...result, status: ['SUBMITTED', 'CLOSED', 'IN_PROGRESS', 'UNCERTAIN', 'JOB_CLOSED'].includes(queueState) ? 'BLOCKED' : doc?.assistReady || doc?.reviewReady ? 'PREPARED' : 'NEEDS_REVIEW', applicationId: application.id, jobId: application.jobId ?? result.jobId,
+      return [{ ...result, status: ['SUBMITTED', 'CLOSED', 'IN_PROGRESS', 'UNCERTAIN'].includes(queueState) ? 'BLOCKED' : doc?.assistReady || doc?.reviewReady ? 'PREPARED' : 'NEEDS_REVIEW', applicationId: application.id, jobId: application.jobId ?? result.jobId,
         documentId: application.documentId, company: job?.company ?? application.company, title: job?.title ?? application.role,
-        queueState, needsAttention, canPrepare, applicationState: application.state,
+        queueState, needsAttention, canPrepare, applicationState: application.state, jobAvailability: job?.availability ?? null,
         // Stored facts explain the old generation; they must not describe a different linked PDF.
         selectedFacts: !doc || !sameDocument ? [] : result.selectedFacts,
         answerSuggestions: currentProfile && sameDocument ? result.answerSuggestions.filter((suggestion) => answers.some((answer) => answer.id === suggestion.answerId && answer.approvalStatus === 'USER_APPROVED' && JSON.stringify(answer.value) === JSON.stringify(suggestion.value))) : [],

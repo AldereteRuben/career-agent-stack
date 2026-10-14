@@ -51,6 +51,93 @@
   font-weight: 600;
 }
 
+.availabilityPanel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.availabilityPanel > .availabilityLatest {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.availabilityLatest time {
+  margin-inline-start: 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.availabilityHistory {
+  min-width: 0;
+}
+
+.availabilityHistory > summary {
+  width: fit-content;
+  min-height: 44px;
+  padding: 10px 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.availabilityHistory > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.availabilityHistory ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.availabilityHistory li {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+  gap: 4px 12px;
+  min-width: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.availabilityHistory li time {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.availabilityHistory li strong {
+  grid-column: 2;
+  font-size: var(--text-sm);
+}
+
+.availabilityActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.availabilityActions > :global(.button) {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .availabilityHistory li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .availabilityHistory li strong {
+    grid-column: 1;
+  }
+}
+
 .later {
   padding: 16px 20px;
 }

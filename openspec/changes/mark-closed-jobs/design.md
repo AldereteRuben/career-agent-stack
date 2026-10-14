@@ -83,6 +83,6 @@ See proposal.md (Why) and specs/job-availability/spec.md (requirements). What th
 ## Migration Plan
 
 1. Migration `0013` (after ADR 020's `0012`): add the counter columns with default 0, `last_complete_count` nullable, `jobs.closed_by_user` default false, and the history table.
-   - Existing jobs keep their availability. The first counting read after upgrade starts the streak from zero, so nothing closes earlier than 3 reads over 48 hours after the upgrade.
+   - Existing jobs keep their availability. The first counting read after upgrade starts the streak from zero, so nothing becomes possibly closed before 3 complete reads after the upgrade have missed it. A job last seen more than 48 hours before the upgrade can become possibly closed on that third read.
 2. Add `job_availability_events` to `DELETION_ORDER` in `apps/api/src/workspace-deletion.ts`. Its proof test enforces this.
 3. Rollback: the columns and the table are additive. An older build ignores them; `POSSIBLY_CLOSED` and `CLOSED` were already valid values.
