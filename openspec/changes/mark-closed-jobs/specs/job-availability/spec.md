@@ -105,7 +105,7 @@ The person SHALL be able to mark any job closed, and to reopen a closed or possi
 
 #### Scenario: Reopen a possibly closed job
 - **WHEN** the person reopens a `POSSIBLY_CLOSED` job
-- **THEN** its availability becomes `OPEN` and it becomes `POSSIBLY_CLOSED` again only after 3 new complete misses over 48 hours
+- **THEN** its availability becomes `OPEN` and it becomes `POSSIBLY_CLOSED` again only after 3 new complete misses, with at least 48 hours since any source last saw it
 
 #### Scenario: Stale request
 - **WHEN** the person submits a close or reopen action for a job whose availability changed since the page was loaded

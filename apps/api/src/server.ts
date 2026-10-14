@@ -23,6 +23,7 @@ import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
+import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
@@ -333,16 +334,17 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const { id: jobId } = request.params as { id: string }; const id = workspace(request);
   const job = (await db.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))).limit(1))[0];
   if (!job) return fail(reply, 404, 'NOT_FOUND');
-  const [snapshots, occurrences, applicationsForJob, searchSources] = await Promise.all([
+  const [snapshots, occurrences, applicationsForJob, searchSources, availability] = await Promise.all([
     db.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), eq(jobSnapshots.jobId, jobId))).orderBy(desc(jobSnapshots.fetchedAt)),
     db.select().from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), eq(jobOccurrences.jobId, jobId))),
     db.select().from(applications).where(and(eq(applications.workspaceId, id), or(eq(applications.jobId, jobId), sql`${applications.jobId} IN(SELECT m.job_id FROM job_identity_members m JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key WHERE target.workspace_id=${id} AND target.job_id=${jobId}::uuid)`))).orderBy(desc(applications.updatedAt)),
     db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), eq(jobSearchSources.jobId, jobId))),
+    availabilityDetail(pool, id, jobId),
   ]);
   const [scored] = await scoreJobs(db, id, await withEffectiveSeenAt(db, id, [job]));
   // Present legacy feed snapshots as readable text without rewriting their evidence/hash.
   const readableSnapshots = searchSources.length ? snapshots.map((snapshot) => ({ ...snapshot, descriptionText: plainDescription(snapshot.descriptionText) })) : snapshots;
-  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob };
+  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
 });
 /** Reviewing from /jobs also clears the job from every search inbox and from strong-identity duplicates. */
 app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
@@ -379,6 +381,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   return await decideJob(workspace(request), jobId, String(body!.decision)) ?? fail(reply,404,'NOT_FOUND');
 });
 
+registerJobAvailabilityRoutes(app, workspace);
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
