@@ -17,18 +17,18 @@ type NavLink = { key: string; href: string; label: Copy; icon: string; hint?: Co
 
 /** The three everyday destinations. Everything else lives under "Profile and tools". */
 const primaryLinks: NavLink[] = [
-  { key: 'searches', href: '/searches', label: { es: 'Buscar empleo', en: 'Find jobs' }, icon: 'search', hint: { es: 'Búsquedas automáticas', en: 'Automatic searches' } },
-  { key: 'saved', href: '/jobs?scope=favorites', label: { es: 'Guardadas', en: 'Saved jobs' }, icon: 'check', hint: { es: 'Ofertas que te interesan', en: 'Jobs you want to keep' } },
-  { key: 'applications', href: '/applications', label: { es: 'Mis solicitudes', en: 'My applications' }, icon: 'briefcase', hint: { es: 'Preparar, enviar y dar seguimiento', en: 'Prepare, apply, and track' } },
+  { key: 'overview', href: '/overview', label: { es: 'Inicio', en: 'Dashboard' }, icon: 'home', hint: { es: 'Tu siguiente paso', en: 'Your next step' } },
+  { key: 'searches', href: '/searches', label: { es: 'Buscar ofertas', en: 'Find jobs' }, icon: 'search', hint: { es: 'Búsquedas automáticas', en: 'Automatic searches' } },
+  { key: 'saved', href: '/jobs?scope=favorites', label: { es: 'Ofertas guardadas', en: 'Saved jobs' }, icon: 'check', hint: { es: 'Ofertas que te interesan', en: 'Jobs you want to keep' } },
+  { key: 'applications', href: '/applications', label: { es: 'Candidaturas', en: 'Applications' }, icon: 'briefcase', hint: { es: 'Preparar, enviar y dar seguimiento', en: 'Prepare, apply, and track' } },
 ];
 
 const secondaryLinks: NavLink[] = [
-  { key: 'profile', href: '/profile', label: { es: 'Mi perfil', en: 'My profile' }, icon: 'user' },
-  { key: 'documents', href: '/documents', label: { es: 'Mis CV', en: 'My resumes' }, icon: 'file' },
+  { key: 'profile', href: '/profile', label: { es: 'Perfil', en: 'Profile' }, icon: 'user' },
+  { key: 'documents', href: '/documents', label: { es: 'CV y documentos', en: 'Resumes and documents' }, icon: 'file' },
   { key: 'jobs', href: '/jobs', label: { es: 'Todas las ofertas', en: 'All jobs' }, icon: 'search' },
-  { key: 'boards', href: '/boards', label: { es: 'Empresas que sigo', en: 'Companies I follow' }, icon: 'building' },
+  { key: 'boards', href: '/boards', label: { es: 'Empresas', en: 'Companies' }, icon: 'building' },
   { key: 'settings', href: '/settings', label: { es: 'Ajustes y privacidad', en: 'Settings and privacy' }, icon: 'settings' },
-  { key: 'overview', href: '/overview', label: { es: 'Resumen', en: 'Overview' }, icon: 'home' },
 ];
 
 const toolsLabel: Copy = { es: 'Perfil y herramientas', en: 'Profile and tools' };
@@ -146,7 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   // Start expanded on a secondary page so the current destination is visible from the first render.
   // /jobs depends on its query (saved or all jobs), so it is revealed after the query is read.
-  const [toolsOpen, setToolsOpen] = useState(() => pathname !== '/jobs' && secondaryLinks.some((link) => link.key === resolveRoute(pathname, null).active));
+  const [toolsOpen, setToolsOpen] = useState(true);
   const revealTools = useCallback(() => setToolsOpen(true), []);
   const [signingOut, setSigningOut] = useState(false);
   const [sessionError, setSessionError] = useState('');

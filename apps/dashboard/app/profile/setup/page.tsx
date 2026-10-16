@@ -79,7 +79,7 @@ function SetupGuide() {
     {jobId ? <PageHeader eyebrow={c('PREPARAR TU SOLICITUD', 'PREPARE YOUR APPLICATION')} title={c('Completa lo que falta', 'Complete what is missing')} description={c('Solo te pedimos lo necesario para esta oferta. Al terminar, prepararemos tu CV para que lo revises.', 'We only ask for what this job needs. When you finish, we prepare your resume for you to review.')}/>
       : <PageHeader eyebrow={c('PRIMEROS PASOS', 'GETTING STARTED')} title={c('Configura tu perfil y tu CV', 'Set up your profile and resume')} description={c('Empieza con lo esencial. Puedes volver a esta guía desde Inicio cuando quieras.', 'Start with the essentials. You can return to this guide from Home whenever you want.')}/>}
     {jobId ? <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile" returnTo={returnTo}/>
-      : <Notice actions={<Link className="button button-secondary" href="/searches">{c('Buscar empleo', 'Find jobs')}</Link>}>{c('Puedes empezar a buscar ofertas ahora. Completa esta guía para que podamos preparar tus candidaturas.', 'You can start finding jobs now. Complete this guide so we can prepare your applications.')}</Notice>}
+      : <Notice actions={<Link className="button button-secondary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>}>{c('Puedes empezar a buscar ofertas ahora. Completa esta guía para que podamos preparar tus candidaturas.', 'You can start finding jobs now. Complete this guide so we can prepare your applications.')}</Notice>}
     <div className="onboarding-layout">
       <ol className="onboarding-progress" aria-label={c('Tu progreso', 'Your progress')}>
         {titles.map((title, index) => <li key={index} aria-current={index === step ? 'step' : undefined}><span className="step-badge" aria-hidden="true">{index < step ? '✓' : index + 1}</span><span>{title}<small>{index < step ? c('Listo', 'Done') : index === step ? c('Ahora', 'Now') : c('Después', 'Next')}</small></span></li>)}
@@ -108,7 +108,7 @@ function SetupGuide() {
         </>}
       </Card>}
       <p className="muted-label">{c('Las empresas que sigues y las respuestas guardadas son opcionales. No necesitas configurarlas para crear tu CV.', 'Followed companies and saved answers are optional. You do not need to set them up to create your resume.')}</p>
-      {jobId ? <Link href={withSearchOrigin(`/jobs/${jobId}`, returnTo)}>{c('Volver a la oferta', 'Back to the job')}</Link> : <Link href="/searches">{c('Volver a Buscar empleo', 'Back to Find jobs')}</Link>}
+      {jobId ? <Link href={withSearchOrigin(`/jobs/${jobId}`, returnTo)}>{c('Volver a la oferta', 'Back to the job')}</Link> : <Link href="/searches">{c('Volver a Buscar ofertas', 'Back to Find jobs')}</Link>}
     </div>
   </AppShell>;
 }

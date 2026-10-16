@@ -7,7 +7,7 @@ export const statusPageText = {
     eyebrow: { es: 'ERROR 404', en: 'ERROR 404' },
     title: { es: 'No encontramos esta página', en: 'We could not find this page' },
     detail: { es: 'La dirección no existe o cambió. Vuelve a tus búsquedas o a la página anterior.', en: 'The address does not exist or has changed. Go back to your searches or to the previous page.' },
-    search: { es: 'Buscar empleo', en: 'Find jobs' },
+    search: { es: 'Buscar ofertas', en: 'Find jobs' },
     back: { es: 'Volver a la página anterior', en: 'Go back to the previous page' },
   },
   error: {

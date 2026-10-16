@@ -256,7 +256,8 @@ export const scenarios: Scenario[] = [
       await page.getByRole('link', { name: title }).first().waitFor();
       const jobs = await api.get<Array<{ id: string; company: string }>>('/jobs');
       assert.equal(jobs.filter((job) => job.company === company).length, 1, 'Manual import should create exactly one job');
-      await page.getByRole('link', { name: title }).first().click();
+      const importedJob = page.locator('.job-card').filter({ hasText: title });
+      await importedJob.getByRole('link', { name: any('Ver detalles', 'View details') }).click();
       await page.waitForURL(/\/jobs\/[^/?#]+/);
       await page.getByRole('heading', { name: title }).first().waitFor();
       await page.screenshot({ path: join(artifacts, 'job-detail.png'), fullPage: true });
