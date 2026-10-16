@@ -137,7 +137,7 @@ export default function BoardsPage() {
   };
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas que sigo', 'Companies I follow')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Todas las ofertas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in All jobs.')}/>
+    <PageHeader eyebrow={c('CONSULTA OPCIONAL', 'OPTIONAL JOB SEARCH')} title={c('Empresas', 'Companies')} description={c('Opcional: conecta la página de empleo de una empresa para consultar sus ofertas. También puedes guardar una oferta directamente en Todas las ofertas.', 'Optional: connect a company careers page to check its jobs. You can also add a job directly in All jobs.')}/>
     {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar este formulario. Añade la empresa antes de salir para no perderlo.', 'We could not preserve this form. Add the company before leaving to keep it.')}</Notice>}
     {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message} {activeCount > 0 && <Link href="/jobs">{c('Ver ofertas', 'See jobs')}</Link>}</Notice>}
     {loadError && loadState === 'ready' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{loadError} {c('La lista muestra la última información disponible.', 'The list shows the last available information.')}</Notice>}

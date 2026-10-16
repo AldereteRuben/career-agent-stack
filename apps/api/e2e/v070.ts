@@ -20,7 +20,7 @@ export const v070Scenario: Scenario = {
       await api.post(`/profile/facts/${fact.id}/approve`, {});
       await setLocale(page, 'es');
       await page.goto(new URL('/searches', page.url()).toString());
-      await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Buscar ofertas', exact: true }).waitFor();
       await page.getByLabel('Puesto o palabras clave', { exact: true }).fill('Automation designer');
       const companyField = page.getByLabel('Empresa (opcional)', { exact: true });
       await revealField(companyField); await companyField.fill(company);

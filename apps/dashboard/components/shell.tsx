@@ -15,7 +15,7 @@ import { Button, Icon, Notice } from './ui';
 type Copy = { es: string; en: string };
 type NavLink = { key: string; href: string; label: Copy; icon: string; hint?: Copy };
 
-/** The three everyday destinations. Everything else lives under "Profile and tools". */
+/** The everyday destinations. Everything else lives under "Profile and tools". */
 const primaryLinks: NavLink[] = [
   { key: 'overview', href: '/overview', label: { es: 'Inicio', en: 'Dashboard' }, icon: 'home', hint: { es: 'Tu siguiente paso', en: 'Your next step' } },
   { key: 'searches', href: '/searches', label: { es: 'Buscar ofertas', en: 'Find jobs' }, icon: 'search', hint: { es: 'Búsquedas automáticas', en: 'Automatic searches' } },
@@ -67,7 +67,7 @@ function resolveRoute(pathname: string, search: URLSearchParams | null): Route {
   if (primary) return { active: primary.key, crumbs: [primary.label] };
   const secondary = secondaryLinks.find((link) => link.key !== 'jobs' && within(pathname, link.href));
   if (secondary) return { active: secondary.key, crumbs: [toolsLabel, secondary.label] };
-  // Only the root address redirects to Find jobs; any other unknown address is the not-found page.
+  // Only the root address redirects to the overview (the first primary link); any other unknown address is the not-found page.
   if (pathname === '/') return { active: null, crumbs: [primaryLinks[0]!.label] };
   return { active: null, crumbs: [notFoundLabel] };
 }
@@ -144,8 +144,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const wasOpen = useRef(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  // Start expanded on a secondary page so the current destination is visible from the first render.
-  // /jobs depends on its query (saved or all jobs), so it is revealed after the query is read.
+  // The tools group starts expanded so profile, resumes and settings are visible; the toggle collapses it, and MainNav
+  // re-opens it when the user lands on one of its destinations.
   const [toolsOpen, setToolsOpen] = useState(true);
   const revealTools = useCallback(() => setToolsOpen(true), []);
   const [signingOut, setSigningOut] = useState(false);
