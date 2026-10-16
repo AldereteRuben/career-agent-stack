@@ -93,12 +93,15 @@ uxReviewScenarios.push({
           await page.waitForURL((url) => url.searchParams.get('selected') === second.id);
           await panes.nth(1).waitFor({ state: 'visible' });
           await panes.nth(0).waitFor({ state: 'visible' });
+          assert.equal(await secondLink.evaluate((node) => node === document.activeElement), true, `${locale} desktop selection keeps keyboard focus on the list so arrow-through review is not interrupted`);
         } else {
           assert.equal(await hasHorizontalOverflow(page), false, `${locale} job list overflows at mobile width`);
           await secondLink.focus(); await page.keyboard.press('Enter');
           await page.waitForURL((url) => url.searchParams.get('selected') === second.id);
           await panes.nth(0).waitFor({ state: 'hidden' });
           await page.getByRole('button', { name: labels.back, exact: true }).waitFor();
+          assert.equal(await page.evaluate(() => document.activeElement?.tagName === 'H2' && Boolean(document.activeElement.closest('section'))), true, `${locale} mobile selection moves focus to the preview heading`);
+          assert.equal(await page.evaluate(() => document.activeElement?.textContent ?? ''), secondTitle, `${locale} focus lands on the selected job's title`);
         }
         const previewPane = panes.nth(1);
         await previewPane.getByRole('heading', { name: secondTitle, exact: true }).waitFor();
@@ -126,6 +129,7 @@ uxReviewScenarios.push({
           await page.getByRole('button', { name: labels.back, exact: true }).click();
           await page.waitForURL((url) => url.pathname === '/jobs' && !url.searchParams.has('selected'));
           await page.getByTestId('job-master-detail').locator(':scope > section').nth(0).waitFor({ state: 'visible' });
+          assert.equal(await secondLink.evaluate((node) => node === document.activeElement), true, `${locale} going back returns focus to the job that was open`);
           const listUrlAfterBack = new URL(page.url());
           assert.equal(listUrlAfterBack.searchParams.get('q'), company);
           assert.equal(listUrlAfterBack.searchParams.get('scope'), 'active');
@@ -177,5 +181,45 @@ uxReviewScenarios.push({
         }
       }
     }
+  },
+});
+
+uxReviewScenarios.push({
+  name: 'activity-calendar-uses-the-viewers-calendar-days',
+  async run({ page, api, marker }) {
+    const company = `Activity ${marker}`;
+    const job = await api.post<{ id: string }>('/jobs/import', { company, title: `Activity role ${marker}`, jobUrl: `https://example.com/${marker}/activity` });
+    // The same instant falls on different calendar days in far-apart zones; each response must follow the zone asked for.
+    const localDay = (timeZone: string, date = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+    for (const timeZone of ['UTC', 'Pacific/Kiritimati', 'Pacific/Pago_Pago', 'Europe/Madrid']) {
+      const day = localDay(timeZone);
+      const summary = await api.get<{ activityByDay: Array<{ day: string; jobs: number }> }>(`/summary?tz=${encodeURIComponent(timeZone)}`);
+      assert.ok((summary.activityByDay.find((item) => item.day === day)?.jobs ?? 0) >= 1, `${timeZone}: the summary counts the new job on ${day}`);
+      const detail = await api.get<{ day: string; jobsTotal: number; jobs: Array<{ id: string }> }>(`/activity?day=${day}&tz=${encodeURIComponent(timeZone)}`);
+      assert.ok(detail.jobs.some((item) => item.id === job.id), `${timeZone}: the day detail lists the new job on ${day}`);
+      assert.ok(detail.jobsTotal >= detail.jobs.length);
+      const yesterday = localDay(timeZone, new Date(Date.now() - 86_400_000));
+      const other = await api.get<{ jobs: Array<{ id: string }> }>(`/activity?day=${yesterday}&tz=${encodeURIComponent(timeZone)}`);
+      assert.equal(other.jobs.some((item) => item.id === job.id), false, `${timeZone}: the job does not also appear on the previous day`);
+    }
+    for (const bad of ['/activity', '/activity?day=2026-02-30', '/activity?day=tomorrow', '/activity?day=2026-01-01&tz=Not/AZone', '/activity?day=2026-01-01&tz=%27%3B--', '/summary?tz=Not/AZone']) {
+      await assert.rejects(() => api.get(bad), /INVALID_INPUT|400/, `${bad} is rejected`);
+    }
+    // A day without activity answers with empty lists and zero totals, not an error.
+    const empty = await api.get<{ jobsTotal: number; applicationsTotal: number; jobs: unknown[]; applications: unknown[] }>('/activity?day=2001-01-01&tz=UTC');
+    assert.deepEqual([empty.jobsTotal, empty.applicationsTotal, empty.jobs.length, empty.applications.length], [0, 0, 0, 0]);
+
+    // The calendar shows the job on today's cell and opens it from the day detail.
+    for (const locale of ['es', 'en'] as const) {
+      await setLocale(page, locale);
+      await page.goto(new URL('/overview', page.url()).toString());
+      await page.getByRole('heading', { name: locale === 'es' ? 'Calendario de actividad' : 'Activity calendar', exact: true }).waitFor();
+      const today = page.locator('button[aria-current="date"]');
+      await today.waitFor();
+      assert.match(await today.getAttribute('aria-label') ?? '', locale === 'es' ? /[1-9]\d* ofertas encontradas/ : /[1-9]\d* jobs found/);
+      await today.click();
+      await page.getByRole('link', { name: `Activity role ${marker}`, exact: true }).waitFor();
+    }
+    await setLocale(page, 'es');
   },
 });
