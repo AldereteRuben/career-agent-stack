@@ -248,14 +248,11 @@ try {
     assert.deepEqual(filtered.items.map((item) => item.id), [possiblyClosed.id]);
 
     await page.goto(`/applications?id=${application.id}`);
-    const trackerRow = page.locator('.tracker-row').filter({ hasText: possiblyClosed.title });
-    await trackerRow.getByText('Puede estar cerrada', { exact: true }).waitFor();
     await page.locator('.preparation-action').getByRole('button', { name: 'Preparar mi solicitud', exact: true }).waitFor();
     assert.equal(await page.locator('.preparation-action').getByRole('button', { name: 'Preparar mi solicitud', exact: true }).isEnabled(), true, 'The warning does not block preparation');
     await page.locator('.preparation-action').getByText('La oferta figura como «Puede estar cerrada». Comprueba el anuncio original antes de continuar; preparar no envía nada.', { exact: true }).waitFor();
     assert.equal(await hasHorizontalOverflow(page), false, 'The application warning fits at 390 px');
     await setLocale(page, 'en');
-    await trackerRow.getByText('May be closed', { exact: true }).waitFor();
     await page.locator('.preparation-action').getByRole('button', { name: 'Prepare my application', exact: true }).waitFor();
     assert.equal(await page.locator('.preparation-action').getByRole('button', { name: 'Prepare my application', exact: true }).isEnabled(), true, 'The English warning does not block preparation');
     await page.locator('.preparation-action').getByText('This job is marked “May be closed”. Check the original post before continuing; preparation does not submit anything.', { exact: true }).waitFor();

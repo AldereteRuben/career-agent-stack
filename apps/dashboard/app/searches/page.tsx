@@ -354,7 +354,7 @@ export default function SearchesPage() {
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}
     {message && <Notice tone="success">{t(successMessages[message][0], successMessages[message][1])}</Notice>}
         {aiStatus.failed && <Notice tone="warning" actions={<Button variant="secondary" onClick={aiStatus.retry}>{t('Reintentar ayuda de IA', 'Retry AI help')}</Button>}>{t('No pudimos comprobar la ayuda de IA. Puedes usar los filtros mientras reintentamos.', 'Could not check AI help. You can use filters while we retry.')}</Notice>}
-    <div className={styles.layout}>
+    <div className={`${styles.layout} ${firstUse ? styles.firstUseLayout : ''}`}>
       {(formOpen || firstUse) && <div className={styles.formColumn}>
         {aiAvailable && !editing && <div className={styles.entryModes} role="group" aria-label={t('Cómo crear la búsqueda', 'How to create the search')}>
           <Button variant="secondary" aria-pressed={aiOpen} onClick={() => setAiOpen(true)}>{t('Describir con Codex', 'Describe with Codex')}</Button>

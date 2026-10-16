@@ -75,7 +75,7 @@ try {
     if (path === '/documents') return response(route, []);
     if (path === '/jobs') return response(route, [job]);
     if (path === `/jobs/${ids.job}`) return response(route, { job, snapshots: [{ id: randomUUID(), title: job.title, descriptionText: posting, fetchedAt: now }], sources: [], applications: [], closedByUser: false, availabilityHistory: [], stillListedBySource: false });
-    if (path === '/job-searches' && method === 'GET') return response(route, { searches: state.showSearches ? [ids.search, ids.question].map(id => ({ id, role: 'QA', company: null, location: 'Spain', workMode: 'remote', frequencyHours: 24, enabled: true, autoPrepare: false, language: 'en', revision: 1, matcherVersion: 2, providerIds: ['remotive'], includeRelated: false, lastRunAt: now, nextRunAt: new Date(Date.now() + 86400000).toISOString(), lastRunStatus: 'SUCCEEDED', lastResultCount: 1, lastNewCount: 1, lastError: null, latestRun: { id: 'run', status: 'SUCCEEDED', finishedAt: now, error: null, sources: [{ provider: 'remotive', status: 'FRESH', coverage: 'COMPLETE', fetchedAt: now, error: null }] } })) : [], coverage: {} });
+    if (path === '/job-searches' && method === 'GET') return response(route, { searches: state.showSearches ? [ids.search, ids.question].map((id, index) => ({ id, role: index === 0 ? 'QA' : 'Designer', company: null, location: 'Spain', workMode: 'remote', frequencyHours: 24, enabled: true, autoPrepare: false, language: 'en', revision: 1, matcherVersion: 2, providerIds: ['remotive'], includeRelated: false, lastRunAt: now, nextRunAt: new Date(Date.now() + 86400000).toISOString(), lastRunStatus: 'SUCCEEDED', lastResultCount: 1, lastNewCount: 1, lastError: null, latestRun: { id: 'run', status: 'SUCCEEDED', finishedAt: now, error: null, sources: [{ provider: 'remotive', status: 'FRESH', coverage: 'COMPLETE', fetchedAt: now, error: null }] } })) : [], coverage: {} });
     if (path.startsWith('/job-searches') && method === 'GET') return response(route, { items: state.showSearches ? [{ ...job, aiSummaryStates: { en: 'SAVED', es: 'RUNNING' }, matchedAt: now, sources: [] }] : [], total: state.showSearches ? 1 : 0 });
     if (path === '/job-searches' && method === 'POST') { state.searchSaves.push(request.postDataJSON()); return response(route, { error: 'TEST_SAVE_NOT_ALLOWED' }, 409); }
     if (path === '/answers' && method === 'POST') { state.questionSaves.push(request.postDataJSON()); return response(route, { id: randomUUID() }, 201); }
@@ -316,8 +316,10 @@ try {
   page.on('pageerror', error => failures.push(error.message));
   await goto('/searches'); await locale('en');
   await visible(page.getByRole('link', { name: 'View saved summary', exact: true }));
-  const scopes = page.getByRole('group', { name: 'Your searches', exact: true });
-  assert.notEqual(await scopes.getByRole('button').nth(1).innerText(), await scopes.getByRole('button').nth(2).innerText(), 'Duplicate search labels are distinguishable');
+  const scope = page.getByLabel('Show results for', { exact: true });
+  await visible(scope);
+  const scopeNames = await scope.locator('option').evaluateAll(options => options.slice(1).map(option => option.textContent?.trim()));
+  assert.deepEqual(scopeNames.map(name => name?.split(' · ')[0]), ['QA', 'Designer'], 'Saved searches have distinct labels in the scope selector');
   assert.equal(await page.getByRole('link', { name: 'Understand a job with Codex', exact: true }).count(), 0, 'No arbitrary first-job shortcut');
   await page.setViewportSize({ width: 390, height: 844 }); await overflow();
   await page.waitForFunction(() => document.querySelector('#app-sidebar').getBoundingClientRect().right <= 1);

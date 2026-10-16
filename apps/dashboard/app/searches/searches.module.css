@@ -110,6 +110,8 @@
 .pagination span { font-variant-numeric: tabular-nums; }
 .formCard { overflow-wrap: anywhere; }
 @media (max-width: 620px) {
+  /* Keep the first search action on the initial mobile screen. */
+  .firstUseLayout { margin-top: -16px; }
   .form { grid-template-columns: minmax(0, 1fr); } .providerOptions { grid-template-columns: minmax(0, 1fr); }
   .formCard, .coverage, .resultCard, .emptyResults { padding: 14px; }
   .resultCard { grid-template-columns: minmax(0, 1fr); }

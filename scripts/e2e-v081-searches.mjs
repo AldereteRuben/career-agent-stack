@@ -59,7 +59,7 @@ export async function checkSearchUsability({ browser, uiUrl, cookies, artifacts 
     await page.getByRole('button', { name: 'Elegir búsqueda para ajustar', exact: true }).click();
     await page.locator('#manage-searches').waitFor();
     assert.equal(await page.locator('#search-form-title').count(), 0, 'Adjusting aggregate asks which search instead of opening create');
-    await page.getByRole('button', { name: /Gestionar búsquedas/ }).click();
+    await page.getByRole('button', { name: /Ocultar búsquedas/ }).click();
 
     searches = [{ ...first, lastRunStatus: 'PARTIAL', latestRun: { ...base.latestRun, status: 'PARTIAL', sources: [{ ...base.latestRun.sources[0], coverage: 'BOUNDED' }] } }];
     await go(); await page.getByRole('heading', { name: 'Todavía no hay coincidencias', exact: true }).waitFor();
@@ -69,8 +69,9 @@ export async function checkSearchUsability({ browser, uiUrl, cookies, artifacts 
     jobs = [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', title: 'QA Engineer — fictional role', company: 'Example Studio', location: 'Remote', canonicalUrl: 'https://example.test/qa', seenAt: null, shortlistDecision: 'UNREVIEWED', matchedAt: now, searchScore: 90, searchReasons: ['ROLE_EXACT'], searchIds: [first.id, second.id], sources: [{ provider: 'remotive', url: 'https://example.test/qa', postedAt: now }] }];
     await go();
     await page.getByRole('link', { name: 'QA Engineer — fictional role', exact: true }).waitFor();
-    const scopes = page.getByRole('group', { name: 'Tus búsquedas', exact: true });
-    await scopes.getByRole('button', { name: 'Todas mis búsquedas (1)', exact: true }).waitFor();
+    const scopes = page.getByLabel('Ver resultados de', { exact: true });
+    const initialScopeNames = await scopes.locator('option').evaluateAll((options) => options.map((option) => option.textContent?.trim()));
+    assert.deepEqual(initialScopeNames.map((name) => name?.split(' · ')[0]), ['Todas mis búsquedas', 'QA Engineer', 'SDET']);
     assert.equal(await page.getByRole('tablist').count(), 0);
     const filters = page.getByRole('group', { name: 'Mostrar ofertas', exact: true });
     await filters.getByRole('button', { name: 'Todas', exact: true }).focus(); await page.keyboard.press('Enter');
@@ -95,9 +96,9 @@ export async function checkSearchUsability({ browser, uiUrl, cookies, artifacts 
     await page.locator('#search-result-list details summary').first().click();
     await page.getByRole('button', { name: 'Marcar como revisada', exact: true }).click();
     await page.getByRole('heading', { name: 'No hay ofertas nuevas por revisar', exact: true }).waitFor();
-    await scopes.getByRole('button', { name: /^QA Engineer / }).waitFor();
-    await scopes.getByRole('button', { name: /^SDET / }).waitFor();
-    await scopes.getByRole('button', { name: 'Todas mis búsquedas', exact: true }).waitFor();
+    const reviewedScopeNames = await scopes.locator('option').evaluateAll((options) => options.map((option) => option.textContent?.trim()));
+    assert.deepEqual(reviewedScopeNames.map((name) => name?.split(' · ')[0]), ['Todas mis búsquedas', 'QA Engineer', 'SDET']);
+    assert.equal(reviewedScopeNames.some((name) => name?.includes('nueva')), false, 'Review clears the aggregate unread counter immediately');
     assert.equal(reviews, 1, 'One review updates every visible counter without waiting for polling');
     assert.deepEqual(errors, []);
     console.log('✓ v0.8.1 first use, drafts, failed/limited/empty states, correct edit, deduplicated immediate counts, keyboard, ES/EN and mobile offers-first');

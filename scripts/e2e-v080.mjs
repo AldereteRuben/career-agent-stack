@@ -213,13 +213,15 @@ try {
 
   await page.goto(new URL('/overview', ui).toString());
   await setLocale(page, 'es');
-  await page.getByText(/TU SIGUIENTE PASO|YOUR NEXT STEP/i).waitFor();
-  await page.getByText('1 CV pendientes de revisión', { exact: true }).waitFor();
+  await page.locator('.getting-started > .eyebrow').filter({ hasText: /^TU SIGUIENTE PASO$/i }).waitFor();
+  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV por revisar' });
+  await pendingResumeMetric.waitFor();
+  assert.equal(await pendingResumeMetric.locator('strong').innerText(), '1', 'The overview shows one resume waiting for review');
   await page.getByRole('link', { name: /Review resumes|Revisar CV/i }).waitFor();
   await page.screenshot({ path: join(artifacts, 'home-inbox-es.png'), fullPage: true });
   await page.goto(new URL('/searches?search=all&view=new', ui).toString());
   await page.locator('#search-results-title').waitFor();
-  await page.getByRole('button', { name: /Gestionar búsquedas \(4\)|Manage searches \(4\)/ }).waitFor();
+  await page.getByRole('button', { name: /Administrar búsquedas|Manage searches/ }).waitFor();
   await page.getByRole('link', { name: /Product Designer/ }).waitFor();
   await page.getByText(/Checking job portals now|Consultando los portales ahora/).waitFor();
   await page.locator('section[aria-label] details > summary').filter({ hasText: /see what happened|ver qué pasó|Results have limits|Resultados con límites|How it works and portal details|Cómo funciona y detalles por portal/ }).first().click();
@@ -233,7 +235,9 @@ try {
   await page.getByText(/This job has records with different decisions or applications|Esta oferta tiene registros con decisiones o candidaturas diferentes/).waitFor();
   await page.locator('#search-result-list details summary').first().click();
   await page.getByText(/Checked|Comprobada/).first().waitFor();
-  await page.getByRole('button', { name: /Manage searches|Gestionar búsquedas/ }).click();
+  await page.getByRole('button', { name: /Manage searches|Administrar búsquedas/ }).click();
+  const managedSearch = name => page.locator('#manage-searches li').filter({ hasText: name });
+  const showManagedSearch = name => managedSearch(name).getByRole('button', { name: /Show jobs|Ver ofertas/ });
   const legacyRefresh = page.getByRole('listitem').filter({ hasText: 'Legacy QA' }).getByRole('button', { name: /Check now|Buscar ahora/ });
   assert.equal(await legacyRefresh.isEnabled(), true, 'Legacy PARTIAL without a finished run is not indefinitely in flight');
   const partialRefresh = page.getByRole('listitem').filter({ hasText: 'Service Designer' }).getByRole('button', { name: /Check now|Buscar ahora/ });
@@ -257,16 +261,16 @@ try {
   await page.getByRole('button', { name: /Show new jobs|Mostrar nuevas ofertas/ }).click();
   await page.getByRole('link', { name: 'Design role 21', exact: true }).waitFor();
 
-  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Legacy QA/ }).click();
+  await showManagedSearch('Legacy QA').click();
   await page.locator('#search-result-list details summary').first().click();
   await page.getByRole('button', { name: /Mark as reviewed|Marcar como revisada/, exact: true }).click();
   await page.getByRole('heading', { name: /No new jobs to review|No hay ofertas nuevas por revisar/ }).waitFor();
   assert.ok(jobSeenAt, 'Per-search review should be sent only after the person marks the result reviewed');
 
-  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Paused Designer/ }).click();
+  await showManagedSearch('Paused Designer').click();
   await page.getByRole('heading', { name: /^(Search paused|Búsqueda en pausa)$/ }).waitFor();
   await page.getByRole('button', { name: /Resume search|Reanudar búsqueda/ }).waitFor();
-  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Failed Analyst/ }).focus();
+  await showManagedSearch('Failed Analyst').focus();
   await page.keyboard.press('Enter');
   await page.locator('#search-results-title').filter({ hasText: 'Failed Analyst' }).waitFor();
   await page.getByRole('heading', { name: /Could not complete the latest check|No pudimos completar la última consulta/ }).waitFor();
@@ -279,8 +283,8 @@ try {
   await page.getByRole('button', { name: /Save changes|Guardar cambios/, exact: true }).click();
   assert.equal(patchBodies.at(-1).autoPrepare, true, 'Preparation can continue only after the person opts in again');
 
-  const legacyCard = page.getByRole('listitem').filter({ hasText: 'Legacy QA' });
-  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Legacy QA/ }).click();
+  const legacyCard = managedSearch('Legacy QA');
+  await showManagedSearch('Legacy QA').click();
   await legacyCard.getByRole('button', { name: /^(Edit|Editar)$/ }).click();
   const consent = page.getByRole('checkbox', { name: /Use improved matching and newer sources|Probar coincidencias mejoradas y fuentes nuevas/ });
   assert.equal(await consent.isChecked(), false, 'Legacy search upgrade must require an explicit opt-in');
@@ -288,7 +292,6 @@ try {
   assert.equal(patchBodies.at(-1).matcherVersion, undefined, 'Editing a legacy search without consent must preserve its matcher version');
   assert.equal(searches.find((search) => search.id === ids.legacy).matcherVersion, 1);
 
-  await page.getByRole('group', { name: /Your searches|Tus búsquedas/ }).getByRole('button', { name: /Legacy QA/ }).click();
   await legacyCard.getByRole('button', { name: /^(Edit|Editar)$/ }).click();
   await page.getByRole('checkbox', { name: /Use improved matching and newer sources|Probar coincidencias mejoradas y fuentes nuevas/ }).check();
   const himalayas = page.getByRole('checkbox', { name: 'Himalayas', exact: true });
