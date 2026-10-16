@@ -10,10 +10,14 @@ import styles from './activity-calendar.module.css';
 export type DailyActivity = { day: string; jobs: number; applications: number };
 type ActivityDetails = {
   day: string;
+  jobsTotal: number;
+  applicationsTotal: number;
   jobs: Array<{ id: string; title: string; company: string }>;
   applications: Array<{ id: string; role: string; company: string; state: string }>;
 };
 
+/** The viewer's IANA time zone, so the server groups activity by the same calendar days the grid shows. */
+export const viewerTimeZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
 const monthKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 const dayKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
@@ -51,7 +55,7 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
   const selectDay = async (day: string) => {
     const request = ++detailRequest.current;
     setSelectedDay(day); setDetails(null); setDetailsError(''); setDetailsLoading(true);
-    try { const result = await api<ActivityDetails>(`/activity?day=${day}`); if (request === detailRequest.current) setDetails(result); }
+    try { const result = await api<ActivityDetails>(`/activity?day=${day}&tz=${encodeURIComponent(viewerTimeZone())}`); if (request === detailRequest.current) setDetails(result); }
     catch (error) { if (request === detailRequest.current) setDetailsError(errorMessage(error)); }
     finally { if (request === detailRequest.current) setDetailsLoading(false); }
   };
@@ -107,8 +111,8 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
               {details.jobs.length === 0 && details.applications.length === 0
                 ? <p className={styles.hint}>{c('No hay ofertas ni candidaturas registradas ese día.', 'No jobs or applications were logged on this day.')}</p>
                 : <>
-                  {details.jobs.length > 0 && <div className={styles.detailGroup}><h4>{c(`Ofertas encontradas (${details.jobs.length})`, `Jobs found (${details.jobs.length})`)}</h4><ul>{details.jobs.map((job) => <li key={job.id}><Link href={`/jobs/${job.id}`}>{job.title}</Link><span>{job.company}</span></li>)}</ul></div>}
-                  {details.applications.length > 0 && <div className={styles.detailGroup}><h4>{c(`Candidaturas creadas (${details.applications.length})`, `Applications created (${details.applications.length})`)}</h4><ul>{details.applications.map((application) => <li key={application.id}><Link href={`/applications?id=${application.id}`}>{application.role}</Link><span>{application.company}</span></li>)}</ul></div>}
+                  {details.jobs.length > 0 && <div className={styles.detailGroup}><h4>{c(`Ofertas encontradas (${details.jobsTotal})`, `Jobs found (${details.jobsTotal})`)}</h4><ul>{details.jobs.map((job) => <li key={job.id}><Link href={`/jobs/${job.id}`}>{job.title}</Link><span>{job.company}</span></li>)}</ul>{details.jobsTotal > details.jobs.length && <p className={styles.hint}>{c(`Se muestran ${details.jobs.length} de ${details.jobsTotal}.`, `Showing ${details.jobs.length} of ${details.jobsTotal}.`)}</p>}</div>}
+                  {details.applications.length > 0 && <div className={styles.detailGroup}><h4>{c(`Candidaturas creadas (${details.applicationsTotal})`, `Applications created (${details.applicationsTotal})`)}</h4><ul>{details.applications.map((application) => <li key={application.id}><Link href={`/applications?id=${application.id}`}>{application.role}</Link><span>{application.company}</span></li>)}</ul>{details.applicationsTotal > details.applications.length && <p className={styles.hint}>{c(`Se muestran ${details.applications.length} de ${details.applicationsTotal}.`, `Showing ${details.applications.length} of ${details.applicationsTotal}.`)}</p>}</div>}
                 </>}
             </>}
     </section>

@@ -13,6 +13,7 @@ import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTab
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
+import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
@@ -115,13 +116,15 @@ app.post('/api/v1/session', async (request, reply) => {
 let stopAssistedBrowsers = async () => {};
 app.delete('/api/v1/session', async (_request, reply) => { await stopAssistedBrowsers(); reply.header('Set-Cookie', expiredSessionCookie()); return { authenticated: false }; });
 
-app.get('/api/v1/summary', async (request) => {
+app.get('/api/v1/summary', async (request, reply) => {
   const id = workspace(request);
   const now = new Date();
-  const activityStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
-  const activityEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const jobActivityDay = sql<string>`to_char(${jobs.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
-  const applicationActivityDay = sql<string>`to_char(${applications.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+  const timeZone = resolveTimeZone((request.query as { tz?: string }).tz);
+  if (!timeZone) return fail(reply, 400, 'INVALID_INPUT');
+  const { from: activityStart, to: activityEnd } = activityWindow(now);
+  // Days are the viewer's calendar days, so a job added at 00:30 local time lands on that local day.
+  const jobActivityDay = sql<string>`to_char(${jobs.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const applicationActivityDay = sql<string>`to_char(${applications.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
   const approvedBoard = and(eq(boards.workspaceId, id), eq(boards.enabled, true), eq(boards.permissionStatus, 'APPROVED_FOR_SCOPE'), eq(boards.associationStatus, 'VERIFIED'), or(isNull(boards.reviewDueAt), gt(boards.reviewDueAt, now)));
   const profile = await latestProfile(db, id);
   const [boardRows, jobRows, applicationRows, facts, answerRows, counts, jobCount, boardCounts, context, savedSearchCounts, jobActivity, applicationActivity] = await Promise.all([
@@ -135,8 +138,8 @@ app.get('/api/v1/summary', async (request) => {
     db.select({ total: sql<number>`count(*)::int`, approved: sql<number>`(count(*) filter (where ${approvedBoard}))::int` }).from(boards).where(eq(boards.workspaceId, id)),
     loadMatchingContext(db, id),
     db.select({ total: sql<number>`count(*)::int`, active: sql<number>`(count(*) filter (where ${savedJobSearches.enabled}))::int` }).from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
-    db.select({ day: jobActivityDay, count: sql<number>`count(*)::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, activityStart), lt(jobs.createdAt, activityEnd))).groupBy(jobActivityDay),
-    db.select({ day: applicationActivityDay, count: sql<number>`count(*)::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, activityStart), lt(applications.createdAt, activityEnd))).groupBy(applicationActivityDay),
+    db.select({ day: jobActivityDay, count: sql<number>`count(*)::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, activityStart), lt(jobs.createdAt, activityEnd))).groupBy(sql`1`),
+    db.select({ day: applicationActivityDay, count: sql<number>`count(*)::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, activityStart), lt(applications.createdAt, activityEnd))).groupBy(sql`1`),
   ]);
   const applicationCounts = Object.fromEntries(applicationState.map((state) => [state, counts.find((row) => row.state === state)?.count ?? 0])) as Record<(typeof applicationState)[number], number>;
   // Active = not cancelled and not in a terminal recruitment stage (REJECTED, WITHDRAWN, HIRED); mirrors isActiveApplication in @career/domain.
@@ -159,17 +162,22 @@ app.get('/api/v1/summary', async (request) => {
 });
 
 app.get('/api/v1/activity', async (request, reply) => {
-  const { day } = request.query as { day?: string };
-  if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return fail(reply, 400, 'INVALID_INPUT');
-  const start = new Date(`${day}T00:00:00.000Z`);
-  if (!Number.isFinite(start.getTime()) || start.toISOString().slice(0, 10) !== day) return fail(reply, 400, 'INVALID_INPUT');
-  const end = new Date(start.getTime() + 86_400_000);
+  const query = request.query as { day?: string; tz?: string };
+  const day = parseActivityDay(query.day); const timeZone = resolveTimeZone(query.tz);
+  if (!day || !timeZone) return fail(reply, 400, 'INVALID_INPUT');
+  const { from, to } = localDayBounds(day);
   const id = workspace(request);
+  const jobLocalDay = sql`to_char(${jobs.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const applicationLocalDay = sql`to_char(${applications.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
   const [jobRows, applicationRows] = await Promise.all([
-    db.select({ id: jobs.id, title: jobs.title, company: jobs.company }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, start), lt(jobs.createdAt, end))).orderBy(desc(jobs.createdAt)),
-    db.select({ id: applications.id, role: applications.role, company: applications.company, state: applications.state }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, start), lt(applications.createdAt, end))).orderBy(desc(applications.createdAt)),
+    db.select({ id: jobs.id, title: jobs.title, company: jobs.company, total: sql<number>`(count(*) over ())::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, from), lt(jobs.createdAt, to), sql`${jobLocalDay} = ${day}`)).orderBy(desc(jobs.createdAt)).limit(activityDetailLimit),
+    db.select({ id: applications.id, role: applications.role, company: applications.company, state: applications.state, total: sql<number>`(count(*) over ())::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, from), lt(applications.createdAt, to), sql`${applicationLocalDay} = ${day}`)).orderBy(desc(applications.createdAt)).limit(activityDetailLimit),
   ]);
-  return { day, jobs: jobRows, applications: applicationRows };
+  return {
+    day, jobsTotal: jobRows[0]?.total ?? 0, applicationsTotal: applicationRows[0]?.total ?? 0,
+    jobs: jobRows.map(({ id: jobId, title, company }) => ({ id: jobId, title, company })),
+    applications: applicationRows.map(({ id: applicationId, role, company, state }) => ({ id: applicationId, role, company, state })),
+  };
 });
 
 app.get('/api/v1/profile', async (request) => {

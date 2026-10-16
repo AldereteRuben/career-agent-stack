@@ -4,7 +4,7 @@ import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
-import { ActivityCalendar, type DailyActivity } from '@/components/activity-calendar';
+import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
 import { useCallback, useEffect, useState } from 'react';
@@ -56,7 +56,7 @@ export default function OverviewPage() {
   const { t, locale } = useLocale();
   const c = copy(locale);
   const [summary, setSummary] = useState<Summary | null>(null); const [error, setError] = useState('');
-  const load = useCallback(async () => { try { setSummary(await api<Summary>('/summary')); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
+  const load = useCallback(async () => { try { setSummary(await api<Summary>(`/summary?tz=${encodeURIComponent(viewerTimeZone())}`)); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
   const [inbox, setInbox] = useState<SearchInbox | null>(null); const [searches, setSearches] = useState<HomeSearch[]>([]); const [pendingResumes, setPendingResumes] = useState(0); const [inboxError, setInboxError] = useState('');
   const loadInbox = useCallback(async () => {
     const [results, searchList, documents] = await Promise.allSettled([
@@ -187,7 +187,7 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details">
+    <details className="overview-details" open={Boolean(summary && (summary.totalJobs > 0 || totalApplications > 0))}>
       <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>
