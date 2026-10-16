@@ -39,11 +39,12 @@ export const v082Scenario: Scenario = {
         assert.equal(await form.getByRole('checkbox').count(), 0, 'Automatic setup does not require technical choices');
         const nav = mainNavigation(page);
         assert.deepEqual(await nav.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('href'))), ['/overview', '/searches', '/jobs?scope=favorites', '/applications']);
+        assert.equal(await page.locator('#app-sidebar a[href="/profile"]').isVisible(), false, 'Profile is available on demand instead of blocking discovery');
         const tools = page.getByText(t('Perfil y herramientas', 'Profile and tools'), { exact: true });
+        await tools.click();
         for (const href of ['/profile', '/documents', '/jobs', '/boards', '/settings']) await page.locator(`#app-sidebar a[href="${href}"]`).waitFor({ state: 'visible' });
         assert.equal(await nav.getByRole('link').count(), 4, 'Secondary tools do not become additional primary destinations');
         await tools.click();
-        await page.locator('#app-sidebar a[href="/profile"]').waitFor({ state: 'hidden' });
         for (const width of [390, 320]) {
           await page.setViewportSize({ width, height: 844 });
           await page.waitForFunction(() => document.querySelector('#app-sidebar')!.getBoundingClientRect().right <= 1);

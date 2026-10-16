@@ -4,6 +4,7 @@ import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
+import { overviewDetailsOpen } from '@/lib/overview-details';
 import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
@@ -187,7 +188,7 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details" open={Boolean(summary && (summary.totalJobs > 0 || totalApplications > 0))}>
+    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ totalJobs: summary.totalJobs, totalApplications, pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
       <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>

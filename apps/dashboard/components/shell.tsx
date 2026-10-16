@@ -144,9 +144,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const wasOpen = useRef(false);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  // The tools group starts expanded so profile, resumes and settings are visible; the toggle collapses it, and MainNav
-  // re-opens it when the user lands on one of its destinations.
-  const [toolsOpen, setToolsOpen] = useState(true);
+  // Start expanded on a secondary page so the current destination is visible from the first render.
+  // /jobs depends on its query (saved or all jobs), so it is revealed after the query is read.
+  const [toolsOpen, setToolsOpen] = useState(() => pathname !== '/jobs' && secondaryLinks.some((link) => link.key === resolveRoute(pathname, null).active));
   const revealTools = useCallback(() => setToolsOpen(true), []);
   const [signingOut, setSigningOut] = useState(false);
   const [sessionError, setSessionError] = useState('');
