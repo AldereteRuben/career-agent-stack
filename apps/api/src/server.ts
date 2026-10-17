@@ -10,7 +10,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
-import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
+import { db, pool, applications, applicationEvents, applicationDocumentRevisions, applicationDocuments, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
@@ -32,6 +32,7 @@ import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
 import { setCodexTaskRoot } from './ai/codex.js';
 import { exportAiData } from './ai/export.js';
+import { ApplicationDocumentExportError, buildApplicationDocumentExport } from './application-document-export.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
@@ -618,8 +619,10 @@ function scrubExport(value: unknown): unknown {
 }
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
-  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, search, assistRows, savedSearches, savedMatches, publicSources] = await Promise.all([
-    db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)), db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
+  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, search, assistRows, savedSearches, savedMatches, publicSources] = await Promise.all([
+    db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)),
+    db.select().from(applicationDocuments).where(eq(applicationDocuments.workspaceId, id)), db.select().from(applicationDocumentRevisions).where(eq(applicationDocumentRevisions.workspaceId, id)), db.select().from(aiDocumentRewordProposals).where(eq(aiDocumentRewordProposals.workspaceId, id)),
+    db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
     db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
     db.select().from(savedJobSearchMatches).where(eq(savedJobSearchMatches.workspaceId, id)),
     db.select().from(jobSearchSources).where(eq(jobSearchSources.workspaceId, id)),
@@ -636,6 +639,19 @@ app.get('/api/v1/export', async (request, reply) => {
     if (totalArtifactBytes > 30_000_000) return fail(reply, 413, 'EXPORT_ARTIFACT_LIMIT', 'Export the PDF files separately, then create a new workspace export.');
     artifacts.push({ documentId: document.id, sha256: digest, contentBase64: content.toString('base64') });
   }
+  let applicationDocumentExport;
+  try {
+    applicationDocumentExport = await buildApplicationDocumentExport({
+      documents: applicationDocumentRows,
+      revisions: applicationDocumentRevisionRows,
+      proposals: applicationDocumentProposals,
+      filesRoot: config.FILES_LOCAL_PATH,
+      artifactBytesAlreadyIncluded: totalArtifactBytes,
+    });
+  } catch (error) {
+    if (error instanceof ApplicationDocumentExportError) return fail(reply, error.statusCode, error.code, error.detail ?? error.message);
+    throw error;
+  }
   const searchState: Record<string,unknown> = {};
   for (const table of ['search_job_reviews','job_identity_members','search_run_results','search_run_sources','search_runs','job_report_batches','job_report_batch_items']) {
     const rows=(await pool.query(`SELECT * FROM ${table} WHERE workspace_id=$1`,[id])).rows;
@@ -646,7 +662,7 @@ app.get('/api/v1/export', async (request, reply) => {
         : rows;
   }
   const assistant = await exportAiData(db, id);
-  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });

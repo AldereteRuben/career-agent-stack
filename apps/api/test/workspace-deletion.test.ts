@@ -78,6 +78,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
   const target = new URL(maintenance); target.pathname = `/${name}`;
   const client = new Client({ connectionString: target.toString() });
   const pool = new Pool({ connectionString: target.toString(), max: 3 });
+  let dataRoot: string | undefined;
   try {
     await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort()) {
@@ -131,6 +132,12 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
         await q(`insert into ai_runs (id, workspace_id, connection_id, consent_id, provider, connection_revision, consent_revision, account_fingerprint, operation, origin, status, idempotency_key, content_identity, account_lock_key, snapshot, snapshot_hash, input_versions, retry_of, search_id, automation_policy_id)
           values ($1, $2, $3, $4, 'codex', 1, 1, $5, 'SEARCH_DRAFT', 'AUTOMATIC', 'SUCCEEDED', $9, $5, $5, '{}', $5, '{}', $6, $7, $8)`, [runId, ws, connection, consent, fp, retryOf, search, policy, `key-${runId}`]);
       }
+      await q(`insert into ai_document_reword_proposals (workspace_id, run_id, sentence_id, proposal_sha256) values ($1, $2, 'sentence-1', $3)`, [ws, aiRun, 'f'.repeat(64)]);
+      const applicationDocument = id(); const revision = id();
+      await q(`insert into application_documents (id, workspace_id, application_id, kind, language) values ($1, $2, $3, 'RESUME', 'en')`, [applicationDocument, ws, app]);
+      await q(`insert into application_document_revisions (id, workspace_id, document_id, revision, claims, content_hash, offer_snapshot_id, offer_hash, facts_hash, paper_size, text_storage_path, text_sha256, pdf_storage_path, pdf_sha256)
+        values ($1, $2, $3, 1, '[]', $4, $5, $6, $7, 'A4', $8, $9, $10, $11)`,
+      [revision, ws, applicationDocument, '1'.repeat(64), snapshot, '2'.repeat(64), '3'.repeat(64), `${ws}/application-resume.txt`, '4'.repeat(64), `${ws}/application-resume.pdf`, '5'.repeat(64)]);
       await q(`insert into llm_usage (workspace_id, ai_run_id, provider, operation, status, availability) values ($1, $2, 'codex', 'fixture', 'SUCCEEDED', 'UNAVAILABLE')`, [ws, aiRun]);
       await q(`insert into ai_artifacts (workspace_id, run_id, schema_version, prompt_version, locale, output, sources, state) values ($1, $2, 1, 'fixture', 'en', '{}', '{}', 'PENDING_REVIEW')`, [ws, aiRun]);
       await q(`insert into ai_run_tombstones (workspace_id, run_id, consent_id, idempotency_hash) values ($1, $2, $3, $4)`, [ws, id(), consent, 'e'.repeat(64)]);
@@ -141,6 +148,14 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     };
     const [deleted, other] = [randomUUID(), randomUUID()];
     await fill(deleted); await fill(other);
+    dataRoot = await mkdtemp(join(tmpdir(), 'career-deletion-retry-'));
+    const filesRoot = join(dataRoot, 'files');
+    await mkdir(join(filesRoot, deleted), { recursive: true });
+    await mkdir(join(dataRoot, 'run'), { recursive: true });
+    await writeFile(join(filesRoot, deleted, 'resume.pdf'), 'legacy linked resume');
+    await writeFile(join(filesRoot, deleted, 'application-resume.txt'), 'synthetic approved draft text');
+    await writeFile(join(filesRoot, deleted, 'application-resume.pdf'), 'synthetic application PDF');
+    await writeFile(join(dataRoot, 'run', 'launcher-record.json'), '{"pid":123}');
     await q(`insert into search_query_cache (provider, query_hash) values ('remotive', $1)`, ['f'.repeat(64)]);
     await q(`insert into job_search_provider_cache (provider) values ('remotive')`);
     await q(`insert into search_provider_budget (provider, day) values ('remotive', current_date)`);
@@ -153,6 +168,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     const startedAt = Date.now();
     const result = await deleteWorkspaceRows(pool, deleted);
     assert.equal(result.generation, 1);
+    assert.equal(await readFile(join(filesRoot, deleted, 'application-resume.pdf'), 'utf8'), 'synthetic application PDF', 'A crash after row commit leaves files for retry');
 
     const after = await counts(deleted);
     for (const table of scoped) {
@@ -167,8 +183,11 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     assert.deepEqual(await pendingDeletionJobs(pool, deleted), [result.jobId], 'A job whose files are pending is found on the next start');
     await finishDeletionJob(pool, result.jobId, 'FILES_FAILED');
     assert.deepEqual(await pendingDeletionJobs(pool, deleted), [result.jobId], 'A failed one too, so it is retried');
+    await deleteWorkspaceFiles({ filesRoot, dataRoot });
     await finishDeletionJob(pool, result.jobId, 'COMPLETED');
     assert.deepEqual(await pendingDeletionJobs(pool, deleted), []);
+    assert.deepEqual(await readdir(filesRoot), [], 'The retry removes every legacy, text and PDF file');
+    assert.equal(await readFile(join(dataRoot, 'run', 'launcher-record.json'), 'utf8'), '{"pid":123}', 'Launcher control records survive');
     const { rows: [profile] } = await q('select revision, profile, locale from profile_versions where workspace_id = $1', [deleted]);
     assert.deepEqual(profile, { revision: 1, profile: {}, locale: 'en-GB' }, 'Only the empty profile every new installation starts with');
     // The workspace row: every column back to its default, except its id and the higher session generation.
@@ -182,6 +201,9 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     assert.equal(workspace.session_generation, 1);
     for (const cache of CLEARED_CACHES) assert.equal(Number((await q(`select count(*) from "${cache}"`)).rows[0].count), 0, cache);
     assert.equal(Number((await q('select count(*) from search_provider_budget')).rows[0].count), 1, 'Provider limits are kept');
+    assert.equal(Number((await q('select count(*) from application_documents where workspace_id = $1', [deleted])).rows[0].count), 0);
+    assert.equal(Number((await q('select count(*) from application_document_revisions where workspace_id = $1', [deleted])).rows[0].count), 0);
+    assert.equal(Number((await q('select count(*) from ai_document_reword_proposals where workspace_id = $1', [deleted])).rows[0].count), 0);
 
     assert.deepEqual(await counts(other), otherBefore, 'The other workspace is untouched');
     assert.equal((await q('select name, discovery_enabled, session_generation from workspaces where id = $1', [other])).rows[0].session_generation, 0);
@@ -190,6 +212,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     assert.equal(again.generation, 2, 'Deleting again works and raises the generation again');
     assert.equal(Number((await q('select count(*) from deletion_jobs where workspace_id = $1', [deleted])).rows[0].count), 1, 'Older deletion jobs are not kept');
   } finally {
+    if (dataRoot) await rm(dataRoot, { recursive: true, force: true });
     await pool.end().catch(() => undefined);
     await client.end().catch(() => undefined);
     await admin.query(`drop database if exists "${name}" with (force)`).catch(() => undefined);
