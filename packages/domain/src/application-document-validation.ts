@@ -30,7 +30,22 @@ function supportedByCitedFacts(item: string, citedFacts: string) {
 }
 
 function cleanMention(value: string) {
-  return value.replace(/^[\s\p{P}]+|[\s\p{P}]+$/gu, '').trim();
+  let start = 0;
+  let end = value.length;
+  while (start < end) {
+    const character = String.fromCodePoint(value.codePointAt(start)!);
+    if (!/[\s\p{P}]/u.test(character)) break;
+    start += character.length;
+  }
+  while (end > start) {
+    let index = end - 1;
+    const lastCodeUnit = value.charCodeAt(index);
+    if (lastCodeUnit >= 0xdc00 && lastCodeUnit <= 0xdfff && index > start) index -= 1;
+    const character = value.slice(index, end);
+    if (!/[\s\p{P}]/u.test(character)) break;
+    end = index;
+  }
+  return value.slice(start, end).trim();
 }
 
 function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mention[] {
