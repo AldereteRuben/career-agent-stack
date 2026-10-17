@@ -274,7 +274,9 @@ export const v053Scenarios: Scenario[] = [
       await setLocale(page, 'es');
       const reviewTab = page.locator('a[href="/applications?view=review"]');
       const readCount = async () => Number((await reviewTab.innerText()).match(/\((\d+)\)/)?.[1] ?? -1);
+      const readRows = () => page.locator('[data-testid="review-item-row"]').count();
       const before = await eventually(readCount, (count) => count >= 0, 'The applications review count loads');
+      const beforeRows = await eventually(readRows, (count) => count === before, 'The visible review rows match the count');
 
       const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Pending review fact ${marker}` });
       await api.post(`/profile/facts/${fact.id}/approve`);
@@ -284,8 +286,12 @@ export const v053Scenarios: Scenario[] = [
 
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await eventually(readCount, (count) => count === before + 1, 'A pending resume increments the review count without a reload');
+      await eventually(readRows, (count) => count === beforeRows + 1, 'A pending resume without a preparation appears as a review row');
+      assert.equal(await readCount(), await readRows(), 'The review count must equal the number of visible review rows');
+      assert.equal(await page.getByRole('link', { name: 'Revisar CV', exact: true }).getAttribute('href'), '/documents?view=saved', 'The standalone resume row links to saved documents');
       await setLocale(page, 'en');
       assert.equal(await reviewTab.innerText(), `To review (${before + 1})`);
+      assert.equal(await page.getByRole('link', { name: 'Review resume', exact: true }).getAttribute('href'), '/documents?view=saved');
 
       const reviewer = await context.newPage();
       try {
@@ -299,6 +305,8 @@ export const v053Scenarios: Scenario[] = [
       }
       await page.bringToFront();
       await eventually(readCount, (count) => count === before, 'Approving the resume clears the review count without a reload');
+      await eventually(readRows, (count) => count === beforeRows, 'Approving the resume removes its review row without a reload');
+      assert.equal(await readCount(), await readRows(), 'The refreshed review count still equals the visible row count');
       await setLocale(page, 'es');
       assert.equal(await reviewTab.innerText(), `Por revisar (${before})`);
     },
