@@ -9,10 +9,11 @@ import { mkdir, readFile, rm, writeFile, chmod, unlink } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql, getTableColumns } from 'drizzle-orm';
+import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
+import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
@@ -115,12 +116,18 @@ app.post('/api/v1/session', async (request, reply) => {
 let stopAssistedBrowsers = async () => {};
 app.delete('/api/v1/session', async (_request, reply) => { await stopAssistedBrowsers(); reply.header('Set-Cookie', expiredSessionCookie()); return { authenticated: false }; });
 
-app.get('/api/v1/summary', async (request) => {
+app.get('/api/v1/summary', async (request, reply) => {
   const id = workspace(request);
   const now = new Date();
+  const timeZone = resolveTimeZone((request.query as { tz?: string }).tz);
+  if (!timeZone) return fail(reply, 400, 'INVALID_INPUT');
+  const { from: activityStart, to: activityEnd } = activityWindow(now);
+  // Days are the viewer's calendar days, so a job added at 00:30 local time lands on that local day.
+  const jobActivityDay = sql<string>`to_char(${jobs.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const applicationActivityDay = sql<string>`to_char(${applications.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
   const approvedBoard = and(eq(boards.workspaceId, id), eq(boards.enabled, true), eq(boards.permissionStatus, 'APPROVED_FOR_SCOPE'), eq(boards.associationStatus, 'VERIFIED'), or(isNull(boards.reviewDueAt), gt(boards.reviewDueAt, now)));
   const profile = await latestProfile(db, id);
-  const [boardRows, jobRows, applicationRows, facts, answerRows, counts, jobCount, boardCounts, context, savedSearchCounts] = await Promise.all([
+  const [boardRows, jobRows, applicationRows, facts, answerRows, counts, jobCount, boardCounts, context, savedSearchCounts, jobActivity, applicationActivity] = await Promise.all([
     db.select().from(boards).where(eq(boards.workspaceId, id)).orderBy(desc(boards.updatedAt)).limit(10),
     db.select().from(jobs).where(eq(jobs.workspaceId, id)).orderBy(desc(jobs.updatedAt)).limit(6),
     db.select().from(applications).where(eq(applications.workspaceId, id)).orderBy(desc(applications.updatedAt)).limit(6),
@@ -131,16 +138,45 @@ app.get('/api/v1/summary', async (request) => {
     db.select({ total: sql<number>`count(*)::int`, approved: sql<number>`(count(*) filter (where ${approvedBoard}))::int` }).from(boards).where(eq(boards.workspaceId, id)),
     loadMatchingContext(db, id),
     db.select({ total: sql<number>`count(*)::int`, active: sql<number>`(count(*) filter (where ${savedJobSearches.enabled}))::int` }).from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
+    db.select({ day: jobActivityDay, count: sql<number>`count(*)::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, activityStart), lt(jobs.createdAt, activityEnd))).groupBy(sql`1`),
+    db.select({ day: applicationActivityDay, count: sql<number>`count(*)::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, activityStart), lt(applications.createdAt, activityEnd))).groupBy(sql`1`),
   ]);
   const applicationCounts = Object.fromEntries(applicationState.map((state) => [state, counts.find((row) => row.state === state)?.count ?? 0])) as Record<(typeof applicationState)[number], number>;
   // Active = not cancelled and not in a terminal recruitment stage (REJECTED, WITHDRAWN, HIRED); mirrors isActiveApplication in @career/domain.
   const activeApplications = counts.reduce((sum, row) => sum + row.active, 0);
   const completion = profileCompletion(profile?.profile ?? {}, facts);
   const recentSources = jobRows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, jobRows.map((job) => job.id)))) : [];
+  const activityMap = new Map<string, { day: string; jobs: number; applications: number }>();
+  for (const row of jobActivity) activityMap.set(row.day, { day: row.day, jobs: row.count, applications: 0 });
+  for (const row of applicationActivity) {
+    const day = activityMap.get(row.day) ?? { day: row.day, jobs: 0, applications: 0 };
+    day.applications = row.count;
+    activityMap.set(row.day, day);
+  }
   return {
     boards: boardRows, recentJobs: (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, jobRows), context)).map((job) => ({ ...job, searchSources: recentSources.filter((source, index, rows) => source.jobId === job.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) })), recentApplications: applicationRows, pendingFacts: completion.pendingFactCount, unansweredItems: answerRows.filter((answer) => answer.approvalStatus === 'UNANSWERED').length,
     savedSearchCount: savedSearchCounts[0]?.total ?? 0, activeSearchCount: savedSearchCounts[0]?.active ?? 0, applicationCounts, activeApplications, totalJobs: jobCount[0]?.count ?? 0, boardCount: boardCounts[0]?.total ?? 0, approvedSourceCount: boardCounts[0]?.approved ?? 0, profileCompletion: completion,
+    activityByDay: [...activityMap.values()].sort((a, b) => a.day.localeCompare(b.day)),
     capabilities: { externalWrites: true, email: false, browserRunner: true, hostedAI: false },
+  };
+});
+
+app.get('/api/v1/activity', async (request, reply) => {
+  const query = request.query as { day?: string; tz?: string };
+  const day = parseActivityDay(query.day); const timeZone = resolveTimeZone(query.tz);
+  if (!day || !timeZone) return fail(reply, 400, 'INVALID_INPUT');
+  const { from, to } = localDayBounds(day);
+  const id = workspace(request);
+  const jobLocalDay = sql`to_char(${jobs.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const applicationLocalDay = sql`to_char(${applications.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const [jobRows, applicationRows] = await Promise.all([
+    db.select({ id: jobs.id, title: jobs.title, company: jobs.company, total: sql<number>`(count(*) over ())::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, from), lt(jobs.createdAt, to), sql`${jobLocalDay} = ${day}`)).orderBy(desc(jobs.createdAt)).limit(activityDetailLimit),
+    db.select({ id: applications.id, role: applications.role, company: applications.company, state: applications.state, total: sql<number>`(count(*) over ())::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, from), lt(applications.createdAt, to), sql`${applicationLocalDay} = ${day}`)).orderBy(desc(applications.createdAt)).limit(activityDetailLimit),
+  ]);
+  return {
+    day, jobsTotal: jobRows[0]?.total ?? 0, applicationsTotal: applicationRows[0]?.total ?? 0,
+    jobs: jobRows.map(({ id: jobId, title, company }) => ({ id: jobId, title, company })),
+    applications: applicationRows.map(({ id: applicationId, role, company, state }) => ({ id: applicationId, role, company, state })),
   };
 });
 

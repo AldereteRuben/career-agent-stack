@@ -1,6 +1,6 @@
-.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start; }
 .formColumn { display: grid; gap: 18px; min-width: 0; }
-.formCard, .coverage { padding: 22px; }
+.formCard, .coverage { padding: 24px; }
 .formCard h2, .results h2 { margin: 0; font-size: 1.25rem; }
 .intro, .coverage p { color: var(--muted); margin: 8px 0 16px; }
 .form { display: grid; gap: 14px; min-width: 0; }
@@ -10,13 +10,13 @@
 .check span { display: grid; gap: 2px; }
 .check small { color: var(--muted); }
 .actions, .cardActions, .resultActions, .pagination { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.coverage { margin-top: 24px; border: 1px solid var(--line); border-radius: 12px; }
+.coverage { margin-top: 24px; border: 1px solid var(--line); border-radius: var(--radius); }
 .coverage summary, .moreOptions > summary, .statusDetails > summary { cursor: pointer; font-weight: 600; padding-block: 10px; }
 .coverage a, .sources a { color: var(--blue-dark); text-underline-offset: 3px; }
 .draftHint { color: var(--muted); font-size: .85rem; margin: 0; }
 
 /* Automatic status: one line of what happens next, real problems below it, technical detail on demand. */
-.statusBar { display: grid; gap: 4px; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface, white); overflow-wrap: anywhere; }
+.statusBar { display: grid; gap: 6px; min-width: 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); overflow-wrap: anywhere; }
 .statusHeadline { margin: 0; font-weight: 600; }
 .statusHint { margin: 0; color: var(--muted); font-size: .9rem; }
 .statusProblem { margin: 0; color: var(--amber); font-size: .92rem; }
@@ -30,12 +30,31 @@
 .sourceProgress li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); font-size: .9rem; }
 
 /* Search selector and secondary management. */
-.scopeBar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; justify-content: space-between; min-width: 0; }
-.scopeField { display: grid; gap: 4px; min-width: 0; flex: 1 1 320px; }
-/* Line up the actions with the first row of choices, below the one-line "Your searches" label. */
-.scopeBar > .actions { padding-top: calc(var(--text-base) * var(--leading) + 4px); }
-.sortControl select { box-sizing: border-box; min-height: 44px; max-width: 100%; padding: 8px 32px 8px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface, white); font: inherit; }
-.managePanel { border: 1px solid var(--line); border-radius: 10px; padding: 4px 14px; min-width: 0; }
+.scopeBar { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: end; justify-content: space-between; min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); }
+.scopeField { display: grid; gap: 6px; min-width: min(100%, 340px); flex: 1 1 320px; }
+.scopeLabel { color: var(--muted); font-size: var(--text-sm); font-weight: 600; }
+.scopeField select, .sortControl select {
+  box-sizing: border-box;
+  min-height: var(--control);
+  padding: 10px 42px 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  appearance: none;
+  color: var(--ink);
+  background-color: var(--white);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23536578' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 18px;
+  font: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.scopeField select { width: 100%; }
+.scopeField select:focus-visible, .sortControl select:focus-visible { outline: 0; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(53, 92, 201, .25); }
+.scopeField select:disabled, .sortControl select:disabled { cursor: not-allowed; opacity: .7; }
+.scopeBar > .actions { padding: 0; }
+.sortControl select { width: auto; min-width: 190px; max-width: 100%; }
+.managePanel { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 14px; min-width: 0; }
 .manageList { list-style: none; margin: 0; padding: 0; display: grid; }
 .manageRow { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px 16px; padding: 12px 0; min-width: 0; overflow-wrap: anywhere; }
 .manageRow + .manageRow { border-top: 1px solid var(--line); }
@@ -46,18 +65,20 @@
 .manageMeta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
 
 /* Results. */
-.results { display: grid; gap: 12px; min-width: 0; }
+.results { display: grid; gap: 16px; min-width: 0; }
 .results h2 { overflow-wrap: anywhere; }
-.resultsHead { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px; }
+.resultsHead { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px; padding-top: 4px; }
+.resultsTitleGroup { display: grid; gap: 3px; }
+.resultsTitleGroup .resultCount { font-size: var(--text-sm); }
 .sortControl { display: flex; align-items: center; gap: 8px; }
-.filterTabs { display: flex; overflow-x: auto; gap: 6px; padding: 3px 2px 8px; border-bottom: 1px solid var(--line); }
+.filterTabs { display: flex; overflow-x: auto; gap: 4px; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
 .filterTabs button { min-height: 44px; padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; border-radius: 7px 7px 0 0; background: transparent; color: var(--muted); font: inherit; white-space: nowrap; cursor: pointer; }
 .filterTabs button[aria-pressed="true"] { color: var(--blue-dark); border-bottom-color: var(--blue); font-weight: 700; }
 .filterTabs button:focus-visible { outline: 3px solid var(--blue); outline-offset: -3px; }
 .filterCount { font-variant-numeric: tabular-nums; }
 .resultCount { color: var(--muted); margin: 0; min-height: 1.5em; }
 .resultList { display: grid; gap: 12px; min-width: 0; }
-.resultCard, .emptyResults { padding: 18px; min-width: 0; overflow-wrap: anywhere; }
+.resultCard, .emptyResults { padding: 22px; min-width: 0; overflow-wrap: anywhere; }
 .resultCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 18px; align-items: start; }
 .resultMain { display: grid; gap: 4px; min-width: 0; }
 .resultCard h3 { margin: 0; font-size: 1.05rem; }
@@ -89,6 +110,8 @@
 .pagination span { font-variant-numeric: tabular-nums; }
 .formCard { overflow-wrap: anywhere; }
 @media (max-width: 620px) {
+  /* Keep the first search action on the initial mobile screen. */
+  .firstUseLayout { margin-top: -16px; }
   .form { grid-template-columns: minmax(0, 1fr); } .providerOptions { grid-template-columns: minmax(0, 1fr); }
   .formCard, .coverage, .resultCard, .emptyResults { padding: 14px; }
   .resultCard { grid-template-columns: minmax(0, 1fr); }
@@ -112,7 +135,7 @@
 .scopeChoices button:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
 
 /* One saved search: its own edit/pause controls next to the results instead of a one-option selector. */
-.soleActions { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: -6px; min-width: 0; }
+.soleActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; min-width: 0; }
 .soleActions > * { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .moreOptions { min-width: 0; }
 .moreOptions > summary { width: fit-content; max-width: 100%; min-height: 44px; display: flex; align-items: center; box-sizing: border-box; overflow-wrap: anywhere; }
@@ -127,7 +150,7 @@
 .aiHelp .actions { margin-top: 4px; }
 
 /* Keep guidance secondary to jobs; only one creation method is shown at a time. */
-.aiHelp { padding: 10px 14px; }
+.aiHelp { padding: 0 4px; border: 0; border-radius: 0; background: transparent; }
 .aiHelp > summary { cursor: pointer; min-height: 44px; align-content: center; font-weight: 600; font-size: .9rem; }
 .aiHelp[open] > summary { margin-bottom: 10px; }
 .aiHelp ul, .aiHelp ol { margin: 0; padding-inline-start: 22px; }
@@ -141,7 +164,7 @@
   /* Equal-height cards in the scroll strip, with their text at the top instead of centred. */
   .scopeChoices button { flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; justify-content: flex-start; }
   .scopeField { width: 100%; }
-  .scopeBar { gap: 4px; }
+  .scopeBar { gap: 12px; }
   .scopeBar > .actions { padding-top: 0; }
 }
 

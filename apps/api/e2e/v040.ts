@@ -109,14 +109,14 @@ export const v040Scenarios: Scenario[] = [
       await eventually(() => page.locator('.job-card').count(), (count) => count === 1, 'Favorites filter');
       await page.reload(); await page.getByRole('link', { name: 'Favorite designer', exact: true }).waitFor();
       assert.equal(await page.getByLabel('Mostrar ofertas', { exact: true }).inputValue(), 'favorites');
-      await page.getByRole('link', { name: 'Favorite designer', exact: true }).click();
+      await page.locator('.job-card').filter({ hasText: 'Favorite designer' }).getByRole('link', { name: 'Ver detalles', exact: true }).click();
       page.once('dialog', (dialog) => void dialog.accept());
       await page.getByRole('button', { name: 'Archivar oferta', exact: true }).click();
       await page.getByRole('button', { name: 'Restaurar oferta', exact: true }).waitFor();
       await page.goto(new URL(`/jobs?scope=archived&q=${encodeURIComponent(company)}`, page.url()).toString());
       await page.getByRole('link', { name: 'Favorite designer', exact: true }).waitFor();
       assert.equal(await page.locator('.job-card').count(), 1);
-      await page.getByRole('link', { name: 'Favorite designer', exact: true }).click();
+      await page.locator('.job-card').filter({ hasText: 'Favorite designer' }).getByRole('link', { name: 'Ver detalles', exact: true }).click();
       await page.getByRole('button', { name: 'Restaurar oferta', exact: true }).click();
       await eventually(() => api.get<{ job: { shortlistDecision: string } }>(`/jobs/${first.id}`), (value) => value.job.shortlistDecision === 'UNREVIEWED', 'Restored to active jobs');
       for (let index = 0; index < 25; index++) await api.post('/jobs/import', { company: `Pages ${marker}`, title: `Role ${index}`, jobUrl: `https://example.com/${marker}/pages/${index}` });

@@ -64,8 +64,9 @@ export const v061Scenario: Scenario = {
         const filter = `Inbox ${marker} ${locale}`;
         for (let i = 0; i < 25; i++) await db.query("insert into jobs(id,workspace_id,company,title,canonical_url,availability,discovered_at) values($1,$2,$3,$4,$5,'OPEN',now())", [randomUUID(), workspace, filter, `${filter} ${i}`, `https://example.test/${marker}/${locale}/${i}`]);
         await page.goto(new URL(`/jobs?scope=new&q=${encodeURIComponent(filter)}&availability=OPEN&page=2`, page.url()).toString());
-        const jobLink = page.locator('.job-card h2 a').first();
-        const detailId = new URL((await jobLink.getAttribute('href'))!, page.url()).pathname.split('/').pop()!;
+        const jobCard = page.locator('.job-card').first();
+        const jobLink = jobCard.getByRole('link', { name: c('Ver detalles', 'View details'), exact: true });
+        const detailId = (await jobCard.getAttribute('data-job-id'))!;
         const detailPattern = `**/api/v1/jobs/${detailId}`;
         let detailReads = 0;
         const overlapsInitialReads = process.env.E2E_PRODUCTION !== '1';
