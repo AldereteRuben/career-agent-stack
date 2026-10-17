@@ -85,7 +85,10 @@ export const resumeImportScenarios: Scenario[] = [{
         }
       }
       const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
-      assert.ok(!stored.includes(marker), 'Nothing from the resume is kept in browser storage');
+      // The browser context is shared with earlier scenarios, which keep their own drafts tagged with the run marker.
+      for (const secret of [`nora.${marker}@example.test`, '600 000 002', `Plataforma Ficticia ${marker}`, `Código Inventado ${marker}`, `Escalada privada ${marker}`, duplicate]) {
+        assert.ok(!stored.includes(secret), `Nothing from the resume is kept in browser storage: ${secret}`);
+      }
 
       let profile = await api.get<Profile>('/profile');
       const imported = profile.facts.filter((fact) => fact.importId === importId);
