@@ -19,9 +19,9 @@ export type Pool = { connect(): Promise<PoolClient>; query(text: string, values?
  * CLEARED_CACHES or KEPT_TABLES: the proof test fails otherwise.
  */
 export const DELETION_ORDER = [
-  'ai_account_leases', 'ai_artifacts', 'llm_usage', 'ai_usage_snapshots', 'ai_runs', 'ai_run_tombstones', 'ai_daily_budgets',
+  'ai_account_leases', 'ai_artifacts', 'llm_usage', 'ai_usage_snapshots', 'ai_document_reword_proposals', 'ai_runs', 'ai_run_tombstones', 'ai_daily_budgets',
   'ai_automation_policies', 'ai_consents', 'ai_connections',
-  'assisted_attempts', 'application_events', 'applications', 'document_versions', 'answer_versions', 'profile_facts', 'profile_versions',
+  'assisted_attempts', 'application_events', 'application_document_revisions', 'application_documents', 'applications', 'document_versions', 'answer_versions', 'profile_facts', 'profile_versions',
   'search_run_results', 'search_run_sources', 'search_runs', 'saved_job_search_matches', 'search_job_reviews', 'saved_job_searches', 'search_preparation_budget',
   'job_report_batch_items', 'job_report_batches',
   'job_search_sources', 'job_identity_members', 'job_occurrences', 'job_snapshots', 'job_availability_events', 'jobs', 'search_profiles',
