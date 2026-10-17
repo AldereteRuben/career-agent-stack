@@ -14,6 +14,7 @@ import { labelFor } from '@/lib/labels';
 import styles from './application-preparation.module.css';
 import { gapContinuation, queueActions } from './application-continuation';
 import type { Locale } from '@/lib/locale';
+import { countReviewItems, unqueuedReviewableResumes, type ReviewableResume } from '@/lib/application-review-count';
 
 type Preparation = {
   status: 'PREPARED' | 'NEEDS_REVIEW' | 'BLOCKED'; jobId: string; company: string; title: string;
@@ -80,18 +81,27 @@ function QueueActions({ item, busy, onRetry }: { item: Preparation; busy: string
 export function ApplicationQueue() {
   const { locale } = useLocale(); const c = (es: string, en: string) => locale === 'es' ? es : en;
   const [showAll, setShowAll] = useState(false);
-  const [items, setItems] = useState<Preparation[]>([]); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState<string | null>(null); const [error, setError] = useState(''); const [actionError, setActionError] = useState('');
-  const load = useCallback(async () => { try { setItems(await api<Preparation[]>('/preparations')); setError(''); } catch (err) { setError(preparationError(err, locale)); } finally { setLoading(false); } }, [locale]);
+  const [items, setItems] = useState<Preparation[]>([]); const [documents, setDocuments] = useState<ReviewableResume[]>([]); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState<string | null>(null); const [error, setError] = useState(''); const [actionError, setActionError] = useState('');
+  const load = useCallback(async () => {
+    try {
+      const [preparations, resumes] = await Promise.all([api<Preparation[]>('/preparations'), api<ReviewableResume[]>('/documents')]);
+      setItems(preparations); setDocuments(resumes); setError('');
+    } catch (err) { setError(preparationError(err, locale)); }
+    finally { setLoading(false); }
+  }, [locale]);
   useEffect(() => { void load(); }, [load]);
   useLocalRefresh(load, { paused: loading || busy !== null });
   const retry = async (jobId: string) => { setBusy(jobId); setActionError(''); try { await api<Preparation>('/preparations', { method: 'POST', body: JSON.stringify({ jobId, locale }) }); await load(); } catch (err) { setActionError(preparationError(err, locale)); } finally { setBusy(null); } };
   const pending = items.filter((item) => item.needsAttention); const visible = showAll ? items : pending;
+  const unqueuedResumes = unqueuedReviewableResumes(items, documents);
+  const hasVisibleItems = visible.length > 0 || unqueuedResumes.length > 0;
+  const reviewCount = loading || error ? null : countReviewItems(items, documents);
   return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Candidaturas', 'Applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
-    <ApplicationSections active="review" reviewCount={loading || error ? undefined : pending.length}/>
+    <ApplicationSections active="review" reviewCount={reviewCount}/>
     <div className={styles.actions}><Button variant="quiet" disabled={loading || busy !== null} onClick={() => void load()}>{c('Actualizar lista', 'Refresh list')}</Button><Button variant="quiet" aria-pressed={showAll} onClick={() => setShowAll(!showAll)}>{showAll ? c('Solo pendientes', 'Only pending') : c('Ver también finalizadas', 'Include completed')}</Button></div>
     {actionError && <Notice tone="error">{actionError}</Notice>}
     {error && <Notice tone="error">{error}<Button variant="secondary" onClick={() => void load()}>{c('Volver a intentar', 'Try again')}</Button></Notice>}
-    {loading ? <p role="status">{c('Cargando…', 'Loading…')}</p> : error && visible.length === 0 ? null : visible.length === 0 ? <Empty headingLevel="h2" title={c('No hay solicitudes pendientes de revisión', 'No applications waiting for review')} detail={c('Abre una oferta que te interese y pulsa Preparar mi solicitud. Aquí aparecerán los CV preparados y los datos que falten.', 'Open a job that interests you and choose Prepare my application. Prepared resumes and missing details appear here.')} action={<Link className="button button-secondary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>} /> : <div className={styles.queue}>{visible.map((item) => <Card key={item.applicationId ?? item.jobId} className={styles.card}>
+    {loading ? <p role="status">{c('Cargando…', 'Loading…')}</p> : error && !hasVisibleItems ? null : !hasVisibleItems ? <Empty headingLevel="h2" title={c('No hay solicitudes pendientes de revisión', 'No applications waiting for review')} detail={c('Abre una oferta que te interese y pulsa Preparar mi solicitud. Aquí aparecerán los CV preparados y los datos que falten.', 'Open a job that interests you and choose Prepare my application. Prepared resumes and missing details appear here.')} action={<Link className="button button-secondary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>} /> : <div className={styles.queue}>{visible.map((item) => <Card key={item.applicationId ?? item.jobId} className={styles.card} data-testid="review-item-row">
       <div className={styles.head}><span className="eyebrow">{item.company}</span><h2>{item.title}</h2><Tag tone={item.queueState === 'READY' || item.queueState === 'SUBMITTED' ? 'green' : item.needsAttention ? 'amber' : 'neutral'}>{queueLabels[item.queueState ?? 'NEEDS_DETAILS']?.[locale === 'es' ? 0 : 1]}</Tag></div>
       {item.queueState === 'UNCERTAIN' && <Notice tone="warning">{c('Abre la solicitud y comprueba el envío antes de intentar otra vez.', 'Open the application and check the submission before trying again.')}</Notice>}
       {item.jobAvailability && item.jobAvailability !== 'OPEN' && <Notice tone="warning">{c(`La oferta figura como «${labelFor.availability(item.jobAvailability, locale)}». Comprueba el anuncio original antes de continuar; preparar no envía nada.`, `This job is marked “${labelFor.availability(item.jobAvailability, locale)}”. Check the original post before continuing; preparation does not submit anything.`)}</Notice>}
@@ -100,6 +110,10 @@ export function ApplicationQueue() {
       {item.selectedFacts.length > 0 && <details><summary>{c('Ver experiencia utilizada', 'Show included experience')}</summary><div><h3>{c('Experiencia incluida', 'Included experience')}</h3><ul>{item.selectedFacts.map((fact) => <li key={fact.id}><strong>{fact.statement}</strong><small className={styles.reason}>{factReason(fact.reason, locale)}</small></li>)}</ul></div></details>}
       {item.answerSuggestions.length > 0 && <div><h3>{c('Respuestas aprobadas sugeridas', 'Approved answer suggestions')}</h3><ul>{item.answerSuggestions.map((answer) => <li key={answer.answerId}><strong>{answer.question}: </strong>{typeof answer.value === 'string' ? answer.value : JSON.stringify(answer.value)}<small className={styles.reason}>{answerProvenance(answer.provenance, locale)}</small></li>)}</ul></div>}
       <QueueActions item={item} busy={busy} onRetry={(jobId) => void retry(jobId)}/>
+    </Card>)}{unqueuedResumes.map((resume) => <Card key={resume.id} className={styles.card} data-testid="review-item-row">
+      <div className={styles.head}><span className="eyebrow">{c('CV guardado', 'Saved resume')}</span><h2>{resume.name}</h2><Tag tone="amber">{c('CV por revisar', 'Resume to review')}</Tag></div>
+      <p>{c('Este CV está listo para que revises y apruebes su contenido.', 'This resume is ready for you to review and approve.')}</p>
+      <div className={styles.actions}><Link className="button button-primary" href="/documents?view=saved">{c('Revisar CV', 'Review resume')}</Link></div>
     </Card>)}</div>}
   </>;
 }

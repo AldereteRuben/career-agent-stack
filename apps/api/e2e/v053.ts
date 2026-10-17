@@ -267,4 +267,50 @@ export const v053Scenarios: Scenario[] = [
       assert.deepEqual(await api.bytes(`/api/v1/documents/${approved.id}/file`), originalPdf, 'Existing PDFs are immutable');
     },
   },
+  {
+    name: 'v053-review-count-includes-pending-resumes-and-refreshes-on-focus',
+    async run({ page, context, api, marker }) {
+      await page.goto(new URL('/applications?view=review', page.url()).toString());
+      await setLocale(page, 'es');
+      const reviewTab = page.locator('a[href="/applications?view=review"]');
+      const readCount = async () => Number((await reviewTab.innerText()).match(/\((\d+)\)/)?.[1] ?? -1);
+      const readRows = () => page.locator('[data-testid="review-item-row"]').count();
+      const before = await eventually(readCount, (count) => count >= 0, 'The applications review count loads');
+      const beforeRows = await eventually(readRows, (count) => count === before, 'The visible review rows match the count');
+
+      const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Pending review fact ${marker}` });
+      await api.post(`/profile/facts/${fact.id}/approve`);
+      const job = await api.post<{ id: string }>('/jobs/import', { company: `Pending ${marker}`, title: 'Pending review role', jobUrl: `https://example.com/${marker}/pending-review` });
+      const resume = await api.post<Resume>('/documents', { name: `Pending review ${marker}`, factIds: [fact.id], jobId: job.id, locale: 'es' });
+      assert.equal((await api.get<Resume[]>('/documents')).find((document) => document.id === resume.id)?.reviewReady, true, 'The fixture resume is ready for the person to approve');
+
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await eventually(readCount, (count) => count === before + 1, 'A pending resume increments the review count without a reload');
+      await eventually(readRows, (count) => count === beforeRows + 1, 'A pending resume without a preparation appears as a review row');
+      assert.equal(await readCount(), await readRows(), 'The review count must equal the number of visible review rows');
+      const resumeRow = page.locator('[data-testid="review-item-row"]').filter({ hasText: `Pending review ${marker}` });
+      assert.equal(await resumeRow.getByRole('link', { name: 'Revisar CV', exact: true }).getAttribute('href'), '/documents?view=saved', 'The standalone resume row links to saved documents');
+      await setLocale(page, 'en');
+      assert.equal(await reviewTab.innerText(), `To review (${before + 1})`);
+      assert.equal(await resumeRow.getByRole('link', { name: 'Review resume', exact: true }).getAttribute('href'), '/documents?view=saved');
+
+      const reviewer = await context.newPage();
+      try {
+        await reviewer.goto(new URL(`/documents?view=review&document=${resume.id}&from=saved`, page.url()).toString());
+        await reviewer.locator('.pdf-preview canvas:visible').waitFor();
+        await reviewer.getByRole('checkbox').check();
+        await reviewer.getByRole('button', { name: 'Approve this version', exact: true }).click();
+        await eventually(async () => (await api.get<Resume[]>('/documents')).find((document) => document.id === resume.id)?.approvalStatus, (status) => status === 'USER_APPROVED', 'The pending resume is approved');
+      } finally {
+        await reviewer.close();
+      }
+      await page.bringToFront();
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await eventually(readCount, (count) => count === before, 'Approving the resume clears the review count without a reload');
+      await eventually(readRows, (count) => count === beforeRows, 'Approving the resume removes its review row without a reload');
+      assert.equal(await readCount(), await readRows(), 'The refreshed review count still equals the visible row count');
+      await setLocale(page, 'es');
+      assert.equal(await reviewTab.innerText(), `Por revisar (${before})`);
+    },
+  },
 ];

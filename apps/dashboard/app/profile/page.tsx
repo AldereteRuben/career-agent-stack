@@ -229,7 +229,7 @@ function ProfileView() {
           <div className="field field-span work-mode-field" role="group" aria-labelledby="work-mode-label">
             <span id="work-mode-label">{c('Modalidad de trabajo', 'Work arrangement')}</span>
             <div className="tag-row">
-              {knownModes.map((mode) => { const active = form.modes.includes(mode); return <Button key={mode} type="button" disabled={locked} variant={active ? 'primary' : 'secondary'} aria-pressed={active} onClick={() => toggleMode(mode)}>{active ? '✓ ' : ''}{labelFor.workMode(mode, locale)}</Button>; })}
+              {knownModes.map((mode) => { const active = form.modes.includes(mode); return <Button key={mode} type="button" disabled={locked} variant={active ? 'primary' : 'secondary'} aria-pressed={active} onClick={() => toggleMode(mode)}>{active && <span aria-hidden="true">✓ </span>}{labelFor.workMode(mode, locale)}</Button>; })}
               {extraModes.map((mode) => <Button key={mode} type="button" disabled={locked} variant="quiet" aria-pressed onClick={() => toggleMode(mode)} title={c('Quitar', 'Remove')}>{mode} ✕</Button>)}
             </div>
             <small>{c('Elige todas las que te sirvan. Puedes seleccionar más de una opción.', 'Choose all that work for you. You can select more than one option.')}</small>
@@ -284,8 +284,8 @@ function ProfileView() {
           {answer.reviewExpired ? <div><Tag tone="amber">{c('Necesita actualizarse', 'Needs updating')}</Tag><p>{c('Esta respuesta caducó y no se reutilizará. Edítala y guarda una nueva versión para revisarla.', 'This answer expired and will not be reused. Edit it and save a new version for review.')}</p></div> : answer.approvalStatus === 'USER_APPROVED' ? <Tag tone="green">{labelFor.answerApproval(answer.approvalStatus, locale).toUpperCase()}</Tag> : <Button variant="secondary" disabled={locked || !answerText(answer.value).trim()} onClick={() => reviewAnswer(answer.id)}>{saving(`answer:${answer.id}`) ? c('Guardando…', 'Saving…') : c('Aprobar respuesta', 'Approve answer')}</Button>}
         </div>)}</div>
       </Card></details>
-    </div><aside className="profile-aside">
-      <Card className="aside-card"><h3>{c('Tu progreso', 'Your progress')}</h3><details><summary>{c('Pasos para preparar tu CV', 'Steps to prepare your resume')}</summary><ol className="profile-checklist"><li>{c('Guarda tu nombre y correo.', 'Save your name and email.')}</li><li>{c('Añade al menos una experiencia y confirma que es correcta.', 'Add at least one experience and confirm it is accurate.')}</li><li>{c('Ve a Mis CV para elegir el contenido y generar el PDF.', 'Go to My resumes to choose the content and generate your PDF.')}</li></ol></details>
+    </div><aside className="profile-aside" aria-labelledby="profile-progress-heading">
+      <Card className="aside-card"><h3 id="profile-progress-heading">{c('Tu progreso', 'Your progress')}</h3><details><summary>{c('Pasos para preparar tu CV', 'Steps to prepare your resume')}</summary><ol className="profile-checklist"><li>{c('Guarda tu nombre y correo.', 'Save your name and email.')}</li><li>{c('Añade al menos una experiencia y confirma que es correcta.', 'Add at least one experience and confirm it is accurate.')}</li><li>{c('Ve a Mis CV para elegir el contenido y generar el PDF.', 'Go to My resumes to choose the content and generate your PDF.')}</li></ol></details>
         <p>{c(`${approvedFacts} ${approvedFacts === 1 ? 'texto listo' : 'textos listos'} para usar · ${pendingFacts} por confirmar`, `${approvedFacts} ${approvedFacts === 1 ? 'entry' : 'entries'} ready to use · ${pendingFacts} to confirm`)}</p>
         {loadState === 'ready' && !canPrepareCv && <p className="muted-label">{c('Para continuar: guarda tu nombre y correo y confirma una experiencia.', 'To continue: save your name and email and confirm one experience.')}</p>}
       </Card>
