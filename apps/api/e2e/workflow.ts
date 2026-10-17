@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createIsolatedStack, IsolationError, liveRowCounts, projectRoot, type IsolatedStack } from './isolation.js';
 import { scenarios, type ScenarioContext } from './scenarios.js';
+import { parseShard, selectShard } from './shard.js';
 import { apiClient } from './ui.js';
 
 let activeStack: IsolatedStack | undefined;
@@ -21,7 +22,9 @@ type Result = { name: string; ok: boolean; ms: number; error?: string; notes: st
 
 async function runScenarios(stack: IsolatedStack, artifacts: string): Promise<Result[]> {
   const only = (process.env.E2E_ONLY ?? '').split(',').map((name) => name.trim()).filter(Boolean);
-  const selected = only.length ? scenarios.filter((scenario) => only.includes(scenario.name) || scenario.name === 'sign-in-and-language-switch') : scenarios;
+  const signIn = 'sign-in-and-language-switch';
+  const pool = selectShard(scenarios, parseShard(process.env.E2E_SHARD), [signIn]);
+  const selected = only.length ? pool.filter((scenario) => only.includes(scenario.name) || scenario.name === signIn) : pool;
   const browser = await chromium.launch({ headless: process.env.E2E_HEADED !== '1' });
   const results: Result[] = [];
   try {
