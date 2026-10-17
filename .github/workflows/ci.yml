@@ -189,8 +189,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: e2e
+          - id: e2e-1
             suite: test:e2e
+            shard: 1/4
+          - id: e2e-2
+            suite: test:e2e
+            shard: 2/4
+          - id: e2e-3
+            suite: test:e2e
+            shard: 3/4
+          - id: e2e-4
+            suite: test:e2e
+            shard: 4/4
           - id: edge-cases
             suite: test:edge-cases
           - id: search-ui
@@ -239,6 +249,7 @@ jobs:
         run: pnpm run ${{ matrix.suite }}
         env:
           E2E_PRODUCTION: '1'
+          E2E_SHARD: ${{ matrix.shard }}
           CAREER_PG_BIN: /usr/lib/postgresql/17/bin
           E2E_ADMIN_DATABASE_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           NEXT_TELEMETRY_DISABLED: '1'
