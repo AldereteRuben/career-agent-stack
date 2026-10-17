@@ -44,13 +44,17 @@ export function latestApplicationDocumentOffer(input: {
   location: string | null;
   snapshots: ApplicationDocumentJobSnapshot[];
 }): ApplicationDocumentOfferSnapshot {
-  const compareDescending = (left: string, right: string) => {
+  const compareFetchedAtDescending = (left: string, right: string) => {
     const leftTime = Date.parse(left);
     const rightTime = Date.parse(right);
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime;
+    const leftValid = Number.isFinite(leftTime);
+    const rightValid = Number.isFinite(rightTime);
+    if (leftValid && rightValid) return rightTime - leftTime;
+    if (leftValid !== rightValid) return leftValid ? -1 : 1;
     return left === right ? 0 : left > right ? -1 : 1;
   };
-  const snapshot = [...input.snapshots].sort((a, b) => compareDescending(a.fetchedAt, b.fetchedAt) || compareDescending(a.id, b.id))[0] ?? null;
+  const compareIdDescending = (left: string, right: string) => left === right ? 0 : left > right ? -1 : 1;
+  const snapshot = [...input.snapshots].sort((a, b) => compareFetchedAtDescending(a.fetchedAt, b.fetchedAt) || compareIdDescending(a.id, b.id))[0] ?? null;
   return { workspaceId: input.workspaceId, company: input.company, role: input.role, location: input.location, snapshot };
 }
 
@@ -280,7 +284,7 @@ function sameIds(left: string[], right: string[]) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
-export type ApplicationDocumentCurrentness = { status: 'CURRENT' | 'NEEDS_REVIEW'; reasons: ('FACTS_CHANGED' | 'OFFER_CHANGED' | 'FACT_NOT_APPROVED' | 'LANGUAGE_MISMATCH')[] };
+export type ApplicationDocumentCurrentness = { status: 'CURRENT' | 'NEEDS_REVIEW'; reasons: ('FACTS_CHANGED' | 'OFFER_CHANGED' | 'FACT_NOT_APPROVED' | 'LANGUAGE_MISMATCH' | 'INVALID_CLAIM')[] };
 
 /** Freshness is computed from current sources and is never stored back onto a revision. */
 export async function applicationDocumentCurrentness(input: {
@@ -296,6 +300,16 @@ export async function applicationDocumentCurrentness(input: {
     const fact = currentFacts.get(id);
     return !fact || fact.workspaceId !== input.revision.workspaceId || fact.approval !== 'USER_APPROVED';
   })) reasons.push('FACT_NOT_APPROVED');
+  const builderOffer = asBuilderOffer(input.offer);
+  if (builderOffer) {
+    const issue = revisionClaimIssue({
+      workspaceId: input.revision.workspaceId,
+      claims: input.revision.claims,
+      facts: input.facts.map((fact) => ({ ...fact, tags: fact.tags ?? [] })),
+      offer: builderOffer,
+    });
+    if (issue && issue.code !== 'FACT_NOT_APPROVED') reasons.push('INVALID_CLAIM');
+  }
   const hashes = await applicationDocumentHashes({ workspaceId: input.revision.workspaceId, claims: input.revision.claims, facts: input.facts, offer: input.offer });
   if (!hashes.ok || hashes.factsHash !== input.revision.factsHash) reasons.push('FACTS_CHANGED');
   if (!hashes.ok || hashes.offerHash !== input.revision.offerHash) reasons.push('OFFER_CHANGED');

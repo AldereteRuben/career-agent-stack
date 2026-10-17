@@ -299,6 +299,14 @@ test('read-time currentness marks withdrawn evidence and changed offer for revie
   assert.deepEqual(withdrawn.reasons, ['FACT_NOT_APPROVED', 'FACTS_CHANGED']);
   const changedOffer = await applicationDocumentCurrentness({ revision, facts, offer: { ...offer, company: 'Different Co' } });
   assert.deepEqual(changedOffer, { status: 'NEEDS_REVIEW', reasons: ['OFFER_CHANGED'] });
+  const newlyUnsupportedClaim = { ...revision.claims[0]!, text: 'Worked as a senior engineer using React.' };
+  const newlyUnsupportedHashes = await applicationDocumentHashes({ workspaceId, claims: [newlyUnsupportedClaim], facts, offer });
+  assert.equal(newlyUnsupportedHashes.ok, true);
+  if (newlyUnsupportedHashes.ok) {
+    const historicallyApprovedRevision = { ...revision, claims: [newlyUnsupportedClaim], contentHash: newlyUnsupportedHashes.contentHash };
+    const invalidUnderCurrentRules = await applicationDocumentCurrentness({ revision: historicallyApprovedRevision, facts, offer });
+    assert.deepEqual(invalidUnderCurrentRules, { status: 'NEEDS_REVIEW', reasons: ['INVALID_CLAIM'] });
+  }
   const withDerivedSkills = (requirements: string[]) => ({
     ...offer,
     snapshot: { ...offer.snapshot!, derivedRequirements: requirements },

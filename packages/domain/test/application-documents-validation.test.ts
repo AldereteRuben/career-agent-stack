@@ -86,6 +86,8 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['Led Stripe payments testing.', 'Stripe'],
     ['My Stripe internship taught me React.', 'Stripe'],
     ['Probé pagos en mercadopago.', 'mercadopago'],
+    ['Led stripe payments testing with React.', 'stripe'],
+    ['Worked with globex on React.', 'globex'],
     ['I was head of engineering and used React.', 'head of engineering'],
     ['I worked as a team lead.', 'team lead'],
     ['I was promoted to VP of engineering.', 'VP of engineering'],
@@ -97,6 +99,19 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['As sdet I tested checkout.', 'sdet'],
     ['Built test suites as qa lead.', 'qa lead'],
     ['I worked as engineering manager on QA.', 'engineering manager'],
+    ['I worked as a senior engineer using React.', 'senior engineer'],
+    ['I worked as a principal engineer using React.', 'principal engineer'],
+    ['I worked as a staff engineer using React.', 'staff engineer'],
+    ['I worked as a lead developer using React.', 'lead developer'],
+    ['Trabajé como ingeniera de software con React.', 'ingeniera de software'],
+    ['Built React apps for 10k users.', '10k'],
+    ['Used React to cut test time 5x.', '5x'],
+    ['Built a React business worth $2M.', '$2M'],
+    ['Built React products in the 2010s.', '2010s'],
+    ['Built the 3rd React integration.', '3rd'],
+    ['Built React apps used by thousands of customers.', 'thousands'],
+    ['Diseñé interfaces React usadas por miles de usuarios.', 'miles'],
+    ['Delivered hundreds of React features.', 'hundreds'],
     ['Managed a million-dollar budget with React.', 'million'],
     ['Built services with figma and terraform.', 'figma'],
   ];
@@ -133,6 +148,12 @@ test('only equivalent skill aliases support each other in approved evidence', ()
   assert.deepEqual(validateApplicationDocumentSentence({
     sentence: claim({ text: 'Worked in Agile and Scrum teams.', sourceFactIds: ['fact-agile'] }), workspaceId, facts: [agileFact], offer,
   }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'scrum' } });
+  const integrationFact: ApplicationDocumentFact = {
+    id: 'fact-integration', workspaceId, approval: 'USER_APPROVED', text: 'Set up continuous integration.', tags: [],
+  };
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Set up continuous delivery.', sourceFactIds: ['fact-integration'] }), workspaceId, facts: [integrationFact], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'continuous delivery' } });
   const awsFact: ApplicationDocumentFact = {
     id: 'fact-aws', workspaceId, approval: 'USER_APPROVED', text: 'Deployed on Amazon Web Services.', tags: ['aws'],
   };

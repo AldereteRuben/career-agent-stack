@@ -64,9 +64,6 @@ const equivalentSkillAliases: Record<string, string[]> = {
   'rest-assured': ['rest assured', 'rest-assured'],
   'api testing': ['api testing', 'api test'],
   'api test': ['api testing', 'api test'],
-  'ci/cd': ['ci/cd', 'continuous integration', 'continuous delivery'],
-  'continuous integration': ['ci/cd', 'continuous integration', 'continuous delivery'],
-  'continuous delivery': ['ci/cd', 'continuous integration', 'continuous delivery'],
   'node.js': ['node.js', 'nodejs'],
   nodejs: ['node.js', 'nodejs'],
 };
@@ -135,13 +132,14 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
     mentions.push({ item: match[0].trim(), category: 'date' });
     dateSpans.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length });
   }
-  for (const match of text.matchAll(/\b\d+(?:[.,]\d+)?\b/gu)) {
+  const numericClaimPattern = /(?<![\p{L}\p{N}])(?:[$€£]\s*)?\d+(?:[.,]\d+)?(?:\s?(?:k|m|b|x|%|percent|st|nd|rd|th|s))?(?![\p{L}\p{N}])/giu;
+  for (const match of text.matchAll(numericClaimPattern)) {
     const start = match.index ?? 0;
     if (dateSpans.some((span) => start >= span.start && start < span.end)) continue;
     if (match[0]) mentions.push({ item: match[0], category: 'number' });
   }
 
-  const numberWords = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|millions|billion|billions|cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|veinti[a-záéíóúñ]+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|doscient[oa]s|trescient[oa]s|cuatrocient[oa]s|quinient[oa]s|seiscient[oa]s|setecient[oa]s|ochocient[oa]s|novecient[oa]s|mil|mill[oó]n|millones|bill[oó]n|billones)\b/giu;
+  const numberWords = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|hundreds|thousand|thousands|million|millions|billion|billions|dozen|dozens|cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|veinti[a-záéíóúñ]+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|cientos|centena|centenas|doscient[oa]s|trescient[oa]s|cuatrocient[oa]s|quinient[oa]s|seiscient[oa]s|setecient[oa]s|ochocient[oa]s|novecient[oa]s|mil|miles|mill[oó]n|millones|bill[oó]n|billones|docena|docenas)\b/giu;
   for (const match of text.matchAll(numberWords)) if (match[0]) mentions.push({ item: match[0], category: 'number' });
 
   const credentialPattern = /\b(?:PMP|CPA|CFA|CISSP|TOEFL|IELTS|GED|PhD|MBA|doctorate|doctorado|(?:master(?:s|[’']s)?|bachelor(?:s|[’']s)?)(?:\s+degree)?(?:\s+(?:in|of)\s+[\p{L}\p{N}+#.-]+(?:\s+(?!(?:from|at|by|con|en|de|del|para)\b)[\p{L}\p{N}+#.-]+){0,2})?|BS|BA|MS|MA|BSc|MSc|m[aá]ster|maestr[ií]a(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|licenciatura(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificate(?:\s+(?:in|of)\s+[\p{L}\p{N}+#.-]+){0,3}|certification(?:\s+(?:in|of)\s+[\p{L}\p{N}+#.-]+){0,3}|certificado(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificada(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificaci[oó]n(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|(?:AWS\s+)?certified(?:\s+(?:in|as)\s+[\p{L}\p{N}+#.-]+){0,3}|licen[cs]e(?:\s+in\s+[\p{L}\p{N}+#.-]+){0,3}|licencia(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3})\b/giu;
@@ -181,11 +179,16 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
       || recognizedSkills.has(normalized(item)) || sentenceStarterWords.has(normalized(item))) continue;
     mentions.push({ item, category: 'entity' });
   }
-  const lowercaseEmployerPattern = /\b(?:at|for|from|joined|employed by|hired by|en|para|desde|con)\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/giu;
-  const lowercaseEntityStopWords = new Set(['the', 'and', 'for', 'from', 'with', 'work', 'home', 'school', 'college', 'university', 'office', 'scale', 'pace', 'team', 'teams', 'company', 'business', 'startup', 'startups', 'users', 'clients', 'customers', 'stakeholders', 'years', 'year', 'months', 'month', 'experience', 'engineering', 'marketing', 'sales', 'finance', 'product', 'software', 'data', 'services', 'service', 'projects', 'project', 'datos', 'experiencia', 'trabajo', 'equipo', 'empresa', 'compañia', 'compania']);
+  const lowercaseEmployerPattern = /\b(?:at|for|from|with|joined|employed by|hired by|en|para|desde|con)\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/gu;
+  const lowercaseCompanyAfterVerbPattern = /\b(?:[Ll]ed|[Mm]anaged|[Ff]ounded|[Jj]oined|[Bb]uilt|[Aa]cquired|[Ll]ider[eé]|[Dd]irig[ií]|[Gg]estion[eé])\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/gu;
+  const lowercaseEntityStopWords = new Set(['the', 'and', 'for', 'from', 'with', 'work', 'home', 'school', 'college', 'university', 'office', 'scale', 'pace', 'team', 'teams', 'company', 'business', 'startup', 'startups', 'users', 'clients', 'customers', 'stakeholders', 'years', 'year', 'months', 'month', 'experience', 'engineering', 'marketing', 'sales', 'finance', 'product', 'products', 'software', 'data', 'services', 'service', 'projects', 'project', 'payments', 'payment', 'testing', 'tests', 'apps', 'applications', 'platforms', 'systems', 'solutions', 'features', 'interfaces', 'products', 'teams', 'datos', 'pagos', 'pruebas', 'experiencia', 'trabajo', 'equipo', 'empresa', 'compañia', 'compania']);
   for (const match of text.matchAll(lowercaseEmployerPattern)) {
     const item = cleanMention(match[1] ?? '');
-    if (item && !lowercaseEntityStopWords.has(normalized(item))) mentions.push({ item, category: 'entity' });
+    if (item && !lowercaseEntityStopWords.has(normalized(item)) && !recognizedSkills.has(normalized(item))) mentions.push({ item, category: 'entity' });
+  }
+  for (const match of text.matchAll(lowercaseCompanyAfterVerbPattern)) {
+    const item = cleanMention(match[1] ?? '');
+    if (item && !lowercaseEntityStopWords.has(normalized(item)) && !recognizedSkills.has(normalized(item))) mentions.push({ item, category: 'entity' });
   }
   const leadingEmployerPattern = /^\s*([\p{Lu}][\p{L}\p{N}&.'’+-]{2,})\s+(?:employed|hired|acquired|merged|laid\s+off|promoted|recruited)\b/u;
   const leadingEmployer = text.match(leadingEmployerPattern)?.[1];
@@ -193,6 +196,8 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
 
   const jobTitlePattern = /\b(?:(?:senior|junior|lead|principal|staff|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:product|software|data|ux|ui|platform|frontend|front-end|backend|back-end|cloud|machine learning|producto|datos|dise[nñ]o|plataforma|desarrollo|anal[ií]tica|qa|quality assurance|test|testing|sdet|automation|engineering|ingenier[ií]a|calidad|automatizaci[oó]n)\s+(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|lead|ingeniero|desarrollador|dise[nñ]ador|analista|gerente|arquitecto|cient[ií]fico|responsable|l[ií]der)\b/giu;
   for (const match of text.matchAll(jobTitlePattern)) if (match[0]) mentions.push({ item: match[0].trim(), category: 'entity' });
+  const genericJobTitlePattern = /\b(?:(?:senior|junior|principal|staff|lead|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|ingenier[oa]|desarrollador(?:a)?|dise[nñ]ador(?:a)?|analista|gerente|arquitect[oa]|cient[ií]fico(?:a)?|responsable)(?:\s+(?:of|de)\s+(?:software|engineering|datos|software|sistemas|calidad|automatizaci[oó]n))?\b/giu;
+  for (const match of text.matchAll(genericJobTitlePattern)) if (match[0]) mentions.push({ item: cleanMention(match[0]), category: 'entity' });
   const standaloneTitlePattern = /\b(?:sdet|qa|quality assurance|test engineer|testing engineer|automation engineer)\b/giu;
   for (const match of text.matchAll(standaloneTitlePattern)) if (match[0]) mentions.push({ item: cleanMention(match[0]), category: 'entity' });
   const leadershipTitlePattern = /\b(?:head\s+of\s+[\p{L}-]+|team\s+lead|tech(?:nical)?\s+lead|engineering\s+lead|vp\s+of\s+[\p{L}-]+|vice\s+president\s+of\s+[\p{L}-]+|chief\s+[\p{L}-]+\s+officer)\b/giu;
