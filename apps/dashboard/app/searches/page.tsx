@@ -374,7 +374,7 @@ export default function SearchesPage() {
         <SearchForm key={`${editing || 'new'}-${aiSearchProposal?.id ?? 'manual'}`} defaultProviders={defaultProviders} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t}/></>}
       </div>}
       {loading && <Notice>{t('Cargando tus búsquedas…', 'Loading your searches…')}</Notice>}
-      {listFailed && <Card className={styles.emptyResults}><Empty title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
+      {listFailed && <Card className={styles.emptyResults}><Empty headingLevel="h2" title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
       {searches.length > 0 && <section className={styles.results} id="search-results" aria-labelledby="search-results-title">
         {searches.length > 1 && <div className={styles.scopeBar}>
           <div className={styles.scopeField}>
