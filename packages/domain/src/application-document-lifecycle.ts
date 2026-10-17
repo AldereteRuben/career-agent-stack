@@ -47,7 +47,7 @@ export function latestApplicationDocumentOffer(input: {
   const compareDescending = (left: string, right: string) => {
     const leftTime = Date.parse(left);
     const rightTime = Date.parse(right);
-    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) return rightTime - leftTime;
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return rightTime - leftTime;
     return left === right ? 0 : left > right ? -1 : 1;
   };
   const snapshot = [...input.snapshots].sort((a, b) => compareDescending(a.fetchedAt, b.fetchedAt) || compareDescending(a.id, b.id))[0] ?? null;

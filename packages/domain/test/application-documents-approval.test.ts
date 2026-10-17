@@ -147,6 +147,15 @@ test('latest offer snapshot uses fetched time then id, and null description hash
     ],
   });
   assert.equal(mixedFormats.snapshot?.id, 'fractional');
+
+  const equalInstants = latestApplicationDocumentOffer({
+    workspaceId, company: 'Company', role: 'Role', location: null,
+    snapshots: [
+      { id: 'snapshot-a', title: 'A', descriptionText: '', fetchedAt: '2026-10-17T10:00:00+02:00' },
+      { id: 'snapshot-z', title: 'Z', descriptionText: '', fetchedAt: '2026-10-17T08:00:00.000Z' },
+    ],
+  });
+  assert.equal(equalInstants.snapshot?.id, 'snapshot-z');
 });
 
 test('replacing a snapshot with identical offer content does not change the offer hash', async () => {
@@ -157,6 +166,19 @@ test('replacing a snapshot with identical offer content does not change the offe
   } });
   assert.equal(before.ok && after.ok, true);
   if (before.ok && after.ok) assert.equal(before.offerHash, after.offerHash);
+
+  const beforeFetchTimeChange = latestApplicationDocumentOffer({
+    workspaceId, company: offer.company, role: offer.role, location: offer.location,
+    snapshots: [{ id: 'same-snapshot', title: offer.snapshot!.title, descriptionText: offer.snapshot!.descriptionText, fetchedAt: '2026-10-17T10:00:00.000Z' }],
+  });
+  const afterFetchTimeChange = latestApplicationDocumentOffer({
+    workspaceId, company: offer.company, role: offer.role, location: offer.location,
+    snapshots: [{ id: 'same-snapshot', title: offer.snapshot!.title, descriptionText: offer.snapshot!.descriptionText, fetchedAt: '2026-10-18T10:00:00.000Z' }],
+  });
+  const beforeFetchHash = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer: beforeFetchTimeChange });
+  const afterFetchHash = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer: afterFetchTimeChange });
+  assert.equal(beforeFetchHash.ok && afterFetchHash.ok, true);
+  if (beforeFetchHash.ok && afterFetchHash.ok) assert.equal(beforeFetchHash.offerHash, afterFetchHash.offerHash);
 });
 
 test('missing offer and mixed-language claims are refused before a revision is created', async () => {
@@ -213,6 +235,10 @@ test('approval binds exact preview digests and source hashes without rendering',
   assert.deepEqual(withdrawnFact, { ok: false, code: 'FACT_NOT_APPROVED', sentenceId: 'claim-1', factId: 'fact-1' });
   const staleOffer = await approveApplicationDocumentRevision(approveInput(revision, { offer: { ...offer, role: 'Otro puesto' } }));
   assert.deepEqual(staleOffer, { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_CHANGED' });
+  const staleOfferSnapshot = await approveApplicationDocumentRevision(approveInput(revision, {
+    offer: { ...offer, snapshot: { ...offer.snapshot!, title: 'Changed posting title' } },
+  }));
+  assert.deepEqual(staleOfferSnapshot, { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_CHANGED' });
   const submittedHashMismatch = await approveApplicationDocumentRevision(approveInput(revision, { expectedContentHash: 'c'.repeat(64) }));
   assert.deepEqual(submittedHashMismatch, { ok: false, code: 'APPROVAL_STALE', reason: 'SUBMITTED_HASH_MISMATCH' });
   const editedClaims = [{ ...claim, text: 'Diseñé sistemas de diseño React.' }];

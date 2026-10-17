@@ -71,9 +71,9 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['I have ten years of experience.', 'ten'],
     ['I am a Senior Data Scientist.', 'Senior Data Scientist'],
     ['I hold a doctorate.', 'doctorate'],
-    ['I hold a master’s degree.', 'master’s'],
-    ['I hold a masters degree.', 'masters'],
-    ["I have a master's in computer science from stanford.", "master's"],
+    ['I hold a master’s degree.', 'master’s degree'],
+    ['I hold a masters degree.', 'masters degree'],
+    ["I have a master's in computer science from stanford.", "master's in computer science"],
     ['Tengo un máster en ciencia de datos.', 'máster'],
     ['Tengo una maestría en análisis.', 'maestría en análisis'],
     ['I hold a BS in physics.', 'BS'],
@@ -82,9 +82,21 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['I hold an AWS certification.', 'aws'],
     ['I worked at ebay using React.', 'ebay'],
     ['I worked at eBay using React.', 'eBay'],
+    ['I tested Stripe payments.', 'Stripe'],
+    ['Led Stripe payments testing.', 'Stripe'],
+    ['My Stripe internship taught me React.', 'Stripe'],
+    ['Probé pagos en mercadopago.', 'mercadopago'],
     ['I was head of engineering and used React.', 'head of engineering'],
     ['I worked as a team lead.', 'team lead'],
     ['I was promoted to VP of engineering.', 'VP of engineering'],
+    ['I hold a master’s degree in physics.', 'master’s degree in physics'],
+    ['I hold a Bachelor of Arts.', 'Bachelor of Arts'],
+    ['Dirigí once equipos de pruebas.', 'once'],
+    ['Automaticé veintidós pruebas.', 'veintidós'],
+    ['I worked as a senior qa engineer.', 'senior qa engineer'],
+    ['As sdet I tested checkout.', 'sdet'],
+    ['Built test suites as qa lead.', 'qa lead'],
+    ['I worked as engineering manager on QA.', 'engineering manager'],
     ['Managed a million-dollar budget with React.', 'million'],
     ['Built services with figma and terraform.', 'figma'],
   ];
@@ -109,6 +121,18 @@ test('only equivalent skill aliases support each other in approved evidence', ()
     sentence: claim({ text: 'Built services with PostgreSQL.', sourceFactIds: ['fact-mysql'] }), workspaceId, facts: [mysqlFact], offer,
   });
   assert.deepEqual(aliasLaundering, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'postgresql' } });
+  const sqlFact: ApplicationDocumentFact = {
+    id: 'fact-sql', workspaceId, approval: 'USER_APPROVED', text: 'Wrote SQL queries.', tags: [],
+  };
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Wrote SQL and PostgreSQL queries.', sourceFactIds: ['fact-sql'] }), workspaceId, facts: [sqlFact], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'postgresql' } });
+  const agileFact: ApplicationDocumentFact = {
+    id: 'fact-agile', workspaceId, approval: 'USER_APPROVED', text: 'Worked in Agile teams.', tags: [],
+  };
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Worked in Agile and Scrum teams.', sourceFactIds: ['fact-agile'] }), workspaceId, facts: [agileFact], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'scrum' } });
   const awsFact: ApplicationDocumentFact = {
     id: 'fact-aws', workspaceId, approval: 'USER_APPROVED', text: 'Deployed on Amazon Web Services.', tags: ['aws'],
   };
@@ -157,6 +181,13 @@ test('supported rewordings can start with verbs, connectors and articles in eith
     const result = validateApplicationDocumentSentence({ sentence: claim({ text }), workspaceId, facts, offer });
     assert.equal(result.ok, true, text);
   }
+  const seleniumFact: ApplicationDocumentFact = {
+    id: 'fact-selenium', workspaceId, approval: 'USER_APPROVED', text: 'Wrote Selenium suites for checkout.', tags: ['selenium'],
+  };
+  const automated = validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Automated Selenium suites for checkout.', sourceFactIds: ['fact-selenium'] }), workspaceId, facts: [seleniumFact], offer,
+  });
+  assert.equal(automated.ok, true);
 });
 
 test('an unsupported sentence edited back to supported becomes USER_EDITED', () => {
@@ -190,10 +221,17 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
     const edited = saveApplicationDocumentSentenceEdit({ original, text, sourceFactIds: [], workspaceId, facts, offer });
     assert.equal(edited.ok && edited.sentence.kind, 'BOILERPLATE', text);
   }
+  assert.equal(validateApplicationDocumentSentence({
+    sentence: { ...original, text: 'Saludos cordiales', language: 'en' }, workspaceId, facts, offer,
+  }).ok, false);
+  const translatedClosing = saveApplicationDocumentSentenceEdit({
+    original: { ...original, text: 'Sincerely,', language: 'en' }, text: 'Saludos cordiales', sourceFactIds: [], workspaceId, facts, offer,
+  });
+  assert.deepEqual(translatedClosing, { ok: true, sentence: { ...original, text: 'Saludos cordiales', language: 'es', origin: 'USER_EDITED' } });
   const greeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards,', sourceFactIds: [], workspaceId, facts, offer });
-  assert.deepEqual(greeting, { ok: true, sentence: { ...original, text: 'Best regards,', origin: 'USER_EDITED' } });
+  assert.deepEqual(greeting, { ok: true, sentence: { ...original, text: 'Best regards,', language: 'en', origin: 'USER_EDITED' } });
   const titleCaseGreeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best Regards,', sourceFactIds: [], workspaceId, facts, offer });
-  assert.deepEqual(titleCaseGreeting, { ok: true, sentence: { ...original, text: 'Best Regards,', origin: 'USER_EDITED' } });
+  assert.deepEqual(titleCaseGreeting, { ok: true, sentence: { ...original, text: 'Best Regards,', language: 'en', origin: 'USER_EDITED' } });
   const withNumber = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with 10 years of experience', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(withNumber, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: '10' } });
   const withCredential = saveApplicationDocumentSentenceEdit({ original, text: 'I hold a doctorate.', sourceFactIds: [], workspaceId, facts, offer });
