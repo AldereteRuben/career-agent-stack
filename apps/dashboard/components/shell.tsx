@@ -209,9 +209,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       id="app-sidebar"
       ref={sidebarRef}
       className={`sidebar ${drawerOpen ? 'sidebar-open' : ''}`}
+      aria-label={drawerLabel}
       inert={isDrawer && !menuOpen}
       onKeyDown={onDrawerKeyDown}
-      {...(drawerOpen ? { role: 'dialog', 'aria-modal': true, 'aria-label': drawerLabel } : {})}
+      {...(drawerOpen ? { role: 'dialog', 'aria-modal': true } : {})}
     >
       <div className="sidebar-top">
         <Link href="/searches" className="brand" onClick={closeMenu}><Brand/></Link>

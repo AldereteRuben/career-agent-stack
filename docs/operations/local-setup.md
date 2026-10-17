@@ -50,7 +50,7 @@ $env:CAREER_ADMIN_DATABASE_URL = "postgresql://postgres:YOUR_PASSWORD@127.0.0.1:
 pnpm run bootstrap
 ```
 
-Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. File permission bits do not exist on Windows, so the backup writer test (`pnpm run test:backup`) fails there; that is a known limit, not a data problem.
+Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. Windows does not provide POSIX file permission bits, so tests that assert those mode bits are skipped there; the backup archive format test still runs in Windows CI.
 
 **Español.** En Windows nativo se puede preparar una instalación, iniciarla con `pnpm start`, comprobarla con `pnpm run status`, detenerla con `pnpm run stop` y ejecutar las pruebas que necesitan base de datos. Comprobado a mano en Windows 11 con un servicio local de PostgreSQL 17. Diferencias con macOS y Linux: Windows no tiene grupos de procesos ni directorios de trabajo legibles, así que un proceso se reconoce por su hora de inicio exacta y la ruta absoluta de su archivo de entrada, y `pnpm run stop` cierra el árbol de procesos a la fuerza porque un programa de consola sin ventana no puede recibir una petición de cierre; `pnpm start --copy-token` copia el token con `clip.exe` y lo borra a los 2 minutos como en los demás sistemas (o léelo en `data\setup-token`). Sin verificar: Docker Desktop, WSL 2 y los lanzadores `.command` (solo macOS).
 
@@ -68,7 +68,7 @@ $env:CAREER_ADMIN_DATABASE_URL = "postgresql://postgres:TU_CONTRASEÑA@127.0.0.1
 pnpm run bootstrap
 ```
 
-Las copias de seguridad necesitan `pg_dump` y `pg_restore`: añade `C:\Program Files\PostgreSQL\17\bin` al `PATH`. En Windows no existen los permisos de archivo, así que la prueba del escritor de copias (`pnpm run test:backup`) falla allí; es un límite conocido, no un problema con tus datos.
+Las copias de seguridad necesitan `pg_dump` y `pg_restore`: añade `C:\Program Files\PostgreSQL\17\bin` al `PATH`. Windows no proporciona bits de permisos POSIX, así que allí se omiten las pruebas que los afirman; la prueba del formato de la copia sí se ejecuta en CI de Windows.
 
 ## First run
 

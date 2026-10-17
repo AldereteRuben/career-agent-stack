@@ -11,6 +11,6 @@
     "./security-headers": { "types": "./src/security-headers.ts", "import": "./dist/security-headers.js", "default": "./dist/security-headers.js" }
   },
   "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "eslint src" },
-  "dependencies": { "zod": "^4.1.12" },
-  "devDependencies": { "@types/node": "^24.19.1", "typescript": "^5.9.3" }
+  "dependencies": { "zod": "^4.6.7" },
+  "devDependencies": { "@types/node": "^24.19.2", "typescript": "^5.9.3" }
 }

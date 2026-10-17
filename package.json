@@ -46,6 +46,7 @@
     "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
     "test:windows-process": "node --test scripts/test/windows-process.test.mjs",
     "test:install-marker": "node --test scripts/test/install-marker.test.mjs",
+    "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
     "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts test/himalayas-source.test.ts test/search-execution.test.ts test/search-results.test.ts test/job-identity.test.ts test/job-availability-feeds.test.ts test/job-availability-routes.test.ts",
@@ -54,14 +55,14 @@
     "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
     "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts",
     "test:ai-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v090.mts",
-    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts"
+    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.12.0",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "typescript": "5.9.3",
-    "typescript-eslint": "^8.71.1"
+    "typescript-eslint": "^8.71.2"
   },
   "dependencies": {
     "@scure/base": "2.4.0",
