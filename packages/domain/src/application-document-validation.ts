@@ -219,6 +219,7 @@ export function validateApplicationDocumentAssistantProposal(input: {
   if (input.sentence.kind !== 'CANDIDATE_CLAIM' || input.sentence.origin !== 'CODEX'
     || input.original.kind !== 'CANDIDATE_CLAIM' || input.original.origin === 'USER_UNSUPPORTED'
     || input.sentence.sentenceId !== input.original.sentenceId
+    || input.sentence.language !== input.original.language
     || input.sentence.sourceFactIds.length !== input.original.sourceFactIds.length
     || !input.sentence.sourceFactIds.every((id, index) => id === input.original.sourceFactIds[index])) {
     return { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: input.sentence.sentenceId } };

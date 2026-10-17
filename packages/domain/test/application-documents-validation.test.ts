@@ -180,4 +180,8 @@ test('assistant proposals must be claims and pass the same provenance checks', (
     sentence: claim({ sentenceId: 'new-claim', origin: 'CODEX' }), original, workspaceId, facts, offer,
   });
   assert.deepEqual(newClaim, { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: 'new-claim' } });
+  const changedLanguage = validateApplicationDocumentAssistantProposal({
+    sentence: claim({ origin: 'CODEX', language: 'en' }), original, workspaceId, facts, offer,
+  });
+  assert.deepEqual(changedLanguage, { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: 'claim-1' } });
 });
