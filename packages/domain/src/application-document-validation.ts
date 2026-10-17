@@ -39,7 +39,10 @@ const skillAliasesByCanonical: Record<string, string[]> = {
   cypress: ['cypress'],
   selenium: ['selenium'],
   jenkins: ['jenkins'],
-  'ci-cd': ['ci/cd', 'continuous integration', 'continuous delivery'],
+  'ci-cd': ['ci/cd'],
+  'continuous integration': ['continuous integration', 'integración continua'],
+  'continuous delivery': ['continuous delivery', 'entrega continua'],
+  'continuous deployment': ['continuous deployment', 'despliegue continuo'],
   docker: ['docker'],
   kubernetes: ['kubernetes'],
   aws: ['aws', 'amazon web services'],
@@ -66,6 +69,12 @@ const equivalentSkillAliases: Record<string, string[]> = {
   'api test': ['api testing', 'api test'],
   'node.js': ['node.js', 'nodejs'],
   nodejs: ['node.js', 'nodejs'],
+  'continuous integration': ['continuous integration', 'integración continua'],
+  'integración continua': ['continuous integration', 'integración continua'],
+  'continuous delivery': ['continuous delivery', 'entrega continua'],
+  'entrega continua': ['continuous delivery', 'entrega continua'],
+  'continuous deployment': ['continuous deployment', 'despliegue continuo'],
+  'despliegue continuo': ['continuous deployment', 'despliegue continuo'],
 };
 
 function plainBoilerplateLanguage(text: string): 'es' | 'en' | null {
@@ -94,12 +103,22 @@ function skillMentions(text: string): Mention[] {
 
 function supportedByCitedFacts(mention: Mention, citedFacts: ApplicationDocumentFact[]) {
   if (mention.category === 'skill' && mention.requirement) {
+    // CI, CD and combined CI/CD are related, but one does not prove another.
+    if (normalized(mention.requirement.text) === 'ci-cd') {
+      return citedFacts.some((fact) => containsTerm(`${fact.text} ${fact.tags.join(' ')}`, mention.item));
+    }
     const aliases = equivalentSkillAliases[normalized(mention.item)] ?? [mention.item];
     return citedFacts.some((fact) => aliases.some((alias) =>
       fact.tags.some((tag) => normalized(tag) === normalized(alias))
       || containsTerm(`${fact.text} ${fact.tags.join(' ')}`, alias)));
   }
   const citedContent = citedFacts.map((fact) => `${fact.text} ${fact.tags.join(' ')}`).join(' ');
+  if (mention.category === 'number' && /\p{N}/u.test(mention.item)) {
+    // Preserve currency, percentage, multiplier, unit and ordinal markers. The generic
+    // normalizer strips several of these, which could otherwise equate e.g. €2M and $2M.
+    const escape = mention.item.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+');
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escape}(?![\\p{L}\\p{N}])`, 'iu').test(citedContent);
+  }
   return containsTerm(citedContent, mention.item);
 }
 
@@ -132,15 +151,19 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
     mentions.push({ item: match[0].trim(), category: 'date' });
     dateSpans.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length });
   }
-  const numericClaimPattern = /(?<![\p{L}\p{N}])(?:[$€£]\s*)?\d+(?:[.,]\d+)?(?:\s?(?:k|m|b|x|%|percent|st|nd|rd|th|s))?(?![\p{L}\p{N}])/giu;
+  const numericClaimPattern = /(?<![\p{L}\p{N}])(?:x\s*)?(?:[$€£]\s*)?\d+(?:[.,]\d+)*(?:\s?(?:k|m|b|x|%|percent|percentage|st|nd|rd|th|er|º|ª|ms|gb|mb|kb|s|sec|seconds?|minutes?|hours?|days?|years?))?(?![\p{L}\p{N}])/giu;
   for (const match of text.matchAll(numericClaimPattern)) {
     const start = match.index ?? 0;
     if (dateSpans.some((span) => start >= span.start && start < span.end)) continue;
     if (match[0]) mentions.push({ item: match[0], category: 'number' });
   }
 
-  const numberWords = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|hundreds|thousand|thousands|million|millions|billion|billions|dozen|dozens|cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|veinti[a-záéíóúñ]+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|cientos|centena|centenas|doscient[oa]s|trescient[oa]s|cuatrocient[oa]s|quinient[oa]s|seiscient[oa]s|setecient[oa]s|ochocient[oa]s|novecient[oa]s|mil|miles|mill[oó]n|millones|bill[oó]n|billones|docena|docenas)\b/giu;
+  const numberWords = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|hundreds|thousand|thousands|million|millions|billion|billions|dozen|dozens|tens|scores|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|cero|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|veinti[a-záéíóúñ]+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|cientos|decena|decenas|centena|centenas|centenares|millares|doscient[oa]s|trescient[oa]s|cuatrocient[oa]s|quinient[oa]s|seiscient[oa]s|setecient[oa]s|ochocient[oa]s|novecient[oa]s|mil|miles|mill[oó]n|millones|bill[oó]n|billones|docena|docenas|primer[oa]?s?|segund[oa]s?|tercer[oa]s?|cuart[oa]s?|quint[oa]s?|sext[oa]s?|s[eé]ptim[oa]s?|octav[oa]s?|noven[oa]s?|d[eé]cim[oa]s?)\b/giu;
   for (const match of text.matchAll(numberWords)) if (match[0]) mentions.push({ item: match[0], category: 'number' });
+  // "Once" is a Spanish cardinal in phrases such as "once equipos", but an English
+  // temporal adverb in "I once led". Require nearby Spanish grammar to classify it.
+  const spanishOncePattern = /\b(?:dirig[ií]|lider[eé]|gestion[eé]|constru[ií]|fund[eé]|desarroll[eé]|automatic[eé])\s+once\s+(?:equipos?|personas?|usuarios?|clientes?|pagos?|pruebas?|proyectos?|a[nñ]os?|meses?|soluciones?|productos?)\b/giu;
+  for (const match of text.matchAll(spanishOncePattern)) if (match[0]) mentions.push({ item: 'once', category: 'number' });
 
   const credentialPattern = /\b(?:PMP|CPA|CFA|CISSP|TOEFL|IELTS|GED|PhD|MBA|doctorate|doctorado|(?:master(?:s|[’']s)?|bachelor(?:s|[’']s)?)(?:\s+degree)?(?:\s+(?:in|of)\s+[\p{L}\p{N}+#.-]+(?:\s+(?!(?:from|at|by|con|en|de|del|para)\b)[\p{L}\p{N}+#.-]+){0,2})?|BS|BA|MS|MA|BSc|MSc|m[aá]ster|maestr[ií]a(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|licenciatura(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificate(?:\s+(?:in|of)\s+[\p{L}\p{N}+#.-]+){0,3}|certification(?:\s+(?:in|of)\s+[\p{L}\p{N}+#.-]+){0,3}|certificado(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificada(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificaci[oó]n(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|(?:AWS\s+)?certified(?:\s+(?:in|as)\s+[\p{L}\p{N}+#.-]+){0,3}|licen[cs]e(?:\s+in\s+[\p{L}\p{N}+#.-]+){0,3}|licencia(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3})\b/giu;
   for (const match of text.matchAll(credentialPattern)) if (match[0]) mentions.push({ item: match[0].trim(), category: 'credential' });
@@ -154,7 +177,7 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
     if (item) mentions.push({ item, category: 'entity' });
   }
   const capitalizedEntityPattern = /(?<![\p{L}\p{N}])([\p{Lu}][\p{L}\p{N}&.'’+-]*(?:\s+[\p{Lu}][\p{L}\p{N}&.'’+-]*){1,3})(?![\p{L}\p{N}])/gu;
-  const sentenceStarterWords = new Set(['i', 'we', 'my', 'our', 'used', 'built', 'worked', 'led', 'created', 'designed', 'developed', 'managed', 'implemented', 'use', 'using', 'shipped', 'spearheaded', 'automated', 'automating', 'introduced', 'architected', 'launched', 'delivered', 'improved', 'drove', 'owned', 'mentored', 'optimized', 'the', 'this', 'these', 'those', 'cree', 'atentamente', 'saludo', 'saludos', 'hello', 'hola', 'dear', 'yours', 'estimado', 'estimada', 'estimados', 'estimadas', 'cordialmente', 'tengo', 'soy', 'probe', 'trabaje', 'disene', 'desarrolle', 'lidere', 'dirigi', 'analice', 'automatice', 'escribi', 'implemente', 'gestione', 'best', 'kind', 'warm', 'regards', 'sincerely', 'all', 'thank', 'thanks', 'cheers']);
+  const sentenceStarterWords = new Set(['i', 'we', 'my', 'our', 'used', 'built', 'worked', 'led', 'created', 'designed', 'developed', 'managed', 'implemented', 'use', 'using', 'shipped', 'spearheaded', 'automated', 'automating', 'introduced', 'architected', 'launched', 'delivered', 'improved', 'drove', 'owned', 'mentored', 'optimized', 'integrated', 'tested', 'founded', 'joined', 'acquired', 'the', 'this', 'these', 'those', 'cree', 'atentamente', 'saludo', 'saludos', 'hello', 'hola', 'dear', 'yours', 'estimado', 'estimada', 'estimados', 'estimadas', 'cordialmente', 'tengo', 'soy', 'probe', 'trabaje', 'disene', 'desarrolle', 'lidere', 'dirigi', 'analice', 'automatice', 'escribi', 'implemente', 'gestione', 'funde', 'construi', 'integre', 'best', 'kind', 'warm', 'regards', 'sincerely', 'all', 'thank', 'thanks', 'cheers']);
   const capitalizedEntitySpans: Array<{ start: number; end: number }> = [];
   for (const match of text.matchAll(capitalizedEntityPattern)) {
     const item = match[1] ? cleanMention(match[1]) : '';
@@ -179,9 +202,9 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
       || recognizedSkills.has(normalized(item)) || sentenceStarterWords.has(normalized(item))) continue;
     mentions.push({ item, category: 'entity' });
   }
-  const lowercaseEmployerPattern = /\b(?:at|for|from|with|joined|employed by|hired by|en|para|desde|con)\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/gu;
-  const lowercaseCompanyAfterVerbPattern = /\b(?:[Ll]ed|[Mm]anaged|[Ff]ounded|[Jj]oined|[Bb]uilt|[Aa]cquired|[Ll]ider[eé]|[Dd]irig[ií]|[Gg]estion[eé])\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/gu;
-  const lowercaseEntityStopWords = new Set(['the', 'and', 'for', 'from', 'with', 'work', 'home', 'school', 'college', 'university', 'office', 'scale', 'pace', 'team', 'teams', 'company', 'business', 'startup', 'startups', 'users', 'clients', 'customers', 'stakeholders', 'years', 'year', 'months', 'month', 'experience', 'engineering', 'marketing', 'sales', 'finance', 'product', 'products', 'software', 'data', 'services', 'service', 'projects', 'project', 'payments', 'payment', 'testing', 'tests', 'apps', 'applications', 'platforms', 'systems', 'solutions', 'features', 'interfaces', 'products', 'teams', 'datos', 'pagos', 'pruebas', 'experiencia', 'trabajo', 'equipo', 'empresa', 'compañia', 'compania']);
+  const lowercaseEmployerPattern = /\b(?:at|for|from|with|joined|employed by|hired by|en|para|desde|con|de|a)\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/giu;
+  const lowercaseCompanyAfterVerbPattern = /(?<![\p{L}\p{N}])(?:led|managed|founded|joined|built|acquired|integrated|tested|fund[eé]|constru[ií]|lider[eé]|dirig[ií]|gestion[eé]|prob[eé])\s+([\p{Ll}][\p{L}\p{N}&.'’+-]{2,})/giu;
+  const lowercaseEntityStopWords = new Set(['the', 'and', 'for', 'from', 'with', 'work', 'home', 'school', 'college', 'university', 'office', 'scale', 'pace', 'team', 'teams', 'company', 'business', 'startup', 'startups', 'users', 'clients', 'customers', 'stakeholders', 'years', 'year', 'months', 'month', 'experience', 'engineering', 'marketing', 'sales', 'finance', 'product', 'products', 'software', 'data', 'services', 'service', 'projects', 'project', 'payments', 'payment', 'testing', 'tests', 'apps', 'applications', 'platforms', 'systems', 'solutions', 'features', 'interfaces', 'products', 'teams', 'datos', 'pagos', 'pruebas', 'experiencia', 'trabajo', 'equipo', 'empresa', 'compañia', 'compania', 'reusable', 'automated', 'automating', 'automatically', 'integrated', 'continuous', 'automatable', 'scalable', 'reliable', 'modern', 'multiple', 'complex', 'custom', 'internal', 'external', 'checkout']);
   for (const match of text.matchAll(lowercaseEmployerPattern)) {
     const item = cleanMention(match[1] ?? '');
     if (item && !lowercaseEntityStopWords.has(normalized(item)) && !recognizedSkills.has(normalized(item))) mentions.push({ item, category: 'entity' });
@@ -196,7 +219,7 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
 
   const jobTitlePattern = /\b(?:(?:senior|junior|lead|principal|staff|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:product|software|data|ux|ui|platform|frontend|front-end|backend|back-end|cloud|machine learning|producto|datos|dise[nñ]o|plataforma|desarrollo|anal[ií]tica|qa|quality assurance|test|testing|sdet|automation|engineering|ingenier[ií]a|calidad|automatizaci[oó]n)\s+(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|lead|ingeniero|desarrollador|dise[nñ]ador|analista|gerente|arquitecto|cient[ií]fico|responsable|l[ií]der)\b/giu;
   for (const match of text.matchAll(jobTitlePattern)) if (match[0]) mentions.push({ item: match[0].trim(), category: 'entity' });
-  const genericJobTitlePattern = /\b(?:(?:senior|junior|principal|staff|lead|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|ingenier[oa]|desarrollador(?:a)?|dise[nñ]ador(?:a)?|analista|gerente|arquitect[oa]|cient[ií]fico(?:a)?|responsable)(?:\s+(?:of|de)\s+(?:software|engineering|datos|software|sistemas|calidad|automatizaci[oó]n))?\b/giu;
+  const genericJobTitlePattern = /\b(?:(?:senior|junior|principal|staff|lead|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|tester|consultant|investigator|ingenier[oa]|desarrollador(?:a)?|dise[nñ]ador(?:a)?|analista|gerente|arquitect[oa]|cient[ií]fic[oa]|investigador(?:a|es)?|directora?|responsable)(?:\s+(?:(?:of|in|de|del|en)\s+)?(?:software|engineering|datos|sistemas|calidad|automatizaci[oó]n|pruebas?|testing|backend|frontend|plataforma|ciencia|investigaci[oó]n|producto|data))?\b/giu;
   for (const match of text.matchAll(genericJobTitlePattern)) if (match[0]) mentions.push({ item: cleanMention(match[0]), category: 'entity' });
   const standaloneTitlePattern = /\b(?:sdet|qa|quality assurance|test engineer|testing engineer|automation engineer)\b/giu;
   for (const match of text.matchAll(standaloneTitlePattern)) if (match[0]) mentions.push({ item: cleanMention(match[0]), category: 'entity' });

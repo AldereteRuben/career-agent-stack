@@ -99,35 +99,51 @@ function asBuilderOffer(offer: ApplicationDocumentOfferSnapshot): ApplicationDoc
   return offer.snapshot ? { ...offer, snapshot: offer.snapshot } : null;
 }
 
+function revisionClaimIssues(input: {
+  workspaceId: string;
+  claims: ApplicationDocumentRevisionClaim[];
+  facts: ApplicationDocumentFactSnapshot[];
+  offer: ApplicationDocumentOfferSnapshot;
+}): ApplicationDocumentValidationIssue[] {
+  const issues: ApplicationDocumentValidationIssue[] = [];
+  const sentenceIds = new Set<string>();
+  for (const claim of input.claims) {
+    if (sentenceIds.has(claim.sentenceId)) issues.push({ code: 'DUPLICATE_SENTENCE_ID', sentenceId: claim.sentenceId });
+    sentenceIds.add(claim.sentenceId);
+  }
+  const offer = asBuilderOffer(input.offer);
+  if (!offer) return issues;
+  for (const claim of input.claims) {
+    if (claim.origin === 'USER_UNSUPPORTED') {
+      if (claim.kind !== 'CANDIDATE_CLAIM') {
+        issues.push({ code: 'INVALID_SENTENCE_KIND', sentenceId: claim.sentenceId });
+        continue;
+      }
+      if (new Set(claim.sourceFactIds).size !== claim.sourceFactIds.length) {
+        issues.push({ code: 'DUPLICATE_CITATION', sentenceId: claim.sentenceId });
+        continue;
+      }
+      for (const factId of claim.sourceFactIds) {
+        const fact = input.facts.find((candidate) => candidate.id === factId);
+        if (!fact || fact.workspaceId !== input.workspaceId || fact.approval !== 'USER_APPROVED') {
+          issues.push({ code: 'FACT_NOT_APPROVED', sentenceId: claim.sentenceId, factId });
+        }
+      }
+      continue;
+    }
+    const validation = validateApplicationDocumentSentence({ sentence: claim, workspaceId: input.workspaceId, facts: input.facts.map((fact) => ({ ...fact, tags: fact.tags ?? [] })), offer });
+    if (!validation.ok) issues.push(validation.issue);
+  }
+  return issues;
+}
+
 function revisionClaimIssue(input: {
   workspaceId: string;
   claims: ApplicationDocumentRevisionClaim[];
   facts: ApplicationDocumentFactSnapshot[];
   offer: ApplicationDocumentOfferSnapshot;
 }): ApplicationDocumentValidationIssue | null {
-  const sentenceIds = new Set<string>();
-  for (const claim of input.claims) {
-    if (sentenceIds.has(claim.sentenceId)) return { code: 'DUPLICATE_SENTENCE_ID', sentenceId: claim.sentenceId };
-    sentenceIds.add(claim.sentenceId);
-  }
-  const offer = asBuilderOffer(input.offer);
-  if (!offer) return null;
-  for (const claim of input.claims) {
-    if (claim.origin === 'USER_UNSUPPORTED') {
-      if (claim.kind !== 'CANDIDATE_CLAIM') return { code: 'INVALID_SENTENCE_KIND', sentenceId: claim.sentenceId };
-      if (new Set(claim.sourceFactIds).size !== claim.sourceFactIds.length) return { code: 'DUPLICATE_CITATION', sentenceId: claim.sentenceId };
-      for (const factId of claim.sourceFactIds) {
-        const fact = input.facts.find((candidate) => candidate.id === factId);
-        if (!fact || fact.workspaceId !== input.workspaceId || fact.approval !== 'USER_APPROVED') {
-          return { code: 'FACT_NOT_APPROVED', sentenceId: claim.sentenceId, factId };
-        }
-      }
-      continue;
-    }
-    const validation = validateApplicationDocumentSentence({ sentence: claim, workspaceId: input.workspaceId, facts: input.facts.map((fact) => ({ ...fact, tags: fact.tags ?? [] })), offer });
-    if (!validation.ok) return validation.issue;
-  }
-  return null;
+  return revisionClaimIssues(input)[0] ?? null;
 }
 
 function revisionFactIssue(workspaceId: string, claims: ApplicationDocumentRevisionClaim[], facts: ApplicationDocumentFactSnapshot[]) {
@@ -302,13 +318,13 @@ export async function applicationDocumentCurrentness(input: {
   })) reasons.push('FACT_NOT_APPROVED');
   const builderOffer = asBuilderOffer(input.offer);
   if (builderOffer) {
-    const issue = revisionClaimIssue({
+    const issues = revisionClaimIssues({
       workspaceId: input.revision.workspaceId,
       claims: input.revision.claims,
       facts: input.facts.map((fact) => ({ ...fact, tags: fact.tags ?? [] })),
       offer: builderOffer,
     });
-    if (issue && issue.code !== 'FACT_NOT_APPROVED') reasons.push('INVALID_CLAIM');
+    if (issues.some((issue) => issue.code !== 'FACT_NOT_APPROVED')) reasons.push('INVALID_CLAIM');
   }
   const hashes = await applicationDocumentHashes({ workspaceId: input.revision.workspaceId, claims: input.revision.claims, facts: input.facts, offer: input.offer });
   if (!hashes.ok || hashes.factsHash !== input.revision.factsHash) reasons.push('FACTS_CHANGED');

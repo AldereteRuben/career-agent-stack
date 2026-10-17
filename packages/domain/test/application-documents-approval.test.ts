@@ -325,6 +325,24 @@ test('read-time currentness marks withdrawn evidence and changed offer for revie
   assert.deepEqual(dictionaryVariantB, dictionaryVariantA);
 });
 
+test('read-time currentness preserves invalid-claim reasons when another claim has withdrawn evidence', async () => {
+  const first = { ...claim };
+  const secondFact: ApplicationDocumentFactSnapshot = {
+    id: 'fact-2', workspaceId, approval: 'USER_APPROVED', text: 'Diseñé interfaces React.',
+  };
+  const second = { ...claim, sentenceId: 'claim-2', sourceFactIds: ['fact-2'] };
+  const revision = await createRevision({ claims: [first, second], facts: [...facts, secondFact] });
+  const historicallyInvalid = {
+    ...revision,
+    claims: [first, { ...second, text: 'Worked as a senior engineer using React.' }],
+  };
+  const currentness = await applicationDocumentCurrentness({ revision: historicallyInvalid, facts: [secondFact], offer });
+  assert.deepEqual(currentness, {
+    status: 'NEEDS_REVIEW',
+    reasons: ['FACT_NOT_APPROVED', 'INVALID_CLAIM', 'FACTS_CHANGED'],
+  });
+});
+
 test('only the newest approved revision is selectable; a newer pending edit is only a warning', async () => {
   const old = { ...(await createRevision()), approvedAt: '2026-10-16T10:00:00.000Z', approvedBy: 'user-1' };
   const pending = await createRevision({ id: 'revision-2', previousRevision: old });

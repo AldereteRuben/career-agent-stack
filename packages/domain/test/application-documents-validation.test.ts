@@ -113,6 +113,33 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['Diseñé interfaces React usadas por miles de usuarios.', 'miles'],
     ['Delivered hundreds of React features.', 'hundreds'],
     ['Managed a million-dollar budget with React.', 'million'],
+    ['Used React to benchmark x10 faster.', 'x10'],
+    ['Processed 200ms events with React.', '200ms'],
+    ['Built React services with 10GB memory.', '10GB'],
+    ['Completed the 1er React migration.', '1er'],
+    ['Shipped the 3º React release.', '3º'],
+    ['Shipped the 2ª React release.', '2ª'],
+    ['Managed React teams across tens of markets.', 'tens'],
+    ['Led React work for dozens of customers.', 'dozens'],
+    ['Reached the third React milestone.', 'third'],
+    ['Built React tools in the first quarter.', 'first'],
+    ['Construí herramientas React en el primer trimestre.', 'primer'],
+    ['Trabajé como tester usando React.', 'tester'],
+    ['I worked as a consultant using React.', 'consultant'],
+    ['I worked as a scientist using React.', 'scientist'],
+    ['Trabajé como científica con React.', 'científica'],
+    ['Trabajé como directora usando React.', 'directora'],
+    ['Trabajé como investigador usando React.', 'investigador'],
+    ['Trabajé como ingeniero de pruebas usando React.', 'ingeniero de pruebas'],
+    ['Trabajé como desarrollador backend usando React.', 'desarrollador backend'],
+    ['At globex I built React services.', 'globex'],
+    ['En mercadopago desarrollé servicios React.', 'mercadopago'],
+    ['Creé una pasarela de mercadopago con React.', 'mercadopago'],
+    ['Me uní a globex y usé React.', 'globex'],
+    ['Fundé novacorp y creé herramientas React.', 'novacorp'],
+    ['Construí globex con React.', 'globex'],
+    ['Integrated stripe payments with React.', 'stripe'],
+    ['Tested globex services using React.', 'globex'],
     ['Built services with figma and terraform.', 'figma'],
   ];
   for (const [text, item] of cases) {
@@ -154,6 +181,12 @@ test('only equivalent skill aliases support each other in approved evidence', ()
   assert.deepEqual(validateApplicationDocumentSentence({
     sentence: claim({ text: 'Set up continuous delivery.', sourceFactIds: ['fact-integration'] }), workspaceId, facts: [integrationFact], offer,
   }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'continuous delivery' } });
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Set up continuous deployment.', sourceFactIds: ['fact-integration'] }), workspaceId, facts: [integrationFact], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'continuous deployment' } });
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Configuré integración continua.', sourceFactIds: ['fact-integration'] }), workspaceId, facts: [{ ...integrationFact, text: 'Configuré entrega continua.' }], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'integración continua' } });
   const awsFact: ApplicationDocumentFact = {
     id: 'fact-aws', workspaceId, approval: 'USER_APPROVED', text: 'Deployed on Amazon Web Services.', tags: ['aws'],
   };
@@ -209,6 +242,39 @@ test('supported rewordings can start with verbs, connectors and articles in eith
     sentence: claim({ text: 'Automated Selenium suites for checkout.', sourceFactIds: ['fact-selenium'] }), workspaceId, facts: [seleniumFact], offer,
   });
   assert.equal(automated.ok, true);
+  const ordinaryNouns: ApplicationDocumentFact = {
+    id: 'fact-ordinary', workspaceId, approval: 'USER_APPROVED', text: 'Built automated pipelines with reusable React components.', tags: ['react'],
+  };
+  for (const text of ['Built automated pipelines with React.', 'Built services with reusable React components.']) {
+    assert.equal(validateApplicationDocumentSentence({ sentence: claim({ text, sourceFactIds: ['fact-ordinary'] }), workspaceId, facts: [ordinaryNouns], offer }).ok, true, text);
+  }
+  const currencyFact: ApplicationDocumentFact = {
+    id: 'fact-currency', workspaceId, approval: 'USER_APPROVED', text: 'Managed a €2M budget with React.', tags: ['react'],
+  };
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Managed a $2M budget with React.', sourceFactIds: ['fact-currency'] }), workspaceId, facts: [currencyFact], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: '$2M' } });
+  assert.equal(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Managed a €2M budget with React.', sourceFactIds: ['fact-currency'] }), workspaceId, facts: [currencyFact], offer,
+  }).ok, true);
+  const percentageFact: ApplicationDocumentFact = {
+    id: 'fact-percentage', workspaceId, approval: 'USER_APPROVED', text: 'Managed 40 engineers with React.', tags: ['react'],
+  };
+  assert.deepEqual(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Reduced costs 40% with React.', sourceFactIds: ['fact-percentage'] }), workspaceId, facts: [percentageFact], offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: '40%' } });
+  assert.equal(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Managed 40 engineers with React.', sourceFactIds: ['fact-percentage'] }), workspaceId, facts: [percentageFact], offer,
+  }).ok, true);
+  const exactNumericFact: ApplicationDocumentFact = {
+    id: 'fact-exact-numeric', workspaceId, approval: 'USER_APPROVED', text: 'Procesé 1.000.000 de pagos con React 18.2.0.', tags: ['react'],
+  };
+  assert.equal(validateApplicationDocumentSentence({
+    sentence: claim({ text: exactNumericFact.text, sourceFactIds: ['fact-exact-numeric'] }), workspaceId, facts: [exactNumericFact], offer,
+  }).ok, true);
+  assert.equal(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'I once led React teams.', sourceFactIds: ['fact-supported'] }), workspaceId, facts: [facts[0]!], offer,
+  }).ok, true);
 });
 
 test('an unsupported sentence edited back to supported becomes USER_EDITED', () => {
@@ -254,7 +320,7 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
   const titleCaseGreeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best Regards,', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(titleCaseGreeting, { ok: true, sentence: { ...original, text: 'Best Regards,', language: 'en', origin: 'USER_EDITED' } });
   const withNumber = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with 10 years of experience', sourceFactIds: [], workspaceId, facts, offer });
-  assert.deepEqual(withNumber, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: '10' } });
+  assert.deepEqual(withNumber, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: '10 years' } });
   const withCredential = saveApplicationDocumentSentenceEdit({ original, text: 'I hold a doctorate.', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(withCredential, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: 'doctorate' } });
   const editedClaim = saveApplicationDocumentSentenceEdit({
