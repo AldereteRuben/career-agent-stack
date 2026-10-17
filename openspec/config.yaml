@@ -1,0 +1,48 @@
+schema: spec-driven
+
+context: |
+  Language: English
+  All artifacts must be written in English.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Project: Career Stack, a local, single-person job-search workspace (see README.md).
+  Stack: pnpm monorepo on Node 24. apps/api (Fastify 5, Zod, Playwright),
+  apps/dashboard (Next.js 16, React 19), packages/db (Drizzle ORM, PostgreSQL 17),
+  packages/domain (shared domain logic).
+  Follow AGENTS.md: bilingual UI (Spanish and English), keyboard and mobile usable,
+  OS-neutral instructions, no tool or model attribution in commits.
+  Architectural decisions live as ADRs in docs/decisions/ (NNN-title.md); a change
+  that makes or reverses such a decision references or adds an ADR.
+  Privacy first: never use the real workspace as a test fixture and never put
+  credentials, local data or backups in specs, changes or commits.
+
+rules:
+  proposal:
+    - State what is out of scope.
+    - Say plainly which limits remain (manual steps, unsupported cases).
+  tasks:
+    - Size each task so a single agent can finish and verify it in one session.
+    - Each task names the tests or end-to-end check that proves it.
+    - Contributor changes never bump versions, RELEASE_VERSION or CHANGELOG.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

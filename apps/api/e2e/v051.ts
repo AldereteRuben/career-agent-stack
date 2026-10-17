@@ -12,7 +12,7 @@ export const v051First: Scenario = {
     // The home inbox now uses a context aware primary action; keep checking its destination rather than obsolete copy.
     const action = page.locator('.getting-started').getByRole('link').first();
     assert.match(await action.getAttribute('href') ?? '', /^\/searches(?:\?|$)/); await action.click();
-    await page.getByRole('heading', { name: 'Buscar empleo', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Buscar ofertas', exact: true }).waitFor();
     await goTo(page, '/profile/setup');
     const name = page.getByLabel('Nombre', { exact: true }); await name.fill(`Unsaved ${marker}`);
     assert.equal(await page.locator('button.profile-chip').count(), 0);

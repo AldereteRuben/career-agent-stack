@@ -105,6 +105,12 @@ export const jobAvailability: LabelMap = {
   CLOSED: { es: 'Cerrada', en: 'Closed' },
   UNKNOWN: { es: 'Sin comprobar', en: 'Not checked' },
 };
+export const jobAvailabilityReasons: LabelMap = {
+  ABSENT_FROM_SOURCES: { es: 'No apareció en varias lecturas completas de sus fuentes.', en: 'It was missing from several complete source reads.' },
+  SEEN_AGAIN: { es: 'Una fuente volvió a publicar la oferta.', en: 'A source listed the job again.' },
+  CLOSED_BY_USER: { es: 'La cerraste tú.', en: 'You closed it.' },
+  REOPENED_BY_USER: { es: 'La reabriste tú.', en: 'You reopened it.' },
+};
 export const shortlistDecisions: LabelMap = {
   UNREVIEWED: { es: 'Sin revisar', en: 'Not reviewed' },
   SHORTLISTED: { es: 'Guardada', en: 'Saved' },
@@ -146,6 +152,7 @@ export const labelFor = {
   documentApproval: (value: string, locale: Locale) => label(documentApprovals, value, locale),
   eligibility: (value: string, locale: Locale) => label(eligibilityStates, value, locale),
   availability: (value: string, locale: Locale) => label(jobAvailability, value, locale),
+  availabilityReason: (value: string, locale: Locale) => label(jobAvailabilityReasons, value, locale),
   shortlist: (value: string, locale: Locale) => label(shortlistDecisions, value, locale),
   workMode: (value: string, locale: Locale) => label(workModes, normalizeWorkMode(value), locale),
   region: (value: string, locale: Locale) => label(providerRegions, value, locale),

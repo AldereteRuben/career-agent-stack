@@ -1,6 +1,7 @@
 export * from './matching.js';
 export * from './search-matching.js';
 export * from './states.js';
+export * from './job-availability.js';
 export * from './contracts.js';
 export * from './profile.js';
 export * from './documents.js';

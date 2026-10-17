@@ -1,6 +1,7 @@
 'use client';
 
 import { BackupPanel } from '@/components/backup-panel';
+import { DeleteAllDataPanel } from '@/components/delete-all-data-panel';
 import { AiConnectionPanel } from '@/components/ai/connection';
 import { AiAutomationPanel } from '@/components/ai/automation';
 import { AiHistoryPanel } from '@/components/ai/history';
@@ -106,6 +107,7 @@ export default function SettingsPage() {
         <p>{c('Obtén tus datos y PDF en un archivo JSON para consultarlos o trasladarlos a otra herramienta. Para recuperar Career Stack, utiliza la copia de seguridad de arriba.', 'Get your data and PDFs in a JSON file to inspect them or move them to another tool. To recover Career Stack, use the backup above.')}</p>
         <small>{c('La descarga no cambia tus empresas conectadas ni tus datos. Contiene información personal: guárdala en privado.', 'Downloading does not change your connected companies or data. It contains personal information: keep it private.')}</small>
       </div><Button variant="secondary" disabled={exporting} onClick={() => void downloadExport()}>{exporting ? c('Preparando archivo…', 'Preparing file…') : c('Descargar mis datos', 'Download my data')} <Icon name="download" size={15}/></Button></Card></details>
+      <DeleteAllDataPanel/>
       <Card className="capability-card"><details><summary>{c('Funciones incluidas y límites de esta versión', 'Included features and limitations')}</summary>
         <div className="capability-columns"><div><h3>{c('Disponible', 'Available')}</h3>{caps?.available.map((item) => <div className="capability-row" key={item}><Icon name="check" size={15}/><span>{t(labels[item] ?? item)}</span></div>)}</div>
         <div><h3>{c('Todavía no incluido', 'Not included yet')}</h3>{caps?.unavailable.map((item) => <div className="capability-row capability-unavailable" key={item}><span>{t(labels[item] ?? item)}</span></div>)}</div></div>

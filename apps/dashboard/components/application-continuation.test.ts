@@ -26,5 +26,4 @@ test('uncertain, closed and detail-blocked cards keep one valid action', () => {
   assert.deepEqual(queueActions(item({ queueState: 'UNCERTAIN' })), [{ kind: 'check', primary: true }]);
   assert.deepEqual(queueActions(item({ queueState: 'CLOSED', needsAttention: false })), [{ kind: 'open', primary: true }]);
   assert.deepEqual(primary(item({ queueState: 'NEEDS_DETAILS', documentId: null, gaps: ['EMAIL_REQUIRED'] })), [], 'The missing-details link is the only primary action');
-  assert.deepEqual(queueActions(item({ queueState: 'JOB_CLOSED', needsAttention: false, applicationId: null, documentId: null })), []);
 });

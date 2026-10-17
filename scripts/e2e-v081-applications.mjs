@@ -72,6 +72,7 @@ function jobDetail(jobId) {
     snapshots: job.description ? [{ id: `${jobId.slice(0, -2)}5e`, title: job.title, descriptionText: job.description, fetchedAt: ISO }] : [],
     sources: [], searchSources: [],
     applications: job.applicationId ? [{ id: job.applicationId, state: 'REVIEW_REQUIRED', recruitmentStage: 'NO_RESPONSE', updatedAt: ISO }] : [],
+    closedByUser: false, availabilityHistory: [], stillListedBySource: false,
   };
 }
 
@@ -401,7 +402,7 @@ export async function checkApplicationUsability({ browser, uiUrl, cookies, artif
       await useLocale('es');
       const page = await openPage('queue-es');
       await gotoApp(page, '/applications?view=review', 'es');
-      await page.getByRole('heading', { level: 1, name: 'Mis solicitudes' }).waitFor();
+      await page.getByRole('heading', { level: 1, name: 'Candidaturas' }).waitFor();
       const ready = queueCard(page, LONG_TITLE);
       await ready.waitFor();
       await ready.getByText('CV aprobado', { exact: true }).waitFor();

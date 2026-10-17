@@ -88,6 +88,7 @@ jobs:
       - run: pnpm run test:clipboard
       - run: pnpm run test:contributors
       - run: pnpm run test:process
+      - run: pnpm run test:install-marker
       - run: pnpm run test:backup
       # The official age tool must decrypt a backup with the key file's identity (ADR 019); the flag stops a skip.
       - name: Install the age tool for the backup encryption check
@@ -101,6 +102,10 @@ jobs:
         env:
           CAREER_UNINSTALL_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - run: pnpm run test:backup-api
+      - name: Verify deleting all data with a disposable database
+        run: pnpm run test:deletion
+        env:
+          CAREER_DELETION_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Install Chromium for synthetic browser tests
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
       - name: Install PDF text inspection
