@@ -65,7 +65,7 @@ E2E_PRODUCTION=1 pnpm run test:e2e                                    # build an
 
 `E2E_PRODUCTION=1` compiles only the private dashboard copy and runs the same scenarios against its production build. It preserves all database, token, port and cleanup isolation checks. Use it for release verification without development-server recompilation or error overlays; the default remains `next dev`. The option also applies to `test:edge-cases` and `test:search-ui`.
 
-`E2E_SHARD=2/4` runs the second of four slices of the `test:e2e` scenarios (every slice also runs `sign-in-and-language-switch`). CI uses four shards, each on its own isolated stack, so the request pacing and the API rate limit apply per shard and the suite finishes in a quarter of the time. Unset, all scenarios run. It combines with `E2E_ONLY`.
+`E2E_SHARD=2/4` runs the second of four slices of the `test:e2e` scenarios (every slice also runs `sign-in-and-language-switch` and `draft-preserved-when-save-fails`, which saves the profile that the document scenarios need). CI uses four shards, each on its own isolated stack, so the request pacing and the API rate limit apply per shard and the suite finishes in a quarter of the time. Unset, all scenarios run. It combines with `E2E_ONLY`.
 
 With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_<run>`, the printed temporary directory, and `output/e2e-runs/<run>`.
 
