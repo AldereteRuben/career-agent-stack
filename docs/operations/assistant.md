@@ -2,7 +2,7 @@
 
 ## Connect / Conectar
 
-Career Stack v0.9.0 supports the official **Codex CLI 0.160.0 on macOS**, authenticated with a ChatGPT plan. Install Codex through the [official instructions](https://developers.openai.com/codex/cli/). Check `codex --version` when troubleshooting. A different version is rejected until its isolation and protocol are verified; installing a newer CLI does not automatically certify compatibility. Career Stack never installs it on page load.
+Career Stack v0.9.2 supports the official **Codex CLI 0.160.0 and 0.163.0 on macOS**, authenticated with a ChatGPT plan. Install Codex through the [official instructions](https://developers.openai.com/codex/cli/). Check `codex --version` when troubleshooting. Any other version is rejected until its isolation and protocol are verified; installing a newer CLI does not automatically certify compatibility. Career Stack never installs it on page load.
 
 Open **Profile and tools → Settings and privacy → Assistant**, then explicitly check the account. If signed out, continue through the official sign-in page. Confirm the masked account with **Use this account**. The same connection flow appears beside contextual assistant actions and preserves the text you were editing.
 

@@ -36,7 +36,7 @@ In **Profile and tools → Settings and privacy → Assistant**, connect the off
 - Draft an answer from confirmed facts; personal or legal details require your input.
 - After a manual job analysis, optionally authorize analysis of future jobs from selected searches. It starts off, processes at most five per pass and ten per UTC day, and can be paused without stopping job searches.
 
-Native AI execution is currently supported only on **macOS with Codex CLI 0.160.0** and ChatGPT plan authentication. Other versions or systems keep ordinary app features; this integration is not certified there. Disconnecting revokes Career Stack's access without signing you out of Codex elsewhere. Claude is deferred. [Setup, privacy and limits](docs/operations/assistant.md).
+Native AI execution is currently supported only on **macOS with Codex CLI 0.160.0 or 0.163.0** and ChatGPT plan authentication. Other versions or systems keep ordinary app features; this integration is not certified there. Disconnecting revokes Career Stack's access without signing you out of Codex elsewhere. Claude is deferred. [Setup, privacy and limits](docs/operations/assistant.md).
 
 ## Automatic job search
 

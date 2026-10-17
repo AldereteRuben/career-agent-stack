@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeCodexAccount, normalizeCodexUsage, inspectCodexAccount } from '../src/ai/codex-account.js';
+import { CODEX_PROTOCOL_VERSION, CODEX_SUPPORTED_PROTOCOL_VERSIONS, normalizeCodexAccount, normalizeCodexUsage, inspectCodexAccount } from '../src/ai/codex-account.js';
 const salt = 'synthetic-server-key'.repeat(3);
 const now = Date.parse('2026-10-04T00:00:00Z');
 const account = { requiresOpenaiAuth: true, account: { type: 'chatgpt', email: 'alex@example.test', planType: 'plus' } };
@@ -39,4 +39,23 @@ test('unsupported binary versions do not query the account', async () => {
     rpc: async () => { rpcCalled = true; throw new Error('unexpected'); },
   });
   assert.equal(result.status, 'UNSUPPORTED'); assert.equal(rpcCalled, false);
+});
+test('supported CLI versions initialize the account protocol and read only account state', async () => {
+  assert.deepEqual(CODEX_SUPPORTED_PROTOCOL_VERSIONS, ['0.160.0', CODEX_PROTOCOL_VERSION]);
+  for (const version of CODEX_SUPPORTED_PROTOCOL_VERSIONS) {
+    const methods: string[] = [];
+    const result = await inspectCodexAccount(salt, undefined, {
+      resolveBinary: async () => process.execPath, now: () => now,
+      run: async () => ({ stdout: `codex-cli ${version}\n`, exitCode: 0 }),
+      rpc: async (_options, action) => action({
+        signal: new AbortController().signal,
+        request: async method => { methods.push(method); return method === 'account/read' ? account : {}; },
+        notify: async method => { methods.push(method); },
+        onNotification: () => () => {},
+      }),
+    });
+    assert.equal(result.status, 'SIGNED_IN');
+    assert.equal(result.version, version);
+    assert.deepEqual(methods, ['initialize', 'initialized', 'account/read']);
+  }
 });

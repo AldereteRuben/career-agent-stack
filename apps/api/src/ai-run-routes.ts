@@ -11,7 +11,7 @@ import { AI_QUEUE_LOCK, AiQueueError, type AiQueue } from './ai/queue.js';
 import { AiSourceError } from './ai/source-snapshot.js';
 import { lockKey, profileLockKey } from './workspace-data.js';
 
-export const AI_CONFIG_VERSION = 'codex-0.160.0-v1';
+export const AI_CONFIG_VERSION = 'codex-0.163.0-v1';
 export const AI_NOTICE_VERSION = 'career-sharing-v1';
 type Preview = { id: string; workspaceId: string; connectionId: string; connectionRevision: number; accountFingerprint: string; maskedIdentity: string | null; snapshot: AiSourceSnapshot; at: number; runId?: string; consent?: typeof aiConsents.$inferSelect; idempotencyKey?: string; task?: Promise<unknown> };
 const paramsSchema = z.object({ id: z.uuid() }).strict();

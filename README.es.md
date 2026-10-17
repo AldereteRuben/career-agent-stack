@@ -36,7 +36,7 @@ En **Perfil y herramientas → Ajustes y privacidad → Asistente**, conecta Cod
 - Prepara respuestas apoyadas en tus datos. Las decisiones personales o legales requieren tu respuesta.
 - Tras un análisis manual, puedes activar el análisis de ofertas futuras de las búsquedas elegidas. Empieza desactivado, tiene un máximo de cinco por consulta y diez por día UTC, y se puede pausar sin detener la búsqueda de empleo.
 
-La ejecución de IA está soportada únicamente en **macOS con Codex CLI 0.160.0** y autenticación de un plan de ChatGPT. Las funciones habituales siguen disponibles en otros sistemas o versiones; esa integración aún no está certificada. Desconectar revoca el acceso de Career Stack sin cerrar tu sesión de Codex en otras aplicaciones. Claude queda aplazado. [Configuración, privacidad y límites](docs/operations/assistant.md).
+La ejecución de IA está soportada únicamente en **macOS con Codex CLI 0.160.0 o 0.163.0** y autenticación de un plan de ChatGPT. Las funciones habituales siguen disponibles en otros sistemas o versiones; esa integración aún no está certificada. Desconectar revoca el acceso de Career Stack sin cerrar tu sesión de Codex en otras aplicaciones. Claude queda aplazado. [Configuración, privacidad y límites](docs/operations/assistant.md).
 
 ## Preparar una candidatura
 

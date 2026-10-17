@@ -41,7 +41,7 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     const workspace = (request: { headers: Record<string, unknown> }) => request.headers['x-fixture-workspace'] === other ? other : owner;
     const cancellations: string[] = [];
     registerAiConnectionRoutes(app, workspace, { enabled: true, identitySalt: 'f'.repeat(32), repository: createAiConnectionRepository(database, queue),
-      inspect: async () => ({ status: 'SIGNED_IN', version: '0.160.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint, maskedIdentity: 'f***@example.test', plan: 'plus', usage: normalizeAiUsage({ provider: 'codex', source: 'NONE', observedAt: null, windows: [], costUsd: null }, Date.now()) }),
+      inspect: async () => ({ status: 'SIGNED_IN', version: '0.163.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint, maskedIdentity: 'f***@example.test', plan: 'plus', usage: normalizeAiUsage({ provider: 'codex', source: 'NONE', observedAt: null, windows: [], costUsd: null }, Date.now()) }),
     });
     registerAiRunRoutes(app, workspace, { enabled: true, database, queue, cancelRun: id => cancellations.push(id) });
     registerAiAnswerRoutes(app, workspace, database);
