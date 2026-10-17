@@ -1,9 +1,11 @@
 /**
  * Picks the command-line clipboard tools for this system. `has` tells whether an executable is installed.
- * Wayland sessions prefer wl-clipboard; xclip also serves X11 and XWayland. Returns null when none is available.
+ * Wayland sessions prefer wl-clipboard; xclip also serves X11 and XWayland. Windows ships clip.exe (it reads the text
+ * from standard input, so the token never appears in a command line) and PowerShell. Returns null when none is available.
  */
 export function clipboardTools({ platform = process.platform, env = process.env, has }) {
   if (platform === 'darwin') return { copy: ['pbcopy', []], paste: ['pbpaste', []] };
+  if (platform === 'win32') return { copy: ['clip.exe', []], paste: ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Raw']] };
   if (env.WAYLAND_DISPLAY && has('wl-copy')) return { copy: ['wl-copy', []], paste: ['wl-paste', ['-n']] };
   if (has('xclip')) return { copy: ['xclip', ['-selection', 'clipboard']], paste: ['xclip', ['-selection', 'clipboard', '-o']] };
   return null;

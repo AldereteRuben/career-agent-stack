@@ -161,6 +161,8 @@ jobs:
         run: pnpm run test:backup-crypto
       - name: Verify which folders uninstall may delete, and its private progress file, on this system
         run: node --test scripts/test/uninstall-paths.test.mjs
+      - name: Verify Windows process inspection
+        run: pnpm run test:windows-process
       - name: Verify the backup archive format on every platform
         run: pnpm run test:backup
   browser:

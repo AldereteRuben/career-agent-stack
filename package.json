@@ -43,6 +43,8 @@
     "test:clipboard": "node --test scripts/test/clipboard.test.mjs",
     "test:contributors": "node --test scripts/test/contributors-image.test.mjs",
     "test:process": "node --test scripts/test/process-detection.test.mjs",
+    "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
+    "test:windows-process": "node --test scripts/test/windows-process.test.mjs",
     "test:install-marker": "node --test scripts/test/install-marker.test.mjs",
     "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
