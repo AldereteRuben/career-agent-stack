@@ -288,10 +288,11 @@ export const v053Scenarios: Scenario[] = [
       await eventually(readCount, (count) => count === before + 1, 'A pending resume increments the review count without a reload');
       await eventually(readRows, (count) => count === beforeRows + 1, 'A pending resume without a preparation appears as a review row');
       assert.equal(await readCount(), await readRows(), 'The review count must equal the number of visible review rows');
-      assert.equal(await page.getByRole('link', { name: 'Revisar CV', exact: true }).getAttribute('href'), '/documents?view=saved', 'The standalone resume row links to saved documents');
+      const resumeRow = page.locator('[data-testid="review-item-row"]').filter({ hasText: `Pending review ${marker}` });
+      assert.equal(await resumeRow.getByRole('link', { name: 'Revisar CV', exact: true }).getAttribute('href'), '/documents?view=saved', 'The standalone resume row links to saved documents');
       await setLocale(page, 'en');
       assert.equal(await reviewTab.innerText(), `To review (${before + 1})`);
-      assert.equal(await page.getByRole('link', { name: 'Review resume', exact: true }).getAttribute('href'), '/documents?view=saved');
+      assert.equal(await resumeRow.getByRole('link', { name: 'Review resume', exact: true }).getAttribute('href'), '/documents?view=saved');
 
       const reviewer = await context.newPage();
       try {

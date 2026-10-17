@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { Scenario } from './scenarios.js';
-import { any, goTo, setLocale } from './ui.js';
+import { any, eventually, goTo, setLocale } from './ui.js';
 
 // Browser-level accessibility checks for issues #64 and #65: decorative symbols must stay out of the
 // accessibility tree and the saved-experience list must be exposed as a named region. The tree is
@@ -26,10 +26,12 @@ export const a11yScenarios: Scenario[] = [{
     const accessibleName = (snapshot: string) => snapshot.match(/button "([^"]+)"/)?.[1] ?? '';
     const modeBefore = await mode.ariaSnapshot();
     assert.ok(!modeBefore.includes('✓'), 'The selected work-mode checkmark is still exposed to assistive technology');
+    const pressedBefore = await mode.getAttribute('aria-pressed');
+    assert.ok(pressedBefore === 'true' || pressedBefore === 'false', 'The work-mode button should expose its pressed state');
     await mode.click();
     const modeAfter = await mode.ariaSnapshot();
     assert.equal(accessibleName(modeAfter), accessibleName(modeBefore), 'The work-mode accessible name should not change when toggled');
-    assert.notEqual(await mode.getAttribute('aria-pressed'), modeBefore.includes('[pressed]') ? 'true' : 'false', 'The toggle state should still change');
+    await eventually(() => mode.getAttribute('aria-pressed'), (pressed) => pressed !== pressedBefore, 'The toggle state should still change');
     // #65: the list is a <section aria-labelledby>, so it is exposed as a named region.
     const region = page.getByRole('region', { name: 'Lo que has guardado' });
     await region.waitFor();
