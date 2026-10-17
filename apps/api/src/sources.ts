@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PostingRef } from './posting-link.js';
 import type { ProviderId } from './types.js';
 
 export type ProviderJob = { externalId: string; title: string; location: string | null; description: string | null; jobUrl: string; applyUrl: string | null; postedAt: string | null; updatedAt: string | null; raw: Record<string, unknown> };
@@ -252,6 +253,38 @@ export async function readBoardWithReport(board: BoardForSource, options: Source
 
 export async function readBoard(board: BoardForSource, options: SourceReadOptions = {}): Promise<ProviderJob[]> {
   return (await readBoardWithReport(board, options)).jobs;
+}
+
+/**
+ * Reads one posting a person pasted a link to (issue #47), with the same protections as a board read: fixed host,
+ * HTTPS only, no redirects, bounded time and size. Throws POSTING_NOT_FOUND when the source has no such posting (a
+ * closed Greenhouse or Lever posting answers 404), POSTING_UNLISTED when Ashby lists it as not public, and the usual
+ * SOURCE_* codes otherwise. Ashby documents no single-posting endpoint, so its board feed is read and only the matching
+ * posting is kept.
+ */
+export async function readPosting(ref: PostingRef, options: SourceReadOptions = {}): Promise<ProviderJob> {
+  if (!tenantPattern.test(ref.tenant) || !idPattern.test(ref.id)) throw new Error('POSTING_URL_INVALID');
+  const host = sourceHost(ref.provider, ref.region); const tenant = encodeURIComponent(ref.tenant); const id = encodeURIComponent(ref.id);
+  let mapped: Mapped;
+  try {
+    if (ref.provider === 'ashby') {
+      const { payload } = await readJson(sourceUrl({ provider: 'ashby', tenant: ref.tenant, region: ref.region }), host, options);
+      const feed = ashbyFeed.safeParse(payload); if (!feed.success) throw new Error('SOURCE_SCHEMA_INVALID');
+      const found = feed.data.jobs.find((job) => { const parsed = ashbyJob.safeParse(job); return parsed.success && (externalId(parsed.data.id) ?? idFromUrl(sourceUrlField(parsed.data.jobUrl))) === ref.id; });
+      if (!found) throw new Error('POSTING_NOT_FOUND');
+      mapped = mapAshby(found);
+    } else {
+      const url = ref.provider === 'greenhouse' ? new URL(`https://${host}/v1/boards/${tenant}/jobs/${id}`) : new URL(`https://${host}/v0/postings/${tenant}/${id}?mode=json`);
+      const { payload } = await readJson(url, host, options);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('SOURCE_SCHEMA_INVALID');
+      mapped = ref.provider === 'greenhouse' ? mapGreenhouse(payload as Record<string, unknown>) : mapLever(payload as Record<string, unknown>);
+    }
+  } catch (error) {
+    if (error instanceof SourceHttpError && error.message === 'SOURCE_HTTP_404') throw new Error('POSTING_NOT_FOUND', { cause: error });
+    throw error;
+  }
+  if ('skip' in mapped) throw new Error(mapped.skip === 'UNLISTED' ? 'POSTING_UNLISTED' : 'SOURCE_SCHEMA_INVALID');
+  return mapped;
 }
 
 export function normalizeJobUrl(input: string) {

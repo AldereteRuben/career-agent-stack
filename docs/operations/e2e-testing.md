@@ -49,6 +49,7 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `v053-linked-resume-review-and-change` | Review or change resume opens the linked PDF (reload, Back, close keep context), another approved resume can be linked from the library, and the unlinked case opens the builder. |
 | `v053-home-pending-review-lands-on-saved-list` | Pending-detail links from Home land on the saved list with focus after loading (390 px and desktop); saves do not move scroll or focus; `#experience` stays the add form. |
 | `v053-preferences-keep-approved-resume-ready` | Preferences changed in the profile form keep approved and pending PDFs ready; a printed name change blocks approval, linking and assisted preparation until restored; the PDF bytes never change. |
+| `job-link-prefills-the-form-and-saves-only-on-confirmation` | Pasting a job link (ES and EN): a link from another site is not recognised and fills nothing; a Greenhouse link pre-fills company, title, location and description (the lookup answer is mocked, the request is checked); nothing is saved until the person confirms, and then it is saved once. |
 
 The dashboard copy runs the dashboard's PDF.js asset step itself, so a fresh checkout or worktree needs no prior dashboard build.
 

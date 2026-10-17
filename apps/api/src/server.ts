@@ -18,7 +18,8 @@ import { registerActivityTimelineRoutes } from './activity-timeline.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
-import { normalizeJobUrl } from './sources.js';
+import { normalizeJobUrl, readPosting } from './sources.js';
+import { parsePostingUrl, postingPrefill } from './posting-link.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
@@ -411,6 +412,27 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   });
   if ('duplicateId' in created) return fail(reply, 409, 'JOB_ALREADY_EXISTS', created.duplicateId);
   return reply.code(201).send(created);
+});
+/**
+ * Pre-fills the job form from a pasted Greenhouse, Lever or Ashby posting link (#47). It reads only that posting, from the
+ * source's fixed public host, and saves nothing. Any other link answers `supported: false` without a request.
+ */
+app.post('/api/v1/jobs/lookup', async (request, reply) => {
+  const body = request.body as { url?: unknown } | null;
+  if (typeof body?.url !== 'string' || body.url.length > 2048) return fail(reply, 400, 'JOB_URL_INVALID');
+  workspace(request);
+  let host: string; try { host = new URL(body.url.trim()).hostname.toLowerCase(); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
+  if (host === 'linkedin.com' || host.endsWith('.linkedin.com')) return fail(reply, 400, 'LINKEDIN_URL_MANUAL_ONLY', 'Add the description or the employer career URL; no request was made.');
+  const ref = parsePostingUrl(body.url);
+  if (!ref) return { supported: false };
+  try { return { supported: true, ...postingPrefill(ref, await readPosting(ref)) }; }
+  catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'POSTING_NOT_FOUND') return fail(reply, 404, 'JOB_POSTING_NOT_FOUND');
+    if (code === 'POSTING_UNLISTED') return fail(reply, 409, 'JOB_POSTING_CLOSED');
+    request.log.warn({ code }, 'posting lookup failed');
+    return fail(reply, 502, 'JOB_POSTING_UNAVAILABLE');
+  }
 });
 app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   const body = request.body as { decision?: unknown } | null;
