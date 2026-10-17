@@ -29,6 +29,12 @@ export type ApplicationCoverLetterDraft = {
   profileNotice: string | null;
 };
 
+export type ApplicationResumeDraft = {
+  language: ApplicationDocumentLanguage;
+  sentences: ApplicationDocumentSentence[];
+  unconfirmedRequirements: Requirement[];
+};
+
 const phraseTables = {
   es: {
     salutation: 'Hola,',
@@ -71,6 +77,16 @@ function selectedFactsForRequirements(facts: ApplicationDocumentFact[], requirem
   return [...selected.values()];
 }
 
+function offerReferenceSentence(language: ApplicationDocumentLanguage, offer: ApplicationDocumentOffer) {
+  return sentence('offer-reference', phraseTables[language].offerReference(offer.role, offer.company, offer.location), 'OFFER_REFERENCE');
+}
+
+function approvedFactsForOffer(facts: ApplicationDocumentFact[], offer: ApplicationDocumentOffer) {
+  return facts
+    .filter((fact) => fact.workspaceId === offer.workspaceId && fact.approval === 'USER_APPROVED' && fact.text.trim())
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /** Deterministic, local-only cover letter baseline. Only approved same-workspace fact text becomes a claim. */
 export function buildApplicationCoverLetter(input: {
   language: ApplicationDocumentLanguage;
@@ -78,20 +94,38 @@ export function buildApplicationCoverLetter(input: {
   facts: ApplicationDocumentFact[];
 }): ApplicationCoverLetterDraft {
   const phrases = phraseTables[input.language];
-  const approvedFacts = input.facts
-    .filter((fact) => fact.workspaceId === input.offer.workspaceId && fact.approval === 'USER_APPROVED' && fact.text.trim())
-    .sort((a, b) => a.id.localeCompare(b.id));
+  const approvedFacts = approvedFactsForOffer(input.facts, input.offer);
   const requirements = extractKnownSkills(input.offer.snapshot.descriptionText);
   const unconfirmedRequirements = requirements.filter((requirement) => !approvedFacts.some((fact) => factCoversRequirement(fact, requirement)));
   const selectedFacts = selectedFactsForRequirements(approvedFacts, requirements);
   const sentences = [
     sentence('salutation', phrases.salutation, 'BOILERPLATE'),
-    sentence('offer-reference', phrases.offerReference(input.offer.role, input.offer.company, input.offer.location), 'OFFER_REFERENCE'),
+    offerReferenceSentence(input.language, input.offer),
     ...selectedFacts.map((fact) => sentence(`fact-${fact.id}`, fact.text.trim(), 'CANDIDATE_CLAIM', [fact.id])),
     sentence('closing', phrases.closing, 'BOILERPLATE'),
   ];
   const profileNotice = approvedFacts.length < 2 ? phrases.thinProfile : null;
   return { language: input.language, sentences, unconfirmedRequirements, profileNotice };
+}
+
+/** Deterministic offer-specific resume selection. Candidate claims reuse approved fact text and retain its source id. */
+export function buildApplicationResumeDraft(input: {
+  language: ApplicationDocumentLanguage;
+  offer: ApplicationDocumentOffer;
+  facts: ApplicationDocumentFact[];
+}): ApplicationResumeDraft {
+  const approvedFacts = approvedFactsForOffer(input.facts, input.offer);
+  const requirements = extractKnownSkills(input.offer.snapshot.descriptionText);
+  const unconfirmedRequirements = requirements.filter((requirement) => !approvedFacts.some((fact) => factCoversRequirement(fact, requirement)));
+  const selectedFacts = selectedFactsForRequirements(approvedFacts, requirements);
+  return {
+    language: input.language,
+    sentences: [
+      offerReferenceSentence(input.language, input.offer),
+      ...selectedFacts.map((fact) => sentence(`fact-${fact.id}`, fact.text.trim(), 'CANDIDATE_CLAIM', [fact.id])),
+    ],
+    unconfirmedRequirements,
+  };
 }
 
 /** The offer may supply fixed reference text, but never counts as evidence for a candidate claim. */
