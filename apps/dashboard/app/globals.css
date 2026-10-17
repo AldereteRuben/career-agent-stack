@@ -3534,3 +3534,6 @@ main:focus {
   gap: 12px;
   margin-top: 20px;
 }
+
+.job-compensation { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.job-compensation small { color: var(--muted, #526171); }

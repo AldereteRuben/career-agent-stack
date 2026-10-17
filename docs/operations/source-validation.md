@@ -37,6 +37,21 @@ Any other `provider` value → `SOURCE_PROVIDER_UNSUPPORTED`. Tenants must match
 | `updatedAt` | `updated_at` | `null` (not documented) | `null` (not documented) |
 | `raw` | job object as received | posting as received | job as received |
 
+### Salary (issue #36)
+
+The app shows pay only when the source states it, as the source states it: no currency conversion and no change of period. It is read from the stored payload when a job is listed (`jobCompensationFromSource`, `packages/domain/src/job-compensation.ts`), so jobs saved before this was added also show it.
+
+| Source | Pay in the data it returns | What is read |
+| --- | --- | --- |
+| Greenhouse | Only the single-job endpoint, with `pay_transparency=true` (`pay_input_ranges`: `min_cents`, `max_cents`, `currency_type`). The job list the adapter calls (`?content=true`) does not carry it. | Nothing. Reading it would need one extra request per job, so it is left out. |
+| Lever | `salaryRange` (`currency`, `interval`, `min`, `max`, optional) and `salaryDescriptionPlain` | Range, currency and interval; the description as text |
+| Ashby | With `includeCompensation=true`: `compensation.summaryComponents[]` (`compensationType`, `interval`, `currencyCode`, `minValue`, `maxValue`) and summary strings | The `Salary` component only (equity and bonus are ignored); the summary as text |
+| Remotive | `salary`, optional free text (for example `$40,000 - $50,000`) | The text as written, never parsed into numbers |
+| Himalayas | `minSalary`, `maxSalary` (number or null), `currency` (ISO 4217), and a period that defaults to annual | Range and currency; an unknown period is left empty |
+| Arbeitnow | No pay field in the job objects | Nothing |
+
+The documentation of Ashby places `compensation` under `jobs[]` in its field table but at the top level in its example, and Himalayas lists the period in its text but not in its schema. The adapter therefore reads per-job `compensation` and an optional period, and a payload that does not match gives no pay rather than a wrong one. Verify both against a live response before relying on them.
+
 Rules applied to every provider:
 
 - **Plain text.** The adapter removes scripts, styles and comments, keeps paragraph and line breaks, and turns list items into `• ` lines. It decodes named and numeric entities, collapses repeated spaces, and caps descriptions at 200,000 characters. Titles and locations are trimmed to one line of at most 300 code points, matching `varchar(300)`. Truncation never splits a surrogate pair.
