@@ -45,6 +45,12 @@ test('planned document test families are covered by scripts that CI runs', () =>
   }
 });
 
+test('the application documents migration proof is enabled in CI integration tests', () => {
+  const integration = workflow.match(/run: pnpm run test:integration[\s\S]{0,700}/)?.[0];
+  assert.ok(integration, 'test:integration is not run by CI');
+  assert.match(integration, /CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL:/, 'migration proof would silently skip in CI');
+});
+
 test('document API tests run in the database job after Chromium and Poppler are installed', () => {
   const quality = workflow.split(/^ {2}platform-build:/m)[0];
   assert.match(quality, /services:\s+postgres:/, 'quality job has no disposable PostgreSQL service');
