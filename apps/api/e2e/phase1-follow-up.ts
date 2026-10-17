@@ -31,17 +31,20 @@ export const phase1FollowUpScenario: Scenario = {
     await page.getByLabel('Recordatorio para', { exact: true }).waitFor();
     await page.getByLabel('Fecha y hora de entrevista', { exact: true }).waitFor();
     await page.getByLabel('Zona horaria de la entrevista (IANA)', { exact: true }).waitFor();
-    await eventually(() => page.locator('.tracker-row').filter({ hasText: `QA ${marker}` }).innerText(), (value) => /Vencida/.test(value), 'overdue follow-up appears in the list');
-    const orderedRows = await page.locator('.tracker-row').allInnerTexts();
-    assert.ok(orderedRows.findIndex((row) => row.includes(`QA ${marker}`)) < orderedRows.findIndex((row) => row.includes(`Closed QA ${marker}`)), 'active follow-ups appear before closed applications even when the closed date is earlier');
+    const activeRow = page.locator('.tracker-row').filter({ has: page.getByText(`QA ${marker}`, { exact: true }) });
+    const closedRow = page.locator('.tracker-row').filter({ has: page.getByText(`Closed QA ${marker}`, { exact: true }) });
+    await eventually(() => activeRow.innerText(), (value) => /Vencida/.test(value), 'overdue follow-up appears in the list');
+    const orderedTitles = await page.locator('.tracker-row .tracker-main > strong').allTextContents();
+    const activeIndex = orderedTitles.indexOf(`QA ${marker}`);
+    const closedIndex = orderedTitles.indexOf(`Closed QA ${marker}`);
+    assert.ok(activeIndex >= 0 && closedIndex >= 0 && activeIndex < closedIndex, 'active follow-ups appear before closed applications even when the closed date is earlier');
+    assert.doesNotMatch(await closedRow.innerText(), /Vencida|Vence hoy/, 'closed applications do not show due-state labels');
     await page.getByLabel('Siguiente paso', { exact: true }).fill('Contactar a la reclutadora');
     const saved = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/applications/${application.id}`);
     await page.getByRole('button', { name: 'Guardar seguimiento', exact: true }).click();
     assert.equal((await saved).status(), 200);
     assert.equal((await api.get<Application>(`/applications/${application.id}`)).nextStep, 'Contactar a la reclutadora');
 
-    await api.patch(`/applications/${application.id}`, { state: 'CANCELLED' });
-    await page.reload();
-    await eventually(() => page.locator('.tracker-row').filter({ hasText: `QA ${marker}` }).innerText(), (value) => !/Vencida|Vence hoy/.test(value), 'closed applications do not show an overdue follow-up');
+    assert.equal((await api.get<Application>(`/applications/${application.id}`)).state, 'CONFIRMED', 'a confirmed application remains active for follow-up purposes');
   },
 };

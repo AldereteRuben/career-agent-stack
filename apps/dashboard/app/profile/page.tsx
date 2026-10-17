@@ -29,9 +29,9 @@ const formFromProfile = (profile: Profile): ProfileForm => {
   return { name: identity.fullName ?? '', email: identity.email ?? '', phone: identity.phone ?? '', city: identity.city ?? '', links: (identity.links ?? []).map((link) => `${link.label} | ${link.url}`).join('\n'), country: (identity.country ?? '').toUpperCase(), titles: (preferences.targetTitles ?? []).join(', '), modes: [...new Set((preferences.workModes ?? []).map(normalizeWorkMode).filter(Boolean))] };
 };
 const splitList = (value: string) => value.split(',').map((v) => v.trim()).filter(Boolean);
-const parseProfileLinks = (value: string): { links: Array<{ label: string; url: string }>; error?: string } => {
+const parseProfileLinks = (value: string): { links: Array<{ label: string; url: string }>; error?: { kind: 'too-many' } | { kind: 'invalid'; line: number } } => {
   const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length > 4) return { links: [], error: 'Añade como máximo cuatro enlaces. / Add no more than four links.' };
+  if (lines.length > 4) return { links: [], error: { kind: 'too-many' } };
   const links: Array<{ label: string; url: string }> = [];
   for (const [index, line] of lines.entries()) {
     const separator = line.indexOf('|');
@@ -44,7 +44,7 @@ const parseProfileLinks = (value: string): { links: Array<{ label: string; url: 
       if (!label || label.length > 80) throw new Error();
       links.push({ label, url });
     } catch {
-      return { links: [], error: `Enlace ${index + 1}: usa una URL HTTPS válida y una etiqueta de hasta 80 caracteres. / Link ${index + 1}: use a valid HTTPS URL and a label up to 80 characters.` };
+      return { links: [], error: { kind: 'invalid', line: index + 1 } };
     }
   }
   return { links };
@@ -166,7 +166,12 @@ function ProfileView() {
     // Keep the profile's region (en-GB, es-MX…) when it already matches the interface language.
     const profileLocale = base.locale?.toLowerCase().startsWith(locale) ? base.locale : locale;
     const parsedLinks = parseProfileLinks(snapshot.links);
-    if (parsedLinks.error) { setError(parsedLinks.error); return; }
+    if (parsedLinks.error) {
+      setError(parsedLinks.error.kind === 'too-many'
+        ? c('Añade como máximo cuatro enlaces.', 'Add no more than four links.')
+        : c(`Enlace ${parsedLinks.error.line}: usa una URL HTTPS válida y una etiqueta de hasta 80 caracteres.`, `Link ${parsedLinks.error.line}: use a valid HTTPS URL and a label up to 80 characters.`));
+      return;
+    }
     const links = parsedLinks.links;
     const saved = await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), phone: snapshot.phone.trim(), city: snapshot.city.trim(), links, country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Tus datos se han guardado.', 'Your details have been saved.'), { savedSnapshot: snapshot });
     if (saved) setSavedEntry(null);
