@@ -305,6 +305,7 @@ export const v053Scenarios: Scenario[] = [
         await reviewer.close();
       }
       await page.bringToFront();
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await eventually(readCount, (count) => count === before, 'Approving the resume clears the review count without a reload');
       await eventually(readRows, (count) => count === beforeRows, 'Approving the resume removes its review row without a reload');
       assert.equal(await readCount(), await readRows(), 'The refreshed review count still equals the visible row count');

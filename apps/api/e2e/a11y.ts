@@ -8,20 +8,21 @@ import { any, eventually, goTo, setLocale } from './ui.js';
 // approximates but does not replace a real screen reader.
 export const a11yScenarios: Scenario[] = [{
   name: 'a11y-decorative-symbols-and-saved-region',
-  async run({ page, api, marker, note }) {
+  async run({ page, context, api, marker, note }) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     const company = `A11y ${marker}`;
     const title = `A11y role ${marker}`;
     const job = await api.post<{ id: string; fitScore: number | null; evidenceCoverage: number | null; provisional?: boolean }>('/jobs/import', { company, title, jobUrl: `https://example.com/${marker}/a11y` });
     const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `A11y example ${marker}` });
     await api.post(`/profile/facts/${fact.id}/approve`);
-    await setLocale(page, 'es');
-
-    await goTo(page, '/profile');
-    await page.getByRole('complementary', { name: 'Menú principal', exact: true }).waitFor();
-    await page.getByRole('complementary', { name: 'Tu progreso', exact: true }).waitFor();
-    await page.locator('details.profile-preferences > summary').click();
-    const mode = page.locator('.work-mode-field .tag-row button').first();
+    const profilePage = await context.newPage();
+    await profilePage.setViewportSize({ width: 1440, height: 1000 });
+    await profilePage.goto(new URL('/profile', page.url()).toString());
+    await setLocale(profilePage, 'es');
+    await profilePage.getByRole('complementary', { name: 'Menú principal', exact: true }).waitFor();
+    await profilePage.getByRole('complementary', { name: 'Tu progreso', exact: true }).waitFor();
+    await profilePage.locator('details.profile-preferences > summary').click();
+    const mode = profilePage.locator('.work-mode-field .tag-row button').first();
     await mode.waitFor();
     const accessibleName = (snapshot: string) => snapshot.match(/button "([^"]+)"/)?.[1] ?? '';
     const modeBefore = await mode.ariaSnapshot();
@@ -33,7 +34,7 @@ export const a11yScenarios: Scenario[] = [{
     assert.equal(accessibleName(modeAfter), accessibleName(modeBefore), 'The work-mode accessible name should not change when toggled');
     await eventually(() => mode.getAttribute('aria-pressed'), (pressed) => pressed !== pressedBefore, 'The toggle state should still change');
     // #65: the list is a <section aria-labelledby>, so it is exposed as a named region.
-    const region = page.getByRole('region', { name: 'Lo que has guardado' });
+    const region = profilePage.getByRole('region', { name: 'Lo que has guardado' });
     await region.waitFor();
     // The region renders before the profile data loads, so wait for the entry to appear first.
     await region.getByText(`A11y example ${marker}`).waitFor();
@@ -42,8 +43,12 @@ export const a11yScenarios: Scenario[] = [{
     // #64: the approved-entry marker (✓) is decorative; the state is already announced by the tag text.
     assert.ok(!regionSnapshot.includes('✓'), 'The fact approval marker is still exposed to assistive technology');
     // #64: the "Privado por defecto" card icon (⌑) is decorative.
-    const asideSnapshot = await page.locator('.aside-privacy').ariaSnapshot();
+    const asideSnapshot = await profilePage.locator('.aside-privacy').ariaSnapshot();
     assert.ok(!asideSnapshot.includes('⌑'), 'The privacy card icon is still exposed to assistive technology');
+    await profilePage.close();
+
+    await setLocale(page, 'es');
+    await goTo(page, '/profile');
 
     await page.goto(new URL(`/jobs?q=${encodeURIComponent(company)}&scope=active`, page.url()).toString());
     const card = page.locator('.job-card').filter({ hasText: title });
