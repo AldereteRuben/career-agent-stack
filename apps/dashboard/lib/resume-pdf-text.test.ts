@@ -118,9 +118,7 @@ test('reports a PDF with no extractable text as scanned', async () => {
   const initiallyBlankButTruncated = fakePdfJs(Array.from({ length: resumePdfLimits.maxPages + 1 }, () => []), {
     numPages: resumePdfLimits.maxPages + 1,
   });
-  assert.deepEqual(await extractResumePdfText(pdfFile(), async () => initiallyBlankButTruncated.module), {
-    text: '', pageCount: resumePdfLimits.maxPages + 1, truncated: true,
-  });
+  await assert.rejects(extractResumePdfText(pdfFile(), async () => initiallyBlankButTruncated.module), (error: unknown) => error instanceof ResumePdfExtractionError && error.code === 'scanned');
 });
 
 test('maps password-protected and malformed PDF.js errors to stable helper codes', async () => {

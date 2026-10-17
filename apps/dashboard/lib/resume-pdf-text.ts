@@ -160,7 +160,7 @@ export async function extractResumePdfText(
 
     const meaningfulCharacters = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
     const truncated = pagesToRead < document.numPages;
-    if (meaningfulCharacters < resumePdfLimits.minExtractedCharacters && !truncated) throw new ResumePdfExtractionError('scanned');
+    if (meaningfulCharacters < resumePdfLimits.minExtractedCharacters) throw new ResumePdfExtractionError('scanned');
     return { text: text.trim(), pageCount: document.numPages, truncated };
   })();
 
