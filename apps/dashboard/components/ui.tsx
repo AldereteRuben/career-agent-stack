@@ -3,7 +3,7 @@ import { useId, type ComponentProps, type ReactNode, type InputHTMLAttributes, t
 
 type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) { return <section className={`card ${className}`}>{children}</section>; }
+export function Card({ children, className = '', ...props }: React.HTMLAttributes<HTMLElement> & { children: ReactNode }) { return <section {...props} className={`card ${className}`}>{children}</section>; }
 
 export function Button({ children, variant = 'primary', className = '', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) { return <button className={`button button-${variant} ${className}`} {...props}>{children}</button>; }
 

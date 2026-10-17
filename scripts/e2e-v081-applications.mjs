@@ -402,7 +402,7 @@ export async function checkApplicationUsability({ browser, uiUrl, cookies, artif
       await useLocale('es');
       const page = await openPage('queue-es');
       await gotoApp(page, '/applications?view=review', 'es');
-      await page.getByRole('heading', { level: 1, name: 'Mis solicitudes' }).waitFor();
+      await page.getByRole('heading', { level: 1, name: 'Candidaturas' }).waitFor();
       const ready = queueCard(page, LONG_TITLE);
       await ready.waitFor();
       await ready.getByText('CV aprobado', { exact: true }).waitFor();

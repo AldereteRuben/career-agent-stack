@@ -60,16 +60,16 @@ const factsWith = async (api: ApiClient, statement: string) => (await api.get<Pr
 /** The profile form is the form that contains the name field. */
 const profileForm = (page: Page) => page.locator('form').filter({ has: page.getByLabel(/^(Nombre|Name|Full name|Nombre completo)$/i) }).first();
 
-/** Tab titles per route, "Page · Career Stack". '/' redirects to Find jobs. */
+/** Tab titles per route, "Page · Career Stack". '/' redirects to the overview, which has its own entry. */
 const expectedTitles: Record<string, { en: string; es: string }> = {
-  '/': { en: 'Find jobs · Career Stack', es: 'Buscar empleo · Career Stack' },
-  '/overview': { en: 'Overview · Career Stack', es: 'Resumen · Career Stack' },
+  '/searches': { en: 'Find jobs · Career Stack', es: 'Buscar ofertas · Career Stack' },
+  '/overview': { en: 'Dashboard · Career Stack', es: 'Inicio · Career Stack' },
   '/jobs': { en: 'All jobs · Career Stack', es: 'Todas las ofertas · Career Stack' },
-  '/jobs?scope=favorites': { en: 'Saved jobs · Career Stack', es: 'Guardadas · Career Stack' },
-  '/applications': { en: 'My applications · Career Stack', es: 'Mis solicitudes · Career Stack' },
-  '/profile': { en: 'My profile · Career Stack', es: 'Mi perfil · Career Stack' },
-  '/documents': { en: 'My resumes · Career Stack', es: 'Mis CV · Career Stack' },
-  '/boards': { en: 'Companies I follow · Career Stack', es: 'Empresas que sigo · Career Stack' },
+  '/jobs?scope=favorites': { en: 'Saved jobs · Career Stack', es: 'Ofertas guardadas · Career Stack' },
+  '/applications': { en: 'Applications · Career Stack', es: 'Candidaturas · Career Stack' },
+  '/profile': { en: 'Profile · Career Stack', es: 'Perfil · Career Stack' },
+  '/documents': { en: 'Resumes and documents · Career Stack', es: 'CV y documentos · Career Stack' },
+  '/boards': { en: 'Companies · Career Stack', es: 'Empresas · Career Stack' },
   '/settings': { en: 'Settings and privacy · Career Stack', es: 'Ajustes y privacidad · Career Stack' },
 };
 
@@ -79,14 +79,14 @@ export const scenarios: Scenario[] = [
     async run({ page, uiUrl, token }) {
       await signIn(page, uiUrl, await token());
       await setLocale(page, 'es');
-      await page.waitForURL((url) => url.pathname === '/searches');
+      await page.waitForURL((url) => url.pathname === '/overview');
       await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Guardadas/i }).waitFor();
-      assert.equal(await mainNavigation(page).getByRole('link').count(), 3, 'Three primary destinations keep the first menu focused');
+      assert.equal(await mainNavigation(page).getByRole('link').count(), 4, 'Four primary destinations keep the first menu focused');
       await setLocale(page, 'en');
       await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Saved jobs/i }).waitFor();
-      await page.waitForFunction(() => document.title === 'Find jobs · Career Stack');
+      await page.waitForFunction(() => document.title === 'Dashboard · Career Stack');
       await setLocale(page, 'es');
-      await page.waitForFunction(() => document.title === 'Buscar empleo · Career Stack');
+      await page.waitForFunction(() => document.title === 'Inicio · Career Stack');
       assert.equal(await hasHorizontalOverflow(page), false, 'Overview overflows horizontally at desktop width');
     },
   },
@@ -256,7 +256,8 @@ export const scenarios: Scenario[] = [
       await page.getByRole('link', { name: title }).first().waitFor();
       const jobs = await api.get<Array<{ id: string; company: string }>>('/jobs');
       assert.equal(jobs.filter((job) => job.company === company).length, 1, 'Manual import should create exactly one job');
-      await page.getByRole('link', { name: title }).first().click();
+      const importedJob = page.locator('.job-card').filter({ hasText: title });
+      await importedJob.getByRole('link', { name: any('Ver detalles', 'View details') }).click();
       await page.waitForURL(/\/jobs\/[^/?#]+/);
       await page.getByRole('heading', { name: title }).first().waitFor();
       await page.screenshot({ path: join(artifacts, 'job-detail.png'), fullPage: true });

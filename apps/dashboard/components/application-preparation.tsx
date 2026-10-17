@@ -86,7 +86,7 @@ export function ApplicationQueue() {
   useLocalRefresh(load, { paused: loading || busy !== null });
   const retry = async (jobId: string) => { setBusy(jobId); setActionError(''); try { await api<Preparation>('/preparations', { method: 'POST', body: JSON.stringify({ jobId, locale }) }); await load(); } catch (err) { setActionError(preparationError(err, locale)); } finally { setBusy(null); } };
   const pending = items.filter((item) => item.needsAttention); const visible = showAll ? items : pending;
-  return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Mis solicitudes', 'My applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
+  return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Candidaturas', 'Applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
     <ApplicationSections active="review" reviewCount={loading || error ? undefined : pending.length}/>
     <div className={styles.actions}><Button variant="quiet" disabled={loading || busy !== null} onClick={() => void load()}>{c('Actualizar lista', 'Refresh list')}</Button><Button variant="quiet" aria-pressed={showAll} onClick={() => setShowAll(!showAll)}>{showAll ? c('Solo pendientes', 'Only pending') : c('Ver también finalizadas', 'Include completed')}</Button></div>
     {actionError && <Notice tone="error">{actionError}</Notice>}
