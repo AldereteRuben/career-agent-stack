@@ -257,8 +257,16 @@ test('read-time currentness marks withdrawn evidence and changed offer for revie
     ...offer,
     snapshot: { ...offer.snapshot!, derivedRequirements: requirements },
   });
+  const stableOfferHash = await applicationDocumentHashes({ workspaceId, claims: revision.claims, facts, offer });
   const dictionaryVariantA = await applicationDocumentCurrentness({ revision, facts, offer: withDerivedSkills(['React']) });
   const dictionaryVariantB = await applicationDocumentCurrentness({ revision, facts, offer: withDerivedSkills(['Rust', 'Python']) });
+  const derivedSkillsHashA = await applicationDocumentHashes({ workspaceId, claims: revision.claims, facts, offer: withDerivedSkills(['React']) });
+  const derivedSkillsHashB = await applicationDocumentHashes({ workspaceId, claims: revision.claims, facts, offer: withDerivedSkills(['Rust', 'Python']) });
+  assert.equal(stableOfferHash.ok && derivedSkillsHashA.ok && derivedSkillsHashB.ok, true);
+  if (stableOfferHash.ok && derivedSkillsHashA.ok && derivedSkillsHashB.ok) {
+    assert.equal(derivedSkillsHashA.offerHash, stableOfferHash.offerHash);
+    assert.equal(derivedSkillsHashB.offerHash, stableOfferHash.offerHash);
+  }
   assert.deepEqual(dictionaryVariantA, { status: 'CURRENT', reasons: [] });
   assert.deepEqual(dictionaryVariantB, dictionaryVariantA);
 });

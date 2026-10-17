@@ -66,8 +66,11 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['I joined in March 2020.', 'March 2020'],
     ['I hold a PMP certification.', 'PMP'],
     ['I worked at Globex Labs.', 'Globex Labs'],
+    ['Globex Labs employed me.', 'Globex Labs'],
+    ['Globex employed me.', 'Globex'],
     ['I have ten years of experience.', 'ten'],
     ['I am a Senior Data Scientist.', 'Senior Data Scientist'],
+    ['I hold a doctorate.', 'doctorate'],
   ];
   for (const [text, item] of cases) {
     const result = validateApplicationDocumentSentence({ sentence: claim({ text }), workspaceId, facts: [facts[0]!], offer });
@@ -83,6 +86,10 @@ test('skill aliases in approved evidence support the canonical matching requirem
     sentence: claim({ text: 'Used PostgreSQL.', sourceFactIds: ['fact-postgres'] }), workspaceId, facts: [postgresFact], offer,
   });
   assert.equal(result.ok, true);
+  const spanishResult = validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Usé React.' }), workspaceId, facts: [facts[0]!], offer,
+  });
+  assert.equal(spanishResult.ok, true);
 });
 
 test('edits follow supported, rejected or confirmed-unsupported outcomes', () => {
@@ -128,11 +135,19 @@ test('editing builder or Codex claims changes origin; an unchanged sentence keep
 });
 
 test('plain reworded boilerplate stays boilerplate; adding facts requires support or confirmation', () => {
-  const original: ApplicationDocumentSentence = { sentenceId: 'closing', text: 'Atentamente,', kind: 'BOILERPLATE', origin: 'BUILDER', sourceFactIds: [] };
+  const original: ApplicationDocumentSentence = { sentenceId: 'closing', text: 'Atentamente,', kind: 'BOILERPLATE', origin: 'BUILDER', sourceFactIds: [], language: 'es' };
+  assert.equal(validateApplicationDocumentSentence({ sentence: original, workspaceId, facts, offer }).ok, true);
+  for (const [text, language] of [['Saludos cordiales,', 'es'], ['Hello,', 'en']] as const) {
+    assert.equal(validateApplicationDocumentSentence({ sentence: { ...original, text, language }, workspaceId, facts, offer }).ok, true);
+  }
   const greeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards,', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(greeting, { ok: true, sentence: { ...original, text: 'Best regards,', origin: 'USER_EDITED' } });
+  const titleCaseGreeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best Regards,', sourceFactIds: [], workspaceId, facts, offer });
+  assert.deepEqual(titleCaseGreeting, { ok: true, sentence: { ...original, text: 'Best Regards,', origin: 'USER_EDITED' } });
   const withNumber = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with 10 years of experience', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(withNumber, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: '10' } });
+  const withCredential = saveApplicationDocumentSentenceEdit({ original, text: 'I hold a doctorate.', sourceFactIds: [], workspaceId, facts, offer });
+  assert.deepEqual(withCredential, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: 'doctorate' } });
   const confirmed = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with Python experience', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer });
   assert.equal(confirmed.ok && confirmed.sentence.kind, 'CANDIDATE_CLAIM');
   assert.equal(confirmed.ok && confirmed.sentence.origin, 'USER_UNSUPPORTED');

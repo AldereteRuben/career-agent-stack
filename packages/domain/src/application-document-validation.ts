@@ -73,7 +73,7 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
   const numberWords = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mil)\b/giu;
   for (const match of text.matchAll(numberWords)) if (match[0]) mentions.push({ item: match[0], category: 'number' });
 
-  const credentialPattern = /\b(?:PMP|CPA|CFA|CISSP|TOEFL|IELTS|GED|PhD|MBA|(?:AWS\s+)?certified(?:\s+(?:in|as)\s+[\p{L}\p{N}+#.-]+){0,3}|certificaci[oó]n(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificad[oa](?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|licen[cs]e(?:\s+in\s+[\p{L}\p{N}+#.-]+){0,3}|licencia(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3})\b/giu;
+  const credentialPattern = /\b(?:PMP|CPA|CFA|CISSP|TOEFL|IELTS|GED|PhD|MBA|doctorate|doctorado|master(?:'s)? degree|bachelor(?:'s)? degree|grado|licenciatura|(?:AWS\s+)?certified(?:\s+(?:in|as)\s+[\p{L}\p{N}+#.-]+){0,3}|certificaci[oó]n(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificad[oa](?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|licen[cs]e(?:\s+in\s+[\p{L}\p{N}+#.-]+){0,3}|licencia(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3})\b/giu;
   for (const match of text.matchAll(credentialPattern)) if (match[0]) mentions.push({ item: match[0].trim(), category: 'credential' });
 
   for (const term of [offer.company, offer.role, offer.location, offer.snapshot.title]) {
@@ -83,6 +83,28 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
   for (const match of text.matchAll(properNamePattern)) {
     const item = match[1] ? cleanMention(match[1]) : '';
     if (item) mentions.push({ item, category: 'entity' });
+  }
+  const capitalizedEntityPattern = /(?<![\p{L}\p{N}])([\p{Lu}][\p{L}\p{N}&.'’+-]*(?:\s+[\p{Lu}][\p{L}\p{N}&.'’+-]*){1,3})(?![\p{L}\p{N}])/gu;
+  const sentenceStarterWords = new Set(['i', 'we', 'my', 'our', 'used', 'built', 'worked', 'led', 'created', 'designed', 'developed', 'managed', 'implemented', 'use', 'cree', 'atentamente', 'saludo', 'saludos', 'hello', 'hola', 'dear', 'estimado', 'estimada', 'estimados', 'estimadas', 'cordialmente', 'tengo', 'soy', 'trabaje', 'disene', 'desarrolle', 'lidere', 'dirigi', 'implemente', 'best', 'kind', 'warm', 'regards', 'sincerely', 'all', 'thank', 'thanks', 'cheers']);
+  const capitalizedEntitySpans: Array<{ start: number; end: number }> = [];
+  for (const match of text.matchAll(capitalizedEntityPattern)) {
+    const item = match[1] ? cleanMention(match[1]) : '';
+    const firstWord = normalized(item.split(/\s+/u)[0] ?? '');
+    if (item && !sentenceStarterWords.has(firstWord)
+      && !['best regards', 'kind regards', 'warm regards'].includes(normalized(item))) {
+      mentions.push({ item, category: 'entity' });
+      capitalizedEntitySpans.push({ start: match.index ?? 0, end: (match.index ?? 0) + match[0].length });
+    }
+  }
+  const capitalizedTokenPattern = /(?<![\p{L}\p{N}])[\p{Lu}][\p{L}\p{N}&.'’+-]{2,}(?![\p{L}\p{N}])/gu;
+  const recognizedSkills = new Set(mentions.filter((mention) => mention.category === 'skill').map((mention) => normalized(mention.item)));
+  for (const match of text.matchAll(capitalizedTokenPattern)) {
+    const item = match[0];
+    const start = match.index ?? 0;
+    if (capitalizedEntitySpans.some((span) => start >= span.start && start < span.end)
+      || recognizedSkills.has(normalized(item))
+      || sentenceStarterWords.has(normalized(item))) continue;
+    mentions.push({ item, category: 'entity' });
   }
 
   const jobTitlePattern = /\b(?:(?:senior|junior|lead|principal|staff|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:product|software|data|ux|ui|platform|frontend|front-end|backend|back-end|cloud|machine learning|producto|datos|dise[nñ]o|plataforma|desarrollo|anal[ií]tica)\s+(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|ingeniero|desarrollador|dise[nñ]ador|analista|gerente|arquitecto|cient[ií]fico|responsable)\b/giu;
