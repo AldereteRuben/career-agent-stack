@@ -166,8 +166,19 @@ test('an edit creates a child revision without changing the approved parent', as
 
 test('approval binds exact preview digests and source hashes without rendering', async () => {
   const revision = await createRevision();
-  const approved = await approveApplicationDocumentRevision(approveInput(revision));
+  let renderCalls = 0;
+  let renderedBytes = 0;
+  const renderer = () => {
+    renderCalls += 1;
+    renderedBytes += 1;
+    return new TextEncoder().encode('render-' + renderedBytes);
+  };
+  const approved = await approveApplicationDocumentRevision({
+    ...approveInput(revision),
+    renderPreview: renderer,
+  } as Parameters<typeof approveApplicationDocumentRevision>[0]);
   assert.equal(approved.ok, true);
+  assert.equal(renderCalls, 0);
   if (approved.ok) {
     assert.equal(approved.revision.approvedAt, '2026-10-17T20:00:00.000Z');
     assert.equal(approved.revision.claims, revision.claims);
@@ -242,6 +253,14 @@ test('read-time currentness marks withdrawn evidence and changed offer for revie
   assert.deepEqual(withdrawn.reasons, ['FACT_NOT_APPROVED', 'FACTS_CHANGED']);
   const changedOffer = await applicationDocumentCurrentness({ revision, facts, offer: { ...offer, company: 'Different Co' } });
   assert.deepEqual(changedOffer, { status: 'NEEDS_REVIEW', reasons: ['OFFER_CHANGED'] });
+  const withDerivedSkills = (requirements: string[]) => ({
+    ...offer,
+    snapshot: { ...offer.snapshot!, derivedRequirements: requirements },
+  });
+  const dictionaryVariantA = await applicationDocumentCurrentness({ revision, facts, offer: withDerivedSkills(['React']) });
+  const dictionaryVariantB = await applicationDocumentCurrentness({ revision, facts, offer: withDerivedSkills(['Rust', 'Python']) });
+  assert.deepEqual(dictionaryVariantA, { status: 'CURRENT', reasons: [] });
+  assert.deepEqual(dictionaryVariantB, dictionaryVariantA);
 });
 
 test('only the newest approved revision is selectable; a newer pending edit is only a warning', async () => {
