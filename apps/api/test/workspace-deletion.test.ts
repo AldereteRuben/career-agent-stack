@@ -179,12 +179,9 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     assert.deepEqual(Object.keys(job).sort(), ['completed_at', 'created_at', 'id', 'status', 'workspace_id'], 'The job holds no personal data');
     assert.equal(job.id, result.jobId);
     assert.equal(job.status, 'FILES_PENDING');
-    const { pendingDeletionJobs, finishDeletionJob } = await import('../src/workspace-deletion.js');
+    const { pendingDeletionJobs, retryPendingDeletionFiles } = await import('../src/workspace-deletion.js');
     assert.deepEqual(await pendingDeletionJobs(pool, deleted), [result.jobId], 'A job whose files are pending is found on the next start');
-    await finishDeletionJob(pool, result.jobId, 'FILES_FAILED');
-    assert.deepEqual(await pendingDeletionJobs(pool, deleted), [result.jobId], 'A failed one too, so it is retried');
-    await deleteWorkspaceFiles({ filesRoot, dataRoot });
-    await finishDeletionJob(pool, result.jobId, 'COMPLETED');
+    assert.deepEqual(await retryPendingDeletionFiles(pool, deleted, { filesRoot, dataRoot }), [{ jobId: result.jobId, completed: true }], 'Startup retry completes a deletion interrupted after its row commit');
     assert.deepEqual(await pendingDeletionJobs(pool, deleted), []);
     assert.deepEqual(await readdir(filesRoot), [], 'The retry removes every legacy, text and PDF file');
     assert.equal(await readFile(join(dataRoot, 'run', 'launcher-record.json'), 'utf8'), '{"pid":123}', 'Launcher control records survive');

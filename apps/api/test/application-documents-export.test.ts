@@ -89,3 +89,35 @@ test('included PDFs over 30 MB fail with 413 and do not return a partial export'
     );
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('included application PDFs share the size cap with already included legacy PDFs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-application-export-combined-limit-'));
+  try {
+    const doc = document(); const pdf = Buffer.alloc(10_000_000, 0x63);
+    const row = revision(doc.id, 1, { approved: true, text: 'approved document', pdf });
+    await writeFile(join(root, row.textStoragePath), row.text);
+    await writeFile(join(root, row.pdfStoragePath), pdf);
+    const included = await buildApplicationDocumentExport({ documents: [doc], revisions: [row], proposals: [], filesRoot: root, artifactBytesAlreadyIncluded: 20_000_000 });
+    assert.equal(included.totalArtifactBytes, EXPORT_ARTIFACT_LIMIT);
+    await assert.rejects(
+      buildApplicationDocumentExport({ documents: [doc], revisions: [row], proposals: [], filesRoot: root, artifactBytesAlreadyIncluded: 20_000_001 }),
+      (error: unknown) => error instanceof ApplicationDocumentExportError && error.statusCode === 413 && error.code === 'EXPORT_ARTIFACT_LIMIT',
+    );
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('revision text and included PDFs reject missing, tampered and escaping files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-application-export-invalid-files-'));
+  try {
+    const doc = document(); const row = revision(doc.id, 1, { text: 'approved text', pdf: Buffer.from('approved PDF') });
+    const input = { documents: [doc], revisions: [row], proposals: [], filesRoot: root };
+    await writeFile(join(root, row.textStoragePath), 'tampered text');
+    await assert.rejects(buildApplicationDocumentExport(input), (error: unknown) => error instanceof ApplicationDocumentExportError && error.statusCode === 409 && error.code === 'DOCUMENT_HASH_MISMATCH');
+
+    await writeFile(join(root, row.textStoragePath), row.text);
+    await assert.rejects(buildApplicationDocumentExport(input), (error: unknown) => error instanceof ApplicationDocumentExportError && error.statusCode === 409 && error.code === 'DOCUMENT_FILE_UNAVAILABLE');
+
+    const escaping = { ...row, textStoragePath: '../outside.txt' };
+    await assert.rejects(buildApplicationDocumentExport({ ...input, revisions: [escaping] }), (error: unknown) => error instanceof ApplicationDocumentExportError && error.statusCode === 500 && error.code === 'DOCUMENT_PATH_INVALID');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

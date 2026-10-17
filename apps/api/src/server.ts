@@ -16,7 +16,7 @@ import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { registerActivityTimelineRoutes } from './activity-timeline.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
-import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
+import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
@@ -698,17 +698,9 @@ const aiRuntime = await registerAiRuntime(app, workspace, { enabled: aiEnabled, 
 // ---- Delete all my data (ADR 020, point 2) ----------------------------------------------------------------------
 const deletionPhrases = new Set(['BORRAR TODOS MIS DATOS', 'DELETE ALL MY DATA']);
 /** Deletes the files of a deletion job and records the outcome. Returns whether every file is gone. */
-async function completeDeletionFiles(jobId: string) {
-  try {
-    await deleteWorkspaceFiles({ filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData });
-    await finishDeletionJob(pool, jobId, 'COMPLETED');
-    return true;
-  } catch (error) {
-    app.log.error({ err: error, jobId }, 'Deleting the files of a deleted workspace failed; it is retried when the API starts');
-    await finishDeletionJob(pool, jobId, 'FILES_FAILED').catch(() => undefined);
-    return false;
-  }
-}
+const completeDeletionFiles = (jobId: string) => finishWorkspaceDeletionFiles(pool, jobId, { filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData }, (error, failedJobId) => {
+  app.log.error({ err: error, jobId: failedJobId }, 'Deleting the files of a deleted workspace failed; it is retried when the API starts');
+});
 app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   const confirmation = (request.body as { confirmation?: unknown } | null)?.confirmation;
   if (typeof confirmation !== 'string' || !deletionPhrases.has(confirmation.trim())) return fail(reply, 400, 'CONFIRMATION_REQUIRED');
@@ -737,7 +729,9 @@ app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   }
 });
 // A deletion whose files were interrupted or failed is finished before the API serves anything.
-for (const jobId of await pendingDeletionJobs(pool, workspaceId)) await completeDeletionFiles(jobId);
+await retryPendingDeletionFiles(pool, workspaceId, { filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData }, (error, jobId) => {
+  app.log.error({ err: error, jobId }, 'Retrying deletion files at startup failed; the job stays pending');
+});
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
 app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);
