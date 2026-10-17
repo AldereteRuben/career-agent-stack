@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import {
   applicationDocumentCurrentness,
@@ -65,7 +66,7 @@ function approveInput(revision: ApplicationDocumentRevision, overrides: Partial<
   };
 }
 
-test('revision hashes are SHA-256 and normalize only stable offer description fields', async () => {
+test('revision hashes are SHA-256 over explicit stable offer fields and canonicalized description', async () => {
   const first = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer });
   const second = await applicationDocumentHashes({
     workspaceId,
@@ -81,6 +82,15 @@ test('revision hashes are SHA-256 and normalize only stable offer description fi
   assert.equal(first.factsHash, second.factsHash);
   assert.equal(first.offerHash, second.offerHash);
   assert.notEqual(first.offerSnapshotId, second.offerSnapshotId);
+  assert.equal(first.offerHash, createHash('sha256').update(JSON.stringify({
+    company: 'Acme', role: 'Diseñadora', location: 'Madrid', title: 'Diseñadora de producto', description: 'Experiencia con React',
+  })).digest('hex'));
+  const changedDescription = await applicationDocumentHashes({
+    workspaceId, claims: [claim], facts,
+    offer: { ...offer, snapshot: { ...offer.snapshot!, descriptionText: 'React and design systems.' } },
+  });
+  assert.equal(changedDescription.ok, true);
+  if (first.ok && changedDescription.ok) assert.notEqual(first.offerHash, changedDescription.offerHash);
 });
 
 test('fact changes affect factsHash and material offer changes affect offerHash', async () => {
@@ -127,6 +137,16 @@ test('latest offer snapshot uses fetched time then id, and null description hash
   const emptyDescription = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer: { ...selected, snapshot: { id: 'empty', title: 'Title', descriptionText: '' } } });
   assert.equal(nullDescription.ok && emptyDescription.ok, true);
   if (nullDescription.ok && emptyDescription.ok) assert.equal(nullDescription.offerHash, emptyDescription.offerHash);
+
+  const mixedFormats = latestApplicationDocumentOffer({
+    workspaceId, company: 'Company', role: 'Role', location: null,
+    snapshots: [
+      { id: 'whole-second', title: 'Whole', descriptionText: '', fetchedAt: '2026-10-17T10:00:00Z' },
+      { id: 'fractional', title: 'Fractional', descriptionText: '', fetchedAt: '2026-10-17T10:00:00.500Z' },
+      { id: 'offset', title: 'Offset', descriptionText: '', fetchedAt: '2026-10-17T11:30:00+02:00' },
+    ],
+  });
+  assert.equal(mixedFormats.snapshot?.id, 'fractional');
 });
 
 test('replacing a snapshot with identical offer content does not change the offer hash', async () => {

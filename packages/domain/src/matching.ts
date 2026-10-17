@@ -9,6 +9,7 @@ const skillAliases: Array<[string, string[]]> = [
   ['ci-cd', ['ci/cd', 'continuous integration', 'continuous delivery']], ['docker', ['docker']], ['kubernetes', ['kubernetes']],
   ['aws', ['aws', 'amazon web services']], ['azure', ['azure']], ['gcp', ['gcp', 'google cloud']], ['git', ['git']],
   ['agile', ['agile', 'scrum']], ['linux', ['linux']], ['graphql', ['graphql']], ['react', ['react']], ['node.js', ['node.js', 'nodejs']],
+  ['figma', ['figma']], ['terraform', ['terraform']],
 ];
 const aliasesBySkill = new Map(skillAliases.map(([skill, aliases]) => [normalize(skill), [skill, ...aliases].map(normalize)]));
 

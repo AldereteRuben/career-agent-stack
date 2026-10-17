@@ -44,7 +44,12 @@ export function latestApplicationDocumentOffer(input: {
   location: string | null;
   snapshots: ApplicationDocumentJobSnapshot[];
 }): ApplicationDocumentOfferSnapshot {
-  const compareDescending = (left: string, right: string) => left === right ? 0 : left > right ? -1 : 1;
+  const compareDescending = (left: string, right: string) => {
+    const leftTime = Date.parse(left);
+    const rightTime = Date.parse(right);
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) return rightTime - leftTime;
+    return left === right ? 0 : left > right ? -1 : 1;
+  };
   const snapshot = [...input.snapshots].sort((a, b) => compareDescending(a.fetchedAt, b.fetchedAt) || compareDescending(a.id, b.id))[0] ?? null;
   return { workspaceId: input.workspaceId, company: input.company, role: input.role, location: input.location, snapshot };
 }

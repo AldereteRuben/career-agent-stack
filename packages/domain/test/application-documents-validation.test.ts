@@ -71,6 +71,22 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['I have ten years of experience.', 'ten'],
     ['I am a Senior Data Scientist.', 'Senior Data Scientist'],
     ['I hold a doctorate.', 'doctorate'],
+    ['I hold a master’s degree.', 'master’s'],
+    ['I hold a masters degree.', 'masters'],
+    ["I have a master's in computer science from stanford.", "master's"],
+    ['Tengo un máster en ciencia de datos.', 'máster'],
+    ['Tengo una maestría en análisis.', 'maestría en análisis'],
+    ['I hold a BS in physics.', 'BS'],
+    ['I earned a certificate in data analytics.', 'certificate in data'],
+    ['I earned a certification in data analytics.', 'certification in data'],
+    ['I hold an AWS certification.', 'aws'],
+    ['I worked at ebay using React.', 'ebay'],
+    ['I worked at eBay using React.', 'eBay'],
+    ['I was head of engineering and used React.', 'head of engineering'],
+    ['I worked as a team lead.', 'team lead'],
+    ['I was promoted to VP of engineering.', 'VP of engineering'],
+    ['Managed a million-dollar budget with React.', 'million'],
+    ['Built services with figma and terraform.', 'figma'],
   ];
   for (const [text, item] of cases) {
     const result = validateApplicationDocumentSentence({ sentence: claim({ text }), workspaceId, facts: [facts[0]!], offer });
@@ -78,7 +94,7 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
   }
 });
 
-test('skill aliases in approved evidence support the canonical matching requirement', () => {
+test('only equivalent skill aliases support each other in approved evidence', () => {
   const postgresFact: ApplicationDocumentFact = {
     id: 'fact-postgres', workspaceId, approval: 'USER_APPROVED', text: 'Built database systems with PostgreSQL.', tags: ['sql'],
   };
@@ -86,6 +102,19 @@ test('skill aliases in approved evidence support the canonical matching requirem
     sentence: claim({ text: 'Used PostgreSQL.', sourceFactIds: ['fact-postgres'] }), workspaceId, facts: [postgresFact], offer,
   });
   assert.equal(result.ok, true);
+  const mysqlFact: ApplicationDocumentFact = {
+    id: 'fact-mysql', workspaceId, approval: 'USER_APPROVED', text: 'Built services with MySQL.', tags: ['sql'],
+  };
+  const aliasLaundering = validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Built services with PostgreSQL.', sourceFactIds: ['fact-mysql'] }), workspaceId, facts: [mysqlFact], offer,
+  });
+  assert.deepEqual(aliasLaundering, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'postgresql' } });
+  const awsFact: ApplicationDocumentFact = {
+    id: 'fact-aws', workspaceId, approval: 'USER_APPROVED', text: 'Deployed on Amazon Web Services.', tags: ['aws'],
+  };
+  assert.equal(validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Used AWS.', sourceFactIds: ['fact-aws'] }), workspaceId, facts: [awsFact], offer,
+  }).ok, true);
   const spanishResult = validateApplicationDocumentSentence({
     sentence: claim({ text: 'Usé React.' }), workspaceId, facts: [facts[0]!], offer,
   });
@@ -116,6 +145,20 @@ test('edits follow supported, rejected or confirmed-unsupported outcomes', () =>
   }
 });
 
+test('supported rewordings can start with verbs, connectors and articles in either language', () => {
+  const supportedRewordings = [
+    'Shipped payments at Acme Example with React.',
+    'Spearheaded payments at Acme Example using React.',
+    'Using React, I led payments at Acme Example.',
+    'The payments work at Acme Example used React.',
+    'Gestioné pagos en Acme Example con React.',
+  ];
+  for (const text of supportedRewordings) {
+    const result = validateApplicationDocumentSentence({ sentence: claim({ text }), workspaceId, facts, offer });
+    assert.equal(result.ok, true, text);
+  }
+});
+
 test('an unsupported sentence edited back to supported becomes USER_EDITED', () => {
   const original = claim({ text: 'Built products using Python.', origin: 'USER_UNSUPPORTED', sourceFactIds: [] });
   const result = saveApplicationDocumentSentenceEdit({
@@ -140,6 +183,13 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
   for (const [text, language] of [['Saludos cordiales,', 'es'], ['Hello,', 'en']] as const) {
     assert.equal(validateApplicationDocumentSentence({ sentence: { ...original, text, language }, workspaceId, facts, offer }).ok, true);
   }
+  for (const [text, language] of [
+    ['Gracias,', 'es'], ['Muchas gracias,', 'es'], ['Dear Hiring Manager,', 'en'], ['Yours sincerely,', 'en'],
+  ] as const) {
+    assert.equal(validateApplicationDocumentSentence({ sentence: { ...original, text, language }, workspaceId, facts, offer }).ok, true, text);
+    const edited = saveApplicationDocumentSentenceEdit({ original, text, sourceFactIds: [], workspaceId, facts, offer });
+    assert.equal(edited.ok && edited.sentence.kind, 'BOILERPLATE', text);
+  }
   const greeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards,', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(greeting, { ok: true, sentence: { ...original, text: 'Best regards,', origin: 'USER_EDITED' } });
   const titleCaseGreeting = saveApplicationDocumentSentenceEdit({ original, text: 'Best Regards,', sourceFactIds: [], workspaceId, facts, offer });
@@ -148,6 +198,10 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
   assert.deepEqual(withNumber, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: '10' } });
   const withCredential = saveApplicationDocumentSentenceEdit({ original, text: 'I hold a doctorate.', sourceFactIds: [], workspaceId, facts, offer });
   assert.deepEqual(withCredential, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: 'doctorate' } });
+  const editedClaim = saveApplicationDocumentSentenceEdit({
+    original, text: 'I am passionate about fintech and led teams for years.', sourceFactIds: [], workspaceId, facts, offer,
+  });
+  assert.deepEqual(editedClaim, { ok: false, issue: { code: 'NO_CITATION', sentenceId: 'closing' } });
   const confirmed = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with Python experience', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer });
   assert.equal(confirmed.ok && confirmed.sentence.kind, 'CANDIDATE_CLAIM');
   assert.equal(confirmed.ok && confirmed.sentence.origin, 'USER_UNSUPPORTED');
