@@ -48,7 +48,7 @@ export const profileContractScenarios: Scenario[] = [{
   name: 'phase1-profile-resume-contacts-are-editable-in-es-and-en',
   async run({ page, api, marker }) {
     const original = await api.get<ProfileResponse>('/profile');
-    const longCity = `Málaga · ${'Distrito Á '.repeat(10)}`;
+    const longCity = `Málaga · ${'Distrito Á '.repeat(10)}`.trimEnd();
     try {
       await setLocale(page, 'es');
       await goTo(page, '/profile');
