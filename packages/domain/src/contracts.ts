@@ -72,7 +72,7 @@ const profileLinkSchema = z.object({ label: z.string().trim().min(1).max(80), ur
   try { const parsed = new URL(value); return parsed.protocol === 'https:' && !parsed.username && !parsed.password; }
   catch { return false; }
 }, 'Links must use HTTPS and cannot include credentials.') }).strict();
-const profileIdentitySchema = z.looseObject({ fullName: z.string().max(200).optional(), email: z.string().max(320).optional(), country: z.string().max(100).optional(), phone: z.string().max(80).optional(), city: z.string().max(160).optional(), links: z.array(profileLinkSchema).max(4).optional() });
+const profileIdentitySchema = z.looseObject({ fullName: z.string().optional(), email: z.string().optional(), country: z.string().optional(), phone: z.string().max(80).optional(), city: z.string().max(160).optional(), links: z.array(profileLinkSchema).max(4).optional() });
 const profilePreferencesSchema = z.looseObject({ targetTitles: z.array(z.string()).optional(), workModes: z.array(z.string()).optional() });
 const misplacedProfileKeys = { fullName: 'identity', email: 'identity', country: 'identity', phone: 'identity', city: 'identity', links: 'identity', targetTitles: 'preferences', workModes: 'preferences' } as const;
 export const profileDataSchema = z.looseObject({ identity: profileIdentitySchema.optional(), preferences: profilePreferencesSchema.optional() })

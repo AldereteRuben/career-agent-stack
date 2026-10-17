@@ -1,6 +1,6 @@
 'use client';
 
-import { applicationFollowUpStatus, instantToLocalDateTime, isApplicationClosedForPreparation, localDateTimeToInstant } from '@career/domain';
+import { applicationFollowUpStatus, instantToLocalDateTime, isActiveApplication, isApplicationClosedForPreparation, isValidTimeZone, localDateTimeToInstant, type ApplicationState, type RecruitmentStage } from '@career/domain';
 
 import { useErrorFocus } from '@/lib/disclosure-focus';
 
@@ -22,7 +22,7 @@ import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
 import type { Locale } from '@/lib/locale';
 
-type Application = { documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; jobAvailability?: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; nextStep?: string | null; followUpDate?: string | null; interviewAt?: string | null; interviewTimezone?: string | null; updatedAt: string; version: number };
+type Application = { documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; jobAvailability?: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: ApplicationState; recruitmentStage: RecruitmentStage; shortlistDecision: string; notes: string; nextStep?: string | null; followUpDate?: string | null; interviewAt?: string | null; interviewTimezone?: string | null; updatedAt: string; version: number };
 type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null; evidence?: Record<string, unknown> | null };
 type Patch = { state?: string; recruitmentStage?: string; nextStep?: string | null; followUpDate?: string | null; interview?: { localAt: string; timeZone: string } | null; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
 
@@ -31,6 +31,8 @@ const todayLocalDate = () => {
   const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
   return `${part('year')}-${part('month')}-${part('day')}`;
 };
+
+const formatCalendarDate = (value: string, locale: Locale) => new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'es-ES', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
 
 /** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.3. */
 const transitions: Record<string, string[]> = {
@@ -55,8 +57,11 @@ function eventDetail(event: AppEvent, locale: Locale) {
   if (event.eventType === 'INTERVIEW_UPDATED') {
     const next = evidence.next as { at?: string | null; timeZone?: string | null } | undefined;
     if (!next?.at) return c('Se quitó la entrevista programada.', 'The scheduled interview was cleared.');
-    const date = new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: next.timeZone ?? 'UTC' }).format(new Date(next.at));
-    return `${date} (${next.timeZone ?? 'UTC'})`;
+    const timeZone = next.timeZone ?? 'UTC';
+    try {
+      const date = new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(next.at));
+      return `${date} (${timeZone})`;
+    } catch { return `${next.at} (${timeZone})`; }
   }
   if (event.eventType === 'RECRUITMENT_STAGE_CHANGED' || event.eventType === 'RECRUITMENT_STAGE_CORRECTED') {
     const arrow = `${labelFor.recruitmentStage(event.priorState, locale)} → ${labelFor.recruitmentStage(event.newState, locale)}`;
@@ -105,6 +110,8 @@ function ApplicationsView() {
   const [followUpDateDraft, setFollowUpDateDraft] = useState('');
   const [interviewDraft, setInterviewDraft] = useState('');
   const [interviewTimezoneDraft, setInterviewTimezoneDraft] = useState('');
+  const [interviewDirty, setInterviewDirty] = useState(false);
+  const [clearInterview, setClearInterview] = useState(false);
   const detailRequest = useRef(0);
   const selected = detail.id === selectedId ? detail.data : null;
   useEffect(() => {
@@ -114,6 +121,8 @@ function ApplicationsView() {
     const zone = selected.interviewTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     setInterviewTimezoneDraft(zone);
     setInterviewDraft(selected.interviewAt ? instantToLocalDateTime(selected.interviewAt, zone) : '');
+    setInterviewDirty(false);
+    setClearInterview(false);
   }, [selected?.id, selected?.nextStep, selected?.followUpDate, selected?.interviewAt, selected?.interviewTimezone]);
   const loadSelected = useCallback(async (id: string | null) => {
     const ticket = ++detailRequest.current;
@@ -220,12 +229,15 @@ function ApplicationsView() {
   };
   const confirmSent = async () => { if (await update({ state: 'CONFIRMED', confirmationEvidence: 'USER_ATTESTATION' }, c('Marcada como enviada por ti.', 'Marked as sent by you.'))) setConfirmApplied(false); };
 
-  const interviewInstant = interviewDraft ? localDateTimeToInstant(interviewDraft, interviewTimezoneDraft) : null;
-  const interviewInvalid = Boolean(interviewDraft && !interviewInstant);
+  const interviewZoneInvalid = Boolean(interviewDraft && !isValidTimeZone(interviewTimezoneDraft));
+  const interviewInstant = interviewDraft && !interviewZoneInvalid ? localDateTimeToInstant(interviewDraft, interviewTimezoneDraft) : null;
+  const interviewTimeInvalid = Boolean(interviewDraft && !interviewZoneInvalid && !interviewInstant);
+  const interviewInvalid = interviewZoneInvalid || interviewTimeInvalid;
   const saveFollowUp = () => {
     if (followUpDateDraft && !/^\d{4}-\d{2}-\d{2}$/.test(followUpDateDraft)) return;
     if (interviewInvalid) return;
-    void update({ nextStep: nextStepDraft.trim() || null, followUpDate: followUpDateDraft || null, interview: interviewInstant ? { localAt: interviewDraft, timeZone: interviewTimezoneDraft } : null }, c('Próximo paso y fechas guardados.', 'Next step and dates saved.'));
+    const interviewPatch = interviewDirty ? interviewInstant ? { interview: { localAt: interviewDraft, timeZone: interviewTimezoneDraft } } : clearInterview ? { interview: null } : {} : {};
+    void update({ nextStep: nextStepDraft.trim() || null, followUpDate: followUpDateDraft || null, ...interviewPatch }, c('Próximo paso y fechas guardados.', 'Next step and dates saved.'));
   };
 
   const addNote = async (event: FormEvent) => {
@@ -261,13 +273,13 @@ function ApplicationsView() {
       <Field label={c('Buscar en mis solicitudes', 'Search my applications')} value={filter} maxLength={200} onChange={(event) => setFilter(event.target.value)} placeholder={c('Puesto o empresa', 'Role or company')}/>
       <Button type="submit" variant="secondary">{c('Buscar', 'Search')}</Button>
       {query && <Button type="button" variant="quiet" onClick={() => { setFilter(''); navigateList(0, ''); }}>{c('Limpiar búsqueda', 'Clear search')}</Button>}
-      <Button type="button" variant="quiet" aria-pressed={sort === 'follow-up'} onClick={() => { const params = new URLSearchParams(window.location.search); if (sort === 'follow-up') params.delete('sort'); else params.set('sort', 'follow-up'); params.set('offset', '0'); router.replace(`${pathname}?${params}`, { scroll: false }); }}>{sort === 'follow-up' ? c('Orden: próximos pasos', 'Sort: follow-ups') : c('Ordenar por próximo paso', 'Sort by follow-up')}</Button>
+      <Button type="button" variant="quiet" aria-pressed={sort === 'follow-up'} onClick={() => { const params = new URLSearchParams(window.location.search); if (sort === 'follow-up') params.delete('sort'); else params.set('sort', 'follow-up'); params.set('offset', '0'); router.replace(`${pathname}?${params}`, { scroll: false }); }}>{c('Ordenar por próximo paso', 'Sort by follow-up')}</Button>
     </form>
     {loadState === 'loading' ? <Notice>{c('Cargando solicitudes…', 'Loading applications…')}</Notice>
       : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty headingLevel="h2" title={c('No pudimos cargar tus solicitudes', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
       : (rows.length || selectedId || query) ? <div className={`tracker-layout ${selected ? 'tracker-has-selection' : ''}`}>
         <Card className="tracker-list"><h2 className="sr-only focus-heading" ref={listHeading} tabIndex={-1}>{c('Lista de solicitudes', 'Application list')}</h2><div className="tracker-list-head"><span role="status">{pagination.total ? `${pagination.offset + 1}–${pagination.offset + rows.length}` : '0'} {c('de', 'of')} {pagination.total}</span><span>{sort === 'follow-up' ? c('PRÓXIMOS PASOS', 'UPCOMING FOLLOW-UPS') : c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
-          {rows.map((row) => { const due = row.followUpDate && !isApplicationClosedForPreparation(row) ? applicationFollowUpStatus(row.followUpDate, todayLocalDate(), false) : 'none'; return <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {applicationStage(row.recruitmentStage, row.state, locale)}</small>{due !== 'none' && <span className="tracker-availability-tag"><Tag tone={due === 'overdue' ? 'red' : 'amber'}>{due === 'overdue' ? c('Vencida', 'Overdue') : due === 'due-today' ? c('Vence hoy', 'Due today') : `${c('Próximo paso', 'Follow-up')}: ${formatDate(`${row.followUpDate}T12:00:00Z`)}`}</Tag></span>}{row.jobAvailability && row.jobAvailability !== 'OPEN' && <span className="tracker-availability-tag"><Tag tone={row.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(row.jobAvailability, locale)}</Tag></span>}</span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>; })}
+          {rows.map((row) => { const active = isActiveApplication(row); const due = row.followUpDate ? applicationFollowUpStatus(row.followUpDate, todayLocalDate(), !active) : 'none'; return <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {applicationStage(row.recruitmentStage, row.state, locale)}</small>{due !== 'none' && <span className="tracker-availability-tag"><Tag tone={due === 'overdue' ? 'red' : 'amber'}>{due === 'overdue' ? c('Vencida', 'Overdue') : due === 'due-today' ? c('Vence hoy', 'Due today') : `${c('Próximo paso', 'Follow-up')}: ${formatCalendarDate(row.followUpDate!, locale)}`}</Tag></span>}{row.jobAvailability && row.jobAvailability !== 'OPEN' && <span className="tracker-availability-tag"><Tag tone={row.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(row.jobAvailability, locale)}</Tag></span>}</span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>; })}
           {!rows.length && <p>{c('No hay solicitudes que coincidan con esta búsqueda.', 'No applications match this search.')}</p>}
           {pagination.total > pagination.limit && <nav className="tracker-pagination" aria-label={c('Páginas de solicitudes', 'Application pages')}>
             <Button variant="secondary" disabled={pagination.offset === 0} onClick={() => navigateList(Math.max(0, pagination.offset - pagination.limit))}>{c('Anterior', 'Previous')}</Button>
@@ -293,9 +305,11 @@ function ApplicationsView() {
           <div className="tracker-controls">
             <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
             <Field label={c('Recordatorio para', 'Follow-up date')} type="date" value={followUpDateDraft} disabled={busy !== null} onChange={(event) => setFollowUpDateDraft(event.target.value)}/>
-            <Field label={c('Fecha y hora de entrevista', 'Interview date and time')} type="datetime-local" value={interviewDraft} disabled={busy !== null} onChange={(event) => setInterviewDraft(event.target.value)}/>
-            <Field label={c('Zona horaria de la entrevista (IANA)', 'Interview time zone (IANA)')} value={interviewTimezoneDraft} maxLength={100} disabled={busy !== null} onChange={(event) => setInterviewTimezoneDraft(event.target.value)} placeholder="Europe/Madrid"/>
-            {interviewInvalid && <p className="field-hint" role="alert">{c('Esa hora no existe o se repite por el cambio horario. Elige otra hora o zona horaria.', 'That time does not exist or occurs twice because of daylight saving time. Choose another time or time zone.')}</p>}
+            <Field id={`interview-time-${selected.id}`} label={c('Fecha y hora de entrevista', 'Interview date and time')} type="datetime-local" value={interviewDraft} disabled={busy !== null} aria-describedby={interviewInvalid ? `interview-error-${selected.id}` : undefined} aria-invalid={interviewInvalid || undefined} onChange={(event) => { setInterviewDirty(true); setClearInterview(false); setInterviewDraft(event.target.value); }}/>
+            <Field id={`interview-zone-${selected.id}`} label={c('Zona horaria de la entrevista (IANA)', 'Interview time zone (IANA)')} value={interviewTimezoneDraft} maxLength={100} disabled={busy !== null} aria-describedby={interviewInvalid ? `interview-error-${selected.id}` : undefined} aria-invalid={interviewZoneInvalid || undefined} onChange={(event) => { setInterviewDirty(true); setInterviewTimezoneDraft(event.target.value); }} placeholder="Europe/Madrid"/>
+            {interviewZoneInvalid && <p className="field-hint" id={`interview-error-${selected.id}`} role="status">{c('Escribe una zona horaria IANA válida, por ejemplo Europe/Madrid.', 'Enter a valid IANA time zone, such as Europe/Madrid.')}</p>}
+            {interviewTimeInvalid && <p className="field-hint" id={`interview-error-${selected.id}`} role="status">{c('Esa hora no existe o se repite por el cambio horario. Elige otra.', 'That time does not exist or occurs twice because of daylight saving time. Choose another.')}</p>}
+            {selected.interviewAt && <Button type="button" variant="quiet" disabled={busy !== null} onClick={() => { setInterviewDirty(true); setClearInterview(true); setInterviewDraft(''); }}>{c('Quitar entrevista', 'Clear interview')}</Button>}
             <Button type="button" variant="secondary" disabled={busy !== null || interviewInvalid} onClick={saveFollowUp}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Guardar seguimiento', 'Save follow-up')}</Button>
           </div>
           <div className="tracker-controls">

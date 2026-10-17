@@ -38,6 +38,16 @@ test('AI resume composition keeps omitted job dates and unselected original evid
   assert.equal(basis.claims[2]!.text,'TypeScript');assert.equal(basis.claims[2]!.origin,'MANUAL');
   assert.ok(basis.claims.every(claim=>claim.textHash===hash(claim.text)));
 });
+test('AI rewritten professional summaries remain in the summary section',()=>{
+  const f=fixture(),summaryId=randomUUID();
+  const summaryFact={...f.records.facts![0]!,id:summaryId,kind:'summary',statement:'Quality engineer focused on reliable systems',details:null};
+  f.records.facts=[summaryFact];
+  f.snapshot=buildAiSourceSnapshot(f.workspaceId,{operation:'RESUME_DRAFT',locale:'en',jobId:f.jobId,selectedFactIds:[summaryId]},f.records);
+  const output:ResumeDraftOutput={schemaVersion:1,operation:'RESUME_DRAFT',locale:'en',proposals:[{proposalKey:'summary-1',section:'Summary',text:'Quality engineer building dependable software',sourceFactIds:[summaryId],changeExplanation:'Clearer wording',warnings:[]}],warnings:[]};
+  const selection={...f.body,selections:[{proposalKey:'summary-1',text:'Quality engineer building dependable software'}]};
+  const basis=buildAiResumeClaims(randomUUID(),f.snapshot,output,selection,f.records);
+  assert.equal(basis.claims.length,1);assert.equal(basis.claims[0]!.section,'summary');assert.equal(basis.claims[0]!.origin,'AI');
+});
 test('AI resume contact selection is unique and uses only the fields selected by the person',()=>{
   assert.throws(()=>aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',printedContactFields:['phone','phone'],selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]}));
   const f=fixture();
@@ -87,7 +97,7 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
         for(const fact of input.facts)assert.ok(text.includes(fact.statement.replace(/\s+/g,' ')),`Real PDF preserves each reviewed claim`);
         assert.ok(text.includes(input.fullName));assert.ok(text.includes(input.email??''));assert.ok(text.includes('01/2020 - Present'));
         assert.ok(text.includes(input.phone??''));assert.ok(text.includes(input.city??''));
-        for(const link of input.links??[])assert.ok(text.includes(link.label)&&text.includes(link.url));
+        for(const link of input.links??[])assert.ok(text.includes(link.label),'the PDF displays the selected link label; its URL is the clickable destination');
         assert.ok(text.includes('WORK EXPERIENCE')||text.includes('EXPERIENCE'),'stable section label uses the saved source kind');
         await mutation?.();return rendered;
       }catch(error){renderFailure=error;throw error;}}

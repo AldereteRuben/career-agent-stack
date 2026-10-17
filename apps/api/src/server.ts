@@ -437,7 +437,7 @@ app.get('/api/v1/applications', async (request, reply) => {
   const counts = await db.select({ total: sql<number>`count(*)::int` }).from(applications).where(where);
   const total = counts[0]?.total ?? 0;
   const pageOffset = Math.min(offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(query.sort === 'follow-up' ? sql`${applications.followUpDate} asc nulls last` : desc(applications.updatedAt), desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
+  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(query.sort === 'follow-up' ? sql`case when ${applications.state} = 'CANCELLED' or ${applications.recruitmentStage} in ('REJECTED', 'WITHDRAWN', 'HIRED') then 1 else 0 end asc` : desc(applications.updatedAt), ...(query.sort === 'follow-up' ? [sql`${applications.followUpDate} asc nulls last`, desc(applications.updatedAt), desc(applications.id)] : [desc(applications.updatedAt), desc(applications.id)])).limit(limit).offset(pageOffset);
   return { items, total, offset: pageOffset, limit };
 });
 app.post('/api/v1/applications', async (request, reply) => {
@@ -509,7 +509,7 @@ app.patch('/api/v1/applications/:id', async (request, reply) => {
 
 app.post('/api/v1/applications/:id/events', async (request, reply) => {
   const body = request.body as { eventType?: unknown; note?: unknown; recruitmentStage?: unknown } | null;
-  if (typeof body?.eventType !== 'string' || body.eventType.length > 80 || body.eventType.startsWith('ASSIST_') || typeof body.note !== 'string' || body.note.length > 10_000) return fail(reply, 400, 'INVALID_EVENT');
+  if (typeof body?.eventType !== 'string' || body.eventType.length > 80 || body.eventType.startsWith('ASSIST_') || ['FOLLOW_UP_UPDATED', 'INTERVIEW_UPDATED'].includes(body.eventType) || typeof body.note !== 'string' || body.note.length > 10_000) return fail(reply, 400, 'INVALID_EVENT');
   const { id: applicationId } = request.params as { id: string }; const id = workspace(request);
   const application = (await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id))).limit(1))[0]; if (!application) return fail(reply, 404, 'NOT_FOUND');
   const event = (await db.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: body.eventType, reason: body.note, aggregateVersion: application.version }).returning())[0]; return reply.code(201).send(event);

@@ -75,7 +75,6 @@ const expectedTitles: Record<string, { en: string; es: string }> = {
 };
 
 export const scenarios: Scenario[] = [
-  phase1FollowUpScenario,
   {
     name: 'sign-in-and-language-switch',
     async run({ page, uiUrl, token }) {
@@ -92,6 +91,7 @@ export const scenarios: Scenario[] = [
       assert.equal(await hasHorizontalOverflow(page), false, 'Overview overflows horizontally at desktop width');
     },
   },
+  phase1FollowUpScenario,
   {
     name: 'es-en-labels-on-every-page',
     async run({ page }) {

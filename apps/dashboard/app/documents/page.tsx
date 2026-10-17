@@ -81,7 +81,7 @@ function DocumentsView() {
   const job = jobs.find((item) => item.id === jobId) ?? null;
   const defaultName = job ? `${c('CV', 'Resume')} · ${job.title} · ${job.company}` : c('CV · versión base', 'Resume · base version');
   const documentName = nameTouched ? name : defaultName;
-  const resumeContext = JSON.stringify({ jobId, locale: pdfLocale, facts: [...selected].sort(), printedContactFields: [...printedContactFields].sort() });
+  const resumeContext = JSON.stringify({ jobId, locale: pdfLocale, facts: [...selected].sort() });
   const closeAiReview = () => { setAiReview(null); builderHeading.current?.focus(); };
   const useOriginalWording = () => { closeAiReview(); setMessage(c('Tus textos originales siguen seleccionados. Pulsa «Generar y revisar» para crear el PDF.', 'Your original wording is still selected. Choose “Generate and review” to create the PDF.')); };
   const reviewing = preview ? documents.find((doc) => doc.id === preview.id) ?? null : null;
@@ -222,13 +222,13 @@ function DocumentsView() {
         }
       }
       const ids = (doc.reusableFactIds ?? doc.claims.flatMap((claim) => claim.sourceFactIds)).filter((id) => facts.some((fact) => fact.id === id));
-      setPrintedContactFields(doc.printedContactFields ?? ['email']);
       const value = { name: doc.name, named: 'yes', language: doc.language ?? pdfLocale, facts: JSON.stringify(ids) };
       const copied = draft.copyTo(`resume:${applicationId || targetJobId || 'base'}`, value, () => window.confirm(c('Ya tienes un CV en edición para este destino. ¿Reemplazar su nombre, idioma y experiencias con esta versión? Cancelar conserva tu borrador.', 'You already have a resume draft for this destination. Replace its name, language, and experiences with this version? Cancel keeps your draft.')));
       if (copied === 'cancelled') return;
       if (!copied) {
         setError(c('No pudimos conservar la selección al cambiar de oferta. Vuelve a intentarlo antes de continuar.', 'We could not keep the selection while switching jobs. Try again before continuing.')); return;
       }
+      setPrintedContactFields(doc.printedContactFields ?? ['email']);
       const params = new URLSearchParams(searchParams.toString());
       params.set('view', 'prepare'); params.delete('document'); params.delete('from');
       if (targetJobId) params.set('jobId', targetJobId); else params.delete('jobId');
@@ -288,7 +288,7 @@ function DocumentsView() {
           {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar esta preparación. Genera el PDF antes de salir para no perder la selección.', 'We could not keep this preparation. Generate the PDF before leaving to keep your selection.')}</Notice>}
           {loadState === 'ready' && remembered.length > selected.length && <Notice tone="warning">{c('Algunos datos de tu selección cambiaron o dejaron de estar confirmados. Revisa y vuelve a elegir el contenido antes de generar.', 'Some selected details changed or are no longer confirmed. Review and reselect your content before generating.')}</Notice>}
           <fieldset className="profile-fieldset"><legend>{c('Datos de contacto que aparecerán', 'Contact details to include')}</legend><p className="muted-label">{c('Nombre y puesto siempre aparecen. Los datos de contacto solo se incluyen si los marcas aquí.', 'Your name and role always appear. Contact details are included only when you select them.')}</p>
-            {(['email', 'phone', 'city', 'links'] as const).map((field) => <label className="checkbox-line" key={field}><input type="checkbox" checked={printedContactFields.includes(field)} disabled={!contactAvailability[field]} onChange={() => toggleContactField(field)}/><span>{field === 'email' ? c('Correo', 'Email') : field === 'phone' ? c('Teléfono', 'Phone') : field === 'city' ? c('Ciudad', 'City') : c('Enlaces', 'Links')}{!contactAvailability[field] ? ` · ${c('no añadido', 'not added')}` : ''}</span></label>)}
+            {(['email', 'phone', 'city', 'links'] as const).map((field) => <label className="checkbox-line" key={field}><input type="checkbox" checked={printedContactFields.includes(field)} disabled={!contactAvailability[field] && !printedContactFields.includes(field)} onChange={() => toggleContactField(field)}/><span>{field === 'email' ? c('Correo', 'Email') : field === 'phone' ? c('Teléfono', 'Phone') : field === 'city' ? c('Ciudad', 'City') : c('Enlaces', 'Links')}{!contactAvailability[field] ? ` · ${c('no añadido', 'not added')}` : ''}</span></label>)}
           </fieldset>
           <div className="selection-heading"><div><strong>{c('Datos confirmados', 'Confirmed profile details')}</strong><small>{c('Elige solo lo que quieras incluir (máximo 50).', 'Choose only what you want to include (up to 50).')}</small></div><Tag>{selected.length} / 50 {c('ELEGIDOS', 'SELECTED')}</Tag></div>
           {facts.length > 1 && <div className="detail-actions"><Button type="button" variant="quiet" onClick={() => setSelected(facts.slice(0, 50).map((fact) => fact.id))}>{c('Elegir todos', 'Select all')}</Button>{selected.length > 0 && <Button type="button" variant="quiet" onClick={() => setSelected([])}>{c('Quitar todos', 'Clear all')}</Button>}</div>}

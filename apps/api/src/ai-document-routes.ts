@@ -43,7 +43,7 @@ export function buildAiResumeClaims(artifactId:string,snapshot:AiSourceSnapshot,
   const original=(factId:string,text:string):DerivedClaim=>{const source=evidence.get(factId)!;return {claimId:randomUUID(),section:source.kind,text,textHash:hash(text),sourceFactIds:[factId],sourceFingerprints:[{factId,contentHash:source.contentHash}],language:snapshot.locale,origin:'MANUAL',artifactId:null,proposalKey:null};};
   // Section names come from saved fact kinds, not model labels. Keep each heading next to its rewritten description.
   const printedHeadings=new Set<string>();
-  const kinds=new Set(['experience','current_employment','achievement','project','skill_evidence','skill','education','certification','language']);
+  const kinds=new Set(['summary','experience','current_employment','achievement','project','skill_evidence','skill','education','certification','language']);
   for(const claim of result.claims){
     const sourceKind=evidence.get(claim.sourceFactIds[0]!)!.kind;
     claim.section=kinds.has(sourceKind)?sourceKind:'achievement';

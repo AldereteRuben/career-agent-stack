@@ -3,7 +3,7 @@
 ## ADDED Requirements
 
 ### Requirement: Applications retain a next step and follow-up date
-The tracker SHALL let a person record an optional next step and a real calendar date for following up. The tracker SHALL show overdue and due-today follow-ups for open applications and let the person order the list by follow-up date. Closed applications SHALL not appear overdue.
+The tracker SHALL let a person record an optional next step and a real calendar date for following up. The tracker SHALL show overdue and due-today follow-ups for open applications and let the person order the list by follow-up date. Closed applications SHALL not appear overdue and SHALL sort after active applications. Within each group, dated applications SHALL appear before undated applications and be ordered from earliest to latest.
 
 #### Scenario: Person records a follow-up
 - **WHEN** the person saves a next step and a valid follow-up date
@@ -19,7 +19,8 @@ The tracker SHALL let a person record an optional next step and a real calendar 
 
 #### Scenario: Person orders by follow-up
 - **WHEN** the person chooses follow-up ordering
-- **THEN** applications with a date appear before undated applications, ordered from earliest to latest
+- **THEN** active applications appear before closed applications
+- **AND** within each group, applications with a date appear before undated applications, ordered from earliest to latest
 
 ### Requirement: Interviews preserve the selected time zone
 The tracker SHALL let a person record or clear an interview using a local date and time and an IANA time zone. It SHALL store the corresponding instant and zone and SHALL reject nonexistent or ambiguous daylight-saving wall times.
