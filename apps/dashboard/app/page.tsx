@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-/** Signing in lands on job search; the previous home dashboard stays available at /overview. */
+/** Start in the overview so the next useful action is clear after sign-in. */
 export default function RootPage() {
-  redirect('/searches');
+  redirect('/overview');
 }

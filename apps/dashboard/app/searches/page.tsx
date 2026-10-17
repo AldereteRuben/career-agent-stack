@@ -348,13 +348,13 @@ export default function SearchesPage() {
   const count = (n: number, one: [string, string], many: [string, string]) => `${n} ${n === 1 ? t(...one) : t(...many)}`;
 
   return <WorkspaceGate><AppShell>
-    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar empleo', 'Find jobs')} action={searches.length > 0 && !formOpen ? <div className={styles.actions}><Button variant="secondary" disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button></div> : undefined} />
+    <PageHeader eyebrow={t('BÚSQUEDA AUTOMÁTICA', 'AUTOMATIC JOB SEARCH')} title={t('Buscar ofertas', 'Find jobs')} description={t('Encuentra ofertas nuevas y guarda las que quieras seguir.', 'Find new jobs and save the ones you want to follow.')} action={searches.length > 0 && !formOpen ? <div className={styles.actions}><Button disabled={busy !== '' || !formDraft.ready} onClick={openNew}>{t('Nueva búsqueda', 'New search')}</Button></div> : undefined} />
     {busy === 'form' && <Notice>{editing ? t('Guardando cambios…', 'Saving changes…') : t('Guardando la búsqueda y empezando a buscar…', 'Saving your search and starting to look…')}</Notice>}
     {loadError && <Notice tone={listFailed ? 'error' : 'warning'} actions={listFailed ? <Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button> : undefined}>{loadError}</Notice>}
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}
     {message && <Notice tone="success">{t(successMessages[message][0], successMessages[message][1])}</Notice>}
         {aiStatus.failed && <Notice tone="warning" actions={<Button variant="secondary" onClick={aiStatus.retry}>{t('Reintentar ayuda de IA', 'Retry AI help')}</Button>}>{t('No pudimos comprobar la ayuda de IA. Puedes usar los filtros mientras reintentamos.', 'Could not check AI help. You can use filters while we retry.')}</Notice>}
-    <div className={styles.layout}>
+    <div className={`${styles.layout} ${firstUse ? styles.firstUseLayout : ''}`}>
       {(formOpen || firstUse) && <div className={styles.formColumn}>
         {aiAvailable && !editing && <div className={styles.entryModes} role="group" aria-label={t('Cómo crear la búsqueda', 'How to create the search')}>
           <Button variant="secondary" aria-pressed={aiOpen} onClick={() => setAiOpen(true)}>{t('Describir con Codex', 'Describe with Codex')}</Button>
@@ -374,19 +374,19 @@ export default function SearchesPage() {
         <SearchForm key={`${editing || 'new'}-${aiSearchProposal?.id ?? 'manual'}`} defaultProviders={defaultProviders} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t}/></>}
       </div>}
       {loading && <Notice>{t('Cargando tus búsquedas…', 'Loading your searches…')}</Notice>}
-      {listFailed && <Card className={styles.emptyResults}><Empty title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
+      {listFailed && <Card className={styles.emptyResults}><Empty headingLevel="h2" title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
       {searches.length > 0 && <section className={styles.results} id="search-results" aria-labelledby="search-results-title">
         {searches.length > 1 && <div className={styles.scopeBar}>
           <div className={styles.scopeField}>
-            <span id="search-scope-label">{t('Tus búsquedas', 'Your searches')}</span>
-            <div className={styles.scopeChoices} role="group" aria-labelledby="search-scope-label">
-              <button type="button" aria-pressed={!selectedId} onClick={() => void choose('', view, sort, 0, true, false)}>{t('Todas mis búsquedas', 'All my searches')}{unreadTotal ? ` (${unreadTotal})` : ''}</button>
-              {searches.map((search) => <button key={search.id} type="button" aria-pressed={selectedId === search.id} onClick={() => void choose(search.id, view, sort, 0, true, false)}>{searchName(search, anyRole)}{search.lastNewCount ? ` (${search.lastNewCount})` : ''}<small>{[search.location || t('Cualquier ubicación', 'Any location'), modeLabel(search.workMode), `${search.frequencyHours} h`, ...(searches.filter(item => searchName(item, anyRole) === searchName(search, anyRole)).length > 1 ? [t(`Búsqueda ${searches.indexOf(search) + 1}`, `Search ${searches.indexOf(search) + 1}`)] : []), ...(search.enabled ? [] : [t('En pausa', 'Paused')])].join(' · ')}</small></button>)}
-            </div>
+            <label htmlFor="search-scope" className={styles.scopeLabel}>{t('Ver resultados de', 'Show results for')}</label>
+            <select id="search-scope" value={selectedId} disabled={resultLoading} onChange={(event) => void choose(event.target.value, view, sort, 0, true, false)}>
+              <option value="">{t('Todas mis búsquedas', 'All my searches')}{unreadTotal ? ` · ${unreadTotal} ${t('nuevas', 'new')}` : ''}</option>
+              {searches.map((search) => <option key={search.id} value={search.id}>{searchName(search, anyRole)}{search.lastNewCount ? ` · ${search.lastNewCount} ${t('nuevas', 'new')}` : ''}{search.enabled ? '' : ` · ${t('En pausa', 'Paused')}`}</option>)}
+            </select>
           </div>
           <div className={styles.actions}>
             {selectedSearch && <><Button variant="quiet" disabled={busy !== ''} onClick={() => beginEdit(selectedSearch)}>{t('Editar', 'Edit')}</Button><Button variant="quiet" disabled={busy !== ''} onClick={() => void runAction(selectedSearch, 'toggle')}>{selectedSearch.enabled ? t('Pausar', 'Pause') : t('Reanudar', 'Resume')}</Button></>}
-            <button ref={manageButton} type="button" className="button button-quiet" aria-expanded={manageOpen} aria-controls="manage-searches" onClick={() => setManageOpen(!manageOpen)}>{t(`Gestionar búsquedas (${searches.length})`, `Manage searches (${searches.length})`)}</button>
+            <button ref={manageButton} type="button" className="button button-quiet" aria-expanded={manageOpen} aria-controls="manage-searches" onClick={() => setManageOpen(!manageOpen)}>{manageOpen ? t('Ocultar búsquedas', 'Hide searches') : t('Administrar búsquedas', 'Manage searches')}</button>
           </div>
         </div>}
         {manageOpen && searches.length > 1 && <div id="manage-searches" className={styles.managePanel}>
@@ -394,7 +394,7 @@ export default function SearchesPage() {
           <ul className={styles.manageList}>{searches.map((search) => <SearchCard key={search.id} search={search} selected={selectedId === search.id} disabled={busy !== '' || resultLoading} locale={locale} onSelect={() => void choose(search.id, view, sort, 0)} onEdit={() => beginEdit(search)} onToggle={() => void runAction(search, 'toggle')} onRefresh={() => void runAction(search, 'refresh')} t={t} modeLabel={modeLabel} />)}</ul>
         </div>}
         <div className={styles.resultsHead}>
-          <h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{current ? searchName(current, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2>
+          <div className={styles.resultsTitleGroup}><h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{current ? searchName(current, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2><span className={styles.resultCount} role="status">{resultLoading ? t('Cargando ofertas…', 'Loading jobs…') : count(total, ['oferta', 'job'], ['ofertas', 'jobs'])}{!resultLoading && actionMessage ? ` · ${t(actionMessages[actionMessage][0], actionMessages[actionMessage][1])}` : ''}</span></div>
           <div className={styles.sortControl}><label htmlFor="search-sort">{t('Ordenar', 'Sort')}</label><select id="search-sort" value={sort} onChange={(event) => changeSort(event.target.value as SearchSort)}><option value="relevance">{t('Mejor coincidencia', 'Best match')}</option><option value="recent">{t('Más recientes', 'Most recent')}</option></select></div>
         </div>
         {sole && <div className={styles.soleActions} data-search-actions="single">
@@ -406,7 +406,6 @@ export default function SearchesPage() {
         <SearchStatus scope={scope} single={Boolean(selectedSearch) || searches.length === 1} locale={locale} t={t} sourceName={sourceName} dateTime={dateTime} busy={busy !== ''} onRetry={(search) => void runAction(search, 'refresh')} />
         {aiAvailable && <SearchAiHelp searchIds={scope.map(search => search.id)} jobs={results} returnTo={resultsReturn} />}
         {pendingArrivals && <Notice tone="info" actions={<Button variant="secondary" onClick={showArrivals}>{t('Mostrar nuevas ofertas', 'Show new jobs')}</Button>}>{t('Hay ofertas nuevas. Tu página y posición siguen como estaban.', 'New jobs are available. Your page and position are unchanged.')}</Notice>}
-        <p className={styles.resultCount} role="status">{resultLoading ? t('Cargando ofertas…', 'Loading jobs…') : count(total, ['oferta', 'job'], ['ofertas', 'jobs'])}{!resultLoading && actionMessage ? ` · ${t(actionMessages[actionMessage][0], actionMessages[actionMessage][1])}` : ''}</p>
         <div id="search-result-list" ref={resultList} className={styles.resultList} aria-busy={resultLoading}>
           {!resultLoading && results.map((job) => <SearchResultCard key={job.id} job={job} aiAvailable={aiAvailable} returnTo={resultsReturn} view={view} busy={busy !== ''} t={t} sourceName={sourceName} onSave={() => void updateReview(job, 'SHORTLISTED')} onUnsave={() => void updateReview(job, 'UNREVIEWED')} onArchive={() => void updateReview(job, job.shortlistDecision === 'ARCHIVED' ? 'UNREVIEWED' : 'ARCHIVED')} onReview={() => void markReviewed(job)} />)}
           {!resultLoading && results.length === 0 && <SearchEmptyState kind={emptyKind({ view, error: resultsError, scope, matchesTotal })} matchesTotal={matchesTotal} nextCheck={nextScope} busy={busy !== ''} t={t}

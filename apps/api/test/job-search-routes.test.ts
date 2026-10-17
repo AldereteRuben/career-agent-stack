@@ -103,6 +103,46 @@ describe('saved job searches with a disposable database and cached fictional fee
     } finally { await app.close(); }
   });
 
+  test('automatic preparation skips every non-open availability without recording an attempt', async () => {
+    const app = server();
+    try {
+      const created = (await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload() })).json();
+      const id = created.search.id as string;
+      const jobId = (await client.query('select job_id from saved_job_search_matches where search_id=$1', [id])).rows[0].job_id as string;
+      for (const state of ['POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN']) {
+        await client.query('update jobs set availability=$2 where id=$1', [jobId, state]);
+        await app.inject({ method: 'PATCH', url: `/api/v1/job-searches/${id}`, payload: { autoPrepare: true } });
+        assert.equal(calls.length, 0, `${state} is not sent to the automatic preparer`);
+        const pending = (await client.query('select auto_prepared_at,auto_prepare_attempts,auto_prepare_error from saved_job_search_matches where search_id=$1', [id])).rows[0];
+        assert.equal(pending.auto_prepared_at, null); assert.equal(pending.auto_prepare_attempts, 0); assert.equal(pending.auto_prepare_error, null);
+      }
+      await client.query("update jobs set availability='OPEN' where id=$1", [jobId]);
+      await sources.processPendingJobPreparations(async (workspaceId, candidateId, locale) => { calls.push({ workspaceId, jobId: candidateId, locale }); });
+      assert.equal(calls.length, 1, 'The opted-in job becomes eligible once it is open');
+      assert.equal((await client.query('select auto_prepared_at from saved_job_search_matches where search_id=$1', [id])).rows[0].auto_prepared_at === null, false);
+    } finally { await app.close(); }
+  });
+
+  test('the post-lock eligibility query stays scoped to its candidate job', async () => {
+    const app = server();
+    try {
+      const created = (await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload() })).json();
+      const searchId = created.search.id as string;
+      const selectedJob = (await client.query('select job_id from saved_job_search_matches where search_id=$1', [searchId])).rows[0].job_id as string;
+      const otherJob = randomUUID();
+      const url = `https://jobs.fictional.example/jobs/${otherJob}`;
+      await client.query(`insert into jobs(id,workspace_id,title,company,canonical_url,availability,shortlist_decision) values($1,$2,'Second QA Engineer','Fictional Studio',$3,'OPEN','UNREVIEWED')`, [otherJob, workspace, url]);
+      await client.query(`insert into saved_job_search_matches(workspace_id,search_id,job_id) values($1,$2,$3)`, [workspace, searchId, otherJob]);
+      await client.query("update saved_job_searches set auto_prepare=true where id=$1", [searchId]);
+      await client.query("update jobs set shortlist_decision='ARCHIVED' where id=$1", [selectedJob]);
+
+      const selected = await sources.findPendingJobPreparationCandidate(dbmod.db, { workspaceId: workspace, searchId, jobId: selectedJob });
+      const other = await sources.findPendingJobPreparationCandidate(dbmod.db, { workspaceId: workspace, searchId, jobId: otherJob });
+      assert.equal(selected, undefined, 'The selected job became ineligible while waiting for its preparation lock');
+      assert.ok(other, 'Another eligible job exists in the same search but cannot stand in for the selected job');
+    } finally { await app.close(); }
+  });
+
   test('failed preparation is recorded and retried on the next refresh', async () => {
     const app = server();
     try {

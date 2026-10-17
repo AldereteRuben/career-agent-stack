@@ -12,7 +12,7 @@ export const any = (...phrases: string[]) => new RegExp(phrases.map(escape).join
 export const locales = ['es', 'en'] as const;
 export type Locale = (typeof locales)[number];
 
-export const routes = ['/', '/overview', '/jobs', '/jobs?scope=favorites', '/applications', '/profile', '/documents', '/boards', '/settings'] as const;
+export const routes = ['/searches', '/overview', '/jobs', '/jobs?scope=favorites', '/applications', '/profile', '/documents', '/boards', '/settings'] as const;
 
 export async function currentLocale(page: Page): Promise<string> {
   return ((await page.locator('html').getAttribute('lang')) ?? '').slice(0, 2).toLowerCase();
@@ -32,7 +32,7 @@ export function mainNavigation(page: Page): Locator {
 
 /** Navigates through the main navigation by href, so renamed labels do not break the test. */
 export async function goTo(page: Page, href: string) {
-  const target = new URL(href === '/' ? '/searches' : href, page.url());
+  const target = new URL(href === '/' ? '/overview' : href, page.url());
   if (new URL(page.url()).pathname === target.pathname || (page.viewportSize()?.width ?? 1440) <= 850) {
     await page.goto(new URL(href, page.url()).toString());
     await page.getByRole('heading', { level: 1 }).first().waitFor();
