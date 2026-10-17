@@ -9,6 +9,7 @@ function fakePdfJs(pages: readonly (readonly string[])[], options: {
   streamItems?: (pageNumber: number) => unknown[];
   readStream?: (pageNumber: number) => Promise<ReadableStreamReadResult<{ items: unknown[] }>>;
   onStreamCancel?: () => void;
+  pageError?: unknown;
   numPages?: number;
   loadError?: unknown;
 } = {}) {
@@ -21,7 +22,9 @@ function fakePdfJs(pages: readonly (readonly string[])[], options: {
       return {
         promise: options.loadError ? Promise.reject(options.loadError) : Promise.resolve({
           numPages: options.numPages ?? pages.length,
-          getPage: async (pageNumber: number) => ({
+          getPage: async (pageNumber: number) => {
+            if (options.pageError) throw options.pageError;
+            return ({
             streamTextContent: () => {
               let emitted = false;
               return new ReadableStream<{ items: unknown[] }>({
@@ -42,7 +45,8 @@ function fakePdfJs(pages: readonly (readonly string[])[], options: {
                 cancel() { options.onStreamCancel?.(); },
               });
             },
-          }),
+          });
+          },
         }),
         destroy: async () => { state.destroyed += 1; },
       };
@@ -125,6 +129,27 @@ test('maps password-protected and malformed PDF.js errors to stable helper codes
 
   const malformed = fakePdfJs([], { loadError: new Error('internal parser details') });
   await assert.rejects(extractResumePdfText(pdfFile(), async () => malformed.module), (error: unknown) => error instanceof ResumePdfExtractionError && error.code === 'invalid-pdf');
+
+  const pageFailure = fakePdfJs([['A sufficiently long resume text'] ], { pageError: new Error('page parser detail') });
+  await assert.rejects(extractResumePdfText(pdfFile(), async () => pageFailure.module), (error: unknown) => error instanceof ResumePdfExtractionError && error.code === 'invalid-pdf');
+
+  const streamFailure = fakePdfJs([['A sufficiently long resume text']], {
+    readStream: async () => { throw new Error('stream parser detail'); },
+  });
+  await assert.rejects(extractResumePdfText(pdfFile(), async () => streamFailure.module), (error: unknown) => error instanceof ResumePdfExtractionError && error.code === 'invalid-pdf');
+});
+
+test('reports PDF.js load failures and skips all file and library work for an already-aborted signal', async () => {
+  let loadCount = 0;
+  const failedLoader = async () => { loadCount += 1; throw new Error('module resolution detail'); };
+  await assert.rejects(extractResumePdfText(pdfFile(), failedLoader), (error: unknown) => error instanceof ResumePdfExtractionError && error.code === 'pdfjs-unavailable');
+  assert.equal(loadCount, 1);
+
+  const controller = new AbortController();
+  controller.abort();
+  const neverLoad = async () => { loadCount += 1; return fakePdfJs([]).module; };
+  await assert.rejects(extractResumePdfText(pdfFile(), neverLoad, 30_000, controller.signal), (error: unknown) => error instanceof ResumePdfExtractionError && error.code === 'cancelled');
+  assert.equal(loadCount, 1);
 });
 
 test('aborting extraction cancels the text stream and destroys the PDF.js worker', async () => {

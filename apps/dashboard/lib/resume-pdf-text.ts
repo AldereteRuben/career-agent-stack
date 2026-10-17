@@ -9,7 +9,7 @@ export const resumePdfLimits = {
   signatureSearchBytes: 1024,
 } as const;
 
-export type ResumePdfErrorCode = 'too-large' | 'invalid-pdf' | 'password-protected' | 'too-long' | 'timeout' | 'cancelled' | 'scanned';
+export type ResumePdfErrorCode = 'too-large' | 'invalid-pdf' | 'password-protected' | 'pdfjs-unavailable' | 'too-long' | 'timeout' | 'cancelled' | 'scanned';
 
 export class ResumePdfExtractionError extends Error {
   constructor(readonly code: ResumePdfErrorCode) {
@@ -71,9 +71,11 @@ export async function extractResumePdfText(
   timeoutMs: number = resumePdfLimits.timeoutMs,
   signal?: AbortSignal,
 ): Promise<{ text: string; pageCount: number; truncated: boolean }> {
+  if (signal?.aborted) throw new ResumePdfExtractionError('cancelled');
   if (file.size > resumePdfLimits.maxBytes) throw new ResumePdfExtractionError('too-large');
 
   const header = new Uint8Array(await file.slice(0, resumePdfLimits.signatureSearchBytes).arrayBuffer());
+  if (signal?.aborted) throw new ResumePdfExtractionError('cancelled');
   if (!hasPdfSignature(header)) throw new ResumePdfExtractionError('invalid-pdf');
 
   let loadingTask: PDFDocumentLoadingTask | undefined;
@@ -105,7 +107,14 @@ export async function extractResumePdfText(
   }, timeoutMs);
 
   const extraction = (async () => {
-    const library = await loadPdfJs();
+    let library: PdfJsModule;
+    try {
+      library = await loadPdfJs();
+    } catch {
+      if (timedOut) throw new ResumePdfExtractionError('timeout');
+      if (cancelled) throw new ResumePdfExtractionError('cancelled');
+      throw new ResumePdfExtractionError('pdfjs-unavailable');
+    }
     if (timedOut) throw new ResumePdfExtractionError('timeout');
     if (cancelled) throw new ResumePdfExtractionError('cancelled');
     library.GlobalWorkerOptions.workerSrc = `/pdf-assets/${library.version}/pdf.worker.min.mjs`;
