@@ -18,6 +18,8 @@ export const workspaces = pgTable('workspaces', {
   discoveryEnabled: boolean('discovery_enabled').notNull().default(false),
   name: varchar('name', { length: 160 }).notNull().default('My career workspace'),
   timezone: varchar('timezone', { length: 100 }).notNull().default('Europe/Madrid'),
+  // Increased by "delete all my data" (ADR 020); session cookies carry it, so older sessions stop working.
+  sessionGeneration: integer('session_generation').notNull().default(0),
   createdAt: created(), updatedAt: changed(),
 });
 
@@ -43,16 +45,22 @@ export const boards = pgTable('boards', {
   lastNewCount: integer('last_new_count').notNull().default(0),
   lastError: varchar('last_error', { length: 80 }),
   failureCount: integer('failure_count').notNull().default(0),
+  // Jobs listed by the previous complete refresh; a much smaller complete refresh gives no absence evidence (ADR 021).
+  lastCompleteCount: integer('last_complete_count'),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), provider: providerEnum('provider').notNull(), tenant: varchar('tenant', { length: 200 }).notNull(), region: varchar('region', { length: 40 }).notNull(), companyName: varchar('company_name', { length: 200 }).notNull(), companyDomain: varchar('company_domain', { length: 253 }).notNull(), careersUrl: text('careers_url').notNull(), associationStatus: associationEnum('association_status').notNull().default('UNVERIFIED'), permissionStatus: permissionEnum('permission_status').notNull().default('UNKNOWN'), allowedApplicationOrigins: jsonb('allowed_application_origins').$type<string[]>().notNull().default([]), enabled: boolean('enabled').notNull().default(false), reviewedAt: timestamp('reviewed_at', { withTimezone: true }), reviewDueAt: timestamp('review_due_at', { withTimezone: true }), lastSuccessfulRefreshAt: timestamp('last_successful_refresh_at', { withTimezone: true }), createdAt: created(), updatedAt: changed(),
 }, (t) => [unique('boards_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('boards_workspace_provider_region_tenant_uq').on(t.workspaceId, t.provider, t.region, t.tenant), index('boards_workspace_enabled_idx').on(t.workspaceId, t.enabled)]);
 
 export const jobs = pgTable('jobs', {
+  // The person closed this job; it stays CLOSED whatever sources report until they reopen it (ADR 021).
+  closedByUser: boolean('closed_by_user').notNull().default(false),
   discoveredAt: timestamp('discovered_at', { withTimezone: true }),
   seenAt: timestamp('seen_at', { withTimezone: true }),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), company: varchar('company', { length: 200 }).notNull(), title: varchar('title', { length: 300 }).notNull(), location: varchar('location', { length: 300 }), canonicalUrl: text('canonical_url'), availability: availabilityEnum('availability').notNull().default('UNKNOWN'), shortlistDecision: shortlistEnum('shortlist_decision').notNull().default('UNREVIEWED'), fitScore: integer('fit_score'), evidenceCoverage: integer('evidence_coverage'), eligibility: varchar('eligibility', { length: 20 }).notNull().default('NEEDS_REVIEW'), reasons: jsonb('reasons').$type<string[]>().notNull().default([]), createdAt: created(), updatedAt: changed(),
-}, (t) => [unique('jobs_workspace_id_uq').on(t.workspaceId, t.id), index('jobs_workspace_availability_idx').on(t.workspaceId, t.availability)]);
+}, (t) => [unique('jobs_workspace_id_uq').on(t.workspaceId, t.id), index('jobs_workspace_availability_idx').on(t.workspaceId, t.availability), index('jobs_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
 
 export const jobOccurrences = pgTable('job_occurrences', {
+  // Consecutive complete board refreshes that did not list this job (ADR 021).
+  missedCompleteReads: integer('missed_complete_reads').notNull().default(0),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(), provider: providerEnum('provider').notNull(), region: varchar('region', { length: 40 }).notNull(), tenant: varchar('tenant', { length: 200 }).notNull(), externalJobId: varchar('external_job_id', { length: 300 }).notNull(), jobUrl: text('job_url').notNull(), applyUrl: text('apply_url'), sourcePostedAt: timestamp('source_posted_at', { withTimezone: true }), sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }), firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(), lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(), lastSuccessfulRefreshAt: timestamp('last_successful_refresh_at', { withTimezone: true }), sourcePayload: jsonb('source_payload').$type<Record<string, unknown>>().notNull(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_occurrences_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_occurrences_identity_uq').on(t.workspaceId, t.provider, t.region, t.tenant, t.externalJobId)]);
 
@@ -63,7 +71,7 @@ export const jobSnapshots = pgTable('job_snapshots', {
 export const applications = pgTable('applications', {
   documentId: uuid('document_id'),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), jobId: uuid('job_id'), applicationCycle: integer('application_cycle').notNull().default(1), company: varchar('company', { length: 200 }).notNull(), role: varchar('role', { length: 300 }).notNull(), location: varchar('location', { length: 300 }), canonicalUrl: text('canonical_url'), state: applicationStateEnum('state').notNull().default('DRAFT'), recruitmentStage: recruitmentStageEnum('recruitment_stage').notNull().default('NO_RESPONSE'), shortlistDecision: shortlistEnum('shortlist_decision').notNull().default('UNREVIEWED'), notes: text('notes').notNull().default(''), version: integer('version').notNull().default(1), createdAt: created(), updatedAt: changed(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.documentId], foreignColumns: [documentVersions.workspaceId, documentVersions.id], name: 'applications_workspace_document_fk' }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'applications_workspace_job_fk' }), unique('applications_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('applications_workspace_job_cycle_uq').on(t.workspaceId, t.jobId, t.applicationCycle), index('applications_workspace_state_idx').on(t.workspaceId, t.state, t.updatedAt)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.documentId], foreignColumns: [documentVersions.workspaceId, documentVersions.id], name: 'applications_workspace_document_fk' }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'applications_workspace_job_fk' }), unique('applications_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('applications_workspace_job_cycle_uq').on(t.workspaceId, t.jobId, t.applicationCycle), index('applications_workspace_state_idx').on(t.workspaceId, t.state, t.updatedAt), index('applications_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
 
 export const applicationEvents = pgTable('application_events', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), applicationId: uuid('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }), actor: varchar('actor', { length: 80 }).notNull().default('USER'), eventType: varchar('event_type', { length: 100 }).notNull(), reason: text('reason'), priorState: varchar('prior_state', { length: 40 }), newState: varchar('new_state', { length: 40 }), evidence: jsonb('evidence').$type<Record<string, unknown>>(), aggregateVersion: integer('aggregate_version').notNull(), createdAt: created(),
@@ -162,6 +170,7 @@ export const jobSearchProviderCache = pgTable('job_search_provider_cache', {
   coverage: varchar('coverage', { length: 16 }).notNull().default('COMPLETE'),
   fetchedAt: timestamp('fetched_at', { withTimezone: true }), nextFetchAt: timestamp('next_fetch_at', { withTimezone: true }),
   failureCount: integer('failure_count').notNull().default(0), lastError: varchar('last_error', { length: 80 }),
+  lastCompleteCount: integer('last_complete_count'),
   updatedAt: changed(),
 });
 
@@ -171,6 +180,8 @@ export const jobSearchSources = pgTable('job_search_sources', {
   sourceUrl: text('source_url').notNull(), postedAt: timestamp('posted_at', { withTimezone: true }),
   firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  // Consecutive complete, freshly downloaded feeds of this provider that did not list this job (ADR 021).
+  missedCompleteReads: integer('missed_complete_reads').notNull().default(0),
   raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_search_sources_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_search_sources_identity_uq').on(t.workspaceId, t.provider, t.externalId), index('job_search_sources_job_idx').on(t.workspaceId, t.jobId)]);
 
@@ -236,3 +247,14 @@ export const jobIdentityMembers = pgTable('job_identity_members', {
 export const searchPreparationBudget = pgTable('search_preparation_budget', {
   workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}),day:date('day').notNull(),attempted:integer('attempted').notNull().default(0),
 },t=>[primaryKey({columns:[t.workspaceId,t.day]})]);
+
+/** Every change of a job's availability and why (ADR 021). Holds no job content beyond the reference. */
+export const jobAvailabilityEvents = pgTable('job_availability_events', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(),
+  fromState: availabilityEnum('from_state').notNull(), toState: availabilityEnum('to_state').notNull(),
+  reason: varchar('reason', { length: 30 }).notNull(), createdAt: created(),
+}, (t) => [
+  foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_availability_events_workspace_job_fk' }).onDelete('cascade'),
+  index('job_availability_events_job_idx').on(t.workspaceId, t.jobId, t.createdAt),
+  check('job_availability_events_reason_check', sql`${t.reason} in ('ABSENT_FROM_SOURCES', 'SEEN_AGAIN', 'CLOSED_BY_USER', 'REOPENED_BY_USER')`),
+]);

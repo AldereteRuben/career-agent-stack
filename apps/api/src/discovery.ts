@@ -8,6 +8,7 @@ import { boards, db, jobs, jobOccurrences, jobSnapshots, pool, workspaces } from
 import { readBoardWithReport, SourceHttpError } from './sources.js';
 import { applyMatch, loadMatchingContext, occurrencesForBoard } from './workspace-data.js';
 import { isNewJob } from './review-state.js';
+import { countCompleteBoardRead, fromDrizzle, reevaluateJobs } from './job-availability.js';
 
 export const INTERVAL_MS = 6 * 60 * 60 * 1000;
 const jitter = () => Math.floor(Math.random() * 5 * 60 * 1000);
@@ -57,18 +58,18 @@ export async function refreshBoard(id: string, boardId: string, automatic = fals
           const existing = existingByExternalId.get(item.externalId);
           let jobId = existing?.jobId ?? await findJobIdentity(tx,id,item.jobUrl) ?? candidateByKey.get(`${item.title}\n${item.jobUrl}`)?.id;
           const snapshotHash = createHash('sha256').update(`${item.title}\n${item.description ?? ''}`).digest('hex');
-          const scored = applyMatch({ discoveredAt: null, seenAt: null, id: jobId ?? '', workspaceId: id, company: board.companyName, title: item.title, location: item.location, canonicalUrl: item.jobUrl, availability: 'OPEN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: [], createdAt: now, updatedAt: now }, item.description, context);
+          const scored = applyMatch({ discoveredAt: null, seenAt: null, id: jobId ?? '', workspaceId: id, company: board.companyName, title: item.title, location: item.location, canonicalUrl: item.jobUrl, availability: 'OPEN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: [], createdAt: now, updatedAt: now }, item.description, context);
           const scores = { fitScore: scored.fitScore, evidenceCoverage: scored.evidenceCoverage, eligibility: scored.eligibility, reasons: scored.reasons };
           if (!jobId) {
             jobId = (await tx.insert(jobs).values({ workspaceId: id, discoveredAt: now, company: board.companyName, title: item.title, location: item.location, canonicalUrl: item.jobUrl, availability: 'OPEN', ...scores }).returning({ id: jobs.id }))[0]!.id; added++;
             candidateByKey.set(`${item.title}\n${item.jobUrl}`, { id: jobId });
           } else {
-            await tx.update(jobs).set({ title: item.title, location: item.location, availability: 'OPEN', ...scores, updatedAt: now }).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))); updated++;
+            await tx.update(jobs).set({ title: item.title, location: item.location, ...scores, updatedAt: now }).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))); updated++;
           }
           await bindJobIdentity(tx,id,jobId,item.jobUrl);
           let occurrenceId = existing?.id;
           if (existing) {
-            await tx.update(jobOccurrences).set({ lastSeenAt: now, sourceUpdatedAt: item.updatedAt ? new Date(item.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: item.raw, jobUrl: item.jobUrl, applyUrl: item.applyUrl }).where(eq(jobOccurrences.id, existing.id));
+            await tx.update(jobOccurrences).set({ sourceUpdatedAt: item.updatedAt ? new Date(item.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: item.raw, jobUrl: item.jobUrl, applyUrl: item.applyUrl }).where(eq(jobOccurrences.id, existing.id));
           } else {
             occurrenceId = (await tx.insert(jobOccurrences).values({ workspaceId: id, jobId, provider: board.provider, region: board.region, tenant: board.tenant, externalJobId: item.externalId, jobUrl: item.jobUrl, applyUrl: item.applyUrl, sourcePostedAt: item.postedAt ? new Date(item.postedAt) : null, sourceUpdatedAt: item.updatedAt ? new Date(item.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: item.raw }).returning({ id: jobOccurrences.id }))[0]!.id;
           }
@@ -77,6 +78,13 @@ export async function refreshBoard(id: string, boardId: string, automatic = fals
             await tx.insert(jobSnapshots).values({ workspaceId: id, jobId, occurrenceId: occurrenceId ?? null, title: item.title, descriptionText: item.description, snapshotHash });
             hashByJob.set(jobId, snapshotHash);
           }
+        }
+        // ADR 021: only a complete refresh says which jobs are still listed and which are missing.
+        if (!sourceReport.skipped) {
+          const listed = discovered.filter((item) => item.externalId && item.title && item.jobUrl).map((item) => item.externalId);
+          const availability = fromDrizzle(tx);
+          const touched = await countCompleteBoardRead(availability, { id: board.id, workspaceId: id, provider: board.provider, region: board.region, tenant: board.tenant, lastCompleteCount: board.lastCompleteCount }, listed, now);
+          await reevaluateJobs(availability, id, touched, now);
         }
         await tx.update(boards).set({ lastSuccessfulRefreshAt: now, lastRunStatus: sourceReport.skipped ? 'PARTIAL' : 'COMPLETE', lastNewCount: added, failureCount: 0, lastError: null, nextRunAt: new Date(now.getTime() + INTERVAL_MS + jitter()), updatedAt: now }).where(and(eq(boards.id, boardId), eq(boards.workspaceId, id)));
         return { added, updated, total: added + updated, coverage: sourceReport.skipped ? 'PARTIAL' : 'COMPLETE', skipped: sourceReport.skipped, fetchedAt: now.toISOString() };

@@ -1,6 +1,6 @@
 # 020 — Deleting data and uninstalling
 
-Status: **accepted**; T1 implemented (`pnpm run uninstall`, [guide](../operations/uninstall.md)), T2–T4 pending (issue [#25](https://github.com/AldereteRuben/career-agent-stack/issues/25)). Date: 2026-10-10.
+Status: **accepted**; T1 implemented (`pnpm run uninstall`, [guide](../operations/uninstall.md)) and T2 implemented (Settings → Delete all my data), T3–T4 pending (issue [#25](https://github.com/AldereteRuben/career-agent-stack/issues/25)). Date: 2026-10-10.
 
 ## Context
 
@@ -84,8 +84,9 @@ Settings gets a "Delete all my data" action. It leaves the installation working 
 - **One database transaction:**
   - It deletes every row of the workspace in an explicit order that respects the foreign keys above, children before parents. The order lives in one list in the code.
   - It also clears `search_query_cache` and `job_search_provider_cache`. `search_provider_budget` stays: it holds no personal data, and resetting it would let the app exceed the providers' request limits.
-- **What survives, and nothing else:**
+- **What survives, and nothing else** (as implemented in T2: the order lives in `apps/api/src/workspace-deletion.ts`, and older `deletion_jobs` rows of the workspace are deleted too):
   - The workspace row, with every column except `id` and the session generation set back to its default (today `name`, `timezone` and `discovery_enabled`, which returns to `false`), and the session generation increased. The test compares every other column with the schema's defaults, so a column added later is covered too, and checks separately that the session generation is greater than before the deletion.
+  - The empty profile revision 1 that every new installation starts with, recreated in the same transaction: several routes need a profile revision to exist.
   - The `deletion_jobs` row for this operation: `id`, `workspace_id`, `status` and two timestamps. The workspace id is a random UUID with no personal meaning. Keeping it is what lets an interrupted deletion of files resume, as §19's preference for minimal identifiers allows.
 - **Files**, in the selected `DATA_LOCAL_PATH` and `FILES_LOCAL_PATH`, never assuming the checkout's `data/`:
   - `FILES_LOCAL_PATH` must be a different folder from `DATA_LOCAL_PATH`, and must neither contain nor be inside `run/`, `backups/`, `logs/`, `tmp/` or `setup-token` of the data folder. T2 makes the API refuse to start with a clear message in Spanish and English when it is not, and the deletion checks it again before removing anything. So emptying the documents folder can never delete the run records or the sign-in token.
