@@ -7,8 +7,8 @@ import { applicationEvents, factKinds, humanizeKey } from './labels';
 
 const dashboard = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// The app writes sentence case ("Candidatura creada"). `text-transform: capitalize` would turn every word into a capital
-// ("Candidatura Creada"), including text the user or a form wrote ("Are You Authorized To Work In Spain?").
+// The app writes sentence case ("Solicitud creada"). `text-transform: capitalize` would turn every word into a capital
+// ("Solicitud Creada"), including text the user or a form wrote ("Are You Authorized To Work In Spain?").
 test('no style capitalizes every word', () => {
   const css = readFileSync(join(dashboard, 'app/globals.css'), 'utf8');
   assert.equal(css.match(/text-transform:\s*capitalize/g)?.length ?? 0, 0, 'remove text-transform: capitalize; write the capital letter in the text instead');

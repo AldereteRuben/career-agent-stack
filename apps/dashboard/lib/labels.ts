@@ -18,7 +18,7 @@ function label(map: LabelMap, value: string | null | undefined, locale: Locale, 
 export const applicationStates: LabelMap = {
   DRAFT: { es: 'Borrador', en: 'Draft' },
   PREPARING: { es: 'Preparando', en: 'Preparing' },
-  REVIEW_REQUIRED: { es: 'Revisión pendiente', en: 'Needs review' },
+  REVIEW_REQUIRED: { es: 'Por revisar', en: 'Needs review' },
   READY: { es: 'Lista para enviar', en: 'Ready to submit' },
   IN_PROGRESS: { es: 'Envío en curso', en: 'Submission in progress' },
   UNKNOWN: { es: 'Resultado incierto', en: 'Outcome unclear' },
@@ -47,7 +47,7 @@ export function applicationStage(stage: string | undefined, state: string, local
 }
 
 export const applicationEvents: LabelMap = {
-  PREPARATION_CREATED: { es: 'Preparación de la candidatura revisada', en: 'Application preparation checked' },
+  PREPARATION_CREATED: { es: 'Preparación de la solicitud revisada', en: 'Application preparation checked' },
   APPLICATION_RESUME_SELECTED: { es: 'CV elegido para la solicitud', en: 'Application resume selected' },
   ASSIST_SUBMISSION_AUTHORIZED: { es: 'Envío autorizado', en: 'Submission authorized' },
   ASSIST_SUBMISSION_CONFIRMED: { es: 'Envío confirmado', en: 'Submission confirmed' },
@@ -59,8 +59,8 @@ export const applicationEvents: LabelMap = {
   ASSIST_MANUAL_HANDOFF: { es: 'Control manual del navegador', en: 'Manual browser handoff' },
   ASSIST_USER_RECONCILED: { es: 'Resultado declarado por ti', en: 'Outcome reported by you' },
 
-  APPLICATION_CREATED: { es: 'Candidatura creada', en: 'Application created' },
-  MANUAL_APPLICATION_RECORDED: { es: 'Candidatura registrada como enviada', en: 'Application recorded as sent' },
+  APPLICATION_CREATED: { es: 'Solicitud creada', en: 'Application created' },
+  MANUAL_APPLICATION_RECORDED: { es: 'Solicitud registrada como enviada', en: 'Application recorded as sent' },
   APPLICATION_STATE_CHANGED: { es: 'Estado actualizado', en: 'Status updated' },
   FOLLOW_UP_UPDATED: { es: 'Próximo paso actualizado', en: 'Next step updated' },
   INTERVIEW_UPDATED: { es: 'Entrevista actualizada', en: 'Interview updated' },
@@ -92,7 +92,7 @@ export const answerApprovals: LabelMap = {
   USER_APPROVED: { es: 'Aprobada por ti', en: 'Approved by you' },
 };
 export const documentApprovals: LabelMap = {
-  PENDING_REVIEW: { es: 'Pendiente de revisión', en: 'Waiting for review' },
+  PENDING_REVIEW: { es: 'Por revisar', en: 'Needs review' },
   USER_APPROVED: { es: 'Aprobado por ti', en: 'Approved by you' },
   REJECTED: { es: 'Descartado', en: 'Discarded' },
   SUPERSEDED: { es: 'Sustituido', en: 'Replaced' },
