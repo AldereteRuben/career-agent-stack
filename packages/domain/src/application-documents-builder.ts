@@ -2,7 +2,7 @@ import { extractKnownSkills, factCoversRequirement, type CandidateEvidence, type
 
 export type ApplicationDocumentLanguage = 'es' | 'en';
 export type ApplicationDocumentSentenceKind = 'OFFER_REFERENCE' | 'BOILERPLATE' | 'CANDIDATE_CLAIM';
-export type ApplicationDocumentSentenceOrigin = 'BUILDER';
+export type ApplicationDocumentSentenceOrigin = 'BUILDER' | 'CODEX' | 'USER_EDITED' | 'USER_UNSUPPORTED';
 
 export type ApplicationDocumentFact = CandidateEvidence & { workspaceId: string };
 
