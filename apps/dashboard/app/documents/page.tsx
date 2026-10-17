@@ -82,7 +82,7 @@ function DocumentsView() {
   const job = jobs.find((item) => item.id === jobId) ?? null;
   const defaultName = job ? `${c('CV', 'Resume')} · ${job.title} · ${job.company}` : c('CV · versión base', 'Resume · base version');
   const documentName = nameTouched ? name : defaultName;
-  const resumeContext = JSON.stringify({ jobId, locale: pdfLocale, paperSize, facts: [...selected].sort() });
+  const resumeContext = JSON.stringify({ jobId, locale: pdfLocale, facts: [...selected].sort() });
   const closeAiReview = () => { setAiReview(null); builderHeading.current?.focus(); };
   const useOriginalWording = () => { closeAiReview(); setMessage(c('Tus textos originales siguen seleccionados. Pulsa «Generar y revisar» para crear el PDF.', 'Your original wording is still selected. Choose “Generate and review” to create the PDF.')); };
   const reviewing = preview ? documents.find((doc) => doc.id === preview.id) ?? null : null;

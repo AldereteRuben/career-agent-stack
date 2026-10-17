@@ -6,7 +6,14 @@ import { resumeLabels, resumeSectionName } from '@career/domain';
 
 const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
-export async function renderResume(input: { path: string; fullName: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }>; role: string; locale?: 'es' | 'en'; paperSize?: 'A4' | 'LETTER'; facts: Array<{ kind: string; statement: string; tags: string[] }> }) {
+export type ResumePaperSize = 'A4' | 'LETTER';
+
+export function parseResumePaperSize(value: unknown): ResumePaperSize | null {
+  if (value === undefined || value === 'A4') return 'A4';
+  return value === 'LETTER' ? 'LETTER' : null;
+}
+
+export async function renderResume(input: { path: string; fullName: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }>; role: string; locale?: 'es' | 'en'; paperSize?: ResumePaperSize; facts: Array<{ kind: string; statement: string; tags: string[] }> }) {
   if (!input.facts.length || input.facts.length > 50) throw new Error('DOCUMENT_FACT_LIMIT');
   if (input.facts.reduce((size, fact) => size + fact.statement.length, 0) > 40_000) throw new Error('DOCUMENT_SIZE_LIMIT');
   const grouped = new Map<string, typeof input.facts>();

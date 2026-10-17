@@ -19,7 +19,7 @@ import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDele
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
-import { renderResume } from './document-renderer.js';
+import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
@@ -527,8 +527,8 @@ app.post('/api/v1/documents', async (request, reply) => {
   const allowedContactFields = ['email', 'phone', 'city', 'links'];
   const printedContactFields = body.printedContactFields === undefined ? ['email'] : body.printedContactFields;
   if (!Array.isArray(printedContactFields) || printedContactFields.length > allowedContactFields.length || !printedContactFields.every((field) => typeof field === 'string' && allowedContactFields.includes(field)) || new Set(printedContactFields).size !== printedContactFields.length) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
-  const paperSize = body.paperSize === undefined ? 'A4' : body.paperSize;
-  if (paperSize !== 'A4' && paperSize !== 'LETTER') return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
+  const paperSize = parseResumePaperSize(body.paperSize);
+  if (!paperSize) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
   const factIds = [...new Set(body.factIds as string[])]; if (factIds.length !== body.factIds.length) return fail(reply, 400, 'DUPLICATE_FACT_ID');
   const id = workspace(request);
   const profile = await latestProfile(db, id); if (!profile) return fail(reply, 409, 'PROFILE_NOT_CONFIGURED');
