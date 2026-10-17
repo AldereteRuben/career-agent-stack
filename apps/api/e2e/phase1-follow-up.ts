@@ -26,7 +26,7 @@ export const phase1FollowUpScenario: Scenario = {
     assert.ok(events.some((event) => event.eventType === 'INTERVIEW_UPDATED'));
 
     await setLocale(page, 'es');
-    await page.goto(new URL(`/applications?id=${application.id}&sort=follow-up`, uiUrl).toString());
+    await page.goto(new URL(`/applications?id=${application.id}&sort=follow-up&q=${encodeURIComponent(marker)}`, uiUrl).toString());
     await eventually(() => page.getByLabel('Siguiente paso', { exact: true }).inputValue(), (value) => value === 'Send a short follow-up', 'saved next step appears in Spanish tracker');
     await page.getByLabel('Recordatorio para', { exact: true }).waitFor();
     await page.getByLabel('Fecha y hora de entrevista', { exact: true }).waitFor();
