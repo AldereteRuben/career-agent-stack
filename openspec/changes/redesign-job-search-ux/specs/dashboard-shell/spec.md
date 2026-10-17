@@ -30,3 +30,14 @@ The dashboard shell and the changed workflows SHALL present user-facing navigati
 #### Scenario: User changes the selected locale
 - **WHEN** the dashboard is rendered in Spanish or English
 - **THEN** shell navigation and the changed workflow's user-facing text use that locale consistently
+
+### Requirement: Dashboard overview provides a dated activity calendar
+The dashboard SHALL open at the overview and show a calendar of workspace activity by day.
+
+#### Scenario: User opens the dashboard root
+- **WHEN** the user opens `/`
+- **THEN** the dashboard redirects to `/overview`
+
+#### Scenario: User reviews activity for a day
+- **WHEN** the overview loads activity for its displayed calendar range
+- **THEN** each day reflects activity in the viewer's calendar timezone and can be opened to inspect that day's activity
