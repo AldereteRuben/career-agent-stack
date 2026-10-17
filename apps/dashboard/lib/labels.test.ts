@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { applicationEvents, factKinds, humanizeKey, selectableFactKinds } from './labels';
+import { jobReportBatchItemErrors, jobReportBatchStates, jobReportCheckKinds, jobReportCheckStatuses, jobReportReasons, jobReportRequirementLevels, jobReportUnknowns, jobReportVerdicts } from '@career/domain';
+import { applicationEvents, factKinds, humanizeKey, jobReportBatchStateLabels, jobReportCheckLabels, jobReportCheckStatusLabels, jobReportItemErrorLabels, jobReportLevelLabels, jobReportReasonLabels, jobReportUnknownLabels, jobReportVerdictLabels, selectableFactKinds } from './labels';
 
 const dashboard = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -35,4 +36,13 @@ test('certifications and languages can be added with labels in both languages', 
 test('a saved answer without question text is named with only its first letter capitalized', () => {
   assert.equal(humanizeKey('notice.period'), 'Notice period');
   assert.equal(humanizeKey('work.authorization_status'), 'Work authorization status');
+});
+
+test('every job report code has a label in both languages, and the conclusions never read as a number', () => {
+  const pairs = [[jobReportVerdicts, jobReportVerdictLabels], [jobReportReasons, jobReportReasonLabels], [jobReportUnknowns, jobReportUnknownLabels], [jobReportCheckKinds, jobReportCheckLabels], [jobReportCheckStatuses, jobReportCheckStatusLabels], [jobReportRequirementLevels, jobReportLevelLabels], [jobReportBatchStates, jobReportBatchStateLabels], [jobReportBatchItemErrors, jobReportItemErrorLabels]] as const;
+  for (const [codes, map] of pairs) {
+    assert.deepEqual(Object.keys(map).sort(), [...codes].sort());
+    for (const code of codes) for (const language of ['es', 'en'] as const) assert.match(map[code]![language], /^\p{Lu}/u, `${code} (${language})`);
+  }
+  for (const text of Object.values(jobReportVerdictLabels)) assert.doesNotMatch(`${text.es} ${text.en}`, /\d|%/);
 });

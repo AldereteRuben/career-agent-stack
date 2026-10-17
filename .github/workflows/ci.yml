@@ -77,6 +77,10 @@ jobs:
           CAREER_V080_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_FACT_IMPORT_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify job evaluation reports and batches with a disposable database
+        run: pnpm run test:job-reports
+        env:
+          CAREER_JOB_REPORT_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify resume import with a disposable database
         run: pnpm run test:fact-import
         env:
@@ -119,6 +123,10 @@ jobs:
         run: pnpm run test:preparation
         env:
           CAREER_PREPARATION_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify the activity timeline with a disposable workspace
+        run: pnpm run test:timeline
+        env:
+          CAREER_TIMELINE_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify assisted applications against fictional fixtures
         run: pnpm run test:assisted
         env:

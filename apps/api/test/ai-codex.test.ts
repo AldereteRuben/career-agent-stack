@@ -111,7 +111,7 @@ test('account version, route and fingerprint are checked before dispatch', async
     [{ status: 'SIGNED_OUT', accountFingerprint: null }, 'NOT_CONNECTED', true],
     [{ billing: 'SEPARATE_API' }, 'NOT_CONNECTED', true],
     [{ accountFingerprint: 'd'.repeat(64) }, 'ACCOUNT_CHANGED', true],
-    [{ version: '0.161.0' }, 'UNSUPPORTED_VERSION', false],
+    [{ version: '0.162.0' }, 'UNSUPPORTED_VERSION', false],
     [{ status: 'UNAVAILABLE', accountFingerprint: null }, 'NOT_CONNECTED', false],
   ] as const) {
     let calls = 0;

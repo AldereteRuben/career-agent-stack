@@ -14,6 +14,7 @@ import { db, pool, applications, applicationEvents, assistedAttempts, answerVers
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
+import { registerActivityTimelineRoutes } from './activity-timeline.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
@@ -25,6 +26,7 @@ import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
+import { registerJobReportRoutes } from './job-report-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
@@ -394,7 +396,7 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
   const now = new Date();
-  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
+  const scored = applyMatch({ discoveredAt: null, seenAt: null, savedAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
     await lockKey(tx, `discovery:${id}`);
     await lockJobIdentity(tx,id);
@@ -418,6 +420,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 });
 
 registerJobAvailabilityRoutes(app, workspace);
+registerJobReportRoutes(app, workspace);
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
@@ -634,7 +637,7 @@ app.get('/api/v1/export', async (request, reply) => {
     artifacts.push({ documentId: document.id, sha256: digest, contentBase64: content.toString('base64') });
   }
   const searchState: Record<string,unknown> = {};
-  for (const table of ['search_job_reviews','job_identity_members','search_run_results','search_run_sources','search_runs']) {
+  for (const table of ['search_job_reviews','job_identity_members','search_run_results','search_run_sources','search_runs','job_report_batches','job_report_batch_items']) {
     const rows=(await pool.query(`SELECT * FROM ${table} WHERE workspace_id=$1`,[id])).rows;
     searchState[table]=table==='search_runs'
       ? rows.map((row) => ({...omit(row,'owner','lease_until'),status:row.finished_at?row.status:'CANCELLED',finished_at:row.finished_at ?? new Date().toISOString(),manual:false}))
@@ -660,6 +663,7 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
+registerActivityTimelineRoutes(app, workspace);
 const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
 registerJobSearchRoutes(app, workspace, prepareAutomatically);
 const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);

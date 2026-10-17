@@ -35,7 +35,8 @@ export function extractKnownSkills(description: string | null): Requirement[] {
   return skillAliases.filter(([, aliases]) => aliases.some((alias) => containsTerm(text, alias))).map(([skill]) => ({ text: skill, hard: false, skillTags: [skill] }));
 }
 
-function requirementTerms(req: Requirement) {
+/** Every normalized spelling a requirement is recognised by (its tags, text and known aliases). */
+export function requirementTerms(req: Requirement) {
   const terms = new Set<string>();
   for (const tag of [...(req.skillTags ?? []), req.text]) {
     const key = normalize(tag);

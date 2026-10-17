@@ -9,7 +9,7 @@ import { checkCurrentAiSnapshot } from './source-reader.js';
 import type { AiCurrentSources } from './source-snapshot.js';
 import type { AiPgClient, AiPgPool, AiQueue, AiQueueRun } from './queue.js';
 
-export const AI_WORKER_CONFIG_VERSION = 'codex-0.160.0-v1' as const;
+export const AI_WORKER_CONFIG_VERSION = 'codex-0.163.0-v1' as const;
 export type AiWorkerEvent = 'STORAGE_UNAVAILABLE' | 'SOURCE_UNAVAILABLE' | 'EXECUTION_FAILED';
 export type AiWorkerOptions = {
   pool: AiPgPool; queue: AiQueue; identitySalt: string;

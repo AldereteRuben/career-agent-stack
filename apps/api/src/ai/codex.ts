@@ -5,11 +5,11 @@ import {
   AI_LIMITS, aiHashSchema, aiSourceSnapshotSchema, validateAiOutput,
   type AiErrorCode, type AiOutput, type AiSourceSnapshot,
 } from '@career/domain';
-import { CODEX_PROTOCOL_VERSION, findCodexExecutable, inspectCodexAccount, type CodexAccountObservation } from './codex-account.js';
+import { CODEX_SUPPORTED_PROTOCOL_VERSIONS, findCodexExecutable, inspectCodexAccount, type CodexAccountObservation } from './codex-account.js';
 import { AiProcessError, aiProcessEnvironment, runAiProcess } from './process.js';
 import { AiPromptError, buildAiPrompt } from './prompts.js';
 
-/** Bundled official 0.160.0 model catalogue: priority 1. No model or billing fallback. */
+/** Bundled official 0.163.0 model catalogue: priority 1. No model or billing fallback. */
 export const CODEX_DEFAULT_MODEL = 'gpt-6.1-sol' as const;
 export const CODEX_MODELS = [CODEX_DEFAULT_MODEL] as const;
 export type CodexModel = (typeof CODEX_MODELS)[number];
@@ -44,7 +44,7 @@ const disabledFeatures = [
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const emptyUsage = (): CodexTokenUsage => ({ inputTokens: null, cachedInputTokens: null, outputTokens: null });
 const token = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
-// Emitted by pinned 0.160.0 because this adapter intentionally disables its code-mode execution host.
+// Emitted by pinned 0.163.0 because this adapter intentionally disables its code-mode execution host.
 const isolationNotice = 'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.';
 
 /** No copied credentials, API keys, provider endpoints or inherited debug/proxy configuration. */
@@ -57,12 +57,12 @@ function inferenceEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 function checkAccount(account: CodexAccountObservation, fingerprint: string, dispatched: 'NO' | 'YES'): void {
-  if (account.status === 'UNSUPPORTED' || (account.version !== null && account.version !== CODEX_PROTOCOL_VERSION)) throw new CodexExecutionError('UNSUPPORTED_VERSION', dispatched);
+  if (account.status === 'UNSUPPORTED' || (account.version !== null && !CODEX_SUPPORTED_PROTOCOL_VERSIONS.includes(account.version as (typeof CODEX_SUPPORTED_PROTOCOL_VERSIONS)[number]))) throw new CodexExecutionError('UNSUPPORTED_VERSION', dispatched);
   if (account.status !== 'SIGNED_IN' || account.billing !== 'CHATGPT_PLAN' || !account.accountFingerprint) {
     const authoritative = account.status === 'SIGNED_OUT' || account.status === 'SIGNED_IN' && account.billing === 'SEPARATE_API';
     throw new CodexExecutionError('NOT_CONNECTED', dispatched, authoritative);
   }
-  if (account.version !== CODEX_PROTOCOL_VERSION) throw new CodexExecutionError('UNSUPPORTED_VERSION', dispatched);
+  if (!CODEX_SUPPORTED_PROTOCOL_VERSIONS.includes(account.version as (typeof CODEX_SUPPORTED_PROTOCOL_VERSIONS)[number])) throw new CodexExecutionError('UNSUPPORTED_VERSION', dispatched);
   if (account.accountFingerprint !== fingerprint) throw new CodexExecutionError('ACCOUNT_CHANGED', dispatched, true);
   if (dispatched === 'NO' && account.usage.availability === 'KNOWN' && account.usage.windows.some(window => window.limitReached === true)) {
     throw new CodexExecutionError('PROVIDER_LIMIT_REACHED', 'NO');
@@ -210,7 +210,7 @@ export async function executeCodex(
     const validated = validateAiOutput(parsed.raw, source, scope);
     if (!validated.ok) throw new CodexExecutionError('INVALID_OUTPUT', 'YES');
     if (signal?.aborted) throw new CodexExecutionError('CANCELLED', 'YES');
-    result = { output: validated.output, inputContentHash: prompt.inputContentHash, model, cliVersion: CODEX_PROTOCOL_VERSION, usage: parsed.usage, account: after };
+    result = { output: validated.output, inputContentHash: prompt.inputContentHash, model, cliVersion: after.version!, usage: parsed.usage, account: after };
   } catch (error) {
     const dispatched = !invoked ? 'NO' : parser.hasStarted() ? 'YES' : 'UNKNOWN';
     if (error instanceof CodexExecutionError) failure = error;

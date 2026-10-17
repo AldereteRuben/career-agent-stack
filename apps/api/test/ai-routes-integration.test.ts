@@ -41,16 +41,22 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     const workspace = (request: { headers: Record<string, unknown> }) => request.headers['x-fixture-workspace'] === other ? other : owner;
     const cancellations: string[] = [];
     registerAiConnectionRoutes(app, workspace, { enabled: true, identitySalt: 'f'.repeat(32), repository: createAiConnectionRepository(database, queue),
-      inspect: async () => ({ status: 'SIGNED_IN', version: '0.160.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint, maskedIdentity: 'f***@example.test', plan: 'plus', usage: normalizeAiUsage({ provider: 'codex', source: 'NONE', observedAt: null, windows: [], costUsd: null }, Date.now()) }),
+      inspect: async () => ({ status: 'SIGNED_IN', version: '0.163.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint, maskedIdentity: 'f***@example.test', plan: 'plus', usage: normalizeAiUsage({ provider: 'codex', source: 'NONE', observedAt: null, windows: [], costUsd: null }, Date.now()) }),
     });
     registerAiRunRoutes(app, workspace, { enabled: true, database, queue, cancelRun: id => cancellations.push(id) });
     registerAiAnswerRoutes(app, workspace, database);
     const request = { operation: 'SEARCH_DRAFT', locale: 'en', searchRequest: 'Customer support in Spain' };
-    assert.equal((await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request })).statusCode, 409);
+    const unconnected = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request });
+    assert.equal(unconnected.statusCode, 409); assert.equal(unconnected.json().error, 'AI_NOT_CONNECTED');
     const observed = (await app.inject({ method: 'POST', url: '/api/v1/ai/connections/codex/inspect' })).json();
     const connection = await app.inject({ method: 'POST', url: '/api/v1/ai/connections/codex/authorize', payload: { observationId: observed.observation.id } });
     assert.equal(connection.statusCode, 200); assert.equal(connection.json().connection.authorized, true);
     assert.ok(!connection.body.includes(fingerprint), 'account fingerprint stays server-side');
+    // An authorized account whose last check found no signed-in session asks for a new check, not a new authorization.
+    await fixturePool.query(`UPDATE ai_connections SET state = 'UNAVAILABLE' WHERE workspace_id = $1`, [owner]);
+    const signedOut = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request });
+    assert.equal(signedOut.statusCode, 409); assert.equal(signedOut.json().error, 'AI_SESSION_UNAVAILABLE');
+    await fixturePool.query(`UPDATE ai_connections SET state = 'CONNECTED' WHERE workspace_id = $1`, [owner]);
     const previewResponse = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request });
     assert.equal(previewResponse.statusCode, 200, previewResponse.body);
     const preview = previewResponse.json();
