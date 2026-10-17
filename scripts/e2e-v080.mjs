@@ -214,7 +214,7 @@ try {
   await page.goto(new URL('/overview', ui).toString());
   await setLocale(page, 'es');
   await page.locator('.getting-started > .eyebrow').filter({ hasText: /^TU SIGUIENTE PASO$/i }).waitFor();
-  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV por revisar' });
+  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV pendiente de revisión' });
   await pendingResumeMetric.waitFor();
   assert.equal(await pendingResumeMetric.locator('strong').innerText(), '1', 'The overview shows one resume waiting for review');
   await page.getByRole('link', { name: /Review resumes|Revisar CV/i }).waitFor();

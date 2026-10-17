@@ -312,7 +312,8 @@ async function cloneDashboard(source: string, target: string) {
     const from = join(source, entry.name); const to = join(target, entry.name);
     // Next's route discovery does not reliably follow a symlinked app directory.
     // Copy source directories for a stable snapshot; share only installed dependencies.
-    if (entry.name === 'node_modules') await symlink(from, to, 'dir');
+    // A junction needs no privileges on Windows, where creating a directory symlink does.
+    if (entry.name === 'node_modules') await symlink(from, to, process.platform === 'win32' ? 'junction' : 'dir');
     else if (entry.isDirectory()) await cp(from, to, { recursive: true });
     else if (entry.isFile()) await copyFile(from, to);
     else await cp(from, to);
