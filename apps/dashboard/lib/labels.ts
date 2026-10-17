@@ -80,7 +80,7 @@ export const factKinds: LabelMap = {
   project: { es: 'Proyecto', en: 'Project' },
   language: { es: 'Idioma', en: 'Language' },
 };
-export const selectableFactKinds = ['summary', 'achievement', 'skill_evidence', 'experience', 'education', 'project'] as const;
+export const selectableFactKinds = ['summary', 'achievement', 'skill_evidence', 'experience', 'education', 'certification', 'language', 'project'] as const;
 
 export const factApprovals: LabelMap = {
   SUGGESTED: { es: 'Por confirmar', en: 'Needs confirmation' },
