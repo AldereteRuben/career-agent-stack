@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { jobReportBatchItemErrors, jobReportBatchStates, jobReportCheckKinds, jobReportCheckStatuses, jobReportReasons, jobReportRequirementLevels, jobReportUnknowns, jobReportVerdicts } from '../../../packages/domain/src/job-report';
+import { jobReportBatchItemErrors, jobReportBatchStates, jobReportCheckKinds, jobReportCheckStatuses, jobReportReasons, jobReportRequirementLevels, jobReportUnknowns, jobReportVerdicts } from '@career/domain';
 import { applicationEvents, factKinds, humanizeKey, jobReportBatchStateLabels, jobReportCheckLabels, jobReportCheckStatusLabels, jobReportItemErrorLabels, jobReportLevelLabels, jobReportReasonLabels, jobReportUnknownLabels, jobReportVerdictLabels, selectableFactKinds } from './labels';
 
 const dashboard = join(dirname(fileURLToPath(import.meta.url)), '..');
