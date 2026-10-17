@@ -66,11 +66,23 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
     ['I joined in March 2020.', 'March 2020'],
     ['I hold a PMP certification.', 'PMP'],
     ['I worked at Globex Labs.', 'Globex Labs'],
+    ['I have ten years of experience.', 'ten'],
+    ['I am a Senior Data Scientist.', 'Senior Data Scientist'],
   ];
   for (const [text, item] of cases) {
     const result = validateApplicationDocumentSentence({ sentence: claim({ text }), workspaceId, facts: [facts[0]!], offer });
     assert.deepEqual(result, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item } }, text);
   }
+});
+
+test('skill aliases in approved evidence support the canonical matching requirement', () => {
+  const postgresFact: ApplicationDocumentFact = {
+    id: 'fact-postgres', workspaceId, approval: 'USER_APPROVED', text: 'Built database systems with PostgreSQL.', tags: ['sql'],
+  };
+  const result = validateApplicationDocumentSentence({
+    sentence: claim({ text: 'Used PostgreSQL.', sourceFactIds: ['fact-postgres'] }), workspaceId, facts: [postgresFact], offer,
+  });
+  assert.equal(result.ok, true);
 });
 
 test('edits follow supported, rejected or confirmed-unsupported outcomes', () => {
@@ -80,15 +92,21 @@ test('edits follow supported, rejected or confirmed-unsupported outcomes', () =>
   });
   assert.deepEqual(supported, { ok: true, sentence: { ...original, text: 'Built products using React.', origin: 'USER_EDITED' } });
 
-  const rejected = saveApplicationDocumentSentenceEdit({
-    original, text: 'Built products using Python.', sourceFactIds: ['fact-supported'], workspaceId, facts, offer,
-  });
-  assert.deepEqual(rejected, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'python' } });
-
-  const confirmed = saveApplicationDocumentSentenceEdit({
-    original, text: 'Built products using Python.', sourceFactIds: ['fact-supported'], confirmUnsupported: true, workspaceId, facts, offer,
-  });
-  assert.deepEqual(confirmed, { ok: true, sentence: { ...original, text: 'Built products using Python.', origin: 'USER_UNSUPPORTED' } });
+  const unsupportedEdits = [
+    ['Built products using Python.', 'python'],
+    ['Led a team of 10 using React.', '10'],
+    ['Used React since March 2020.', 'March 2020'],
+  ];
+  for (const [text, item] of unsupportedEdits) {
+    const rejected = saveApplicationDocumentSentenceEdit({
+      original, text, sourceFactIds: ['fact-supported'], workspaceId, facts, offer,
+    });
+    assert.deepEqual(rejected, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item } }, text);
+    const confirmed = saveApplicationDocumentSentenceEdit({
+      original, text, sourceFactIds: ['fact-supported'], confirmUnsupported: true, workspaceId, facts, offer,
+    });
+    assert.deepEqual(confirmed, { ok: true, sentence: { ...original, text, origin: 'USER_UNSUPPORTED' } }, text);
+  }
 });
 
 test('an unsupported sentence edited back to supported becomes USER_EDITED', () => {
@@ -118,15 +136,41 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
   const confirmed = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with Python experience', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer });
   assert.equal(confirmed.ok && confirmed.sentence.kind, 'CANDIDATE_CLAIM');
   assert.equal(confirmed.ok && confirmed.sentence.origin, 'USER_UNSUPPORTED');
+  assert.deepEqual(saveApplicationDocumentSentenceEdit({
+    original: claim({ text: 'Used React.' }), text: 'Used Python.', sourceFactIds: [], workspaceId, facts, offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'python' } });
+  const noCitationConfirmed = saveApplicationDocumentSentenceEdit({
+    original: claim({ text: 'Used React.' }), text: 'Used Python.', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer,
+  });
+  assert.equal(noCitationConfirmed.ok && noCitationConfirmed.sentence.origin, 'USER_UNSUPPORTED');
+});
+
+test('editing an unsupported sentence needs fresh confirmation unless it is unchanged', () => {
+  const original = claim({ text: 'Used Python.', origin: 'USER_UNSUPPORTED', sourceFactIds: [] });
+  assert.deepEqual(saveApplicationDocumentSentenceEdit({
+    original, text: 'Used Python professionally.', sourceFactIds: [], workspaceId, facts, offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'python' } });
+  const confirmed = saveApplicationDocumentSentenceEdit({
+    original, text: 'Used Python professionally.', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer,
+  });
+  assert.equal(confirmed.ok && confirmed.sentence.origin, 'USER_UNSUPPORTED');
+  assert.deepEqual(saveApplicationDocumentSentenceEdit({
+    original, text: original.text, sourceFactIds: original.sourceFactIds, workspaceId, facts, offer,
+  }), { ok: true, sentence: original });
 });
 
 test('assistant proposals must be claims and pass the same provenance checks', () => {
-  const valid = validateApplicationDocumentAssistantProposal({ sentence: claim({ origin: 'CODEX' }), workspaceId, facts, offer });
+  const original = claim();
+  const valid = validateApplicationDocumentAssistantProposal({ sentence: claim({ origin: 'CODEX' }), original, workspaceId, facts, offer });
   assert.equal(valid.ok, true);
-  const unsupported = validateApplicationDocumentAssistantProposal({ sentence: claim({ origin: 'CODEX', text: 'Expert in Python.' }), workspaceId, facts: [facts[0]!], offer });
+  const unsupported = validateApplicationDocumentAssistantProposal({ sentence: claim({ origin: 'CODEX', text: 'Expert in Python.' }), original, workspaceId, facts: [facts[0]!], offer });
   assert.deepEqual(unsupported, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'python' } });
   const boilerplate = validateApplicationDocumentAssistantProposal({
-    sentence: { sentenceId: 'salutation', text: 'Hello', kind: 'BOILERPLATE', origin: 'CODEX', sourceFactIds: [] }, workspaceId, facts, offer,
+    sentence: { sentenceId: 'salutation', text: 'Hello', kind: 'BOILERPLATE', origin: 'CODEX', sourceFactIds: [] }, original, workspaceId, facts, offer,
   });
   assert.deepEqual(boilerplate, { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: 'salutation' } });
+  const newClaim = validateApplicationDocumentAssistantProposal({
+    sentence: claim({ sentenceId: 'new-claim', origin: 'CODEX' }), original, workspaceId, facts, offer,
+  });
+  assert.deepEqual(newClaim, { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: 'new-claim' } });
 });

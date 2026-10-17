@@ -5,11 +5,12 @@ import {
   type ApplicationDocumentOffer,
   type ApplicationDocumentSentence,
 } from './application-documents-builder.js';
-import { containsTerm, extractKnownSkills } from './matching.js';
+import { containsTerm, extractKnownSkills, factCoversRequirement, type Requirement } from './matching.js';
 
 export type ApplicationDocumentValidationIssue =
   | { code: 'NO_CITATION'; sentenceId: string }
   | { code: 'DUPLICATE_CITATION'; sentenceId: string }
+  | { code: 'DUPLICATE_SENTENCE_ID'; sentenceId: string }
   | { code: 'FACT_NOT_APPROVED'; sentenceId: string; factId: string }
   | { code: 'UNSUPPORTED_CONTENT'; sentenceId: string; item: string }
   | { code: 'INVALID_SENTENCE_KIND'; sentenceId: string }
@@ -19,14 +20,18 @@ export type ApplicationDocumentValidationResult =
   | { ok: true; sentence: ApplicationDocumentSentence }
   | { ok: false; issue: ApplicationDocumentValidationIssue };
 
-type Mention = { item: string; category: 'skill' | 'number' | 'date' | 'credential' | 'entity' };
+type Mention = { item: string; category: 'skill' | 'number' | 'date' | 'credential' | 'entity'; requirement?: Requirement };
 
 function normalized(value: string) {
   return value.normalize('NFKD').replace(/\p{M}+/gu, '').toLocaleLowerCase('en').replace(/\s+/gu, ' ').trim();
 }
 
-function supportedByCitedFacts(item: string, citedFacts: string) {
-  return containsTerm(citedFacts, item);
+function supportedByCitedFacts(mention: Mention, citedFacts: ApplicationDocumentFact[]) {
+  if (mention.category === 'skill' && mention.requirement) {
+    return citedFacts.some((fact) => factCoversRequirement(fact, mention.requirement!));
+  }
+  const citedContent = citedFacts.map((fact) => `${fact.text} ${fact.tags.join(' ')}`).join(' ');
+  return containsTerm(citedContent, mention.item);
 }
 
 function cleanMention(value: string) {
@@ -50,7 +55,7 @@ function cleanMention(value: string) {
 
 function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mention[] {
   const mentions: Mention[] = [];
-  for (const requirement of extractKnownSkills(text)) mentions.push({ item: requirement.text, category: 'skill' });
+  for (const requirement of extractKnownSkills(text)) mentions.push({ item: requirement.text, category: 'skill', requirement });
 
   const datePattern = /\b(?:\d{1,2}[./-]\d{1,2}[./-](?:19|20)?\d{2}|(?:19|20)\d{2}[./-]\d{1,2}(?:[./-]\d{1,2})?|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+de)?\s+(?:\d{1,2}(?:,)?\s+)?(?:19|20)\d{2})\b/giu;
   const dateSpans: Array<{ start: number; end: number }> = [];
@@ -65,6 +70,9 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
     if (match[0]) mentions.push({ item: match[0], category: 'number' });
   }
 
+  const numberWords = /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|mil)\b/giu;
+  for (const match of text.matchAll(numberWords)) if (match[0]) mentions.push({ item: match[0], category: 'number' });
+
   const credentialPattern = /\b(?:PMP|CPA|CFA|CISSP|TOEFL|IELTS|GED|PhD|MBA|(?:AWS\s+)?certified(?:\s+(?:in|as)\s+[\p{L}\p{N}+#.-]+){0,3}|certificaci[oó]n(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|certificad[oa](?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3}|licen[cs]e(?:\s+in\s+[\p{L}\p{N}+#.-]+){0,3}|licencia(?:\s+en\s+[\p{L}\p{N}+#.-]+){0,3})\b/giu;
   for (const match of text.matchAll(credentialPattern)) if (match[0]) mentions.push({ item: match[0].trim(), category: 'credential' });
 
@@ -77,13 +85,16 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
     if (item) mentions.push({ item, category: 'entity' });
   }
 
+  const jobTitlePattern = /\b(?:(?:senior|junior|lead|principal|staff|s[eé]nior|j[uú]nior|l[ií]der|especialista|responsable)\s+)?(?:product|software|data|ux|ui|platform|frontend|front-end|backend|back-end|cloud|machine learning|producto|datos|dise[nñ]o|plataforma|desarrollo|anal[ií]tica)\s+(?:engineer|developer|designer|analyst|manager|architect|scientist|researcher|director|ingeniero|desarrollador|dise[nñ]ador|analista|gerente|arquitecto|cient[ií]fico|responsable)\b/giu;
+  for (const match of text.matchAll(jobTitlePattern)) if (match[0]) mentions.push({ item: match[0].trim(), category: 'entity' });
+
   const unique = new Map<string, Mention>();
   for (const mention of mentions) unique.set(`${mention.category}:${normalized(mention.item)}`, mention);
   return [...unique.values()];
 }
 
-function unsupportedMentions(text: string, citedContent: string, offer: ApplicationDocumentOffer) {
-  return sentenceMentions(text, offer).filter((mention) => !supportedByCitedFacts(mention.item, citedContent));
+function unsupportedMentions(text: string, citedFacts: ApplicationDocumentFact[], offer: ApplicationDocumentOffer) {
+  return sentenceMentions(text, offer).filter((mention) => !supportedByCitedFacts(mention, citedFacts));
 }
 
 export function validateApplicationDocumentSentence(input: {
@@ -126,8 +137,7 @@ export function validateApplicationDocumentSentence(input: {
   if (badIndex >= 0) {
     return { ok: false, issue: { code: 'FACT_NOT_APPROVED', sentenceId: sentenceValue.sentenceId, factId: sentenceValue.sourceFactIds[badIndex] ?? '' } };
   }
-  const citedContent = sourceFacts.map((fact) => `${fact!.text} ${fact!.tags.join(' ')}`).join(' ');
-  const unsupported = unsupportedMentions(sentenceValue.text, citedContent, input.offer)[0];
+  const unsupported = unsupportedMentions(sentenceValue.text, sourceFacts as ApplicationDocumentFact[], input.offer)[0];
   return unsupported
     ? { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: sentenceValue.sentenceId, item: unsupported.item } }
     : { ok: true, sentence: sentenceValue };
@@ -156,6 +166,13 @@ export function saveApplicationDocumentSentenceEdit(input: {
   };
   const mentions = sentenceMentions(draft.text, input.offer);
   if (draft.kind === 'BOILERPLATE' && mentions.length) draft.kind = 'CANDIDATE_CLAIM';
+  if (draft.kind === 'CANDIDATE_CLAIM' && !draft.sourceFactIds.length && !input.confirmUnsupported) {
+    const unsupported = unsupportedMentions(draft.text, [], input.offer)[0];
+    return { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported?.item ?? 'approved fact citation' } };
+  }
+  if (draft.kind === 'CANDIDATE_CLAIM' && !draft.sourceFactIds.length && input.confirmUnsupported) {
+    return { ok: true, sentence: { ...draft, origin: 'USER_UNSUPPORTED' } };
+  }
   const validation = validateApplicationDocumentSentence({ sentence: draft, workspaceId: input.workspaceId, facts: input.facts, offer: input.offer });
   if (validation.ok) {
     return { ok: true, sentence: { ...draft, origin: 'USER_EDITED' } };
@@ -166,8 +183,8 @@ export function saveApplicationDocumentSentenceEdit(input: {
     return { ok: true, sentence: { ...draft, origin: 'USER_UNSUPPORTED' } };
   }
   if (noCitation) {
-    const unsupported = unsupportedMentions(draft.text, '', input.offer)[0];
-    return { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported?.item ?? 'cita a un hecho aprobado' } };
+    const unsupported = unsupportedMentions(draft.text, [], input.offer)[0];
+    return { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported?.item ?? 'approved fact citation' } };
   }
   return validation;
 }
@@ -175,12 +192,19 @@ export function saveApplicationDocumentSentenceEdit(input: {
 /** Assistant output may only reword an existing claim and must still be supported by approved same-workspace facts. */
 export function validateApplicationDocumentAssistantProposal(input: {
   sentence: ApplicationDocumentSentence;
+  original: ApplicationDocumentSentence;
   workspaceId: string;
   facts: ApplicationDocumentFact[];
   offer: ApplicationDocumentOffer;
 }): ApplicationDocumentValidationResult {
-  if (input.sentence.kind !== 'CANDIDATE_CLAIM' || input.sentence.origin !== 'CODEX') {
+  if (input.sentence.kind !== 'CANDIDATE_CLAIM' || input.sentence.origin !== 'CODEX'
+    || input.original.kind !== 'CANDIDATE_CLAIM' || input.original.origin === 'USER_UNSUPPORTED'
+    || input.sentence.sentenceId !== input.original.sentenceId
+    || input.sentence.sourceFactIds.length !== input.original.sourceFactIds.length
+    || !input.sentence.sourceFactIds.every((id, index) => id === input.original.sourceFactIds[index])) {
     return { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: input.sentence.sentenceId } };
   }
+  const originalValidation = validateApplicationDocumentSentence({ ...input, sentence: input.original });
+  if (!originalValidation.ok) return originalValidation;
   return validateApplicationDocumentSentence(input);
 }

@@ -90,6 +90,8 @@ test('fact changes affect factsHash and material offer changes affect offerHash'
   assert.equal(baseline.ok && changedFact.ok && changedTitle.ok, true);
   if (!baseline.ok || !changedFact.ok || !changedTitle.ok) return;
   assert.notEqual(baseline.factsHash, changedFact.factsHash);
+  const changedTags = await applicationDocumentHashes({ workspaceId, claims: [claim], facts: [{ ...facts[0]!, tags: ['react', 'payments'] }], offer });
+  assert.notEqual(baseline.factsHash, changedTags.factsHash);
   assert.notEqual(baseline.offerHash, changedTitle.offerHash);
   const changedApplicationFields = await applicationDocumentHashes({
     workspaceId,
@@ -99,6 +101,14 @@ test('fact changes affect factsHash and material offer changes affect offerHash'
   });
   assert.equal(changedApplicationFields.ok, true);
   if (baseline.ok && changedApplicationFields.ok) assert.notEqual(baseline.offerHash, changedApplicationFields.offerHash);
+});
+
+test('duplicate sentence ids are refused when creating a revision', async () => {
+  const duplicate = await createApplicationDocumentRevision({
+    id: 'revision-duplicate', workspaceId, documentId: 'document-1', language: 'es', claims: [claim, { ...claim, text: 'Otra frase.' }],
+    facts, offer, paperSize: 'A4', textSha256: 'a'.repeat(64), pdfSha256: 'b'.repeat(64),
+  });
+  assert.deepEqual(duplicate, { ok: false, code: 'INVALID_CLAIM', issue: { code: 'DUPLICATE_SENTENCE_ID', sentenceId: claim.sentenceId } });
 });
 
 test('latest offer snapshot uses fetched time then id, and null description hashes like empty text', async () => {

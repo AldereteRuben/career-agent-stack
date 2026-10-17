@@ -44,7 +44,8 @@ export function latestApplicationDocumentOffer(input: {
   location: string | null;
   snapshots: ApplicationDocumentJobSnapshot[];
 }): ApplicationDocumentOfferSnapshot {
-  const snapshot = [...input.snapshots].sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt) || b.id.localeCompare(a.id))[0] ?? null;
+  const compareDescending = (left: string, right: string) => left === right ? 0 : left > right ? -1 : 1;
+  const snapshot = [...input.snapshots].sort((a, b) => compareDescending(a.fetchedAt, b.fetchedAt) || compareDescending(a.id, b.id))[0] ?? null;
   return { workspaceId: input.workspaceId, company: input.company, role: input.role, location: input.location, snapshot };
 }
 
@@ -95,6 +96,11 @@ function revisionClaimIssue(input: {
   facts: ApplicationDocumentFactSnapshot[];
   offer: ApplicationDocumentOfferSnapshot;
 }): ApplicationDocumentValidationIssue | null {
+  const sentenceIds = new Set<string>();
+  for (const claim of input.claims) {
+    if (sentenceIds.has(claim.sentenceId)) return { code: 'DUPLICATE_SENTENCE_ID', sentenceId: claim.sentenceId };
+    sentenceIds.add(claim.sentenceId);
+  }
   const offer = asBuilderOffer(input.offer);
   if (!offer) return null;
   for (const claim of input.claims) {
@@ -134,7 +140,8 @@ export async function applicationDocumentHashes(input: HashInputs) {
   const factsById = new Map(input.facts.filter((fact) => fact.workspaceId === input.workspaceId).map((fact) => [fact.id, fact]));
   const factsForHash = citedIds.map((id) => {
     const fact = factsById.get(id);
-    return { factId: id, status: fact?.approval ?? 'MISSING', canonicalText: canonicalText(fact?.text ?? '') };
+    const tags = (fact?.tags ?? []).map(canonicalText).sort((a, b) => a === b ? 0 : a < b ? -1 : 1);
+    return { factId: id, status: fact?.approval ?? 'MISSING', canonicalText: canonicalText(fact?.text ?? ''), tags };
   });
   const description = canonicalText(input.offer.snapshot.descriptionText);
   const offer = {
