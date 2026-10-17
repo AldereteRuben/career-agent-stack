@@ -143,6 +143,9 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
     original: claim({ text: 'Used React.' }), text: 'Used Python.', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer,
   });
   assert.equal(noCitationConfirmed.ok && noCitationConfirmed.sentence.origin, 'USER_UNSUPPORTED');
+  assert.deepEqual(saveApplicationDocumentSentenceEdit({
+    original: claim({ text: 'Used React.' }), text: 'I am enthusiastic.', sourceFactIds: [], workspaceId, facts, offer,
+  }), { ok: false, issue: { code: 'NO_CITATION', sentenceId: 'claim-1' } });
 });
 
 test('editing an unsupported sentence needs fresh confirmation unless it is unchanged', () => {

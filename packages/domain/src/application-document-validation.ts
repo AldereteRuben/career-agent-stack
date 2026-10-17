@@ -183,7 +183,9 @@ export function saveApplicationDocumentSentenceEdit(input: {
   if (draft.kind === 'BOILERPLATE' && mentions.length) draft.kind = 'CANDIDATE_CLAIM';
   if (draft.kind === 'CANDIDATE_CLAIM' && !draft.sourceFactIds.length && !input.confirmUnsupported) {
     const unsupported = unsupportedMentions(draft.text, [], input.offer)[0];
-    return { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported?.item ?? 'approved fact citation' } };
+    return unsupported
+      ? { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported.item } }
+      : { ok: false, issue: { code: 'NO_CITATION', sentenceId: draft.sentenceId } };
   }
   if (draft.kind === 'CANDIDATE_CLAIM' && !draft.sourceFactIds.length && input.confirmUnsupported) {
     return { ok: true, sentence: { ...draft, origin: 'USER_UNSUPPORTED' } };
@@ -199,7 +201,9 @@ export function saveApplicationDocumentSentenceEdit(input: {
   }
   if (noCitation) {
     const unsupported = unsupportedMentions(draft.text, [], input.offer)[0];
-    return { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported?.item ?? 'approved fact citation' } };
+    return unsupported
+      ? { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: draft.sentenceId, item: unsupported.item } }
+      : { ok: false, issue: { code: 'NO_CITATION', sentenceId: draft.sentenceId } };
   }
   return validation;
 }
