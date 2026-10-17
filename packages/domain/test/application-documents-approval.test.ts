@@ -91,6 +91,14 @@ test('fact changes affect factsHash and material offer changes affect offerHash'
   if (!baseline.ok || !changedFact.ok || !changedTitle.ok) return;
   assert.notEqual(baseline.factsHash, changedFact.factsHash);
   assert.notEqual(baseline.offerHash, changedTitle.offerHash);
+  const changedApplicationFields = await applicationDocumentHashes({
+    workspaceId,
+    claims: [claim],
+    facts,
+    offer: { ...offer, company: 'Other Co', role: 'Other role', location: 'Valencia' },
+  });
+  assert.equal(changedApplicationFields.ok, true);
+  if (baseline.ok && changedApplicationFields.ok) assert.notEqual(baseline.offerHash, changedApplicationFields.offerHash);
 });
 
 test('latest offer snapshot uses fetched time then id, and null description hashes like empty text', async () => {
@@ -109,6 +117,16 @@ test('latest offer snapshot uses fetched time then id, and null description hash
   const emptyDescription = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer: { ...selected, snapshot: { id: 'empty', title: 'Title', descriptionText: '' } } });
   assert.equal(nullDescription.ok && emptyDescription.ok, true);
   if (nullDescription.ok && emptyDescription.ok) assert.equal(nullDescription.offerHash, emptyDescription.offerHash);
+});
+
+test('replacing a snapshot with identical offer content does not change the offer hash', async () => {
+  const before = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer });
+  const after = await applicationDocumentHashes({ workspaceId, claims: [claim], facts, offer: {
+    ...offer,
+    snapshot: { ...offer.snapshot!, id: 'new-snapshot', descriptionText: offer.snapshot!.descriptionText },
+  } });
+  assert.equal(before.ok && after.ok, true);
+  if (before.ok && after.ok) assert.equal(before.offerHash, after.offerHash);
 });
 
 test('missing offer and mixed-language claims are refused before a revision is created', async () => {
@@ -145,25 +163,66 @@ test('approval binds exact preview digests and source hashes without rendering',
     assert.equal(approved.revision.claims, revision.claims);
   }
   const tamperedPdf = await approveApplicationDocumentRevision(approveInput(revision, { storedPdfSha256: 'c'.repeat(64) }));
-  assert.deepEqual(tamperedPdf, { ok: false, code: 'APPROVAL_STALE' });
+  assert.deepEqual(tamperedPdf, { ok: false, code: 'APPROVAL_STALE', reason: 'PREVIEW_DIGEST_MISMATCH' });
+  const tamperedText = await approveApplicationDocumentRevision(approveInput(revision, { storedTextSha256: 'c'.repeat(64) }));
+  assert.deepEqual(tamperedText, { ok: false, code: 'APPROVAL_STALE', reason: 'PREVIEW_DIGEST_MISMATCH' });
   const staleFact = await approveApplicationDocumentRevision(approveInput(revision, { facts: [{ ...facts[0]!, text: 'Texto editado.' }] }));
-  assert.deepEqual(staleFact, { ok: false, code: 'APPROVAL_STALE' });
+  assert.deepEqual(staleFact, { ok: false, code: 'APPROVAL_STALE', reason: 'FACTS_CHANGED' });
+  const withdrawnFact = await approveApplicationDocumentRevision(approveInput(revision, { facts: [{ ...facts[0]!, approval: 'REJECTED' }] }));
+  assert.deepEqual(withdrawnFact, { ok: false, code: 'FACT_NOT_APPROVED', sentenceId: 'claim-1', factId: 'fact-1' });
   const staleOffer = await approveApplicationDocumentRevision(approveInput(revision, { offer: { ...offer, role: 'Otro puesto' } }));
-  assert.deepEqual(staleOffer, { ok: false, code: 'APPROVAL_STALE' });
+  assert.deepEqual(staleOffer, { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_CHANGED' });
+  const submittedHashMismatch = await approveApplicationDocumentRevision(approveInput(revision, { expectedContentHash: 'c'.repeat(64) }));
+  assert.deepEqual(submittedHashMismatch, { ok: false, code: 'APPROVAL_STALE', reason: 'SUBMITTED_HASH_MISMATCH' });
+  const editedClaims = [{ ...claim, text: 'Diseñé sistemas de diseño React.' }];
+  const editedRevision = await approveApplicationDocumentRevision(approveInput({ ...revision, claims: editedClaims }));
+  assert.deepEqual(editedRevision, { ok: false, code: 'APPROVAL_STALE', reason: 'CONTENT_HASH_CHANGED' });
   const older = await approveApplicationDocumentRevision(approveInput(revision, { newestRevisionId: 'revision-2' }));
   assert.deepEqual(older, { ok: false, code: 'NOT_NEWEST' });
+  const alreadyApproved = await approveApplicationDocumentRevision(approveInput({ ...revision, approvedAt: '2026-10-16T10:00:00.000Z', approvedBy: 'user-1' }));
+  assert.deepEqual(alreadyApproved, { ok: false, code: 'NOT_PENDING' });
 });
 
 test('approval requires exactly the unsupported sentence ids shown at save', async () => {
   const unsupportedClaim = { ...claim, sentenceId: 'unsupported-1', origin: 'USER_UNSUPPORTED' as const, sourceFactIds: [] };
   const revision = await createRevision({ claims: [unsupportedClaim] });
-  assert.deepEqual(revision.confirmedUnsupportedIds, ['unsupported-1']);
+  assert.deepEqual(revision.confirmedUnsupportedIds, []);
   const missing = await approveApplicationDocumentRevision(approveInput(revision));
   assert.deepEqual(missing, { ok: false, code: 'UNSUPPORTED_NOT_CONFIRMED' });
   const extra = await approveApplicationDocumentRevision(approveInput(revision, { confirmedUnsupportedIds: ['unsupported-1', 'extra'] }));
   assert.deepEqual(extra, { ok: false, code: 'UNSUPPORTED_NOT_CONFIRMED' });
   const accepted = await approveApplicationDocumentRevision(approveInput(revision, { confirmedUnsupportedIds: ['unsupported-1'] }));
   assert.equal(accepted.ok, true);
+  if (accepted.ok) assert.deepEqual(accepted.revision.confirmedUnsupportedIds, ['unsupported-1']);
+});
+
+test('approval rechecks sentence language, kind, and normal-claim citations', async () => {
+  const mixedLanguage = await approveApplicationDocumentRevision(approveInput({
+    ...(await createRevision()), claims: [{ ...claim, language: 'en' }],
+  }));
+  assert.deepEqual(mixedLanguage, { ok: false, code: 'LANGUAGE_MISMATCH', sentenceIds: ['claim-1'] });
+
+  const noCitationClaim = { ...claim, origin: 'USER_EDITED' as const, sourceFactIds: [] };
+  const noCitation = await createApplicationDocumentRevision({
+    id: 'revision-no-citation', workspaceId, documentId: 'document-1', language: 'es', claims: [noCitationClaim], facts, offer,
+    paperSize: 'A4', textSha256: 'a'.repeat(64), pdfSha256: 'b'.repeat(64),
+  });
+  assert.deepEqual(noCitation, { ok: false, code: 'INVALID_CLAIM', issue: { code: 'NO_CITATION', sentenceId: 'claim-1' } });
+
+  const invalidKind = { ...claim, kind: 'BOILERPLATE' as const, origin: 'USER_UNSUPPORTED' as const };
+  const invalid = await createApplicationDocumentRevision({
+    id: 'revision-invalid-kind', workspaceId, documentId: 'document-1', language: 'es', claims: [invalidKind], facts, offer,
+    paperSize: 'A4', textSha256: 'a'.repeat(64), pdfSha256: 'b'.repeat(64),
+  });
+  assert.deepEqual(invalid, { ok: false, code: 'INVALID_CLAIM', issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: 'claim-1' } });
+});
+
+test('an edited child revision remains approvable against its own preview digests', async () => {
+  const parent = { ...(await createRevision()), approvedAt: '2026-10-16T10:00:00.000Z', approvedBy: 'user-1' };
+  const child = await createRevision({ id: 'revision-2', previousRevision: parent, textSha256: 'c'.repeat(64), pdfSha256: 'd'.repeat(64) });
+  const approved = await approveApplicationDocumentRevision(approveInput(child));
+  assert.equal(approved.ok, true);
+  if (approved.ok) assert.equal(approved.revision.id, 'revision-2');
 });
 
 test('read-time currentness marks withdrawn evidence and changed offer for review', async () => {

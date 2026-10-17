@@ -1,7 +1,13 @@
-import type { ApplicationDocumentLanguage, ApplicationDocumentSentence, ApplicationDocumentSentenceKind } from './application-documents-builder.js';
+import {
+  type ApplicationDocumentLanguage,
+  type ApplicationDocumentOffer,
+  type ApplicationDocumentSentence,
+  type ApplicationDocumentSentenceKind,
+} from './application-documents-builder.js';
+import { validateApplicationDocumentSentence, type ApplicationDocumentValidationIssue } from './application-document-validation.js';
 
 export type ApplicationDocumentRevisionClaim = ApplicationDocumentSentence & { language: ApplicationDocumentLanguage };
-export type ApplicationDocumentFactSnapshot = { id: string; workspaceId: string; approval: string; text: string };
+export type ApplicationDocumentFactSnapshot = { id: string; workspaceId: string; approval: 'USER_APPROVED' | 'SUGGESTED' | 'REJECTED'; text: string; tags?: string[] };
 export type ApplicationDocumentOfferSnapshot = {
   workspaceId: string;
   company: string;
@@ -79,6 +85,48 @@ export function mixedLanguageSentenceIds(language: ApplicationDocumentLanguage, 
   return claims.filter((claim) => claim.language !== language).map((claim) => claim.sentenceId);
 }
 
+function asBuilderOffer(offer: ApplicationDocumentOfferSnapshot): ApplicationDocumentOffer | null {
+  return offer.snapshot ? { ...offer, snapshot: offer.snapshot } : null;
+}
+
+function revisionClaimIssue(input: {
+  workspaceId: string;
+  claims: ApplicationDocumentRevisionClaim[];
+  facts: ApplicationDocumentFactSnapshot[];
+  offer: ApplicationDocumentOfferSnapshot;
+}): ApplicationDocumentValidationIssue | null {
+  const offer = asBuilderOffer(input.offer);
+  if (!offer) return null;
+  for (const claim of input.claims) {
+    if (claim.origin === 'USER_UNSUPPORTED') {
+      if (claim.kind !== 'CANDIDATE_CLAIM') return { code: 'INVALID_SENTENCE_KIND', sentenceId: claim.sentenceId };
+      if (new Set(claim.sourceFactIds).size !== claim.sourceFactIds.length) return { code: 'DUPLICATE_CITATION', sentenceId: claim.sentenceId };
+      for (const factId of claim.sourceFactIds) {
+        const fact = input.facts.find((candidate) => candidate.id === factId);
+        if (!fact || fact.workspaceId !== input.workspaceId || fact.approval !== 'USER_APPROVED') {
+          return { code: 'FACT_NOT_APPROVED', sentenceId: claim.sentenceId, factId };
+        }
+      }
+      continue;
+    }
+    const validation = validateApplicationDocumentSentence({ sentence: claim, workspaceId: input.workspaceId, facts: input.facts.map((fact) => ({ ...fact, tags: fact.tags ?? [] })), offer });
+    if (!validation.ok) return validation.issue;
+  }
+  return null;
+}
+
+function revisionFactIssue(workspaceId: string, claims: ApplicationDocumentRevisionClaim[], facts: ApplicationDocumentFactSnapshot[]) {
+  for (const claim of claims) {
+    for (const factId of claim.sourceFactIds) {
+      const fact = facts.find((candidate) => candidate.id === factId);
+      if (!fact || fact.workspaceId !== workspaceId || fact.approval !== 'USER_APPROVED') {
+        return { code: 'FACT_NOT_APPROVED' as const, sentenceId: claim.sentenceId, factId };
+      }
+    }
+  }
+  return null;
+}
+
 /** Hashes only the exact claims, cited fact content/status, and stable offer fields defined by the design. */
 export async function applicationDocumentHashes(input: HashInputs) {
   if (!input.offer.snapshot || input.offer.workspaceId !== input.workspaceId) return { ok: false as const, code: 'APPLICATION_HAS_NO_OFFER' as const };
@@ -106,7 +154,9 @@ export async function applicationDocumentHashes(input: HashInputs) {
 
 export type CreateApplicationDocumentRevisionResult =
   | { ok: true; revision: ApplicationDocumentRevision }
-  | { ok: false; code: 'APPLICATION_HAS_NO_OFFER' | 'LANGUAGE_MISMATCH' | 'INVALID_PARENT_REVISION'; sentenceIds?: string[] };
+  | { ok: false; code: 'APPLICATION_HAS_NO_OFFER' | 'INVALID_PARENT_REVISION' }
+  | { ok: false; code: 'LANGUAGE_MISMATCH'; sentenceIds: string[] }
+  | { ok: false; code: 'INVALID_CLAIM'; issue: ApplicationDocumentValidationIssue };
 
 /** Creates an immutable pending revision. Editing always creates a child; it never mutates the previous revision. */
 export async function createApplicationDocumentRevision(input: {
@@ -130,6 +180,8 @@ export async function createApplicationDocumentRevision(input: {
   if (sentenceIds.length) return { ok: false, code: 'LANGUAGE_MISMATCH', sentenceIds };
   const hashes = await applicationDocumentHashes({ workspaceId: input.workspaceId, claims: input.claims, facts: input.facts, offer: input.offer });
   if (!hashes.ok) return hashes;
+  const issue = revisionClaimIssue({ workspaceId: input.workspaceId, claims: input.claims, facts: input.facts, offer: input.offer });
+  if (issue) return { ok: false, code: 'INVALID_CLAIM', issue };
   return {
     ok: true,
     revision: {
@@ -147,7 +199,7 @@ export async function createApplicationDocumentRevision(input: {
       paperSize: input.paperSize,
       textSha256: input.textSha256,
       pdfSha256: input.pdfSha256,
-      confirmedUnsupportedIds: input.claims.filter((claim) => claim.origin === 'USER_UNSUPPORTED').map((claim) => claim.sentenceId).sort(),
+      confirmedUnsupportedIds: [],
       approvedAt: null,
       approvedBy: null,
     },
@@ -156,7 +208,11 @@ export async function createApplicationDocumentRevision(input: {
 
 export type ApplicationDocumentApprovalResult =
   | { ok: true; revision: ApplicationDocumentRevision }
-  | { ok: false; code: 'NOT_PENDING' | 'NOT_NEWEST' | 'APPROVAL_STALE' | 'UNSUPPORTED_NOT_CONFIRMED' | 'FACT_NOT_APPROVED' | 'LANGUAGE_MISMATCH' };
+  | { ok: false; code: 'NOT_PENDING' | 'NOT_NEWEST' | 'UNSUPPORTED_NOT_CONFIRMED' }
+  | { ok: false; code: 'APPROVAL_STALE'; reason: 'OFFER_MISSING' | 'CONTENT_HASH_CHANGED' | 'FACTS_CHANGED' | 'OFFER_CHANGED' | 'SUBMITTED_HASH_MISMATCH' | 'PREVIEW_DIGEST_MISMATCH' | 'APPROVAL_METADATA_INVALID' }
+  | { ok: false; code: 'FACT_NOT_APPROVED'; sentenceId: string; factId: string }
+  | { ok: false; code: 'LANGUAGE_MISMATCH'; sentenceIds: string[] }
+  | { ok: false; code: 'INVALID_CLAIM'; issue: ApplicationDocumentValidationIssue };
 
 /** Pure approval decision. The caller supplies digests of stored bytes; this function never invokes a renderer. */
 export async function approveApplicationDocumentRevision(input: {
@@ -178,26 +234,30 @@ export async function approveApplicationDocumentRevision(input: {
   const revision = input.revision;
   if (revision.approvedAt || revision.approvedBy) return { ok: false, code: 'NOT_PENDING' };
   if (input.newestRevisionId !== revision.id) return { ok: false, code: 'NOT_NEWEST' };
-  if (mixedLanguageSentenceIds(revision.language, revision.claims).length) return { ok: false, code: 'LANGUAGE_MISMATCH' };
+  const mixedLanguageIds = mixedLanguageSentenceIds(revision.language, revision.claims);
+  if (mixedLanguageIds.length) return { ok: false, code: 'LANGUAGE_MISMATCH', sentenceIds: mixedLanguageIds };
   const unsupportedIds = revision.claims.filter((claim) => claim.origin === 'USER_UNSUPPORTED').map((claim) => claim.sentenceId).sort();
   const confirmedIds = [...new Set(input.confirmedUnsupportedIds)].sort();
-  if (confirmedIds.length !== input.confirmedUnsupportedIds.length || !sameIds(unsupportedIds, confirmedIds) || !sameIds(unsupportedIds, revision.confirmedUnsupportedIds)) {
+  if (confirmedIds.length !== input.confirmedUnsupportedIds.length || !sameIds(unsupportedIds, confirmedIds)) {
     return { ok: false, code: 'UNSUPPORTED_NOT_CONFIRMED' };
   }
-  const citedIds = [...new Set(revision.claims.flatMap((claim) => claim.sourceFactIds))];
-  const currentFacts = new Map(input.facts.map((fact) => [fact.id, fact]));
-  if (citedIds.some((id) => {
-    const fact = currentFacts.get(id);
-    return !fact || fact.workspaceId !== revision.workspaceId || fact.approval !== 'USER_APPROVED';
-  })) return { ok: false, code: 'FACT_NOT_APPROVED' };
+  const factIssue = revisionFactIssue(revision.workspaceId, revision.claims, input.facts);
+  if (factIssue) return { ok: false, ...factIssue };
   const hashes = await applicationDocumentHashes({ workspaceId: revision.workspaceId, claims: revision.claims, facts: input.facts, offer: input.offer });
-  if (!hashes.ok || hashes.contentHash !== revision.contentHash || hashes.factsHash !== revision.factsHash || hashes.offerHash !== revision.offerHash
-    || hashes.contentHash !== input.expectedContentHash || hashes.factsHash !== input.expectedFactsHash || hashes.offerHash !== input.expectedOfferHash
-    || revision.textSha256 !== input.expectedTextSha256 || revision.pdfSha256 !== input.expectedPdfSha256
-    || revision.textSha256 !== input.storedTextSha256 || revision.pdfSha256 !== input.storedPdfSha256) {
-    return { ok: false, code: 'APPROVAL_STALE' };
+  if (!hashes.ok) return { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_MISSING' };
+  if (hashes.contentHash !== revision.contentHash) return { ok: false, code: 'APPROVAL_STALE', reason: 'CONTENT_HASH_CHANGED' };
+  if (hashes.factsHash !== revision.factsHash) return { ok: false, code: 'APPROVAL_STALE', reason: 'FACTS_CHANGED' };
+  if (hashes.offerHash !== revision.offerHash) return { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_CHANGED' };
+  const issue = revisionClaimIssue({ workspaceId: revision.workspaceId, claims: revision.claims, facts: input.facts, offer: input.offer });
+  if (issue) return { ok: false, code: 'INVALID_CLAIM', issue };
+  if (hashes.contentHash !== input.expectedContentHash || hashes.factsHash !== input.expectedFactsHash || hashes.offerHash !== input.expectedOfferHash
+    || revision.textSha256 !== input.expectedTextSha256 || revision.pdfSha256 !== input.expectedPdfSha256) {
+    return { ok: false, code: 'APPROVAL_STALE', reason: 'SUBMITTED_HASH_MISMATCH' };
   }
-  if (!input.approvedAt || !Number.isFinite(Date.parse(input.approvedAt)) || !input.approvedBy.trim()) return { ok: false, code: 'APPROVAL_STALE' };
+  if (revision.textSha256 !== input.storedTextSha256 || revision.pdfSha256 !== input.storedPdfSha256) {
+    return { ok: false, code: 'APPROVAL_STALE', reason: 'PREVIEW_DIGEST_MISMATCH' };
+  }
+  if (!input.approvedAt || !Number.isFinite(Date.parse(input.approvedAt)) || !input.approvedBy.trim()) return { ok: false, code: 'APPROVAL_STALE', reason: 'APPROVAL_METADATA_INVALID' };
   return {
     ok: true,
     revision: { ...revision, approvedAt: input.approvedAt, approvedBy: input.approvedBy, confirmedUnsupportedIds: unsupportedIds },

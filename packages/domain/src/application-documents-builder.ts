@@ -20,6 +20,7 @@ export type ApplicationDocumentSentence = {
   kind: ApplicationDocumentSentenceKind;
   origin: ApplicationDocumentSentenceOrigin;
   sourceFactIds: string[];
+  language?: ApplicationDocumentLanguage;
 };
 
 export type ApplicationCoverLetterDraft = {
@@ -52,8 +53,8 @@ const phraseTables = {
 
 const MAX_CANDIDATE_CLAIMS = 5;
 
-function sentence(sentenceId: string, text: string, kind: ApplicationDocumentSentenceKind, sourceFactIds: string[] = []): ApplicationDocumentSentence {
-  return { sentenceId, text, kind, origin: 'BUILDER', sourceFactIds };
+function sentence(sentenceId: string, text: string, kind: ApplicationDocumentSentenceKind, sourceFactIds: string[] = [], language?: ApplicationDocumentLanguage): ApplicationDocumentSentence {
+  return { sentenceId, text, kind, origin: 'BUILDER', sourceFactIds, ...(language ? { language } : {}) };
 }
 
 function normalized(text: string) {
@@ -78,7 +79,16 @@ function selectedFactsForRequirements(facts: ApplicationDocumentFact[], requirem
 }
 
 function offerReferenceSentence(language: ApplicationDocumentLanguage, offer: ApplicationDocumentOffer) {
-  return sentence('offer-reference', phraseTables[language].offerReference(offer.role, offer.company, offer.location), 'OFFER_REFERENCE');
+  return sentence('offer-reference', phraseTables[language].offerReference(offer.role, offer.company, offer.location), 'OFFER_REFERENCE', [], language);
+}
+
+export function isExactBuiltApplicationOfferReference(sentenceValue: ApplicationDocumentSentence, language: ApplicationDocumentLanguage, offer: ApplicationDocumentOffer) {
+  const expected = phraseTables[language].offerReference(offer.role, offer.company, offer.location);
+  return sentenceValue.kind === 'OFFER_REFERENCE' && sentenceValue.origin === 'BUILDER' && sentenceValue.language === language && sentenceValue.text === expected && sentenceValue.sourceFactIds.length === 0;
+}
+
+export function fixedApplicationDocumentPhraseLanguage(text: string) {
+  return (['es', 'en'] as const).find((language) => text === phraseTables[language].salutation || text === phraseTables[language].closing) ?? null;
 }
 
 function approvedFactsForOffer(facts: ApplicationDocumentFact[], offer: ApplicationDocumentOffer) {
@@ -99,10 +109,10 @@ export function buildApplicationCoverLetter(input: {
   const unconfirmedRequirements = requirements.filter((requirement) => !approvedFacts.some((fact) => factCoversRequirement(fact, requirement)));
   const selectedFacts = selectedFactsForRequirements(approvedFacts, requirements);
   const sentences = [
-    sentence('salutation', phrases.salutation, 'BOILERPLATE'),
+    sentence('salutation', phrases.salutation, 'BOILERPLATE', [], input.language),
     offerReferenceSentence(input.language, input.offer),
-    ...selectedFacts.map((fact) => sentence(`fact-${fact.id}`, fact.text.trim(), 'CANDIDATE_CLAIM', [fact.id])),
-    sentence('closing', phrases.closing, 'BOILERPLATE'),
+    ...selectedFacts.map((fact) => sentence(`fact-${fact.id}`, fact.text.trim(), 'CANDIDATE_CLAIM', [fact.id], input.language)),
+    sentence('closing', phrases.closing, 'BOILERPLATE', [], input.language),
   ];
   const profileNotice = approvedFacts.length < 2 ? phrases.thinProfile : null;
   return { language: input.language, sentences, unconfirmedRequirements, profileNotice };
@@ -122,7 +132,7 @@ export function buildApplicationResumeDraft(input: {
     language: input.language,
     sentences: [
       offerReferenceSentence(input.language, input.offer),
-      ...selectedFacts.map((fact) => sentence(`fact-${fact.id}`, fact.text.trim(), 'CANDIDATE_CLAIM', [fact.id])),
+      ...selectedFacts.map((fact) => sentence(`fact-${fact.id}`, fact.text.trim(), 'CANDIDATE_CLAIM', [fact.id], input.language)),
     ],
     unconfirmedRequirements,
   };
