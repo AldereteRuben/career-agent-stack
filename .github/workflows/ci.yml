@@ -114,6 +114,11 @@ jobs:
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
       - name: Install PDF text inspection
         run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+      - name: Verify application document test wiring
+        run: pnpm run test:application-documents
+        env:
+          CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_PDF_TEST: 'true'
       - name: Verify reviewed assistant PDFs with fictional content
         run: pnpm --filter @career/api exec tsx --test test/ai-documents.test.ts
         env:
