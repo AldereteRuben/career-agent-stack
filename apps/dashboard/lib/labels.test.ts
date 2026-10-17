@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { applicationEvents, factKinds, humanizeKey } from './labels';
+import { applicationEvents, factKinds, humanizeKey, selectableFactKinds } from './labels';
 
 const dashboard = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -21,6 +21,14 @@ test('application history and fact kind labels start with a capital letter in bo
         assert.match(text[language], /^\p{Lu}/u, `${name}.${code} (${language}) must start with a capital letter: "${text[language]}"`);
       }
     }
+  }
+});
+
+test('certifications and languages can be added with labels in both languages', () => {
+  for (const kind of ['certification', 'language'] as const) {
+    assert.ok((selectableFactKinds as readonly string[]).includes(kind));
+    assert.ok(factKinds[kind].es);
+    assert.ok(factKinds[kind].en);
   }
 });
 
