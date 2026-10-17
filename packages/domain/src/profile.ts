@@ -1,5 +1,6 @@
 export type ProfilePreferences = { targetTitles: string[]; workModes: string[] };
-export type ProfileIdentity = { fullName: string; email: string; country: string };
+export type ProfileLink = { label: string; url: string };
+export type ProfileIdentity = { fullName: string; email: string; country: string; phone: string; city: string; links: ProfileLink[] };
 
 const stringList = (value: unknown, max: number) => Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))].slice(0, max) : [];
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
@@ -19,17 +20,29 @@ export function hasTargetTitlesPreference(profile: Record<string, unknown>) {
 
 export function readIdentity(profile: Record<string, unknown>): ProfileIdentity {
   const identity = record(profile.identity);
-  return { fullName: text(identity.fullName), email: text(identity.email), country: text(identity.country) };
+  const links = Array.isArray(identity.links) ? identity.links.flatMap((item) => {
+    const link = record(item); const label = text(link.label); const url = text(link.url);
+    try { const parsed = new URL(url); return label && parsed.protocol === 'https:' && !parsed.username && !parsed.password ? [{ label: label.slice(0, 80), url: url.slice(0, 2048) }] : []; }
+    catch { return []; }
+  }).slice(0, 4) : [];
+  return { fullName: text(identity.fullName), email: text(identity.email), country: text(identity.country), phone: text(identity.phone), city: text(identity.city), links };
 }
 
 /**
  * Identity exactly as the resume generator receives it: the untrimmed name and email, truncated like the renderer input.
  * Country, locale and job preferences are never printed, so they are not part of it.
  */
-export type PrintedIdentity = { fullName: string; email: string };
-export function printedResumeIdentity(profile: Record<string, unknown>): PrintedIdentity {
+export type PrintedIdentity = { fullName: string; email: string; phone?: string; city?: string; links?: ProfileLink[] };
+export type ResumeContactField = 'email' | 'phone' | 'city' | 'links';
+export const resumeContactFields: readonly ResumeContactField[] = ['email', 'phone', 'city', 'links'];
+export function printedResumeIdentity(profile: Record<string, unknown>, fields: readonly ResumeContactField[] = ['email']): PrintedIdentity {
   const identity = record(profile.identity);
-  return { fullName: typeof identity.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: typeof identity.email === 'string' ? identity.email.slice(0, 320) : '' };
+  const result: PrintedIdentity = { fullName: typeof identity.fullName === 'string' ? identity.fullName.slice(0, 200) : '', email: '' };
+  if (fields.includes('email')) result.email = typeof identity.email === 'string' ? identity.email.slice(0, 320) : '';
+  if (fields.includes('phone') && typeof identity.phone === 'string' && identity.phone.trim()) result.phone = identity.phone.trim().slice(0, 80);
+  if (fields.includes('city') && typeof identity.city === 'string' && identity.city.trim()) result.city = identity.city.trim().slice(0, 160);
+  if (fields.includes('links')) result.links = readIdentity(profile).links;
+  return result;
 }
 
 export const profileCompletionChecks = ['fullName', 'email', 'country', 'targetTitles', 'workModes', 'approvedFact'] as const;

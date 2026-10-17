@@ -123,11 +123,16 @@ test('source hashes derive from content; snapshot IDs are fresh while equivalent
 
 test('resume identity is fingerprinted locally and never added to provider data', () => {
   const source = records();
+  source.profile!.profile.identity = { fullName: 'Private Name', email: 'private@example.invalid', phone: '+34 600 000 000', city: 'Private City 9Q', links: [{ label: 'Private Portfolio 9Q', url: 'https://example.invalid/private-résumé-9q' }] };
   const snapshot = buildAiSourceSnapshot(workspace, { ...request, operation: 'RESUME_DRAFT' }, source);
   assert.match(snapshot.identityFingerprint!, /^[a-f0-9]{64}$/u);
   const prompt = buildAiPrompt(snapshot, { workspaceId: workspace, operation: snapshot.operation, locale: snapshot.locale });
   assert.ok(!JSON.stringify(prompt.messages).includes('Private Name'));
   assert.ok(!JSON.stringify(prompt.messages).includes('private@example.invalid'));
+  for (const privateContact of ['+34 600 000 000', 'Private City 9Q', 'Private Portfolio 9Q', 'https://example.invalid/private-résumé-9q']) {
+    assert.ok(!JSON.stringify(snapshot).includes(privateContact));
+    assert.ok(!JSON.stringify(prompt.messages).includes(privateContact));
+  }
   assert.ok(!JSON.stringify(prompt.messages).includes(snapshot.identityFingerprint!));
 });
 

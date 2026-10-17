@@ -19,8 +19,8 @@ import { api, ApiError, errorMessage } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
 
 type Fact = { id: string; kind: string; statement: string; tags: string[]; approvalStatus: string };
-type Profile = { facts: Fact[]; profile: { identity?: { fullName?: string; email?: string } } };
-type Document = { derivedStatus?: 'CURRENT' | 'STALE' | 'NEEDS_ADAPTATION_REVIEW' | 'NEEDS_REVIEW'; claimsContractVersion?: number | null; claimsBasis?: { claims: Array<{ textHash: string }> } | null; reviewReady: boolean; language: 'en' | 'es' | null; jobId: string | null; reusableFactIds: string[]; missingFactCount: number; assistReady: boolean; id: string; name: string; revision: number; sha256: string; mediaType: string; approvalStatus: string; createdAt: string; jobSnapshotId: string | null; claims: Array<{ text: string; sourceFactIds: string[] }> };
+type Profile = { facts: Fact[]; profile: { identity?: { fullName?: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }> } } };
+type Document = { derivedStatus?: 'CURRENT' | 'STALE' | 'NEEDS_ADAPTATION_REVIEW' | 'NEEDS_REVIEW'; claimsContractVersion?: number | null; claimsBasis?: { claims: Array<{ textHash: string }> } | null; printedContactFields: string[]; reviewReady: boolean; language: 'en' | 'es' | null; jobId: string | null; reusableFactIds: string[]; missingFactCount: number; assistReady: boolean; id: string; name: string; revision: number; sha256: string; mediaType: string; approvalStatus: string; createdAt: string; jobSnapshotId: string | null; claims: Array<{ text: string; sourceFactIds: string[] }> };
 type Job = { id: string; title: string; company: string };
 type Preview = { id: string; data: ArrayBuffer | null; state: 'loading' | 'ready' | 'error'; error?: string };
 
@@ -52,6 +52,8 @@ function DocumentsView() {
   };
   const setShowHistory = (saved: boolean) => navigateView(saved ? 'saved' : 'prepare');
   const [identityReady, setIdentityReady] = useState(false);
+  const [contactAvailability, setContactAvailability] = useState({ email: false, phone: false, city: false, links: false });
+  const [printedContactFields, setPrintedContactFields] = useState<string[]>(['email']);
   const previewHeading = useRef<HTMLHeadingElement>(null);
   const builderHeading = useRef<HTMLHeadingElement>(null);
   const historyHeading = useRef<HTMLHeadingElement>(null);
@@ -67,6 +69,7 @@ function DocumentsView() {
   const remembered = JSON.parse(draft.value.facts || '[]') as string[];
   const selected = remembered.filter((id) => facts.some((fact) => fact.id === id));
   const setSelected = (ids: string[]) => draft.update((value) => ({ ...value, facts: JSON.stringify(ids) }));
+  const toggleContactField = (field: string) => setPrintedContactFields((current) => current.includes(field) ? current.filter((value) => value !== field) : [...current, field]);
   const name = draft.value.name; const nameTouched = draft.value.named === 'yes';
   const setName = (name: string) => draft.update((value) => ({ ...value, name, named: 'yes' }));
   const [busy, setBusy] = useState<string | null>(null); const [error, setError] = useState(''); const [message, setMessage] = useState('');
@@ -94,7 +97,9 @@ function DocumentsView() {
       if (application) setJobId(application.jobId ?? '');
       setLinkedDocumentId(application?.documentId ?? '');
       const approved = profile.facts.filter((f) => f.approvalStatus === 'USER_APPROVED');
-      setIdentityReady(Boolean(profile.profile.identity?.fullName?.trim() && profile.profile.identity?.email?.trim()));
+      const identity = profile.profile.identity ?? {};
+      setIdentityReady(Boolean(identity.fullName?.trim() && identity.email?.trim()));
+      setContactAvailability({ email: Boolean(identity.email?.trim()), phone: Boolean(identity.phone?.trim()), city: Boolean(identity.city?.trim()), links: Boolean(identity.links?.length) });
       setFacts(approved); setDocuments(docs); setJobs(jobRows); setLoadState('ready');
     } catch (err) { if (ticket === loadRequest.current) { setError(errorMessage(err)); setLoadState((current) => current === 'ready' ? 'ready' : 'error'); } }
   }, [applicationId, urlJobId]);
@@ -164,7 +169,7 @@ function DocumentsView() {
   const generate = async (event: FormEvent) => {
     event.preventDefault(); if (aiReview || busy) return; setBusy('generate'); setError(''); setMessage('');
     try {
-      const doc = await api<Document>('/documents', { method: 'POST', body: JSON.stringify({ name: documentName.trim(), factIds: selected, locale: pdfLocale, ...(jobId ? { jobId } : {}) }) });
+      const doc = await api<Document>('/documents', { method: 'POST', body: JSON.stringify({ name: documentName.trim(), factIds: selected, locale: pdfLocale, printedContactFields, ...(jobId ? { jobId } : {}) }) });
       setDocuments((current) => [doc, ...current.filter((item) => item.id !== doc.id)]);
       // Keep the saved values explicit, so editing this same version is not mistaken for replacing another draft.
       draft.update({ name: doc.name, named: 'yes', language: doc.language ?? pdfLocale, facts: JSON.stringify(selected) });
@@ -223,6 +228,7 @@ function DocumentsView() {
       if (!copied) {
         setError(c('No pudimos conservar la selección al cambiar de oferta. Vuelve a intentarlo antes de continuar.', 'We could not keep the selection while switching jobs. Try again before continuing.')); return;
       }
+      setPrintedContactFields(doc.printedContactFields ?? ['email']);
       const params = new URLSearchParams(searchParams.toString());
       params.set('view', 'prepare'); params.delete('document'); params.delete('from');
       if (targetJobId) params.set('jobId', targetJobId); else params.delete('jobId');
@@ -281,6 +287,9 @@ function DocumentsView() {
           <details className="technical-detail"><summary>{c('¿Puedo continuar después?', 'Can I continue later?')}</summary><p className="muted-label">{c('Cada oferta conserva su nombre, idioma y selección en esta pestaña. Puedes volver después de editar tu perfil. Cerrar sesión borra esta preparación.', 'Each job keeps its name, language and selection in this tab. You can return after editing your profile. Signing out clears this preparation.')}</p></details><Link href={profileHref}>{c('Añadir o corregir datos del perfil', 'Add or edit profile details')}</Link>
           {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar esta preparación. Genera el PDF antes de salir para no perder la selección.', 'We could not keep this preparation. Generate the PDF before leaving to keep your selection.')}</Notice>}
           {loadState === 'ready' && remembered.length > selected.length && <Notice tone="warning">{c('Algunos datos de tu selección cambiaron o dejaron de estar confirmados. Revisa y vuelve a elegir el contenido antes de generar.', 'Some selected details changed or are no longer confirmed. Review and reselect your content before generating.')}</Notice>}
+          <fieldset className="profile-fieldset"><legend>{c('Datos de contacto que aparecerán', 'Contact details to include')}</legend><p className="muted-label">{c('Nombre y puesto siempre aparecen. Los datos de contacto solo se incluyen si los marcas aquí.', 'Your name and role always appear. Contact details are included only when you select them.')}</p>
+            {(['email', 'phone', 'city', 'links'] as const).map((field) => <label className="checkbox-line" key={field}><input type="checkbox" checked={printedContactFields.includes(field)} disabled={!contactAvailability[field] && !printedContactFields.includes(field)} onChange={() => toggleContactField(field)}/><span>{field === 'email' ? c('Correo', 'Email') : field === 'phone' ? c('Teléfono', 'Phone') : field === 'city' ? c('Ciudad', 'City') : c('Enlaces', 'Links')}{!contactAvailability[field] ? ` · ${c('no añadido', 'not added')}` : ''}</span></label>)}
+          </fieldset>
           <div className="selection-heading"><div><strong>{c('Datos confirmados', 'Confirmed profile details')}</strong><small>{c('Elige solo lo que quieras incluir (máximo 50).', 'Choose only what you want to include (up to 50).')}</small></div><Tag>{selected.length} / 50 {c('ELEGIDOS', 'SELECTED')}</Tag></div>
           {facts.length > 1 && <div className="detail-actions"><Button type="button" variant="quiet" onClick={() => setSelected(facts.slice(0, 50).map((fact) => fact.id))}>{c('Elegir todos', 'Select all')}</Button>{selected.length > 0 && <Button type="button" variant="quiet" onClick={() => setSelected([])}>{c('Quitar todos', 'Clear all')}</Button>}</div>}
           <div className="fact-pick-list">{facts.length ? facts.map((fact) => <label className={`fact-pick ${selected.includes(fact.id) ? 'fact-pick-active' : ''}`} key={fact.id}><input type="checkbox" disabled={!selected.includes(fact.id) && selected.length >= 50} checked={selected.includes(fact.id)} onChange={() => toggle(fact.id)}/><span className="fact-pick-copy"><strong>{labelFor.factKind(fact.kind, locale)}</strong><span>{fact.statement}</span></span><Icon name="check" size={17}/></label>)
@@ -289,7 +298,7 @@ function DocumentsView() {
           <p id="pdf-review-explanation" className="muted-label">{c('El PDF se genera sin la palabra «borrador» ni marcas de revisión. «Pendiente de revisión» es solo un estado dentro de esta app. Léelo antes de aprobarlo.', 'The PDF is generated without a draft label or review marks. “Waiting for review” is only a status in this app. Read it before approving it.')}</p>
           {!aiReview && <Button type="submit" aria-describedby="pdf-review-explanation" disabled={busy !== null || !identityReady || !selected.length || selected.length > 50 || !documentName.trim()}>{busy === 'generate' ? c('Generando PDF…', 'Generating PDF…') : c('Generar y revisar', 'Generate and review')} <Icon name="arrow" size={15}/></Button>}
         </fieldset></form>
-        {aiAvailable && (aiReview || (jobId && selected.length > 0)) && <div className="optional-section">{aiReview ? <AiResumeReview key={aiReview.artifact.id} artifact={aiReview.artifact} name={documentName} contextChanged={aiReview.contextKey !== resumeContext} onBusyChange={active => setBusy(active ? 'ai-resume' : null)} onGenerated={id => { setAiReview(null); void load(); openPreview(id); }} onCancel={closeAiReview} onOriginals={useOriginalWording}/> : <AiDraftAction request={{ operation: 'RESUME_DRAFT', locale: pdfLocale, jobId, selectedFactIds: selected }} label={c('Mejorar la redacción para esta oferta', 'Improve wording for this job')} onReview={artifact => setAiReview({ artifact, contextKey: resumeContext })}/>}</div>}
+        {aiAvailable && (aiReview || (jobId && selected.length > 0)) && <div className="optional-section">{aiReview ? <AiResumeReview key={aiReview.artifact.id} artifact={aiReview.artifact} name={documentName} printedContactFields={printedContactFields} contextChanged={aiReview.contextKey !== resumeContext} onBusyChange={active => setBusy(active ? 'ai-resume' : null)} onGenerated={id => { setAiReview(null); void load(); openPreview(id); }} onCancel={closeAiReview} onOriginals={useOriginalWording}/> : <AiDraftAction request={{ operation: 'RESUME_DRAFT', locale: pdfLocale, jobId, selectedFactIds: selected }} label={c('Mejorar la redacción para esta oferta', 'Improve wording for this job')} onReview={artifact => setAiReview({ artifact, contextKey: resumeContext })}/>}</div>}
       </Card>}
       <Card className="renderer-note"><details><summary>{c('Sobre el formato y los PDF anteriores', 'About the layout and earlier PDFs')}</summary><p>{c('Diseño de una columna, nombre y correo destacados, secciones claras y páginas numeradas. Si un PDF anterior incluye la palabra «borrador», elige Usar como base y genera una nueva versión para quitarla. Aprobar o descargar el PDF anterior no cambia su contenido.', 'A single-column layout with prominent name and email, clear sections, and page numbers. If an older PDF includes a draft label, choose Use as starting point and generate a new version to remove it. Approving or downloading the older PDF does not change its contents.')}</p></details></Card>
     </div>

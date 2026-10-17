@@ -11,7 +11,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
-import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
+import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
@@ -423,21 +423,21 @@ registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
 app.get('/api/v1/applications', async (request, reply) => {
-  const query = request.query as { offset?: string; limit?: string; q?: string };
+  const query = request.query as { offset?: string; limit?: string; q?: string; sort?: string };
   const workspaceId = workspace(request); const scoped = eq(applications.workspaceId, workspaceId);
   const selection = { ...getTableColumns(applications), jobAvailability: jobs.availability };
   const matchingJob = and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId));
   // Preserve the existing array contract for internal clients. The tracker requests pages explicitly.
-  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
+  if (query.offset === undefined && query.limit === undefined && query.q === undefined && query.sort === undefined) return db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
   const offset = Number(query.offset ?? 0); const limit = Number(query.limit ?? 25);
-  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || typeof (query.q ?? '') !== 'string' || (query.q?.length ?? 0) > 200) return fail(reply, 400, 'INVALID_INPUT');
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || typeof (query.q ?? '') !== 'string' || (query.q?.length ?? 0) > 200 || (query.sort !== undefined && !['recent', 'follow-up'].includes(query.sort))) return fail(reply, 400, 'INVALID_INPUT');
   const term = query.q?.trim() ?? '';
   const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
   const where = and(scoped, term ? or(ilike(applications.company, pattern), ilike(applications.role, pattern)) : undefined);
   const counts = await db.select({ total: sql<number>`count(*)::int` }).from(applications).where(where);
   const total = counts[0]?.total ?? 0;
   const pageOffset = Math.min(offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
+  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(query.sort === 'follow-up' ? sql`case when ${applications.state} = 'CANCELLED' or ${applications.recruitmentStage} in ('REJECTED', 'WITHDRAWN', 'HIRED') then 1 else 0 end asc` : desc(applications.updatedAt), ...(query.sort === 'follow-up' ? [sql`${applications.followUpDate} asc nulls last`, desc(applications.updatedAt), desc(applications.id)] : [desc(applications.updatedAt), desc(applications.id)])).limit(limit).offset(pageOffset);
   return { items, total, offset: pageOffset, limit };
 });
 app.post('/api/v1/applications', async (request, reply) => {
@@ -489,11 +489,16 @@ app.patch('/api/v1/applications/:id', async (request, reply) => {
     const stageChange = parsed.recruitmentStage ? classifyRecruitmentStageChange(current.recruitmentStage, parsed.recruitmentStage, parsed.correction === true) : 'UNCHANGED';
     if (stageChange === 'REJECTED_REGRESSION') throw new Error('RECRUITMENT_STAGE_CANNOT_REGRESS');
     const nextState = parsed.state ?? current.state;
-    const changes = omit(parsed, 'confirmationEvidence', 'correction', 'reason', 'expectedVersion');
-    const row = (await tx.update(applications).set({ ...changes, updatedAt: new Date(), version: current.version + 1 }).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id), eq(applications.version, current.version))).returning())[0];
+    const changes = omit(parsed, 'confirmationEvidence', 'correction', 'reason', 'expectedVersion', 'interview');
+    const interviewChange = parsed.interview === undefined ? {} : parsed.interview === null ? { interviewAt: null, interviewTimezone: null } : { interviewAt: new Date(localDateTimeToInstant(parsed.interview.localAt, parsed.interview.timeZone)!), interviewTimezone: parsed.interview.timeZone };
+    const row = (await tx.update(applications).set({ ...changes, ...interviewChange, updatedAt: new Date(), version: current.version + 1 }).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id), eq(applications.version, current.version))).returning())[0];
     if (!row) throw new Error('STALE_APPLICATION_VERSION');
     if (parsed.state && parsed.state !== current.state) await tx.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: 'APPLICATION_STATE_CHANGED', reason: parsed.reason ?? (parsed.state === 'CONFIRMED' ? 'User-attested confirmation' : null), priorState: current.state, newState: nextState, evidence: parsed.state === 'CONFIRMED' ? { type: 'USER_ATTESTATION' } : null, aggregateVersion: row.version });
     if (parsed.recruitmentStage && stageChange !== 'UNCHANGED') await tx.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: stageChange === 'CORRECTION' ? 'RECRUITMENT_STAGE_CORRECTED' : 'RECRUITMENT_STAGE_CHANGED', reason: parsed.reason ?? (stageChange === 'CORRECTION' ? 'User correction' : null), priorState: current.recruitmentStage, newState: parsed.recruitmentStage, evidence: stageChange === 'CORRECTION' ? { correction: true, priorStage: current.recruitmentStage, newStage: parsed.recruitmentStage } : null, aggregateVersion: row.version });
+    const followUpChanged = (parsed.nextStep !== undefined && parsed.nextStep !== current.nextStep) || (parsed.followUpDate !== undefined && parsed.followUpDate !== current.followUpDate);
+    if (followUpChanged) await tx.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: 'FOLLOW_UP_UPDATED', reason: 'User updated the next step or follow-up date', evidence: { prior: { nextStep: current.nextStep, followUpDate: current.followUpDate }, next: { nextStep: row.nextStep, followUpDate: row.followUpDate } }, aggregateVersion: row.version });
+    const nextInterviewAt = row.interviewAt?.toISOString() ?? null; const priorInterviewAt = current.interviewAt?.toISOString() ?? null;
+    if (parsed.interview !== undefined && (nextInterviewAt !== priorInterviewAt || row.interviewTimezone !== current.interviewTimezone)) await tx.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: 'INTERVIEW_UPDATED', reason: 'User updated interview date and time', evidence: { prior: { at: priorInterviewAt, timeZone: current.interviewTimezone }, next: { at: nextInterviewAt, timeZone: row.interviewTimezone } }, aggregateVersion: row.version });
     return row;
   }).catch((error: unknown) => { if (error instanceof Error) return error.message; throw error; });
   if (updated === 'ASSIST_ACTIVE_ATTEMPT') return fail(reply, 409, updated);
@@ -504,7 +509,7 @@ app.patch('/api/v1/applications/:id', async (request, reply) => {
 
 app.post('/api/v1/applications/:id/events', async (request, reply) => {
   const body = request.body as { eventType?: unknown; note?: unknown; recruitmentStage?: unknown } | null;
-  if (typeof body?.eventType !== 'string' || body.eventType.length > 80 || body.eventType.startsWith('ASSIST_') || typeof body.note !== 'string' || body.note.length > 10_000) return fail(reply, 400, 'INVALID_EVENT');
+  if (typeof body?.eventType !== 'string' || body.eventType.length > 80 || body.eventType.startsWith('ASSIST_') || ['FOLLOW_UP_UPDATED', 'INTERVIEW_UPDATED'].includes(body.eventType) || typeof body.note !== 'string' || body.note.length > 10_000) return fail(reply, 400, 'INVALID_EVENT');
   const { id: applicationId } = request.params as { id: string }; const id = workspace(request);
   const application = (await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id))).limit(1))[0]; if (!application) return fail(reply, 404, 'NOT_FOUND');
   const event = (await db.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: body.eventType, reason: body.note, aggregateVersion: application.version }).returning())[0]; return reply.code(201).send(event);
@@ -517,15 +522,18 @@ app.get('/api/v1/documents', async (request) => {
   return (await documentReadiness(db, id, documents)).map(documentView);
 });
 app.post('/api/v1/documents', async (request, reply) => {
-  const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown } | null;
+  const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown; printedContactFields?: unknown } | null;
   if (typeof body?.name !== 'string' || !body.name.trim() || body.name.length > 200 || !Array.isArray(body.factIds) || body.factIds.length < 1 || body.factIds.length > 50 || !body.factIds.every((value) => typeof value === 'string')) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
+  const allowedContactFields = ['email', 'phone', 'city', 'links'];
+  const printedContactFields = body.printedContactFields === undefined ? ['email'] : body.printedContactFields;
+  if (!Array.isArray(printedContactFields) || printedContactFields.length > allowedContactFields.length || !printedContactFields.every((field) => typeof field === 'string' && allowedContactFields.includes(field)) || new Set(printedContactFields).size !== printedContactFields.length) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
   const factIds = [...new Set(body.factIds as string[])]; if (factIds.length !== body.factIds.length) return fail(reply, 400, 'DUPLICATE_FACT_ID');
   const id = workspace(request);
   const profile = await latestProfile(db, id); if (!profile) return fail(reply, 409, 'PROFILE_NOT_CONFIGURED');
   const facts = await db.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, id), eq(profileFacts.profileVersionId, profile.id), eq(profileFacts.approvalStatus, 'USER_APPROVED')));
   const selected = facts.filter((fact) => factIds.includes(fact.id));
   if (selected.length !== factIds.length) return fail(reply, 400, 'FACTS_MUST_BE_APPROVED_IN_CURRENT_PROFILE');
-  const identity = printedResumeIdentity(profile.profile);
+  const identity = printedResumeIdentity(profile.profile, printedContactFields as Array<'email' | 'phone' | 'city' | 'links'>);
   let snapshotId: string | null = null; let role = '';
   if (body.jobId !== undefined && body.jobId !== null) {
     if (typeof body.jobId !== 'string') return fail(reply, 400, 'JOB_NOT_FOUND');
@@ -543,7 +551,7 @@ app.post('/api/v1/documents', async (request, reply) => {
   const pdfLocale = documentLanguage(body.locale, profile.locale);
   const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: printedStatement(fact, pdfLocale), tags: fact.tags }));
   let rendered: { sha256: string; size: number };
-  try { rendered = await renderResume({ path: filePath, fullName: identity.fullName, email: identity.email, role, locale: pdfLocale, facts: renderedFacts }); }
+  try { rendered = await renderResume({ path: filePath, ...identity, role, locale: pdfLocale, facts: renderedFacts }); }
   catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
   const claims = selected.map((fact, index) => ({ text: renderedFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
@@ -553,7 +561,7 @@ app.post('/api/v1/documents', async (request, reply) => {
       await lockKey(tx, `document:${id}:${name}`);
       const latestRevision = await tx.select({ revision: sql<number>`coalesce(max(${documentVersions.revision}), 0)::int` }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.name, name)));
       const revision = (latestRevision[0]?.revision ?? 0) + 1;
-      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
+      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, printedContactFields: printedContactFields as string[], profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
     });
   } catch (error) { await removeFile(); throw error; }
   return reply.code(201).send({ ...documentView((await documentReadiness(db, id, [row]))[0]!), sizeBytes: rendered.size });

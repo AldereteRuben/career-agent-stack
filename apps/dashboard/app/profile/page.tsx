@@ -20,15 +20,35 @@ import { copy, countryName, countryOptions, humanizeKey, labelFor, normalizeWork
 
 type Fact = ProfileEntry & { approvalStatus: string };
 type Answer = { id: string; semanticKey: string; questionText?: string | null; jurisdiction: string; questionScope: string; value: unknown; approvalStatus: string; strategy: string; revision?: number; reviewExpired?: boolean };
-type Profile = { revision: number; locale?: string; profile: { identity?: { fullName?: string; email?: string; country?: string }; preferences?: { targetTitles?: string[]; workModes?: string[] } }; facts: Fact[]; answers: Answer[] };
-type ProfileForm = { name: string; email: string; country: string; titles: string; modes: string[] };
+type Profile = { revision: number; locale?: string; profile: { identity?: { fullName?: string; email?: string; country?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }> }; preferences?: { targetTitles?: string[]; workModes?: string[] } }; facts: Fact[]; answers: Answer[] };
+type ProfileForm = { name: string; email: string; phone: string; city: string; links: string; country: string; titles: string; modes: string[] };
 
-const emptyForm: ProfileForm = { name: '', email: '', country: '', titles: '', modes: [] };
+const emptyForm: ProfileForm = { name: '', email: '', phone: '', city: '', links: '', country: '', titles: '', modes: [] };
 const formFromProfile = (profile: Profile): ProfileForm => {
   const identity = profile.profile.identity ?? {}; const preferences = profile.profile.preferences ?? {};
-  return { name: identity.fullName ?? '', email: identity.email ?? '', country: (identity.country ?? '').toUpperCase(), titles: (preferences.targetTitles ?? []).join(', '), modes: [...new Set((preferences.workModes ?? []).map(normalizeWorkMode).filter(Boolean))] };
+  return { name: identity.fullName ?? '', email: identity.email ?? '', phone: identity.phone ?? '', city: identity.city ?? '', links: (identity.links ?? []).map((link) => `${link.label} | ${link.url}`).join('\n'), country: (identity.country ?? '').toUpperCase(), titles: (preferences.targetTitles ?? []).join(', '), modes: [...new Set((preferences.workModes ?? []).map(normalizeWorkMode).filter(Boolean))] };
 };
 const splitList = (value: string) => value.split(',').map((v) => v.trim()).filter(Boolean);
+const parseProfileLinks = (value: string): { links: Array<{ label: string; url: string }>; error?: { kind: 'too-many' } | { kind: 'invalid'; line: number } } => {
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 4) return { links: [], error: { kind: 'too-many' } };
+  const links: Array<{ label: string; url: string }> = [];
+  for (const [index, line] of lines.entries()) {
+    const separator = line.indexOf('|');
+    let label = separator < 0 ? '' : line.slice(0, separator).trim();
+    const url = (separator < 0 ? line : line.slice(separator + 1)).trim();
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || url.length > 2048) throw new Error();
+      if (!label) label = parsed.hostname;
+      if (!label || label.length > 80) throw new Error();
+      links.push({ label, url });
+    } catch {
+      return { links: [], error: { kind: 'invalid', line: index + 1 } };
+    }
+  }
+  return { links };
+};
 /** Server rejections that mean this page is looking at an older profile revision; the fix is reloading, not retyping. */
 const revisionConflictCodes = new Set(['PROFILE_REVISION_CONFLICT', 'FACT_NOT_IN_CURRENT_REVISION', 'ANSWER_REVISION_STALE']);
 /** Same-origin link clicks that would leave this page through client-side navigation. */
@@ -145,7 +165,15 @@ function ProfileView() {
     const snapshot = formRef.current; const base = data;
     // Keep the profile's region (en-GB, es-MX…) when it already matches the interface language.
     const profileLocale = base.locale?.toLowerCase().startsWith(locale) ? base.locale : locale;
-    const saved = await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Tus datos se han guardado.', 'Your details have been saved.'), { savedSnapshot: snapshot });
+    const parsedLinks = parseProfileLinks(snapshot.links);
+    if (parsedLinks.error) {
+      setError(parsedLinks.error.kind === 'too-many'
+        ? c('Añade como máximo cuatro enlaces.', 'Add no more than four links.')
+        : c(`Enlace ${parsedLinks.error.line}: usa una URL HTTPS válida y una etiqueta de hasta 80 caracteres.`, `Link ${parsedLinks.error.line}: use a valid HTTPS URL and a label up to 80 characters.`));
+      return;
+    }
+    const links = parsedLinks.links;
+    const saved = await run('profile', () => api('/profile', { method: 'PUT', body: JSON.stringify({ expectedRevision: base.revision, locale: profileLocale, profile: { ...base.profile, identity: { ...(base.profile.identity ?? {}), fullName: snapshot.name.trim(), email: snapshot.email.trim(), phone: snapshot.phone.trim(), city: snapshot.city.trim(), links, country: snapshot.country }, preferences: { ...(base.profile.preferences ?? {}), targetTitles: splitList(snapshot.titles), workModes: snapshot.modes } } }) }), c('Tus datos se han guardado.', 'Your details have been saved.'), { savedSnapshot: snapshot });
     if (saved) setSavedEntry(null);
   };
   const addFact = async (input: EntryInput) => {
@@ -219,6 +247,9 @@ function ProfileView() {
           <fieldset className="profile-fieldset"><legend>{c('Datos para tu CV', 'Details for your resume')}</legend><div className="form-grid">
           <Field disabled={locked || editing !== null} label={c('Nombre', 'Name')} autoComplete="name" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} placeholder={c('Cómo quieres que aparezca', 'How your name should appear')}/>
           <Field disabled={locked || editing !== null} label={c('Correo', 'Email')} type="email" autoComplete="email" value={form.email} onChange={(e) => updateForm({ email: e.target.value })} placeholder={c('nombre@ejemplo.com', 'name@example.com')}/>
+          <Field disabled={locked || editing !== null} label={c('Teléfono · opcional', 'Phone · optional')} type="tel" autoComplete="tel" value={form.phone} onChange={(e) => updateForm({ phone: e.target.value })} maxLength={80}/>
+          <Field disabled={locked || editing !== null} label={c('Ciudad · opcional', 'City · optional')} autoComplete="address-level2" value={form.city} onChange={(e) => updateForm({ city: e.target.value })} maxLength={160}/>
+          <TextareaField className="field-span" disabled={locked || editing !== null} label={c('Enlaces · opcional, hasta 4', 'Links · optional, up to 4')} value={form.links} onChange={(e) => updateForm({ links: e.target.value })} rows={4} maxLength={9000} hint={c('Un enlace HTTPS por línea; puedes escribir una etiqueta seguida de |, o dejar que usemos el dominio como etiqueta. Ej.: LinkedIn | https://linkedin.com/in/….', 'One HTTPS link per line; add an optional label followed by |, or we will use the domain as its label. Example: LinkedIn | https://linkedin.com/in/….')}/>
           </div></fieldset>
           <details className="profile-preferences"><summary>{c('Preferencias de empleo · opcional', 'Job preferences · optional')}</summary><fieldset className="profile-fieldset"><legend>{c('Qué empleo buscas', 'What work you are looking for')}</legend><p>{c('Estas preferencias ayudan a comparar ofertas con tu perfil. No se imprimen en tu CV.', 'These preferences help compare jobs with your profile. They are not printed on your resume.')}</p><div className="form-grid">
           <SelectField disabled={locked || editing !== null} label={c('País de trabajo', 'Work country')} hint={c('Opcional para preparar tu CV.', 'Optional for preparing your resume.')} value={form.country} onChange={(e) => updateForm({ country: e.target.value })}>

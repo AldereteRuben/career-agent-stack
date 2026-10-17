@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import Fastify from 'fastify';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '@career/db';
-import type { ResumeDraftOutput } from '@career/domain';
+import { printedResumeIdentity, type ResumeDraftOutput } from '@career/domain';
 import { aiResumeSelectionSchema, buildAiResumeClaims, registerAiDocumentRoutes } from '../src/ai-document-routes.js';
 import { approveDerivedDocument, documentReadiness } from '../src/document-reuse.js';
 import { buildAiSourceSnapshot, type AiSourceRecords } from '../src/ai/source-snapshot.js';
@@ -23,10 +23,10 @@ function fixture(){
   const workspaceId=randomUUID(),profileId=randomUUID(),factId=randomUUID(),jobId=randomUUID(),otherId=randomUUID();
   const fact={id:factId,workspaceId,profileVersionId:profileId,kind:'experience',statement:'Built tests',details:{type:'employment' as const,title:'QA engineer',organization:'Synthetic',startMonth:'2020-01',current:true,locale:'en' as const,description:'Built tests'},tags:[],source:'USER_ENTERED',approvalStatus:'USER_APPROVED',createdAt:new Date('2020-01-01')};
   const other={...fact,id:otherId,kind:'skill',statement:'TypeScript',details:null};
-  const records:AiSourceRecords={profile:{id:profileId,workspaceId,revision:1,profile:{identity:{fullName:'Synthetic Person',email:'synthetic@example.test'}}},facts:[fact,other],job:{id:jobId,workspaceId,title:'QA',company:'Synthetic',location:null},jobSnapshot:{id:randomUUID(),workspaceId,jobId,title:'QA',descriptionText:'Build automated tests'}};
+  const records:AiSourceRecords={profile:{id:profileId,workspaceId,revision:1,profile:{identity:{fullName:'Synthetic Person',email:'synthetic@example.test',phone:'+34 600 000 000',city:'Málaga · España',links:[{label:'Portfolio',url:'https://example.test/café'}]}}},facts:[fact,other],job:{id:jobId,workspaceId,title:'QA',company:'Synthetic',location:null},jobSnapshot:{id:randomUUID(),workspaceId,jobId,title:'QA',descriptionText:'Build automated tests'}};
   const snapshot=buildAiSourceSnapshot(workspaceId,{operation:'RESUME_DRAFT',locale:'en',jobId,selectedFactIds:[factId,otherId]},records);
   const output:ResumeDraftOutput={schemaVersion:1,operation:'RESUME_DRAFT',locale:'en',proposals:[{proposalKey:'experience-1',section:'Experience',text:'Built reliable tests',sourceFactIds:[factId],changeExplanation:'Clear wording',warnings:[]}],warnings:[]};
-  const body=aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]});
+  const body=aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',printedContactFields:['email','phone','city','links'],selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]});
   return {workspaceId,profileId,factId,otherId,jobId,records,snapshot,output,body};
 }
 
@@ -37,6 +37,24 @@ test('AI resume composition keeps omitted job dates and unselected original evid
   assert.equal(basis.claims[1]!.section,'experience');assert.equal(basis.claims[1]!.text,'Built reliable tests');assert.equal(basis.claims[1]!.origin,'AI');
   assert.equal(basis.claims[2]!.text,'TypeScript');assert.equal(basis.claims[2]!.origin,'MANUAL');
   assert.ok(basis.claims.every(claim=>claim.textHash===hash(claim.text)));
+});
+test('AI rewritten professional summaries remain in the summary section',()=>{
+  const f=fixture(),summaryId=randomUUID();
+  const summaryFact={...f.records.facts![0]!,id:summaryId,kind:'summary',statement:'Quality engineer focused on reliable systems',details:null};
+  f.records.facts=[summaryFact];
+  f.snapshot=buildAiSourceSnapshot(f.workspaceId,{operation:'RESUME_DRAFT',locale:'en',jobId:f.jobId,selectedFactIds:[summaryId]},f.records);
+  const output:ResumeDraftOutput={schemaVersion:1,operation:'RESUME_DRAFT',locale:'en',proposals:[{proposalKey:'summary-1',section:'Summary',text:'Quality engineer building dependable software',sourceFactIds:[summaryId],changeExplanation:'Clearer wording',warnings:[]}],warnings:[]};
+  const selection={...f.body,selections:[{proposalKey:'summary-1',text:'Quality engineer building dependable software'}]};
+  const basis=buildAiResumeClaims(randomUUID(),f.snapshot,output,selection,f.records);
+  assert.equal(basis.claims.length,1);assert.equal(basis.claims[0]!.section,'summary');assert.equal(basis.claims[0]!.origin,'AI');
+});
+test('AI resume contact selection is unique and uses only the fields selected by the person',()=>{
+  assert.throws(()=>aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',printedContactFields:['phone','phone'],selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]}));
+  const f=fixture();
+  f.records.profile!.profile.identity={fullName:'Synthetic Person',email:'synthetic@example.test',phone:'+34 600 000 000',city:'Madrid',links:[{label:'Portfolio',url:'https://example.test/portfolio'}]};
+  const body={...f.body,printedContactFields:['phone','links'] as Array<'email'|'phone'|'city'|'links'>};
+  const identity=printedResumeIdentity(f.records.profile!.profile,body.printedContactFields);
+  assert.deepEqual(identity,{fullName:'Synthetic Person',email:'',phone:'+34 600 000 000',links:[{label:'Portfolio',url:'https://example.test/portfolio'}]});
 });
 test('reviewed edits get their own hash/provenance and explicit exclusions retain required dates',()=>{
   const f=fixture();f.body.selections[0]!.text='Personally edited wording';f.body.includeOriginalFactIds=[];
@@ -78,6 +96,8 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
         const text=execFileSync('pdftotext',[input.path,'-'],{encoding:'utf8'}).replace(/\s+/g,' ');
         for(const fact of input.facts)assert.ok(text.includes(fact.statement.replace(/\s+/g,' ')),`Real PDF preserves each reviewed claim`);
         assert.ok(text.includes(input.fullName));assert.ok(text.includes(input.email??''));assert.ok(text.includes('01/2020 - Present'));
+        assert.ok(text.includes(input.phone??''));assert.ok(text.includes(input.city??''));
+        for(const link of input.links??[])assert.ok(text.includes(link.label),'the PDF displays the selected link label; its URL is the clickable destination');
         assert.ok(text.includes('WORK EXPERIENCE')||text.includes('EXPERIENCE'),'stable section label uses the saved source kind');
         await mutation?.();return rendered;
       }catch(error){renderFailure=error;throw error;}}

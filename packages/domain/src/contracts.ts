@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidDateOnly, localDateTimeToInstant } from './application-dates.js';
 import { entryStatement, type StructuredEntry } from './entries.js';
 import { applicationState, boardPermission, factApproval, recruitmentStage, shortlistDecision } from './states.js';
 
@@ -57,16 +58,23 @@ export const importUndoSchema = z.object({ expectedPending: z.number().int().min
 export const answerSchema = z.object({ semanticKey: z.string().min(1).max(100), jurisdiction: z.string().length(2), questionScope: z.string().min(1).max(160), value: z.unknown().nullable(), strategy: z.enum(['EXACT_APPROVED', 'DERIVED_RULE', 'DRAFT_FOR_REVIEW', 'ASK_USER', 'LEAVE_OPTIONAL_BLANK']), approvalStatus: z.enum(['UNANSWERED', 'USER_APPROVED']).default('UNANSWERED'), reviewAfter: z.string().datetime().nullable().default(null), questionText: z.string().trim().max(500).nullable().default(null) }).strict();
 export const jobImportSchema = z.object({ title: z.string().min(1).max(300), company: z.string().min(1).max(200), location: z.string().max(300).nullable().default(null), description: z.string().max(50000).nullable().default(null), jobUrl: z.string().url(), applyUrl: z.string().url().nullable().default(null), sourcePostedAt: z.string().datetime().nullable().default(null) }).strict();
 export const applicationSchema = z.object({ jobId: z.string().uuid().nullable().default(null), company: z.string().min(1).max(200), role: z.string().min(1).max(300), location: z.string().max(300).nullable().default(null), canonicalUrl: z.string().url().nullable().default(null), state: z.enum(applicationState).default('DRAFT'), confirmationEvidence: z.literal('USER_ATTESTATION').optional(), recruitmentStage: z.enum(recruitmentStage).default('NO_RESPONSE'), shortlistDecision: z.enum(shortlistDecision).default('UNREVIEWED'), notes: z.string().max(10000).default('') }).strict();
-export const applicationUpdateSchema = z.object({ state: z.enum(applicationState).optional(), recruitmentStage: z.enum(recruitmentStage).optional(), shortlistDecision: z.enum(shortlistDecision).optional(), notes: z.string().max(10000).optional(), confirmationEvidence: z.literal('USER_ATTESTATION').optional(), correction: z.boolean().optional(), reason: z.string().trim().max(2000).optional(), expectedVersion: z.number().int().positive().optional() }).strict();
+export const applicationUpdateSchema = z.object({ state: z.enum(applicationState).optional(), recruitmentStage: z.enum(recruitmentStage).optional(), shortlistDecision: z.enum(shortlistDecision).optional(), notes: z.string().max(10000).optional(), nextStep: z.string().trim().max(500).nullable().optional(), followUpDate: z.string().nullable().optional(), interview: z.object({ localAt: z.string().max(32), timeZone: z.string().trim().min(1).max(100) }).strict().nullable().optional(), confirmationEvidence: z.literal('USER_ATTESTATION').optional(), correction: z.boolean().optional(), reason: z.string().trim().max(2000).optional(), expectedVersion: z.number().int().positive().optional() }).strict().superRefine((update, ctx) => {
+  if (update.followUpDate !== undefined && update.followUpDate !== null && !isValidDateOnly(update.followUpDate)) ctx.addIssue({ code: 'custom', path: ['followUpDate'], message: 'Follow-up date must be a valid calendar date.' });
+  if (update.interview && !localDateTimeToInstant(update.interview.localAt, update.interview.timeZone)) ctx.addIssue({ code: 'custom', path: ['interview'], message: 'Choose a valid, unambiguous time in a valid time zone.' });
+});
 /**
  * The profile record the dashboard and readers use (`readIdentity`, `readPreferences`). Known fields must have their
  * documented shape, and identity or preference fields at the top level are rejected so a wrong-shaped save fails
  * instead of leaving an apparently empty profile. Other top-level and nested keys are kept: older installs may store
  * extra keys (the demo seed writes `locale`) and the dashboard sends the whole stored profile back on every save.
  */
-const profileIdentitySchema = z.looseObject({ fullName: z.string().optional(), email: z.string().optional(), country: z.string().optional() });
+const profileLinkSchema = z.object({ label: z.string().trim().min(1).max(80), url: z.string().trim().url().max(2048).refine((value) => {
+  try { const parsed = new URL(value); return parsed.protocol === 'https:' && !parsed.username && !parsed.password; }
+  catch { return false; }
+}, 'Links must use HTTPS and cannot include credentials.') }).strict();
+const profileIdentitySchema = z.looseObject({ fullName: z.string().optional(), email: z.string().optional(), country: z.string().optional(), phone: z.string().max(80).optional(), city: z.string().max(160).optional(), links: z.array(profileLinkSchema).max(4).optional() });
 const profilePreferencesSchema = z.looseObject({ targetTitles: z.array(z.string()).optional(), workModes: z.array(z.string()).optional() });
-const misplacedProfileKeys = { fullName: 'identity', email: 'identity', country: 'identity', targetTitles: 'preferences', workModes: 'preferences' } as const;
+const misplacedProfileKeys = { fullName: 'identity', email: 'identity', country: 'identity', phone: 'identity', city: 'identity', links: 'identity', targetTitles: 'preferences', workModes: 'preferences' } as const;
 export const profileDataSchema = z.looseObject({ identity: profileIdentitySchema.optional(), preferences: profilePreferencesSchema.optional() })
   .superRefine((profile, ctx) => {
     for (const [key, parent] of Object.entries(misplacedProfileKeys)) if (Object.prototype.hasOwnProperty.call(profile, key)) ctx.addIssue({ code: 'custom', path: [key], message: `${key} belongs inside ${parent}.` });
