@@ -20,7 +20,7 @@ import { copy, labelFor } from '@/lib/labels';
 
 type Fact = { id: string; kind: string; statement: string; tags: string[]; approvalStatus: string };
 type Profile = { facts: Fact[]; profile: { identity?: { fullName?: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }> } } };
-type Document = { derivedStatus?: 'CURRENT' | 'STALE' | 'NEEDS_ADAPTATION_REVIEW' | 'NEEDS_REVIEW'; claimsContractVersion?: number | null; claimsBasis?: { claims: Array<{ textHash: string }> } | null; printedContactFields: string[]; reviewReady: boolean; language: 'en' | 'es' | null; jobId: string | null; reusableFactIds: string[]; missingFactCount: number; assistReady: boolean; id: string; name: string; revision: number; sha256: string; mediaType: string; approvalStatus: string; createdAt: string; jobSnapshotId: string | null; claims: Array<{ text: string; sourceFactIds: string[] }> };
+type Document = { derivedStatus?: 'CURRENT' | 'STALE' | 'NEEDS_ADAPTATION_REVIEW' | 'NEEDS_REVIEW'; claimsContractVersion?: number | null; claimsBasis?: { claims: Array<{ textHash: string }> } | null; paperSize: 'A4' | 'LETTER'; printedContactFields: string[]; reviewReady: boolean; language: 'en' | 'es' | null; jobId: string | null; reusableFactIds: string[]; missingFactCount: number; assistReady: boolean; id: string; name: string; revision: number; sha256: string; mediaType: string; approvalStatus: string; createdAt: string; jobSnapshotId: string | null; claims: Array<{ text: string; sourceFactIds: string[] }> };
 type Job = { id: string; title: string; company: string };
 type Preview = { id: string; data: ArrayBuffer | null; state: 'loading' | 'ready' | 'error'; error?: string };
 
@@ -54,6 +54,7 @@ function DocumentsView() {
   const [identityReady, setIdentityReady] = useState(false);
   const [contactAvailability, setContactAvailability] = useState({ email: false, phone: false, city: false, links: false });
   const [printedContactFields, setPrintedContactFields] = useState<string[]>(['email']);
+  const [paperSize, setPaperSize] = useState<'A4' | 'LETTER'>('A4');
   const previewHeading = useRef<HTMLHeadingElement>(null);
   const builderHeading = useRef<HTMLHeadingElement>(null);
   const historyHeading = useRef<HTMLHeadingElement>(null);
@@ -169,7 +170,7 @@ function DocumentsView() {
   const generate = async (event: FormEvent) => {
     event.preventDefault(); if (aiReview || busy) return; setBusy('generate'); setError(''); setMessage('');
     try {
-      const doc = await api<Document>('/documents', { method: 'POST', body: JSON.stringify({ name: documentName.trim(), factIds: selected, locale: pdfLocale, printedContactFields, ...(jobId ? { jobId } : {}) }) });
+      const doc = await api<Document>('/documents', { method: 'POST', body: JSON.stringify({ name: documentName.trim(), factIds: selected, locale: pdfLocale, paperSize, printedContactFields, ...(jobId ? { jobId } : {}) }) });
       setDocuments((current) => [doc, ...current.filter((item) => item.id !== doc.id)]);
       // Keep the saved values explicit, so editing this same version is not mistaken for replacing another draft.
       draft.update({ name: doc.name, named: 'yes', language: doc.language ?? pdfLocale, facts: JSON.stringify(selected) });
@@ -229,6 +230,7 @@ function DocumentsView() {
         setError(c('No pudimos conservar la selección al cambiar de oferta. Vuelve a intentarlo antes de continuar.', 'We could not keep the selection while switching jobs. Try again before continuing.')); return;
       }
       setPrintedContactFields(doc.printedContactFields ?? ['email']);
+      setPaperSize(doc.paperSize ?? 'A4');
       const params = new URLSearchParams(searchParams.toString());
       params.set('view', 'prepare'); params.delete('document'); params.delete('from');
       if (targetJobId) params.set('jobId', targetJobId); else params.delete('jobId');
@@ -283,6 +285,7 @@ function DocumentsView() {
           </SelectField>
           {job && <p className="muted-label">{c('El documento usará el título de esta oferta.', 'The document will use this job title.')} <Link href={withSearchOrigin(`/jobs/${job.id}`, returnTo)}>{c('Ver oferta', 'View job')}</Link></p>}
           <SelectField label={c('Idioma del PDF', 'PDF language')} value={pdfLocale} onChange={(event) => setPdfLanguage(event.target.value as 'es' | 'en')} hint={c('Cambia los títulos y las fechas. Tus descripciones se conservan en el idioma en que las escribiste.', 'Changes headings and dates. Your descriptions stay in the language you wrote them.')}><option value="es">Español</option><option value="en">English</option></SelectField>
+          <SelectField label={c('Tamaño del papel', 'Paper size')} value={paperSize} onChange={(event) => setPaperSize(event.target.value as 'A4' | 'LETTER')}><option value="A4">A4</option><option value="LETTER">{c('Carta (EE. UU.)', 'Letter (US)')}</option></SelectField>
           <Field label={c('Nombre de la versión', 'Version name')} value={documentName} onChange={(e) => { setName(e.target.value); }} required maxLength={200} hint={c('Si repites un nombre, se guarda como una versión nueva.', 'If you reuse a name, it is saved as a new version.')}/>
           <details className="technical-detail"><summary>{c('¿Puedo continuar después?', 'Can I continue later?')}</summary><p className="muted-label">{c('Cada oferta conserva su nombre, idioma y selección en esta pestaña. Puedes volver después de editar tu perfil. Cerrar sesión borra esta preparación.', 'Each job keeps its name, language and selection in this tab. You can return after editing your profile. Signing out clears this preparation.')}</p></details><Link href={profileHref}>{c('Añadir o corregir datos del perfil', 'Add or edit profile details')}</Link>
           {draft.storageFailed && <Notice tone="warning">{c('No pudimos conservar esta preparación. Genera el PDF antes de salir para no perder la selección.', 'We could not keep this preparation. Generate the PDF before leaving to keep your selection.')}</Notice>}
@@ -298,7 +301,7 @@ function DocumentsView() {
           <p id="pdf-review-explanation" className="muted-label">{c('El PDF se genera sin la palabra «borrador» ni marcas de revisión. «Pendiente de revisión» es solo un estado dentro de esta app. Léelo antes de aprobarlo.', 'The PDF is generated without a draft label or review marks. “Waiting for review” is only a status in this app. Read it before approving it.')}</p>
           {!aiReview && <Button type="submit" aria-describedby="pdf-review-explanation" disabled={busy !== null || !identityReady || !selected.length || selected.length > 50 || !documentName.trim()}>{busy === 'generate' ? c('Generando PDF…', 'Generating PDF…') : c('Generar y revisar', 'Generate and review')} <Icon name="arrow" size={15}/></Button>}
         </fieldset></form>
-        {aiAvailable && (aiReview || (jobId && selected.length > 0)) && <div className="optional-section">{aiReview ? <AiResumeReview key={aiReview.artifact.id} artifact={aiReview.artifact} name={documentName} printedContactFields={printedContactFields} contextChanged={aiReview.contextKey !== resumeContext} onBusyChange={active => setBusy(active ? 'ai-resume' : null)} onGenerated={id => { setAiReview(null); void load(); openPreview(id); }} onCancel={closeAiReview} onOriginals={useOriginalWording}/> : <AiDraftAction request={{ operation: 'RESUME_DRAFT', locale: pdfLocale, jobId, selectedFactIds: selected }} label={c('Mejorar la redacción para esta oferta', 'Improve wording for this job')} onReview={artifact => setAiReview({ artifact, contextKey: resumeContext })}/>}</div>}
+        {aiAvailable && (aiReview || (jobId && selected.length > 0)) && <div className="optional-section">{aiReview ? <AiResumeReview key={aiReview.artifact.id} artifact={aiReview.artifact} name={documentName} printedContactFields={printedContactFields} paperSize={paperSize} contextChanged={aiReview.contextKey !== resumeContext} onBusyChange={active => setBusy(active ? 'ai-resume' : null)} onGenerated={id => { setAiReview(null); void load(); openPreview(id); }} onCancel={closeAiReview} onOriginals={useOriginalWording}/> : <AiDraftAction request={{ operation: 'RESUME_DRAFT', locale: pdfLocale, jobId, selectedFactIds: selected }} label={c('Mejorar la redacción para esta oferta', 'Improve wording for this job')} onReview={artifact => setAiReview({ artifact, contextKey: resumeContext })}/>}</div>}
       </Card>}
       <Card className="renderer-note"><details><summary>{c('Sobre el formato y los PDF anteriores', 'About the layout and earlier PDFs')}</summary><p>{c('Diseño de una columna, nombre y correo destacados, secciones claras y páginas numeradas. Si un PDF anterior incluye la palabra «borrador», elige Usar como base y genera una nueva versión para quitarla. Aprobar o descargar el PDF anterior no cambia su contenido.', 'A single-column layout with prominent name and email, clear sections, and page numbers. If an older PDF includes a draft label, choose Use as starting point and generate a new version to remove it. Approving or downloading the older PDF does not change its contents.')}</p></details></Card>
     </div>
@@ -307,7 +310,7 @@ function DocumentsView() {
           <div className="document-card-top"><strong id={`resume-title-${doc.id}`}>{doc.name}</strong><Tag tone={doc.approvalStatus === 'USER_APPROVED' ? 'green' : doc.approvalStatus === 'PENDING_REVIEW' ? 'amber' : 'neutral'}>{labelFor.documentApproval(doc.approvalStatus, locale).toUpperCase()}</Tag></div>
           {doc.id === linkedDocumentId && <p className="linked-resume-label"><Icon name="check" size={14}/> {c('CV vinculado a esta solicitud', 'Resume linked to this application')}</p>}
           {((doc.approvalStatus === 'USER_APPROVED' && doc.assistReady === false) || (doc.approvalStatus === 'PENDING_REVIEW' && !doc.reviewReady)) && <p>{c('Tu perfil o la oferta cambió. Usa este CV como base y aprueba la nueva versión para preparar una solicitud asistida.', 'Your profile or the job changed. Use this resume as a starting point and approve the new version to prepare an assisted application.')}</p>}
-          <p>{c('Rev.', 'Rev.')} {doc.revision} · {resumeTime(doc.createdAt, locale)} · {doc.claims.length} {doc.claims.length === 1 ? c('dato', 'detail') : c('datos de tu experiencia', 'profile details')} · {doc.language === 'en' ? 'English' : doc.language === 'es' ? 'Español' : c('Idioma sin registrar', 'Language not recorded')} · {jobs.find((item) => item.id === doc.jobId)?.company ?? (doc.jobSnapshotId ? c('Para una oferta', 'For a job') : c('CV general', 'General resume'))}</p>
+          <p>{c('Rev.', 'Rev.')} {doc.revision} · {resumeTime(doc.createdAt, locale)} · {doc.claims.length} {doc.claims.length === 1 ? c('dato', 'detail') : c('datos de tu experiencia', 'profile details')} · {doc.language === 'en' ? 'English' : doc.language === 'es' ? 'Español' : c('Idioma sin registrar', 'Language not recorded')} · {doc.paperSize === 'LETTER' ? c('Carta (EE. UU.)', 'Letter (US)') : 'A4'} · {jobs.find((item) => item.id === doc.jobId)?.company ?? (doc.jobSnapshotId ? c('Para una oferta', 'For a job') : c('CV general', 'General resume'))}</p>
           <details className="technical-detail"><summary>{c('Detalles del archivo', 'File details')}</summary><small className="hash-short">SHA-256 · {doc.sha256}</small></details>
           <div className="document-actions" role="group" aria-label={`${doc.name} · ${c('versión', 'version')} ${doc.revision}`}>
             <Button variant={doc.approvalStatus === 'PENDING_REVIEW' && doc.reviewReady ? 'secondary' : 'quiet'} disabled={busy !== null} onClick={() => void openPreview(doc.id)}>{doc.approvalStatus === 'PENDING_REVIEW' && doc.reviewReady ? c('Revisar y aprobar', 'Review and approve') : c('Ver', 'View')}</Button>

@@ -19,7 +19,7 @@ import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDele
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
-import { renderResume } from './document-renderer.js';
+import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
@@ -522,11 +522,13 @@ app.get('/api/v1/documents', async (request) => {
   return (await documentReadiness(db, id, documents)).map(documentView);
 });
 app.post('/api/v1/documents', async (request, reply) => {
-  const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown; printedContactFields?: unknown } | null;
+  const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown; paperSize?: unknown; printedContactFields?: unknown } | null;
   if (typeof body?.name !== 'string' || !body.name.trim() || body.name.length > 200 || !Array.isArray(body.factIds) || body.factIds.length < 1 || body.factIds.length > 50 || !body.factIds.every((value) => typeof value === 'string')) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
   const allowedContactFields = ['email', 'phone', 'city', 'links'];
   const printedContactFields = body.printedContactFields === undefined ? ['email'] : body.printedContactFields;
   if (!Array.isArray(printedContactFields) || printedContactFields.length > allowedContactFields.length || !printedContactFields.every((field) => typeof field === 'string' && allowedContactFields.includes(field)) || new Set(printedContactFields).size !== printedContactFields.length) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
+  const paperSize = parseResumePaperSize(body.paperSize);
+  if (!paperSize) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
   const factIds = [...new Set(body.factIds as string[])]; if (factIds.length !== body.factIds.length) return fail(reply, 400, 'DUPLICATE_FACT_ID');
   const id = workspace(request);
   const profile = await latestProfile(db, id); if (!profile) return fail(reply, 409, 'PROFILE_NOT_CONFIGURED');
@@ -551,7 +553,7 @@ app.post('/api/v1/documents', async (request, reply) => {
   const pdfLocale = documentLanguage(body.locale, profile.locale);
   const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: printedStatement(fact, pdfLocale), tags: fact.tags }));
   let rendered: { sha256: string; size: number };
-  try { rendered = await renderResume({ path: filePath, ...identity, role, locale: pdfLocale, facts: renderedFacts }); }
+  try { rendered = await renderResume({ path: filePath, ...identity, role, locale: pdfLocale, paperSize, facts: renderedFacts }); }
   catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
   const claims = selected.map((fact, index) => ({ text: renderedFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
@@ -561,7 +563,7 @@ app.post('/api/v1/documents', async (request, reply) => {
       await lockKey(tx, `document:${id}:${name}`);
       const latestRevision = await tx.select({ revision: sql<number>`coalesce(max(${documentVersions.revision}), 0)::int` }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.name, name)));
       const revision = (latestRevision[0]?.revision ?? 0) + 1;
-      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, printedContactFields: printedContactFields as string[], profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
+      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, paperSize, printedContactFields: printedContactFields as string[], profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
     });
   } catch (error) { await removeFile(); throw error; }
   return reply.code(201).send({ ...documentView((await documentReadiness(db, id, [row]))[0]!), sizeBytes: rendered.size });
