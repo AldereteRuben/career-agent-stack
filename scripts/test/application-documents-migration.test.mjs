@@ -1,4 +1,4 @@
-// Creates a disposable loopback database and applies every checked-in migration in order.
+// Creates a disposable loopback database and applies migrations through 0019 in order.
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -32,8 +32,9 @@ test('0019 adds application documents without changing attached resumes and enfo
     await client.connect();
 
     const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
-    assert.equal(migrations.at(-1), '0019_application_documents.sql');
-    for (const file of migrations.slice(0, -1)) await applyMigration(client, file);
+    const targetMigration = migrations.indexOf('0019_application_documents.sql');
+    assert.notEqual(targetMigration, -1, '0019 application documents migration is present');
+    for (const file of migrations.slice(0, targetMigration)) await applyMigration(client, file);
 
     // Seed a pre-existing application with its approved, linked general resume.
     const workspaceId = randomUUID(); const jobId = randomUUID(); const snapshotId = randomUUID();
@@ -53,7 +54,7 @@ test('0019 adds application documents without changing attached resumes and enfo
     const applicationBefore = (await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0];
     const resumeBefore = (await client.query('SELECT * FROM document_versions WHERE id=$1', [legacyDocumentId])).rows[0];
 
-    await applyMigration(client, migrations.at(-1));
+    await applyMigration(client, migrations[targetMigration]);
     const applicationAfter = (await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0];
     const resumeAfter = (await client.query('SELECT * FROM document_versions WHERE id=$1', [legacyDocumentId])).rows[0];
     assert.deepEqual(applicationAfter, applicationBefore, 'application row and legacy link are unchanged');
