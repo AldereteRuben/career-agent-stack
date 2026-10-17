@@ -14,9 +14,10 @@ import { checkAiSourceCurrent, type AiSourceRecords } from './ai/source-snapshot
 import { checkCurrentAiSnapshot, loadAiSourceRecords } from './ai/source-reader.js';
 
 export const aiResumeSelectionSchema=z.object({expectedRevision:z.number().int().positive(),name:z.string().trim().min(1).max(200),
+  printedContactFields:z.array(z.enum(['email','phone','city','links'])).max(4).default(['email']),
   selections:z.array(z.object({proposalKey:z.string().min(1).max(160),text:z.string().trim().min(1).max(4000)}).strict()).min(1).max(50),
   includeOriginalFactIds:z.array(z.uuid()).max(50).optional(),
-}).strict();
+}).strict().superRefine((selection,ctx)=>{if(new Set(selection.printedContactFields).size!==selection.printedContactFields.length)ctx.addIssue({code:'custom',path:['printedContactFields'],message:'Contact fields must be unique.'});});
 type Selection=z.infer<typeof aiResumeSelectionSchema>;
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
 export class AiDocumentError extends Error {constructor(readonly code:string){super(code);this.name='AiDocumentError';}}
@@ -71,7 +72,7 @@ export function registerAiDocumentRoutes(app:FastifyInstance,workspace:(request:
     const params=z.object({id:z.uuid()}).strict().safeParse(request.params),body=aiResumeSelectionSchema.safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:'INVALID_INPUT'});
     const workspaceId=workspace(request),artifactId=params.data.id,selection=body.data;
-    const requestHash=hash(JSON.stringify({name:selection.name,selections:selection.selections,includeOriginalFactIds:selection.includeOriginalFactIds??null}));
+    const requestHash=hash(JSON.stringify({name:selection.name,selections:selection.selections,printedContactFields:selection.printedContactFields,includeOriginalFactIds:selection.includeOriginalFactIds??null}));
     const prepared=await database.transaction(async tx=>{
       await lockJobIdentity(tx,workspaceId);await lockKey(tx,profileLockKey(workspaceId));
       const artifact=(await tx.select().from(aiArtifacts).where(and(eq(aiArtifacts.workspaceId,workspaceId),eq(aiArtifacts.id,artifactId))).limit(1).for('update'))[0];
@@ -84,8 +85,10 @@ export function registerAiDocumentRoutes(app:FastifyInstance,workspace:(request:
       const snapshot=parsed.data,validated=validateAiOutput(artifact.output,snapshot,{workspaceId,operation:'RESUME_DRAFT',locale:snapshot.locale});
       if(!validated.ok||validated.output.operation!=='RESUME_DRAFT')throw new AiDocumentError('AI_ARTIFACT_NOT_AVAILABLE');
       const records=await loadAiSourceRecords(tx,workspaceId,snapshot);
-      const basis=buildAiResumeClaims(artifactId,snapshot,validated.output,selection,records);
-      return {basis,snapshot,profile:records.profile!,posting:records.jobSnapshot!,identity:printedResumeIdentity(records.profile!.profile),role:records.job?.title??''};
+      const basisWithoutPdfHeader=buildAiResumeClaims(artifactId,snapshot,validated.output,selection,records);
+      const identity=printedResumeIdentity(records.profile!.profile,selection.printedContactFields);
+      const basis={...basisWithoutPdfHeader,identityFingerprint:hash(JSON.stringify(identity))};
+      return {basis,snapshot,profile:records.profile!,posting:records.jobSnapshot!,identity,printedContactFields:selection.printedContactFields,role:records.job?.title??''};
     });
     if('prior' in prepared)return reply.code(200).send(view((await documentReadiness(database,workspaceId,[prepared.prior!]))[0]!));
     const docId=randomUUID(),storageRoot=resolve(options.storageRoot),relativePath=`${workspaceId}/${docId}.pdf`,filePath=resolve(storageRoot,relativePath),rel=relative(storageRoot,filePath);
@@ -93,7 +96,7 @@ export function registerAiDocumentRoutes(app:FastifyInstance,workspace:(request:
     const cleanup=()=>unlink(filePath).catch(()=>undefined);
     let persisted=false;
     try{
-      const rendered=await (options.render??renderResume)({path:filePath,fullName:prepared.identity.fullName,email:prepared.identity.email,role:prepared.role,locale:prepared.basis.language,facts:prepared.basis.claims.map(claim=>({kind:claim.section,statement:claim.text,tags:[]}))});
+      const rendered=await (options.render??renderResume)({path:filePath,...prepared.identity,role:prepared.role,locale:prepared.basis.language,facts:prepared.basis.claims.map(claim=>({kind:claim.section,statement:claim.text,tags:[]}))});
       const result=await database.transaction(async tx=>{
         await lockJobIdentity(tx,workspaceId);await lockKey(tx,profileLockKey(workspaceId));
         const artifact=(await tx.select().from(aiArtifacts).where(and(eq(aiArtifacts.workspaceId,workspaceId),eq(aiArtifacts.id,artifactId))).limit(1).for('update'))[0];
@@ -102,7 +105,7 @@ export function registerAiDocumentRoutes(app:FastifyInstance,workspace:(request:
         if(!(await checkCurrentAiSnapshot(tx,workspaceId,prepared.snapshot)).ok)throw new AiDocumentError('AI_SOURCE_CHANGED');
         await lockKey(tx,`document:${workspaceId}:${selection.name}`);
         const max=(await tx.select({revision:sql<number>`coalesce(max(${documentVersions.revision}),0)::int`}).from(documentVersions).where(and(eq(documentVersions.workspaceId,workspaceId),eq(documentVersions.name,selection.name))))[0]?.revision??0;
-        const row=(await tx.insert(documentVersions).values({id:docId,workspaceId,name:selection.name,revision:max+1,language:prepared.basis.language,profileRevisionId:prepared.profile.id,jobSnapshotId:prepared.posting.id,mediaType:'application/pdf',storagePath:relativePath,sha256:rendered.sha256,
+        const row=(await tx.insert(documentVersions).values({id:docId,workspaceId,name:selection.name,revision:max+1,language:prepared.basis.language,printedContactFields:prepared.printedContactFields,profileRevisionId:prepared.profile.id,jobSnapshotId:prepared.posting.id,mediaType:'application/pdf',storagePath:relativePath,sha256:rendered.sha256,
           claims:prepared.basis.claims.map(claim=>({text:claim.text,sourceFactIds:claim.sourceFactIds,approvalStatus:'PENDING_REVIEW'})),claimsContractVersion:1,claimsBasis:prepared.basis,approvalStatus:'PENDING_REVIEW'}).returning())[0]!;
         await tx.update(aiArtifacts).set({state:'ACCEPTED',revision:artifact.revision+1,approvedAt:new Date(),approvedHash:requestHash}).where(and(eq(aiArtifacts.workspaceId,workspaceId),eq(aiArtifacts.id,artifactId)));
         return {row,created:true};

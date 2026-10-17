@@ -9,7 +9,7 @@ test('the profile the dashboard saves is accepted and read back unchanged', () =
   const profile = { identity: { fullName: 'Alex Example', email: 'alex@example.test', country: 'ES' }, preferences: { targetTitles: ['QA Engineer'], workModes: ['remote'] } };
   const parsed = profileUpdateSchema.parse({ profile, locale: 'es', expectedRevision: 2 });
   assert.deepEqual(parsed.profile, profile);
-  assert.deepEqual(readIdentity(parsed.profile), { fullName: 'Alex Example', email: 'alex@example.test', country: 'ES' });
+  assert.deepEqual(readIdentity(parsed.profile), { fullName: 'Alex Example', email: 'alex@example.test', country: 'ES', phone: '', city: '', links: [] });
   assert.deepEqual(readPreferences(parsed.profile), { targetTitles: ['QA Engineer'], workModes: ['remote'] });
 });
 
@@ -41,4 +41,12 @@ test('known fields must have their documented types', () => {
   assert.equal(valid({ preferences: { workModes: ['remote', 3] } }), false);
   assert.equal(valid([]), false);
   assert.equal(valid(null), false);
+});
+
+test('resume contact links allow only a small list of HTTPS URLs without credentials', () => {
+  const identity = { fullName: 'Alex', phone: '+34 600 000 000', city: 'Madrid', links: [{ label: 'Portfolio', url: 'https://example.test/work' }] };
+  assert.equal(valid({ identity }), true);
+  assert.equal(valid({ identity: { links: [{ label: 'Site', url: 'http://example.test' }] } }), false);
+  assert.equal(valid({ identity: { links: [{ label: 'Site', url: 'https://user:pass@example.test' }] } }), false);
+  assert.equal(valid({ identity: { links: Array.from({ length: 5 }, (_, index) => ({ label: `Site ${index}`, url: `https://example.test/${index}` })) } }), false);
 });

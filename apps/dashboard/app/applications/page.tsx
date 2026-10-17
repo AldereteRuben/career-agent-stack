@@ -1,6 +1,6 @@
 'use client';
 
-import { isApplicationClosedForPreparation } from '@career/domain';
+import { applicationFollowUpStatus, instantToLocalDateTime, isApplicationClosedForPreparation, localDateTimeToInstant } from '@career/domain';
 
 import { useErrorFocus } from '@/lib/disclosure-focus';
 
@@ -22,9 +22,15 @@ import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
 import type { Locale } from '@/lib/locale';
 
-type Application = { documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; jobAvailability?: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; updatedAt: string; version: number };
-type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null };
-type Patch = { state?: string; recruitmentStage?: string; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
+type Application = { documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; jobAvailability?: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: string; recruitmentStage: string; shortlistDecision: string; notes: string; nextStep?: string | null; followUpDate?: string | null; interviewAt?: string | null; interviewTimezone?: string | null; updatedAt: string; version: number };
+type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null; evidence?: Record<string, unknown> | null };
+type Patch = { state?: string; recruitmentStage?: string; nextStep?: string | null; followUpDate?: string | null; interview?: { localAt: string; timeZone: string } | null; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
+
+const todayLocalDate = () => {
+  const parts = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+};
 
 /** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.3. */
 const transitions: Record<string, string[]> = {
@@ -41,6 +47,17 @@ const stateTone = (state: string) => state === 'CONFIRMED' ? 'green' : state ===
 
 function eventDetail(event: AppEvent, locale: Locale) {
   const c = copy(locale);
+  const evidence = event.evidence ?? {};
+  if (event.eventType === 'FOLLOW_UP_UPDATED') {
+    const next = evidence.next as { nextStep?: string | null; followUpDate?: string | null } | undefined;
+    return [next?.nextStep, next?.followUpDate].filter(Boolean).join(' · ') || c('Se quitó el siguiente paso y la fecha.', 'The next step and date were cleared.');
+  }
+  if (event.eventType === 'INTERVIEW_UPDATED') {
+    const next = evidence.next as { at?: string | null; timeZone?: string | null } | undefined;
+    if (!next?.at) return c('Se quitó la entrevista programada.', 'The scheduled interview was cleared.');
+    const date = new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: next.timeZone ?? 'UTC' }).format(new Date(next.at));
+    return `${date} (${next.timeZone ?? 'UTC'})`;
+  }
   if (event.eventType === 'RECRUITMENT_STAGE_CHANGED' || event.eventType === 'RECRUITMENT_STAGE_CORRECTED') {
     const arrow = `${labelFor.recruitmentStage(event.priorState, locale)} → ${labelFor.recruitmentStage(event.newState, locale)}`;
     return event.reason && /correct/i.test(event.reason) ? `${arrow} · ${c('corrección', 'correction')}` : arrow;
@@ -61,6 +78,7 @@ function ApplicationsView() {
   const requestedOffset = Number(searchParams.get('offset') ?? 0);
   const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
   const query = (searchParams.get('q') ?? '').slice(0, 200);
+  const sort = searchParams.get('sort') === 'follow-up' ? 'follow-up' : 'recent';
   const [filter, setFilter] = useState(query);
   const [pagination, setPagination] = useState({ total: 0, offset: 0, limit: 25 });
   const listRequest = useRef(0);
@@ -83,8 +101,20 @@ function ApplicationsView() {
   // The selection as of now, not as of the render that started a request: async handlers compare against it after every await.
   const selectedRef = useRef<string | null>(urlId);
   const [detail, setDetail] = useState<{ id: string | null; data: Application | null; status: 'loading' | 'ready' | 'missing' | 'error' }>({ id: null, data: null, status: 'ready' });
+  const [nextStepDraft, setNextStepDraft] = useState('');
+  const [followUpDateDraft, setFollowUpDateDraft] = useState('');
+  const [interviewDraft, setInterviewDraft] = useState('');
+  const [interviewTimezoneDraft, setInterviewTimezoneDraft] = useState('');
   const detailRequest = useRef(0);
   const selected = detail.id === selectedId ? detail.data : null;
+  useEffect(() => {
+    if (!selected) return;
+    setNextStepDraft(selected.nextStep ?? '');
+    setFollowUpDateDraft(selected.followUpDate ?? '');
+    const zone = selected.interviewTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    setInterviewTimezoneDraft(zone);
+    setInterviewDraft(selected.interviewAt ? instantToLocalDateTime(selected.interviewAt, zone) : '');
+  }, [selected?.id, selected?.nextStep, selected?.followUpDate, selected?.interviewAt, selected?.interviewTimezone]);
   const loadSelected = useCallback(async (id: string | null) => {
     const ticket = ++detailRequest.current;
     if (!id) { setDetail({ id, data: null, status: 'ready' }); return; }
@@ -109,12 +139,12 @@ function ApplicationsView() {
   const loadRows = useCallback(async () => {
     const ticket = ++listRequest.current;
     try {
-      const params = new URLSearchParams({ offset: String(offset), limit: '25', q: query });
+      const params = new URLSearchParams({ offset: String(offset), limit: '25', q: query, sort });
       const page = await api<{ items: Application[]; total: number; offset: number; limit: number }>(`/applications?${params}`);
       if (ticket !== listRequest.current) return null;
       setRows(page.items); setPagination(page); setLoadState('ready'); return page.items;
     } catch (err) { if (ticket === listRequest.current) { setError(errorMessage(err)); setLoadState('error'); } return null; }
-  }, [offset, query]);
+  }, [offset, query, sort]);
   /** Only the most recent request may write events, so a slow response for a previous selection never shows under the current one. */
   const loadEvents = useCallback(async (id: string) => {
     const ticket = ++eventsRequest.current; setEventsState('loading');
@@ -190,6 +220,14 @@ function ApplicationsView() {
   };
   const confirmSent = async () => { if (await update({ state: 'CONFIRMED', confirmationEvidence: 'USER_ATTESTATION' }, c('Marcada como enviada por ti.', 'Marked as sent by you.'))) setConfirmApplied(false); };
 
+  const interviewInstant = interviewDraft ? localDateTimeToInstant(interviewDraft, interviewTimezoneDraft) : null;
+  const interviewInvalid = Boolean(interviewDraft && !interviewInstant);
+  const saveFollowUp = () => {
+    if (followUpDateDraft && !/^\d{4}-\d{2}-\d{2}$/.test(followUpDateDraft)) return;
+    if (interviewInvalid) return;
+    void update({ nextStep: nextStepDraft.trim() || null, followUpDate: followUpDateDraft || null, interview: interviewInstant ? { localAt: interviewDraft, timeZone: interviewTimezoneDraft } : null }, c('Próximo paso y fechas guardados.', 'Next step and dates saved.'));
+  };
+
   const addNote = async (event: FormEvent) => {
     event.preventDefault(); if (!selected || !note.trim()) return;
     const id = selected.id; const submitted = note; setBusy('note'); setError(''); setMessage('');
@@ -223,12 +261,13 @@ function ApplicationsView() {
       <Field label={c('Buscar en mis solicitudes', 'Search my applications')} value={filter} maxLength={200} onChange={(event) => setFilter(event.target.value)} placeholder={c('Puesto o empresa', 'Role or company')}/>
       <Button type="submit" variant="secondary">{c('Buscar', 'Search')}</Button>
       {query && <Button type="button" variant="quiet" onClick={() => { setFilter(''); navigateList(0, ''); }}>{c('Limpiar búsqueda', 'Clear search')}</Button>}
+      <Button type="button" variant="quiet" aria-pressed={sort === 'follow-up'} onClick={() => { const params = new URLSearchParams(window.location.search); if (sort === 'follow-up') params.delete('sort'); else params.set('sort', 'follow-up'); params.set('offset', '0'); router.replace(`${pathname}?${params}`, { scroll: false }); }}>{sort === 'follow-up' ? c('Orden: próximos pasos', 'Sort: follow-ups') : c('Ordenar por próximo paso', 'Sort by follow-up')}</Button>
     </form>
     {loadState === 'loading' ? <Notice>{c('Cargando solicitudes…', 'Loading applications…')}</Notice>
       : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty headingLevel="h2" title={c('No pudimos cargar tus solicitudes', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
       : (rows.length || selectedId || query) ? <div className={`tracker-layout ${selected ? 'tracker-has-selection' : ''}`}>
-        <Card className="tracker-list"><h2 className="sr-only focus-heading" ref={listHeading} tabIndex={-1}>{c('Lista de solicitudes', 'Application list')}</h2><div className="tracker-list-head"><span role="status">{pagination.total ? `${pagination.offset + 1}–${pagination.offset + rows.length}` : '0'} {c('de', 'of')} {pagination.total}</span><span>{c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
-          {rows.map((row) => <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {applicationStage(row.recruitmentStage, row.state, locale)}</small>{row.jobAvailability && row.jobAvailability !== 'OPEN' && <span className="tracker-availability-tag"><Tag tone={row.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(row.jobAvailability, locale)}</Tag></span>}</span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>)}
+        <Card className="tracker-list"><h2 className="sr-only focus-heading" ref={listHeading} tabIndex={-1}>{c('Lista de solicitudes', 'Application list')}</h2><div className="tracker-list-head"><span role="status">{pagination.total ? `${pagination.offset + 1}–${pagination.offset + rows.length}` : '0'} {c('de', 'of')} {pagination.total}</span><span>{sort === 'follow-up' ? c('PRÓXIMOS PASOS', 'UPCOMING FOLLOW-UPS') : c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
+          {rows.map((row) => { const due = row.followUpDate && !isApplicationClosedForPreparation(row) ? applicationFollowUpStatus(row.followUpDate, todayLocalDate(), false) : 'none'; return <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {applicationStage(row.recruitmentStage, row.state, locale)}</small>{due !== 'none' && <span className="tracker-availability-tag"><Tag tone={due === 'overdue' ? 'red' : 'amber'}>{due === 'overdue' ? c('Vencida', 'Overdue') : due === 'due-today' ? c('Vence hoy', 'Due today') : `${c('Próximo paso', 'Follow-up')}: ${formatDate(`${row.followUpDate}T12:00:00Z`)}`}</Tag></span>}{row.jobAvailability && row.jobAvailability !== 'OPEN' && <span className="tracker-availability-tag"><Tag tone={row.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(row.jobAvailability, locale)}</Tag></span>}</span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>; })}
           {!rows.length && <p>{c('No hay solicitudes que coincidan con esta búsqueda.', 'No applications match this search.')}</p>}
           {pagination.total > pagination.limit && <nav className="tracker-pagination" aria-label={c('Páginas de solicitudes', 'Application pages')}>
             <Button variant="secondary" disabled={pagination.offset === 0} onClick={() => navigateList(Math.max(0, pagination.offset - pagination.limit))}>{c('Anterior', 'Previous')}</Button>
@@ -251,6 +290,14 @@ function ApplicationsView() {
 
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
+          <div className="tracker-controls">
+            <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
+            <Field label={c('Recordatorio para', 'Follow-up date')} type="date" value={followUpDateDraft} disabled={busy !== null} onChange={(event) => setFollowUpDateDraft(event.target.value)}/>
+            <Field label={c('Fecha y hora de entrevista', 'Interview date and time')} type="datetime-local" value={interviewDraft} disabled={busy !== null} onChange={(event) => setInterviewDraft(event.target.value)}/>
+            <Field label={c('Zona horaria de la entrevista (IANA)', 'Interview time zone (IANA)')} value={interviewTimezoneDraft} maxLength={100} disabled={busy !== null} onChange={(event) => setInterviewTimezoneDraft(event.target.value)} placeholder="Europe/Madrid"/>
+            {interviewInvalid && <p className="field-hint" role="alert">{c('Esa hora no existe o se repite por el cambio horario. Elige otra hora o zona horaria.', 'That time does not exist or occurs twice because of daylight saving time. Choose another time or time zone.')}</p>}
+            <Button type="button" variant="secondary" disabled={busy !== null || interviewInvalid} onClick={saveFollowUp}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Guardar seguimiento', 'Save follow-up')}</Button>
+          </div>
           <div className="tracker-controls">
             <SelectField label={c('Etapa del proceso', 'Hiring stage')} value={pendingStage ?? selected.recruitmentStage} disabled={busy !== null} onChange={(e) => chooseStage(e.target.value)}>{recruitmentStageOrder.map((stage) => <option key={stage} value={stage}>{applicationStage(stage, selected.state, locale)}</option>)}</SelectField>
             {stateChoices.includes('CONFIRMED') && !confirmApplied && <Button variant="secondary" disabled={busy !== null} onClick={() => setConfirmApplied(true)}>{c('Ya envié esta solicitud', 'I already sent this application')}</Button>}

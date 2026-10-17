@@ -62,12 +62,15 @@ export const applicationEvents: LabelMap = {
   APPLICATION_CREATED: { es: 'Candidatura creada', en: 'Application created' },
   MANUAL_APPLICATION_RECORDED: { es: 'Candidatura registrada como enviada', en: 'Application recorded as sent' },
   APPLICATION_STATE_CHANGED: { es: 'Estado actualizado', en: 'Status updated' },
+  FOLLOW_UP_UPDATED: { es: 'Próximo paso actualizado', en: 'Next step updated' },
+  INTERVIEW_UPDATED: { es: 'Entrevista actualizada', en: 'Interview updated' },
   RECRUITMENT_STAGE_CHANGED: { es: 'Etapa actualizada', en: 'Stage updated' },
   RECRUITMENT_STAGE_CORRECTED: { es: 'Etapa corregida', en: 'Stage corrected' },
   USER_NOTE: { es: 'Nota', en: 'Note' },
 };
 
 export const factKinds: LabelMap = {
+  summary: { es: 'Resumen profesional', en: 'Professional summary' },
   achievement: { es: 'Logro', en: 'Achievement' },
   skill_evidence: { es: 'Experiencia técnica', en: 'Technical experience' },
   experience: { es: 'Experiencia laboral', en: 'Work experience' },
@@ -77,7 +80,7 @@ export const factKinds: LabelMap = {
   project: { es: 'Proyecto', en: 'Project' },
   language: { es: 'Idioma', en: 'Language' },
 };
-export const selectableFactKinds = ['achievement', 'skill_evidence', 'experience', 'education', 'project'] as const;
+export const selectableFactKinds = ['summary', 'achievement', 'skill_evidence', 'experience', 'education', 'project'] as const;
 
 export const factApprovals: LabelMap = {
   SUGGESTED: { es: 'Por confirmar', en: 'Needs confirmation' },

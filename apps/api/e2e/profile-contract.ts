@@ -44,4 +44,36 @@ export const profileContractScenarios: Scenario[] = [{
       await api.put('/profile', { expectedRevision: latest.revision, locale: original.locale, profile: original.profile });
     }
   },
+}, {
+  name: 'phase1-profile-resume-contacts-are-editable-in-es-and-en',
+  async run({ page, api, marker }) {
+    const original = await api.get<ProfileResponse>('/profile');
+    const longCity = `Málaga · ${'Distrito Á '.repeat(10)}`;
+    try {
+      await setLocale(page, 'es');
+      await goTo(page, '/profile');
+      const phone = page.getByLabel('Teléfono · opcional', { exact: true });
+      const city = page.getByLabel('Ciudad · opcional', { exact: true });
+      const links = page.getByLabel('Enlaces · opcional, hasta 4', { exact: true });
+      await phone.fill('+34 600 000 000');
+      await city.fill(longCity);
+      await links.fill(`Portafolio Ω ${marker} | https://example.test/café-${marker}`);
+      const saved = page.waitForResponse((response) => response.request().method() === 'PUT' && new URL(response.url()).pathname === '/api/v1/profile');
+      await page.getByRole('button', { name: 'Guardar mis datos', exact: true }).click();
+      assert.equal((await saved).status(), 201);
+      const after = await api.get<ProfileResponse>('/profile');
+      const identity = (after.profile.identity ?? {}) as { phone?: string; city?: string; links?: Array<{ label: string; url: string }> };
+      assert.equal(identity.phone, '+34 600 000 000');
+      assert.equal(identity.city, longCity);
+      assert.deepEqual(identity.links, [{ label: `Portafolio Ω ${marker}`, url: `https://example.test/café-${marker}` }]);
+
+      await setLocale(page, 'en');
+      await eventually(() => page.getByLabel('Phone · optional', { exact: true }).inputValue(), (value) => value === '+34 600 000 000', 'English profile form reads the saved phone');
+      assert.equal(await page.getByLabel('City · optional', { exact: true }).inputValue(), longCity);
+      assert.equal(await page.getByLabel('Links · optional, up to 4', { exact: true }).inputValue(), `Portafolio Ω ${marker} | https://example.test/café-${marker}`);
+    } finally {
+      const latest = await api.get<ProfileResponse>('/profile');
+      await api.put('/profile', { expectedRevision: latest.revision, locale: original.locale, profile: original.profile });
+    }
+  },
 }];

@@ -42,7 +42,8 @@ export async function derivedDocumentState(executor: Executor, workspaceId: stri
       catch(error) { if (!(error instanceof AiSourceError)) throw error; }
     }
   }
-  const state: DerivedClaimsState = {workspaceId,identityFingerprint:profile?hash(printedResumeIdentity(profile.profile)):null,pdfHash:document.sha256,targetJobHash,
+  const printedFields=(document.printedContactFields??['email']) as Array<'email'|'phone'|'city'|'links'>;
+  const state: DerivedClaimsState = {workspaceId,identityFingerprint:profile?hash(printedResumeIdentity(profile.profile,printedFields)):null,pdfHash:document.sha256,targetJobHash,
     currentFact:id=>{const fact=resolved.get(id);return fact?{factId:id,workspaceId:fact.workspaceId,approvalStatus:fact.approvalStatus,contentHash:hash([fact.kind,printedStatement(fact,basis.language).trim()])}:undefined;}};
   const currentness=derivedClaimsCurrentness(basis,state);
   return {basis,state,currentness,reusableFactIds:[...new Set([...resolved.values()].flatMap(fact=>fact?[fact.id]:[]))],missingFactCount:[...resolved.values()].filter(fact=>!fact).length};
@@ -79,8 +80,7 @@ export async function documentReadiness(executor: Executor, workspaceId: string,
   const approvedById = new Map(approved.map((fact) => [fact.id, fact]));
   const copies = new Map(approved.map((fact) => [copyKey(fact), fact]));
   const originals = new Map(sources.map((fact) => [fact.id, fact]));
-  const basisIdentity = new Map(bases.map((row) => [row.id, printedResumeIdentity(row.profile)]));
-  const currentIdentity = profile ? printedResumeIdentity(profile.profile) : null;
+  const basisProfiles = new Map(bases.map((row) => [row.id, row.profile]));
   const currentFact = (id: string) => approvedById.get(id) ?? (originals.has(id) ? copies.get(copyKey(originals.get(id)!)) : undefined);
   const readiness = async (doc: Document) => {
     if (documentClaimsContract(doc)!=='legacy') {
@@ -96,9 +96,11 @@ export async function documentReadiness(executor: Executor, workspaceId: string,
     const resolved = ids.map((id) => currentFact(id)?.id);
     const reusableFactIds = [...new Set(resolved.filter((id): id is string => Boolean(id)))];
     const sameRevision = Boolean(profile) && doc.profileRevisionId === profile!.id;
+    const printedFields = (doc.printedContactFields ?? ['email']) as Array<'email' | 'phone' | 'city' | 'links'>;
+    const basisProfile = doc.profileRevisionId ? basisProfiles.get(doc.profileRevisionId) : null;
     const currentContent = Boolean(profile) && printedContentCurrent({
       claims: doc.claims, language: doc.language === 'es' || doc.language === 'en' ? doc.language : null, sameRevision,
-      basisIdentity: doc.profileRevisionId ? basisIdentity.get(doc.profileRevisionId) ?? null : null, currentIdentity,
+      basisIdentity: basisProfile ? printedResumeIdentity(basisProfile, printedFields) : null, currentIdentity: profile ? printedResumeIdentity(profile.profile, printedFields) : null,
       currentSource: (id) => { const fact = currentFact(id); return fact ? { fact, direct: fact.id === id } : undefined; },
     });
     const assistReady = doc.approvalStatus === 'USER_APPROVED' && currentContent;

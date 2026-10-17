@@ -6,18 +6,20 @@ import { resumeLabels, resumeSectionName } from '@career/domain';
 
 const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
-export async function renderResume(input: { path: string; fullName: string; email?: string; role: string; locale?: 'es' | 'en'; facts: Array<{ kind: string; statement: string; tags: string[] }> }) {
+export async function renderResume(input: { path: string; fullName: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }>; role: string; locale?: 'es' | 'en'; facts: Array<{ kind: string; statement: string; tags: string[] }> }) {
   if (!input.facts.length || input.facts.length > 50) throw new Error('DOCUMENT_FACT_LIMIT');
   if (input.facts.reduce((size, fact) => size + fact.statement.length, 0) > 40_000) throw new Error('DOCUMENT_SIZE_LIMIT');
   const grouped = new Map<string, typeof input.facts>();
   for (const fact of input.facts) grouped.set(fact.kind, [...(grouped.get(fact.kind) ?? []), fact]);
   const locale = input.locale === 'es' ? 'es' : 'en';
   const labels = resumeLabels(locale);
-  const sectionOrder = ['experience', 'current_employment', 'achievement', 'project', 'skill_evidence', 'skill', 'education', 'certification', 'language'];
+  const sectionOrder = ['summary', 'experience', 'current_employment', 'achievement', 'project', 'skill_evidence', 'skill', 'education', 'certification', 'language'];
   const sections = [...grouped].sort(([a], [b]) => {
     const rank = (kind: string) => sectionOrder.includes(kind) ? sectionOrder.indexOf(kind) : sectionOrder.length;
     return rank(a) - rank(b);
   }).map(([kind, facts]) => `<section><h2>${escapeHtml(resumeSectionName(kind, locale))}</h2><ul>${facts.map((fact) => `<li>${escapeHtml(fact.statement)}</li>`).join('')}</ul></section>`).join('');
+  const contactItems: Array<{ text: string } | { link: { label: string; url: string } }> = [input.email, input.phone, input.city].filter((value): value is string => Boolean(value?.trim())).map((text) => ({ text }));
+  for (const link of input.links ?? []) contactItems.push({ link });
   const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
     @page { size: A4; margin: 19mm 20mm 21mm; }
     * { box-sizing: border-box; }
@@ -32,7 +34,7 @@ export async function renderResume(input: { path: string; fullName: string; emai
     li { padding-left: 5px; margin-bottom: 9px; white-space: pre-wrap; overflow-wrap: anywhere; orphans: 3; widows: 3; break-inside: avoid; }
     li:last-child { margin-bottom: 0; }
     li::marker { color: #527489; font-size: 8pt; }
-    </style></head><body><header><h1>${escapeHtml(input.fullName || labels.defaultName)}</h1><p class="role">${escapeHtml(input.role || labels.defaultRole)}</p>${input.email ? `<p class="contact">${escapeHtml(input.email)}</p>` : ''}</header><main>${sections}</main></body></html>`;
+    </style></head><body><header><h1>${escapeHtml(input.fullName || labels.defaultName)}</h1><p class="role">${escapeHtml(input.role || labels.defaultRole)}</p>${contactItems.length ? `<p class="contact">${contactItems.map((item) => 'text' in item ? escapeHtml(item.text) : `<a href="${escapeHtml(item.link.url)}">${escapeHtml(item.link.label)}</a>`).join(' · ')}</p>` : ''}</header><main>${sections}</main></body></html>`;
   const footer = `<div style="width:100%;margin:0 20mm;padding-top:7px;border-top:1px solid #dce3e8;font-family:Arial,Helvetica,sans-serif;font-size:7px;color:#526171;display:flex;justify-content:flex-end;gap:12px"><span style="white-space:nowrap"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
   const absolutePath = resolve(input.path);
   await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });

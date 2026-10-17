@@ -24,6 +24,12 @@ test('printed identity keeps only the name and email the renderer prints', () =>
   assert.deepEqual(printedResumeIdentity({}), { fullName: '', email: '' });
 });
 
+test('printed identity includes only the selected optional contact fields', () => {
+  const profile = { identity: { fullName: 'Candidate', email: 'candidate@example.test', phone: '123', city: 'Madrid', links: [{ label: 'Portfolio', url: 'https://example.test' }] } };
+  assert.deepEqual(printedResumeIdentity(profile, ['phone', 'links']), { fullName: 'Candidate', email: '', phone: '123', links: [{ label: 'Portfolio', url: 'https://example.test' }] });
+  assert.deepEqual(printedResumeIdentity(profile, ['email', 'city']), { fullName: 'Candidate', email: 'candidate@example.test', city: 'Madrid' });
+});
+
 test('printed statements format structured entries in the PDF language and keep plain text verbatim', () => {
   assert.equal(printedStatement(plain, 'es'), plain.statement);
   assert.equal(printedStatement(structured, 'en'), 'Designer · Example\n01/2020 - Present\nTexto original.');
@@ -37,6 +43,7 @@ test('a PDF stays current across revisions when only unprinted fields changed', 
 test('changes to printed identity, facts, evidence or text make a PDF stale', () => {
   assert.equal(check({ currentIdentity: { ...identity, fullName: 'Other Name' } }), false, 'name');
   assert.equal(check({ currentIdentity: { ...identity, email: 'other@example.test' } }), false, 'email');
+  assert.equal(check({ currentIdentity: { ...identity, phone: '123' } }), false, 'selected phone');
   assert.equal(check({ basisIdentity: null }), false, 'unknown generation revision');
   assert.equal(check({ currentIdentity: null }), false, 'no current profile');
   assert.equal(check({ currentSource: (id) => id === 'old-a' ? { fact: plain, direct: false } : undefined }), false, 'edited, rejected or archived fact');

@@ -16,6 +16,7 @@ import { factImportScenarios } from './fact-import.js';
 import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
+import { phase1FollowUpScenario } from './phase1-follow-up.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -74,6 +75,7 @@ const expectedTitles: Record<string, { en: string; es: string }> = {
 };
 
 export const scenarios: Scenario[] = [
+  phase1FollowUpScenario,
   {
     name: 'sign-in-and-language-switch',
     async run({ page, uiUrl, token }) {

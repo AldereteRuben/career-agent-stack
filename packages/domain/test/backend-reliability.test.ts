@@ -107,6 +107,10 @@ describe('recruitment stage corrections', () => {
   it('accepts correction metadata and question text in contracts', () => {
     assert.equal(applicationUpdateSchema.safeParse({ recruitmentStage: 'INTERVIEW', correction: true, reason: 'Marked rejected by mistake', expectedVersion: 3 }).success, true);
     assert.equal(applicationUpdateSchema.safeParse({ correction: 'yes' }).success, false);
+    assert.equal(applicationUpdateSchema.safeParse({ nextStep: 'Email recruiter', followUpDate: '2026-10-20' }).success, true);
+    assert.equal(applicationUpdateSchema.safeParse({ followUpDate: '2026-02-30' }).success, false);
+    assert.equal(applicationUpdateSchema.safeParse({ interview: { localAt: '2026-07-15T09:30', timeZone: 'Europe/Madrid' } }).success, true);
+    assert.equal(applicationUpdateSchema.safeParse({ interview: { localAt: '2026-03-29T02:30', timeZone: 'Europe/Madrid' } }).success, false);
     const answer = answerSchema.parse({ semanticKey: 'notice_period', jurisdiction: 'ES', questionScope: 'job_application', value: '30 days', strategy: 'ASK_USER' });
     assert.equal(answer.questionText, null);
     assert.equal(answerSchema.safeParse({ semanticKey: 'k', jurisdiction: 'ES', questionScope: 's', value: null, strategy: 'ASK_USER', questionText: 'x'.repeat(501) }).success, false);

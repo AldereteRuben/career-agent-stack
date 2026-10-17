@@ -4,7 +4,7 @@ import type { PrintedIdentity } from './profile.js';
 export type DocumentLanguage = 'es' | 'en';
 
 const sectionNames: Record<string, Record<DocumentLanguage, string>> = {
-  achievement: { en: 'Achievements', es: 'Logros' }, experience: { en: 'Work experience', es: 'Experiencia laboral' }, skill_evidence: { en: 'Technical experience', es: 'Experiencia técnica' },
+  summary: { en: 'Professional summary', es: 'Resumen profesional' }, achievement: { en: 'Achievements', es: 'Logros' }, experience: { en: 'Work experience', es: 'Experiencia laboral' }, skill_evidence: { en: 'Technical experience', es: 'Experiencia técnica' },
   skill: { en: 'Skills', es: 'Competencias' }, education: { en: 'Education', es: 'Formación' }, project: { en: 'Projects', es: 'Proyectos' }, certification: { en: 'Certifications', es: 'Certificaciones' }, language: { en: 'Languages', es: 'Idiomas' },
 };
 
@@ -40,7 +40,8 @@ export function printedContentCurrent(input: {
   if (!input.claims.length) return false;
   if (!input.sameRevision) {
     if (!input.basisIdentity || !input.currentIdentity) return false;
-    if (input.basisIdentity.fullName !== input.currentIdentity.fullName || input.basisIdentity.email !== input.currentIdentity.email) return false;
+    const basis = input.basisIdentity; const current = input.currentIdentity;
+    if (basis.fullName !== current.fullName || basis.email !== current.email || basis.phone !== current.phone || basis.city !== current.city || JSON.stringify(basis.links ?? []) !== JSON.stringify(current.links ?? [])) return false;
   }
   const languages: DocumentLanguage[] = input.language ? [input.language] : ['es', 'en'];
   return input.claims.every((claim) => claim.sourceFactIds.length > 0 && claim.sourceFactIds.every((id) => {
