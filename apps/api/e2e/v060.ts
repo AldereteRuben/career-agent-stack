@@ -37,7 +37,7 @@ export const v060Scenario: Scenario = {
         await goTo(page, '/jobs?scope=new');
         await page.getByRole('link', { name: jobTitle(marker), exact: true }).waitFor();
         assert.equal(await page.getByRole('link', { name: 'Private unrelated job', exact: true }).count(), 0);
-        await page.getByRole('link', { name: jobTitle(marker), exact: true }).click();
+        await page.locator('.job-card').filter({ hasText: jobTitle(marker) }).getByRole('link', { name: locale === 'es' ? 'Ver detalles' : 'View details', exact: true }).click();
         const reviewed = page.getByRole('button', { name: locale === 'es' ? 'Marcar como revisada' : 'Mark as reviewed', exact: true }); await reviewed.waitFor();
         await page.setViewportSize({ width: 320, height: 844 }); assert.equal(await hasHorizontalOverflow(page), false);
         await reviewed.click(); await page.getByRole('link', { name: locale === 'es' ? 'Volver a la lista de ofertas' : 'Back to the job list', exact: true }).waitFor();

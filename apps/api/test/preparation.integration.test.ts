@@ -124,4 +124,22 @@ describe('evidence-based application preparation with a disposable database', { 
       assert.equal(invalid.statusCode, 400); assert.equal(invalid.json().error, 'INVALID_PREPARATION_REQUEST');
     } finally { await app.close(); }
   });
+
+  test('person-initiated preparation remains possible for non-open jobs while automatic preparation skips them', async () => {
+    const app = Fastify(); module.registerPreparationRoutes(app, (request) => String(request.headers['x-workspace'] ?? workspace));
+    try {
+      for (const state of ['POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN']) {
+        await client.query('update jobs set availability = $2 where id = $1', [jobId, state]);
+        const automatic = await module.prepareApplication(workspace, jobId, 'en', { automatic: true });
+        assert.equal(automatic.status, 'BLOCKED', `${state} is skipped by automatic preparation`);
+        assert.equal(automatic.reason, 'JOB_NOT_OPEN');
+        const manual = await app.inject({ method: 'POST', url: '/api/v1/preparations', headers: { 'x-workspace': workspace }, payload: { jobId, locale: 'en' } });
+        assert.equal(manual.statusCode, 200, `${state} remains available for person-initiated preparation`);
+        assert.notEqual(manual.json().status, 'BLOCKED');
+      }
+      await client.query("update jobs set availability = 'OPEN' where id = $1", [jobId]);
+      const automaticOpen = await module.prepareApplication(workspace, jobId, 'en', { automatic: true });
+      assert.notEqual(automaticOpen.reason, 'JOB_NOT_OPEN', 'Open jobs remain eligible for automatic preparation');
+    } finally { await app.close(); }
+  });
 });

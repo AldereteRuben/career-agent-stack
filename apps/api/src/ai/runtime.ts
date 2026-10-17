@@ -34,5 +34,10 @@ export async function registerAiRuntime(app: FastifyInstance, workspace: (reques
   app.addHook('onClose', async () => { await maintenance.stop(); await scanner.stop(); await worker.stop(); });
   maintenance.start();
   if (options.enabled) { worker.start(); scanner.start(); }
-  return { queue, worker };
+  return {
+    queue, worker,
+    /** Stops every assistant task and background job of this process, waiting for the current one to end. */
+    async pause() { await maintenance.stop(); await scanner.stop(); await worker.stop(); },
+    resume() { maintenance.start(); if (options.enabled) { worker.start(); scanner.start(); } },
+  };
 }

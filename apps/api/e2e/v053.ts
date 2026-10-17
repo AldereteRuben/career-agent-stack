@@ -166,14 +166,14 @@ export const v053Scenarios: Scenario[] = [
       const confirmed = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Confirmed landing ${marker}` });
       await api.post(`/profile/facts/${confirmed.id}/approve`);
       await api.post('/profile/facts', { kind: 'achievement', statement: `Pending landing ${marker}` });
-      // The home details are expanded once a job is saved; do not depend on earlier scenarios creating one.
-      await api.post('/jobs/import', { title: 'Landing fixture', company: `Landing ${marker}`, jobUrl: `https://example.com/${marker}/landing` });
+      // The home details are expanded because a detail is waiting for review, whether or not any job exists yet.
       for (const [width, height] of [[390, 844], [1440, 1000]] as const) {
         await page.setViewportSize({ width, height });
         for (const locale of ['es', 'en'] as const) {
           await page.goto(new URL('/overview', page.url()).toString()); await setLocale(page, locale);
           const link = page.locator('a[href="/profile#saved-experience-heading"]:visible').first();
           await link.waitFor();
+          assert.equal(await page.locator('details.overview-details').evaluate((node) => (node as HTMLDetailsElement).open), true, 'Pending review keeps the other tasks open');
           assert.equal(await page.locator('a[href="/profile#experience"]:visible').count(), 0, 'Pending review is not sent to the add form');
           await link.click();
           await page.waitForURL((url) => url.pathname === '/profile' && url.hash === '#saved-experience-heading');

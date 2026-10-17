@@ -4,6 +4,8 @@ import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
+import { overviewDetailsOpen } from '@/lib/overview-details';
+import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
 import { useCallback, useEffect, useState } from 'react';
@@ -13,6 +15,7 @@ import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { ButtonLink, Card, Empty, Icon, Notice, Tag } from '@/components/ui';
 
 type Summary = {
+  activityByDay: DailyActivity[];
   boards: Array<{ id: string; companyName: string; enabled: boolean; lastSuccessfulRefreshAt: string | null }>;
   recentJobs: Array<{ searchSources?: Array<{ provider: string; url: string }>; id: string; title: string; company: string; location: string | null; fitScore: number | null; eligibility: string; provisional?: boolean }>;
   recentApplications: Array<{ id: string; role: string; company: string; state: string; updatedAt: string }>;
@@ -54,7 +57,7 @@ export default function OverviewPage() {
   const { t, locale } = useLocale();
   const c = copy(locale);
   const [summary, setSummary] = useState<Summary | null>(null); const [error, setError] = useState('');
-  const load = useCallback(async () => { try { setSummary(await api<Summary>('/summary')); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
+  const load = useCallback(async () => { try { setSummary(await api<Summary>(`/summary?tz=${encodeURIComponent(viewerTimeZone())}`)); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
   const [inbox, setInbox] = useState<SearchInbox | null>(null); const [searches, setSearches] = useState<HomeSearch[]>([]); const [pendingResumes, setPendingResumes] = useState(0); const [inboxError, setInboxError] = useState('');
   const loadInbox = useCallback(async () => {
     const [results, searchList, documents] = await Promise.allSettled([
@@ -142,33 +145,40 @@ export default function OverviewPage() {
       action={<ButtonLink href="/start" variant="secondary">{c('Guía para empezar', 'Getting started')}</ButtonLink>}
       eyebrow={t('Resumen')}
       title={c('Resumen de tu búsqueda', 'Your search overview')}
-      description={c('Vista opcional con tus cifras y pendientes. Para buscar y revisar ofertas, usa Buscar empleo.', 'An optional view of your figures and open tasks. To find and review jobs, use Find jobs.')}
+      description={c('Aquí tienes tu próximo paso y las ofertas nuevas que puedes revisar.', 'See your next step and the new jobs you can review here.')}
     />
     {error && <Notice tone="error">{error}</Notice>}
 
-    {(summary || inboxReady) && <Card className="getting-started">
-      <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
-      <h2>{dailyAction.title}</h2>
-      <p>{dailyAction.detail}</p>
-      <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
-      <div role="status" aria-live="polite" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 18 }}>
-        <span><strong>{inbox?.total ?? '—'}</strong> {inbox?.total === 1 ? c('oferta nueva por revisar', 'new job to review') : c('ofertas nuevas por revisar', 'new jobs to review')}</span>
-        <span><strong>{pendingResumes}</strong> {pendingResumes === 1 ? c('CV pendiente de revisión', 'resume waiting for review') : c('CV pendientes de revisión', 'resumes waiting for review')}</span>
-      </div>
-      {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
-      {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')} style={{ marginTop: 18 }}>
-        {inbox.items.slice(0, 3).map((job) => <li key={job.id}><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(returnToInbox)}`} className="list-row">
-          <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
-          <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
-          <Icon name="arrow" size={18}/>
-        </Link>{job.sources?.[0] && <small>{c('Fuente: ', 'Source: ')}<a href={job.sources[0].url} target="_blank" rel="noopener noreferrer">{job.sources[0].provider}</a></small>}</li>)}
-      </ul> : inbox && inbox.total === 0 && searches.length > 0 && <p className="muted-label">{inProgress ? c('Estamos consultando los portales de empleo. Las ofertas aparecerán aquí.', 'We are checking job sites. Jobs will appear here.') : sourceError ? c('Conservamos las ofertas anteriores mientras revisas el estado de las fuentes.', 'Previous jobs are preserved while you check source status.') : searches.every((search) => !search.enabled) ? c('Las consultas automáticas están pausadas. Puedes reanudarlas desde una tarjeta de búsqueda.', 'Automatic searches are paused. You can resume one from its search card.') : c('Puedes ver la próxima consulta o ajustar lo que buscas en Buscar empleo.', 'See the next scheduled check or adjust your criteria in Find jobs.')}</p>}
-      <p className="muted-label">{c('Puedes buscar empleo sin completar tu perfil. Tus datos confirmados se necesitan para preparar candidaturas.', 'You can search for jobs before completing your profile. Confirmed details are needed to prepare applications.')}</p>
-      {inboxCount > 3 && <Link href="/searches?search=all&view=new" className="text-link">{c(`Ver las ${inboxCount} ofertas nuevas`, `See all ${inboxCount} new jobs`)} <Icon name="arrow" size={16}/></Link>}
-      {pendingResumes > 0 && inbox && inbox.total > 0 && <Link href="/searches?search=all&view=new" className="text-link" style={{ display: 'block', marginTop: 10 }}>{c('También hay ofertas nuevas por revisar', 'There are also new jobs to review')} <Icon name="arrow" size={16}/></Link>}
-    </Card>}
-    <section className="search-guide" aria-labelledby="search-guide-heading">
-      <h2 id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</h2>
+    {(summary || inboxReady) && <div className="overview-top-grid">
+      <Card className="getting-started">
+        <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
+        <h2>{dailyAction.title}</h2>
+        <p>{dailyAction.detail}</p>
+        <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
+        <div className="overview-totals" role="status" aria-live="polite">
+          <div className="overview-total"><strong>{inbox?.total ?? '—'}</strong><span>{inbox?.total === 1 ? c('oferta nueva', 'new job') : c('ofertas nuevas', 'new jobs')}</span></div>
+          <div className="overview-total"><strong>{pendingResumes}</strong><span>{pendingResumes === 1 ? c('CV pendiente de revisión', 'resume waiting for review') : c('CV pendientes de revisión', 'resumes waiting for review')}</span></div>
+        </div>
+        {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
+      </Card>
+      <Card className="overview-inbox-panel">
+        <div className="panel-heading"><h2>{c('Ofertas nuevas para revisar', 'New jobs to review')}</h2>{inboxCount > 0 && <span className="tag tag-blue">{inboxCount}</span>}</div>
+        {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')}>
+          {inbox.items.slice(0, 3).map((job) => <li key={job.id}><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(returnToInbox)}`} className="list-row">
+            <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
+            <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
+            <Icon name="arrow" size={18}/>
+          </Link></li>)}
+        </ul> : inbox && inbox.total === 0 && searches.length > 0 && <p className="panel-status">{inProgress ? c('Estamos consultando los portales de empleo. Las ofertas aparecerán aquí.', 'We are checking job sites. Jobs will appear here.') : sourceError ? c('Conservamos las ofertas anteriores mientras revisas el estado de las fuentes.', 'Previous jobs are preserved while you check source status.') : searches.every((search) => !search.enabled) ? c('Las consultas automáticas están pausadas. Puedes reanudarlas desde Buscar ofertas.', 'Automatic searches are paused. You can resume one from Find jobs.') : c('Puedes ver la próxima consulta o ajustar lo que buscas en Buscar ofertas.', 'See the next scheduled check or adjust your criteria in Find jobs.')}</p>}
+        <p className="panel-foot">{c('No necesitas completar tu perfil para buscar. Tus datos confirmados se usan al preparar candidaturas.', 'You do not need to complete your profile to search. Confirmed details are used when preparing applications.')}</p>
+        {inboxCount > 3 && <Link href="/searches?search=all&view=new" className="text-link">{c(`Ver las ${inboxCount} ofertas nuevas`, `See all ${inboxCount} new jobs`)} <Icon name="arrow" size={16}/></Link>}
+        {pendingResumes > 0 && inbox && inbox.total > 0 && <Link href="/documents?view=saved" className="text-link">{c('Revisar los CV preparados', 'Review prepared resumes')} <Icon name="arrow" size={16}/></Link>}
+      </Card>
+    </div>}
+    {summary && <ActivityCalendar activity={summary.activityByDay ?? []}/>}
+
+    <details className="search-guide" open={Boolean(summary && summary.totalJobs === 0 && totalApplications === 0)}>
+      <summary id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</summary>
       <ol className="journey-grid">
         {[
           { href: '/searches', title: c('Busca empleo', 'Find jobs'), detail: c('Indica un puesto o empresa. La app guardará ofertas y repetirá la búsqueda por ti.', 'Enter a role or company. The app saves jobs and repeats the search for you.') },
@@ -176,10 +186,10 @@ export default function OverviewPage() {
           { href: '/applications?view=review', title: c('Revisa y envía', 'Review and submit'), detail: c('Revisa el CV y autoriza el envío cuando esté disponible, o continúa en la página de la empresa.', 'Review the resume and authorize submission where supported, or continue on the employer’s website.') },
         ].map((step, index) => <li key={step.title}><Link href={step.href}><span className="step-badge" aria-hidden="true">{index + 1}</span><strong>{step.title}</strong><span>{step.detail}</span></Link></li>)}
       </ol>
-    </section>
+    </details>
 
-    <details className="overview-details" open={Boolean(summary && (summary.totalJobs > 0 || totalApplications > 0))}>
-      <summary>{c('Ver mi resumen y otros pendientes', 'View my overview and other tasks')}</summary>
+    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ totalJobs: summary.totalJobs, totalApplications, pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
+      <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>
       <ul className="metric-grid">

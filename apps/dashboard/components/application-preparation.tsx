@@ -10,6 +10,7 @@ import { PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Notice, Tag } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
+import { labelFor } from '@/lib/labels';
 import styles from './application-preparation.module.css';
 import { gapContinuation, queueActions } from './application-continuation';
 import type { Locale } from '@/lib/locale';
@@ -19,9 +20,9 @@ type Preparation = {
   applicationId: string | null; documentId: string | null; profileRevisionId: string | null; snapshotId: string | null;
   selectedFacts: Array<{ id: string; statement: string; reason: string }>;
   answerSuggestions: Array<{ answerId: string; semanticKey: string; question: string; value: unknown; provenance: string }>;
-  gaps: string[]; reason?: string; queueState?: string; needsAttention?: boolean; canPrepare?: boolean;
+  gaps: string[]; reason?: string; queueState?: string; needsAttention?: boolean; canPrepare?: boolean; jobAvailability?: string | null;
 };
-const preparationError = (err: unknown, locale: Locale) => err instanceof ApiError && ['JOB_CLOSED', 'USER_SELECTED_DOCUMENT_PRESERVED', 'APPLICATION_CLOSED_OR_UNCERTAIN'].includes(err.code) ? reasonText(err.code, locale) : errorMessage(err);
+const preparationError = (err: unknown, locale: Locale) => err instanceof ApiError && ['USER_SELECTED_DOCUMENT_PRESERVED', 'APPLICATION_CLOSED_OR_UNCERTAIN'].includes(err.code) ? reasonText(err.code, locale) : errorMessage(err);
 const gapText = (value: string, locale: Locale) => ({
   PROFILE_REQUIRED: locale === 'es' ? 'Añade tu perfil.' : 'Add your profile.',
   FULL_NAME_REQUIRED: locale === 'es' ? 'Falta tu nombre.' : 'Your name is missing.',
@@ -31,7 +32,6 @@ const gapText = (value: string, locale: Locale) => ({
   RELEVANT_APPROVED_EVIDENCE_REQUIRED: locale === 'es' ? 'Añade y confirma experiencia relacionada con el puesto.' : 'Add and confirm experience related to this role.',
 }[value] ?? (locale === 'es' ? 'Completa este dato en tu perfil para continuar.' : 'Complete this detail in your profile to continue.'));
 const reasonText = (value: string, locale: Locale) => ({
-  JOB_CLOSED: locale === 'es' ? 'La oferta está cerrada.' : 'The job is closed.',
   USER_SELECTED_DOCUMENT_PRESERVED: locale === 'es' ? 'Tu documento elegido se ha conservado.' : 'Your selected document was preserved.',
   APPLICATION_CLOSED_OR_UNCERTAIN: locale === 'es' ? 'La solicitud está cerrada o su estado es incierto.' : 'The application is closed or its status is uncertain.',
 }[value] ?? (locale === 'es' ? 'Requiere revisión adicional.' : 'Additional review is required.'));
@@ -62,7 +62,7 @@ const queueLabels: Record<string, [string, string]> = {
   NEEDS_PREPARATION: ['Datos listos para preparar', 'Ready to prepare'], NEEDS_DETAILS: ['Faltan datos', 'Details needed'], REVIEW_DOCUMENT: ['CV por revisar', 'Resume to review'],
   READY: ['CV aprobado', 'Resume approved'], STALE_DOCUMENT: ['CV necesita actualización', 'Resume needs updating'],
   SUBMITTED: ['Enviada', 'Submitted'], CLOSED: ['Finalizada', 'Closed'], UNCERTAIN: ['Comprobar envío', 'Check submission'],
-  IN_PROGRESS: ['Envío en curso', 'Submission in progress'], JOB_CLOSED: ['Oferta cerrada', 'Job closed'],
+  IN_PROGRESS: ['Envío en curso', 'Submission in progress'],
 };
 
 /** Renders the queue card actions decided by queueActions, keeping at most one primary. */
@@ -86,14 +86,15 @@ export function ApplicationQueue() {
   useLocalRefresh(load, { paused: loading || busy !== null });
   const retry = async (jobId: string) => { setBusy(jobId); setActionError(''); try { await api<Preparation>('/preparations', { method: 'POST', body: JSON.stringify({ jobId, locale }) }); await load(); } catch (err) { setActionError(preparationError(err, locale)); } finally { setBusy(null); } };
   const pending = items.filter((item) => item.needsAttention); const visible = showAll ? items : pending;
-  return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Mis solicitudes', 'My applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
+  return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Candidaturas', 'Applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
     <ApplicationSections active="review" reviewCount={loading || error ? undefined : pending.length}/>
     <div className={styles.actions}><Button variant="quiet" disabled={loading || busy !== null} onClick={() => void load()}>{c('Actualizar lista', 'Refresh list')}</Button><Button variant="quiet" aria-pressed={showAll} onClick={() => setShowAll(!showAll)}>{showAll ? c('Solo pendientes', 'Only pending') : c('Ver también finalizadas', 'Include completed')}</Button></div>
     {actionError && <Notice tone="error">{actionError}</Notice>}
     {error && <Notice tone="error">{error}<Button variant="secondary" onClick={() => void load()}>{c('Volver a intentar', 'Try again')}</Button></Notice>}
-    {loading ? <p role="status">{c('Cargando…', 'Loading…')}</p> : error && visible.length === 0 ? null : visible.length === 0 ? <Empty title={c('No hay solicitudes pendientes de revisión', 'No applications waiting for review')} detail={c('Abre una oferta que te interese y pulsa Preparar mi solicitud. Aquí aparecerán los CV preparados y los datos que falten.', 'Open a job that interests you and choose Prepare my application. Prepared resumes and missing details appear here.')} action={<Link className="button button-secondary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>} /> : <div className={styles.queue}>{visible.map((item) => <Card key={item.applicationId ?? item.jobId} className={styles.card}>
+    {loading ? <p role="status">{c('Cargando…', 'Loading…')}</p> : error && visible.length === 0 ? null : visible.length === 0 ? <Empty headingLevel="h2" title={c('No hay solicitudes pendientes de revisión', 'No applications waiting for review')} detail={c('Abre una oferta que te interese y pulsa Preparar mi solicitud. Aquí aparecerán los CV preparados y los datos que falten.', 'Open a job that interests you and choose Prepare my application. Prepared resumes and missing details appear here.')} action={<Link className="button button-secondary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link>} /> : <div className={styles.queue}>{visible.map((item) => <Card key={item.applicationId ?? item.jobId} className={styles.card}>
       <div className={styles.head}><span className="eyebrow">{item.company}</span><h2>{item.title}</h2><Tag tone={item.queueState === 'READY' || item.queueState === 'SUBMITTED' ? 'green' : item.needsAttention ? 'amber' : 'neutral'}>{queueLabels[item.queueState ?? 'NEEDS_DETAILS']?.[locale === 'es' ? 0 : 1]}</Tag></div>
       {item.queueState === 'UNCERTAIN' && <Notice tone="warning">{c('Abre la solicitud y comprueba el envío antes de intentar otra vez.', 'Open the application and check the submission before trying again.')}</Notice>}
+      {item.jobAvailability && item.jobAvailability !== 'OPEN' && <Notice tone="warning">{c(`La oferta figura como «${labelFor.availability(item.jobAvailability, locale)}». Comprueba el anuncio original antes de continuar; preparar no envía nada.`, `This job is marked “${labelFor.availability(item.jobAvailability, locale)}”. Check the original post before continuing; preparation does not submit anything.`)}</Notice>}
       {item.reason && <Notice tone="warning">{reasonText(item.reason, locale)}</Notice>}
       {item.gaps.length > 0 && <div><h3>{c('Pendiente', 'Needs attention')}</h3><ul>{item.gaps.map((gap) => <li key={gap}>{gapText(gap, locale)}</li>)}</ul><GapActions gaps={item.gaps} jobId={item.jobId} applicationId={item.applicationId}/></div>}
       {item.selectedFacts.length > 0 && <details><summary>{c('Ver experiencia utilizada', 'Show included experience')}</summary><div><h3>{c('Experiencia incluida', 'Included experience')}</h3><ul>{item.selectedFacts.map((fact) => <li key={fact.id}><strong>{fact.statement}</strong><small className={styles.reason}>{factReason(fact.reason, locale)}</small></li>)}</ul></div></details>}
@@ -105,7 +106,7 @@ export function ApplicationQueue() {
 
 export default function ApplicationPreparationPage() { return <WorkspaceGate><ApplicationQueue/></WorkspaceGate>; }
 
-export function ApplicationPreparationAction({ jobId, applicationId, returnTo, disabled = false }: { jobId: string; applicationId?: string; returnTo?: string; disabled?: boolean }) {
+export function ApplicationPreparationAction({ jobId, applicationId, returnTo, availability, disabled = false }: { jobId: string; applicationId?: string; returnTo?: string; availability?: string | null; disabled?: boolean }) {
   const { locale } = useLocale(); const c = (es: string, en: string) => locale === 'es' ? es : en;
   const router = useRouter();
   const feedback = useRef<HTMLDivElement>(null);
@@ -124,6 +125,7 @@ export function ApplicationPreparationAction({ jobId, applicationId, returnTo, d
   return <section className="card preparation-action" aria-labelledby="prepare-application-heading">
     <h2 id="prepare-application-heading" tabIndex={-1}>{c('Prepara tu solicitud', 'Prepare your application')}</h2>
     <p>{c('Elegiremos experiencia confirmada de tu perfil y prepararemos un CV para esta oferta. Si falta algo, te ayudaremos a completarlo. Después podrás revisar el PDF.', 'We select confirmed experience from your profile and prepare a resume for this job. If anything is missing, we help you complete it. Then you can review the PDF.')}</p>
+    {availability && availability !== 'OPEN' && <Notice tone="warning">{c(`La oferta figura como «${labelFor.availability(availability, locale)}». Comprueba el anuncio original antes de continuar; preparar no envía nada.`, `This job is marked “${labelFor.availability(availability, locale)}”. Check the original post before continuing; preparation does not submit anything.`)}</Notice>}
     <div className="detail-actions"><Button variant={result && gapContinuation(result.gaps) ? "secondary" : "primary"} onClick={() => void prepare()} disabled={busy || disabled}>{busy ? c('Preparando…', 'Preparing…') : result && gapContinuation(result.gaps) ? c('Volver a comprobar', 'Check again') : c('Preparar mi solicitud', 'Prepare my application')}</Button></div>{!result && <details className="preparation-alternatives"><summary>{c('Prefiero elegir el contenido del CV', 'I prefer to choose my resume content')}</summary><Link className="button button-secondary" href={withSearchOrigin(`/documents?jobId=${jobId}${applicationId ? `&applicationId=${applicationId}` : ''}`, returnTo)}>{c('Elegir contenido del CV', 'Choose resume content')}</Link></details>}<p className="muted-label">{c('Preparar no envía nada. Tú revisarás y autorizarás cada envío.', 'Preparing does not submit anything. You review and authorize each submission.')}</p>
     {disabled && <p role="status">{c('Guarda o descarta tus cambios antes de preparar la solicitud.', 'Save or discard your changes before preparing the application.')}</p>}
     <div ref={feedback} tabIndex={-1} className="preparation-feedback">{error && <Notice tone="error">{error}</Notice>}

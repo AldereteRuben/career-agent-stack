@@ -203,7 +203,7 @@ function ProfileView() {
   const locked = busy !== null || loadState !== 'ready';
 
   return <AppShell>
-    <PageHeader eyebrow={c('PREPARA TU INFORMACIÓN', 'PREPARE YOUR DETAILS')} title={c('Mi perfil', 'My profile')} description={c('Empieza por tu nombre y correo. Después añade una experiencia que quieras incluir en tu CV.', 'Start with your name and email. Then add an experience you want to include in your resume.')}/>
+    <PageHeader eyebrow={c('PREPARA TU INFORMACIÓN', 'PREPARE YOUR DETAILS')} title={c('Perfil', 'Profile')} description={c('Empieza por tu nombre y correo. Después añade una experiencia que quieras incluir en tu CV.', 'Start with your name and email. Then add an experience you want to include in your resume.')}/>
     <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile" returnTo={returnTo}/>
     {loadState === 'ready' && <nav className="profile-shortcuts" aria-label={c('Secciones de tu perfil', 'Profile sections')}>
       <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a>
@@ -289,7 +289,7 @@ function ProfileView() {
         <p>{c(`${approvedFacts} ${approvedFacts === 1 ? 'texto listo' : 'textos listos'} para usar · ${pendingFacts} por confirmar`, `${approvedFacts} ${approvedFacts === 1 ? 'entry' : 'entries'} ready to use · ${pendingFacts} to confirm`)}</p>
         {loadState === 'ready' && !canPrepareCv && <p className="muted-label">{c('Para continuar: guarda tu nombre y correo y confirma una experiencia.', 'To continue: save your name and email and confirm one experience.')}</p>}
       </Card>
-      <Card className="aside-card aside-privacy"><div className="card-icon mint" aria-hidden="true"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Si autorizas una ayuda con IA, los datos que elijas se envían a OpenAI. Puedes comprobarlos antes de permitir cada tarea.', 'Your profile is saved on this device. If you allow AI assistance, the details you select are sent to OpenAI. You can check them before allowing each task.')}</p><small>{c('Revisa tu candidatura y autoriza cada envío desde Mis solicitudes.', 'Review your application and authorize each submission from My applications.')}</small></Card>
+      <Card className="aside-card aside-privacy"><div className="card-icon mint" aria-hidden="true"><span>⌑</span></div><h3>{c('Privado por defecto', 'Private by default')}</h3><p>{c('Tu perfil se guarda en este equipo. Si autorizas una ayuda con IA, los datos que elijas se envían a OpenAI. Puedes comprobarlos antes de permitir cada tarea.', 'Your profile is saved on this device. If you allow AI assistance, the details you select are sent to OpenAI. You can check them before allowing each task.')}</p><small>{c('Revisa tu candidatura y autoriza cada envío desde Candidaturas.', 'Review your application and authorize each submission from Applications.')}</small></Card>
     </aside></div>
   </AppShell>;
 }
