@@ -28,7 +28,7 @@ const gapText = (value: string, locale: Locale) => ({
   PROFILE_REQUIRED: locale === 'es' ? 'Añade tu perfil.' : 'Add your profile.',
   FULL_NAME_REQUIRED: locale === 'es' ? 'Falta tu nombre.' : 'Your name is missing.',
   EMAIL_REQUIRED: locale === 'es' ? 'Falta tu correo.' : 'Your email is missing.',
-  PREPARATION_OUTDATED: locale === 'es' ? 'Tus datos cambiaron. Vuelve a preparar esta candidatura para actualizar los pendientes.' : 'Your details changed. Prepare this application again to update what is missing.',
+  PREPARATION_OUTDATED: locale === 'es' ? 'Tus datos cambiaron. Vuelve a preparar esta solicitud para actualizar los pendientes.' : 'Your details changed. Prepare this application again to update what is missing.',
   JOB_TEXT_UNAVAILABLE: locale === 'es' ? 'No hay texto del anuncio guardado.' : 'No saved job description is available.',
   RELEVANT_APPROVED_EVIDENCE_REQUIRED: locale === 'es' ? 'Añade y confirma experiencia relacionada con el puesto.' : 'Add and confirm experience related to this role.',
 }[value] ?? (locale === 'es' ? 'Completa este dato en tu perfil para continuar.' : 'Complete this detail in your profile to continue.'));
@@ -96,7 +96,7 @@ export function ApplicationQueue() {
   const unqueuedResumes = unqueuedReviewableResumes(items, documents);
   const hasVisibleItems = visible.length > 0 || unqueuedResumes.length > 0;
   const reviewCount = loading || error ? null : countReviewItems(items, documents);
-  return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Candidaturas', 'Applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
+  return <><PageHeader eyebrow={c('POR REVISAR', 'TO REVIEW')} title={c('Solicitudes', 'Applications')} description={c('Revisa qué datos aprobados se usaron, por qué se eligieron y qué falta completar.', 'Review which approved details were used, why they were selected, and what still needs attention.')} />
     <ApplicationSections active="review" reviewCount={reviewCount}/>
     <div className={styles.actions}><Button variant="quiet" disabled={loading || busy !== null} onClick={() => void load()}>{c('Actualizar lista', 'Refresh list')}</Button><Button variant="quiet" aria-pressed={showAll} onClick={() => setShowAll(!showAll)}>{showAll ? c('Solo pendientes', 'Only pending') : c('Ver también finalizadas', 'Include completed')}</Button></div>
     {actionError && <Notice tone="error">{actionError}</Notice>}
