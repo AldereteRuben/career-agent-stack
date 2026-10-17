@@ -29,7 +29,8 @@ export const v082Scenario: Scenario = {
         const t = (es: string, en: string) => locale === 'es' ? es : en;
         await page.setViewportSize({ width: 1096, height: 844 });
         await page.goto(new URL('/', page.url()).toString());
-        await page.waitForURL((url) => url.pathname === '/searches');
+        await page.waitForURL((url) => url.pathname === '/overview');
+        await page.goto(new URL('/searches', page.url()).toString());
         await setLocale(page, locale);
         await page.getByRole('heading', { name: t('¿Qué trabajo buscas?', 'What job are you looking for?'), exact: true }).waitFor();
         const form = page.locator('form').filter({ has: page.locator('#search-role') });
@@ -37,12 +38,12 @@ export const v082Scenario: Scenario = {
         assert.equal(await form.getByRole('combobox').count(), 0, 'No configuration dropdown is required before the first search');
         assert.equal(await form.getByRole('checkbox').count(), 0, 'Automatic setup does not require technical choices');
         const nav = mainNavigation(page);
-        assert.deepEqual(await nav.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('href'))), ['/searches', '/jobs?scope=favorites', '/applications']);
+        assert.deepEqual(await nav.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('href'))), ['/overview', '/searches', '/jobs?scope=favorites', '/applications']);
         assert.equal(await page.locator('#app-sidebar a[href="/profile"]').isVisible(), false, 'Profile is available on demand instead of blocking discovery');
         const tools = page.getByText(t('Perfil y herramientas', 'Profile and tools'), { exact: true });
         await tools.click();
-        for (const href of ['/profile', '/documents', '/boards', '/settings', '/overview']) await page.locator(`#app-sidebar a[href="${href}"]`).waitFor({ state: 'visible' });
-        assert.equal(await nav.getByRole('link').count(), 3, 'Secondary tools do not become additional primary destinations');
+        for (const href of ['/profile', '/documents', '/jobs', '/boards', '/settings']) await page.locator(`#app-sidebar a[href="${href}"]`).waitFor({ state: 'visible' });
+        assert.equal(await nav.getByRole('link').count(), 4, 'Secondary tools do not become additional primary destinations');
         await tools.click();
         for (const width of [390, 320]) {
           await page.setViewportSize({ width, height: 844 });
@@ -72,7 +73,7 @@ export const v082Scenario: Scenario = {
         assert.equal(await company.inputValue(), 'Fictional company', 'Restored optional criteria are visible, not silently applied');
         await page.evaluate(() => sessionStorage.clear());
       }
-      await page.goto(new URL('/', page.url()).toString());
+      await page.goto(new URL('/searches', page.url()).toString());
       await setLocale(page, 'es');
       await page.locator('#search-role').fill('QA Engineer');
       await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
@@ -91,19 +92,19 @@ export const v082Scenario: Scenario = {
         await setLocale(page, locale);
         await page.setViewportSize({ width: 390, height: 844 });
         await page.goto(new URL('/jobs', page.url()).toString());
-        await page.getByRole('heading', { name: locale === 'es' ? 'Ofertas encontradas' : 'Found jobs', exact: true }).waitFor();
+        await page.getByRole('heading', { name: locale === 'es' ? 'Todas las ofertas' : 'All jobs', exact: true }).waitFor();
         await page.getByRole('button', { name: locale === 'es' ? 'Abrir menú' : 'Open menu', exact: true }).click();
         assert.equal(await page.locator('#app-sidebar a[href="/jobs"]').getAttribute('aria-current'), 'page');
-        await mainNavigation(page).getByRole('link', { name: locale === 'es' ? /^Guardadas/ : /^Saved jobs/ }).click();
+        await mainNavigation(page).getByRole('link', { name: locale === 'es' ? /^Ofertas guardadas/ : /^Saved jobs/ }).click();
         await page.waitForURL((url) => url.pathname === '/jobs' && url.searchParams.get('scope') === 'favorites');
-        await page.getByRole('heading', { name: locale === 'es' ? 'Guardadas' : 'Saved jobs', exact: true }).waitFor();
+        await page.getByRole('heading', { name: locale === 'es' ? 'Ofertas guardadas' : 'Saved jobs', exact: true }).waitFor();
         await page.waitForFunction(() => document.querySelector('#app-sidebar')!.getBoundingClientRect().right <= 1);
         assert.equal(await page.locator('#app-sidebar a[href="/jobs?scope=favorites"]').getAttribute('aria-current'), 'page', 'Query-only navigation highlights Saved jobs and closes the mobile menu');
         assert.equal(await page.locator('#app-sidebar a[href="/jobs"]').getAttribute('aria-current'), null);
         assert.equal(await hasHorizontalOverflow(page), false);
         await page.screenshot({ path: join(artifacts, `v082-saved-jobs-${locale}-390.png`), fullPage: true });
       }
-      note('ES/EN: three primary links, two initial fields, no forced profile, automatic defaults, native disclosures, restored optional criteria and mobile keyboard trap. Job replies are fictional; production API matching is tested separately.');
+      note('ES/EN: four primary links, two initial fields, no forced profile, automatic defaults, native disclosures, restored optional criteria and mobile keyboard trap. Job replies are fictional; production API matching is tested separately.');
     } finally {
       await page.unrouteAll({ behavior: 'wait' });
       await page.evaluate(() => sessionStorage.clear());

@@ -105,7 +105,7 @@ The person SHALL be able to mark any job closed, and to reopen a closed or possi
 
 #### Scenario: Reopen a possibly closed job
 - **WHEN** the person reopens a `POSSIBLY_CLOSED` job
-- **THEN** its availability becomes `OPEN` and it becomes `POSSIBLY_CLOSED` again only after 3 new complete misses over 48 hours
+- **THEN** its availability becomes `OPEN` and it becomes `POSSIBLY_CLOSED` again only after 3 new complete misses, with at least 48 hours since any source last saw it
 
 #### Scenario: Stale request
 - **WHEN** the person submits a close or reopen action for a job whose availability changed since the page was loaded
@@ -119,7 +119,7 @@ Every change of a job's availability SHALL be recorded with its time, its previo
 - **THEN** the job page lists those three changes in order with their reasons, in Spanish and English
 
 ### Requirement: Availability never changes applications
-A job's availability SHALL NOT cancel, submit, change or block an application. Preparing an application for a job that is not `OPEN` SHALL show a warning and remain possible.
+A job's availability SHALL NOT cancel, submit, change or block an application. Person-initiated preparation for a job that is not `OPEN` SHALL show a warning and remain possible. Automatic preparation SHALL only attempt jobs whose availability is `OPEN`; it SHALL skip `POSSIBLY_CLOSED`, `CLOSED`, and `UNKNOWN` jobs without recording a failed attempt.
 
 #### Scenario: Job closes after an application was submitted
 - **WHEN** a job with a submitted application becomes `POSSIBLY_CLOSED` or `CLOSED`
@@ -128,6 +128,10 @@ A job's availability SHALL NOT cancel, submit, change or block an application. P
 #### Scenario: Preparing an application for a closed job
 - **WHEN** the person starts preparing an application for a `CLOSED` job
 - **THEN** a warning explains that the job may no longer accept applications, and the person can continue
+
+#### Scenario: Automatic preparation skips jobs that are not open
+- **WHEN** an opted-in saved search has a matched job whose availability is `POSSIBLY_CLOSED`, `CLOSED`, or `UNKNOWN`
+- **THEN** automatic preparation does not attempt it or record a failed attempt, while a person can still prepare it manually with a warning
 
 ### Requirement: Availability is shown clearly and accessibly
 The job page, job lists and My applications SHALL show each job's availability in text, not color alone, in Spanish and English, usable with a keyboard and on a phone-sized screen. The Availability filter SHALL return jobs in every state.

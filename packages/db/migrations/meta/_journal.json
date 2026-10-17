@@ -92,6 +92,20 @@
       "when": 1791619200000,
       "tag": "0012_session_generation",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791705600000,
+      "tag": "0013_job_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791792000000,
+      "tag": "0014_activity_created_indexes",
+      "breakpoints": true
     }
   ]
 }

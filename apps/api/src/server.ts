@@ -9,10 +9,11 @@ import { mkdir, readFile, rm, writeFile, chmod, unlink } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { and, desc, eq, ne, gt, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
 import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
+import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
@@ -23,6 +24,7 @@ import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
+import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
@@ -114,12 +116,18 @@ app.post('/api/v1/session', async (request, reply) => {
 let stopAssistedBrowsers = async () => {};
 app.delete('/api/v1/session', async (_request, reply) => { await stopAssistedBrowsers(); reply.header('Set-Cookie', expiredSessionCookie()); return { authenticated: false }; });
 
-app.get('/api/v1/summary', async (request) => {
+app.get('/api/v1/summary', async (request, reply) => {
   const id = workspace(request);
   const now = new Date();
+  const timeZone = resolveTimeZone((request.query as { tz?: string }).tz);
+  if (!timeZone) return fail(reply, 400, 'INVALID_INPUT');
+  const { from: activityStart, to: activityEnd } = activityWindow(now);
+  // Days are the viewer's calendar days, so a job added at 00:30 local time lands on that local day.
+  const jobActivityDay = sql<string>`to_char(${jobs.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const applicationActivityDay = sql<string>`to_char(${applications.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
   const approvedBoard = and(eq(boards.workspaceId, id), eq(boards.enabled, true), eq(boards.permissionStatus, 'APPROVED_FOR_SCOPE'), eq(boards.associationStatus, 'VERIFIED'), or(isNull(boards.reviewDueAt), gt(boards.reviewDueAt, now)));
   const profile = await latestProfile(db, id);
-  const [boardRows, jobRows, applicationRows, facts, answerRows, counts, jobCount, boardCounts, context, savedSearchCounts] = await Promise.all([
+  const [boardRows, jobRows, applicationRows, facts, answerRows, counts, jobCount, boardCounts, context, savedSearchCounts, jobActivity, applicationActivity] = await Promise.all([
     db.select().from(boards).where(eq(boards.workspaceId, id)).orderBy(desc(boards.updatedAt)).limit(10),
     db.select().from(jobs).where(eq(jobs.workspaceId, id)).orderBy(desc(jobs.updatedAt)).limit(6),
     db.select().from(applications).where(eq(applications.workspaceId, id)).orderBy(desc(applications.updatedAt)).limit(6),
@@ -130,16 +138,45 @@ app.get('/api/v1/summary', async (request) => {
     db.select({ total: sql<number>`count(*)::int`, approved: sql<number>`(count(*) filter (where ${approvedBoard}))::int` }).from(boards).where(eq(boards.workspaceId, id)),
     loadMatchingContext(db, id),
     db.select({ total: sql<number>`count(*)::int`, active: sql<number>`(count(*) filter (where ${savedJobSearches.enabled}))::int` }).from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
+    db.select({ day: jobActivityDay, count: sql<number>`count(*)::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, activityStart), lt(jobs.createdAt, activityEnd))).groupBy(sql`1`),
+    db.select({ day: applicationActivityDay, count: sql<number>`count(*)::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, activityStart), lt(applications.createdAt, activityEnd))).groupBy(sql`1`),
   ]);
   const applicationCounts = Object.fromEntries(applicationState.map((state) => [state, counts.find((row) => row.state === state)?.count ?? 0])) as Record<(typeof applicationState)[number], number>;
   // Active = not cancelled and not in a terminal recruitment stage (REJECTED, WITHDRAWN, HIRED); mirrors isActiveApplication in @career/domain.
   const activeApplications = counts.reduce((sum, row) => sum + row.active, 0);
   const completion = profileCompletion(profile?.profile ?? {}, facts);
   const recentSources = jobRows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, jobRows.map((job) => job.id)))) : [];
+  const activityMap = new Map<string, { day: string; jobs: number; applications: number }>();
+  for (const row of jobActivity) activityMap.set(row.day, { day: row.day, jobs: row.count, applications: 0 });
+  for (const row of applicationActivity) {
+    const day = activityMap.get(row.day) ?? { day: row.day, jobs: 0, applications: 0 };
+    day.applications = row.count;
+    activityMap.set(row.day, day);
+  }
   return {
     boards: boardRows, recentJobs: (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, jobRows), context)).map((job) => ({ ...job, searchSources: recentSources.filter((source, index, rows) => source.jobId === job.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) })), recentApplications: applicationRows, pendingFacts: completion.pendingFactCount, unansweredItems: answerRows.filter((answer) => answer.approvalStatus === 'UNANSWERED').length,
     savedSearchCount: savedSearchCounts[0]?.total ?? 0, activeSearchCount: savedSearchCounts[0]?.active ?? 0, applicationCounts, activeApplications, totalJobs: jobCount[0]?.count ?? 0, boardCount: boardCounts[0]?.total ?? 0, approvedSourceCount: boardCounts[0]?.approved ?? 0, profileCompletion: completion,
+    activityByDay: [...activityMap.values()].sort((a, b) => a.day.localeCompare(b.day)),
     capabilities: { externalWrites: true, email: false, browserRunner: true, hostedAI: false },
+  };
+});
+
+app.get('/api/v1/activity', async (request, reply) => {
+  const query = request.query as { day?: string; tz?: string };
+  const day = parseActivityDay(query.day); const timeZone = resolveTimeZone(query.tz);
+  if (!day || !timeZone) return fail(reply, 400, 'INVALID_INPUT');
+  const { from, to } = localDayBounds(day);
+  const id = workspace(request);
+  const jobLocalDay = sql`to_char(${jobs.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const applicationLocalDay = sql`to_char(${applications.createdAt} AT TIME ZONE ${timeZone}, 'YYYY-MM-DD')`;
+  const [jobRows, applicationRows] = await Promise.all([
+    db.select({ id: jobs.id, title: jobs.title, company: jobs.company, total: sql<number>`(count(*) over ())::int` }).from(jobs).where(and(eq(jobs.workspaceId, id), gte(jobs.createdAt, from), lt(jobs.createdAt, to), sql`${jobLocalDay} = ${day}`)).orderBy(desc(jobs.createdAt)).limit(activityDetailLimit),
+    db.select({ id: applications.id, role: applications.role, company: applications.company, state: applications.state, total: sql<number>`(count(*) over ())::int` }).from(applications).where(and(eq(applications.workspaceId, id), gte(applications.createdAt, from), lt(applications.createdAt, to), sql`${applicationLocalDay} = ${day}`)).orderBy(desc(applications.createdAt)).limit(activityDetailLimit),
+  ]);
+  return {
+    day, jobsTotal: jobRows[0]?.total ?? 0, applicationsTotal: applicationRows[0]?.total ?? 0,
+    jobs: jobRows.map(({ id: jobId, title, company }) => ({ id: jobId, title, company })),
+    applications: applicationRows.map(({ id: applicationId, role, company, state }) => ({ id: applicationId, role, company, state })),
   };
 });
 
@@ -333,16 +370,17 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const { id: jobId } = request.params as { id: string }; const id = workspace(request);
   const job = (await db.select().from(jobs).where(and(eq(jobs.id, jobId), eq(jobs.workspaceId, id))).limit(1))[0];
   if (!job) return fail(reply, 404, 'NOT_FOUND');
-  const [snapshots, occurrences, applicationsForJob, searchSources] = await Promise.all([
+  const [snapshots, occurrences, applicationsForJob, searchSources, availability] = await Promise.all([
     db.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), eq(jobSnapshots.jobId, jobId))).orderBy(desc(jobSnapshots.fetchedAt)),
     db.select().from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), eq(jobOccurrences.jobId, jobId))),
     db.select().from(applications).where(and(eq(applications.workspaceId, id), or(eq(applications.jobId, jobId), sql`${applications.jobId} IN(SELECT m.job_id FROM job_identity_members m JOIN job_identity_members target ON target.workspace_id=m.workspace_id AND target.identity_key=m.identity_key WHERE target.workspace_id=${id} AND target.job_id=${jobId}::uuid)`))).orderBy(desc(applications.updatedAt)),
     db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), eq(jobSearchSources.jobId, jobId))),
+    availabilityDetail(pool, id, jobId),
   ]);
   const [scored] = await scoreJobs(db, id, await withEffectiveSeenAt(db, id, [job]));
   // Present legacy feed snapshots as readable text without rewriting their evidence/hash.
   const readableSnapshots = searchSources.length ? snapshots.map((snapshot) => ({ ...snapshot, descriptionText: plainDescription(snapshot.descriptionText) })) : snapshots;
-  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob };
+  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, closedByUser: availability.closedByUser, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
 });
 /** Reviewing from /jobs also clears the job from every search inbox and from strong-identity duplicates. */
 app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
@@ -356,7 +394,7 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
   const now = new Date();
-  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
+  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
     await lockKey(tx, `discovery:${id}`);
     await lockJobIdentity(tx,id);
@@ -379,15 +417,18 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   return await decideJob(workspace(request), jobId, String(body!.decision)) ?? fail(reply,404,'NOT_FOUND');
 });
 
+registerJobAvailabilityRoutes(app, workspace);
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 
 app.get('/api/v1/applications', async (request, reply) => {
   const query = request.query as { offset?: string; limit?: string; q?: string };
-  const scoped = eq(applications.workspaceId, workspace(request));
+  const workspaceId = workspace(request); const scoped = eq(applications.workspaceId, workspaceId);
+  const selection = { ...getTableColumns(applications), jobAvailability: jobs.availability };
+  const matchingJob = and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId));
   // Preserve the existing array contract for internal clients. The tracker requests pages explicitly.
-  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select().from(applications).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
+  if (query.offset === undefined && query.limit === undefined && query.q === undefined) return db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(scoped).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(500);
   const offset = Number(query.offset ?? 0); const limit = Number(query.limit ?? 25);
   if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100 || typeof (query.q ?? '') !== 'string' || (query.q?.length ?? 0) > 200) return fail(reply, 400, 'INVALID_INPUT');
   const term = query.q?.trim() ?? '';
@@ -396,7 +437,7 @@ app.get('/api/v1/applications', async (request, reply) => {
   const counts = await db.select({ total: sql<number>`count(*)::int` }).from(applications).where(where);
   const total = counts[0]?.total ?? 0;
   const pageOffset = Math.min(offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-  const items = await db.select().from(applications).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
+  const items = await db.select(selection).from(applications).leftJoin(jobs, matchingJob).where(where).orderBy(desc(applications.updatedAt), desc(applications.id)).limit(limit).offset(pageOffset);
   return { items, total, offset: pageOffset, limit };
 });
 app.post('/api/v1/applications', async (request, reply) => {
@@ -423,7 +464,7 @@ app.post('/api/v1/applications', async (request, reply) => {
 });
 app.get('/api/v1/applications/:id', async (request, reply) => {
   const id = workspace(request); const { id: applicationId } = request.params as { id: string };
-  const row = (await db.select().from(applications).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
+  const row = (await db.select({ ...getTableColumns(applications), jobAvailability: jobs.availability }).from(applications).leftJoin(jobs, and(eq(jobs.id, applications.jobId), eq(jobs.workspaceId, applications.workspaceId))).where(and(eq(applications.workspaceId, id), eq(applications.id, applicationId))).limit(1))[0];
   if (!row) return fail(reply, 404, 'NOT_FOUND');
   const document = row.documentId ? (await db.select({ approvalStatus: documentVersions.approvalStatus }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.id, row.documentId))).limit(1))[0] : null;
   return { ...row, documentApprovalStatus: document?.approvalStatus ?? null };
@@ -609,8 +650,9 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
-registerJobSearchRoutes(app, workspace, prepareApplication);
-const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareApplication);
+const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
+registerJobSearchRoutes(app, workspace, prepareAutomatically);
+const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
 let stopJobSearches = startJobSearches();
 app.addHook('onClose', () => stopJobSearches());
 registerDiscoveryRoutes(app, workspace);

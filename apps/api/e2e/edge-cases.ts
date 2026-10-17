@@ -182,6 +182,103 @@ try {
     await page.getByLabel('Nombre', { exact: true }).waitFor();
   });
 
+  await run('job-availability-history-actions-desktop-and-mobile', async () => {
+    const candidate = await api.post<{ id: string; canonicalUrl: string }>('/jobs/import', { title: 'Availability test designer', company: `Availability ${stack.marker}`, jobUrl: `https://jobs.lever.co/availability-${stack.marker}/33ef6bcd-2bb9-455f-9229-7b94d86be221`, description: 'Fictional job for availability controls.' });
+    await page.setViewportSize({ width: 1096, height: 800 }); await setLocale(page, 'es');
+    await page.goto(`/jobs/${candidate.id}`);
+    await page.getByRole('heading', { name: 'Estado de la oferta', exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Cerrar oferta', exact: true }).count(), 1);
+    const close = page.getByRole('button', { name: 'Cerrar oferta', exact: true });
+    await close.focus(); assert.equal(await close.evaluate((element) => element === document.activeElement), true, 'Close action is keyboard focusable');
+    const closed = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith(`/api/v1/jobs/${candidate.id}/availability`));
+    await page.keyboard.press('Enter'); assert.equal((await closed).status(), 200);
+    await page.locator('[class*="availabilityLatest"]').filter({ hasText: 'La cerraste tú.' }).waitFor();
+    await page.getByRole('button', { name: 'Reabrir oferta', exact: true }).waitFor();
+    await stack.db.query(`insert into job_search_sources(workspace_id, job_id, provider, external_id, source_url, missed_complete_reads, last_seen_at) select workspace_id, id, 'remotive', $2, $3, 0, now() + interval '1 minute' from jobs where id = $1`, [candidate.id, `availability-${stack.marker}`, candidate.canonicalUrl]);
+    await page.reload();
+    await page.getByText('Una fuente todavía muestra esta oferta como publicada.', { exact: false }).waitFor();
+    assert.equal(await hasHorizontalOverflow(page), false, 'Desktop layout has no horizontal overflow');
+
+    await setLocale(page, 'en'); await page.setViewportSize({ width: 390, height: 844 }); await page.reload();
+    await page.getByRole('heading', { name: 'Job status', exact: true }).waitFor();
+    await page.getByText('A source still lists this job as published.', { exact: false }).waitFor();
+    await page.locator('[class*="availabilityLatest"]').filter({ hasText: 'You closed it.' }).waitFor();
+    assert.equal(await hasHorizontalOverflow(page), false, 'Mobile layout has no horizontal overflow at 390 px');
+    const reopen = page.getByRole('button', { name: 'Reopen job', exact: true });
+    await reopen.focus(); assert.equal(await reopen.evaluate((element) => element === document.activeElement), true, 'Reopen action is keyboard focusable');
+    await reopen.click();
+    await page.locator('[class*="availabilityLatest"]').filter({ hasText: 'You reopened it.' }).waitFor();
+    await page.locator('[class*="availabilityHistory"] summary').click();
+    await page.locator('[class*="availabilityHistory"]').getByText('You closed it.', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Reopen job', exact: true }).count(), 0);
+    assert.equal(await hasHorizontalOverflow(page), false, 'Reopened mobile layout still has no horizontal overflow');
+  });
+
+  await run('job-availability-badges-filter-and-nonblocking-preparation-warning', async () => {
+    const fixtures: Array<{ state: 'OPEN' | 'POSSIBLY_CLOSED' | 'CLOSED' | 'UNKNOWN'; title: string; id: string }> = [];
+    for (const state of ['OPEN', 'POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN'] as const) {
+      const title = `${state === 'POSSIBLY_CLOSED' ? 'Designer' : state} ${stack.marker.slice(-6)}`;
+      const created = await api.post<{ id: string }>('/jobs/import', { title, company: `List ${state} ${stack.marker.slice(-6)}`, jobUrl: `https://jobs.lever.co/list-${state.toLowerCase()}-${stack.marker}/${state === 'OPEN' ? '66ef6bcd-2bb9-455f-9229-7b94d86be221' : `33ef6bcd-2bb9-455f-9229-7b94d86be22${['POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN'].indexOf(state)}`}`, description: 'Fictional availability list fixture.' });
+      await stack.db.query('update jobs set availability = $2 where id = $1', [created.id, state]);
+      fixtures.push({ state, title, id: created.id });
+    }
+    const possiblyClosed = fixtures.find((fixture) => fixture.state === 'POSSIBLY_CLOSED')!;
+    const application = await api.post<Application>('/applications', { jobId: possiblyClosed.id, company: 'List POSSIBLY_CLOSED', role: possiblyClosed.title, canonicalUrl: 'https://jobs.lever.co/availability-test', state: 'DRAFT', notes: '' });
+    const manuallyClosed = fixtures.find((fixture) => fixture.state === 'CLOSED')!;
+    const closedApplication = await api.post<Application>('/applications', { jobId: manuallyClosed.id, company: 'List CLOSED', role: manuallyClosed.title, canonicalUrl: 'https://jobs.lever.co/availability-closed-test', state: 'DRAFT', notes: '' });
+    await setLocale(page, 'es'); await page.setViewportSize({ width: 390, height: 844 }); await page.goto('/jobs');
+    const closedCard = page.locator('.job-card').filter({ has: page.getByRole('link', { name: possiblyClosed.title, exact: true }) });
+    await closedCard.getByText('Puede estar cerrada', { exact: true }).waitFor();
+    const unknown = fixtures.find((fixture) => fixture.state === 'UNKNOWN')!;
+    await page.locator('.job-card').filter({ has: page.getByRole('link', { name: manuallyClosed.title, exact: true }) }).getByText('Cerrada', { exact: true }).waitFor();
+    await page.locator('.job-card').filter({ has: page.getByRole('link', { name: unknown.title, exact: true }) }).getByText('Sin comprobar', { exact: true }).waitFor();
+    const open = fixtures.find((fixture) => fixture.state === 'OPEN')!;
+    const openCard = page.locator('.job-card').filter({ has: page.getByRole('link', { name: open.title, exact: true }) });
+    await openCard.waitFor(); assert.equal(await openCard.getByText('Abierta', { exact: true }).count(), 0, 'Open jobs do not get a non-open badge');
+    assert.equal(await hasHorizontalOverflow(page), false, 'Availability badges fit the job list at 390 px');
+
+    await page.getByLabel('Disponibilidad', { exact: true }).selectOption('POSSIBLY_CLOSED');
+    await page.waitForURL(/availability=POSSIBLY_CLOSED/);
+    // Wait for the filtered list itself: the unfiltered cards stay rendered until the new page of results arrives.
+    await openCard.waitFor({ state: 'detached' });
+    await closedCard.waitFor();
+    const visibleTitles = await page.locator('.job-card h2 a').allTextContents();
+    assert.deepEqual(visibleTitles, [possiblyClosed.title], 'Filtering returns exactly the possibly-closed job');
+    const filtered = await api.get<{ items: Array<{ id: string; availability: string }>; total: number }>('/jobs?availability=POSSIBLY_CLOSED&paged=true');
+    assert.deepEqual(filtered.items.map((item) => item.id), [possiblyClosed.id]);
+
+    await page.goto(`/applications?id=${application.id}`);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.reload();
+    const possiblyClosedRow = page.locator('.tracker-row').filter({ hasText: possiblyClosed.title });
+    await possiblyClosedRow.getByText('Puede estar cerrada', { exact: true }).waitFor();
+    await setLocale(page, 'en');
+    await possiblyClosedRow.getByText('May be closed', { exact: true }).waitFor();
+    await setLocale(page, 'es'); await page.setViewportSize({ width: 390, height: 844 }); await page.reload();
+    await page.locator('.preparation-action').getByRole('button', { name: 'Preparar mi solicitud', exact: true }).waitFor();
+    assert.equal(await page.locator('.preparation-action').getByRole('button', { name: 'Preparar mi solicitud', exact: true }).isEnabled(), true, 'The warning does not block preparation');
+    await page.locator('.preparation-action').getByText('La oferta figura como «Puede estar cerrada». Comprueba el anuncio original antes de continuar; preparar no envía nada.', { exact: true }).waitFor();
+    assert.equal(await hasHorizontalOverflow(page), false, 'The application warning fits at 390 px');
+    await setLocale(page, 'en');
+    await page.locator('.preparation-action').getByRole('button', { name: 'Prepare my application', exact: true }).waitFor();
+    assert.equal(await page.locator('.preparation-action').getByRole('button', { name: 'Prepare my application', exact: true }).isEnabled(), true, 'The English warning does not block preparation');
+    await page.locator('.preparation-action').getByText('This job is marked “May be closed”. Check the original post before continuing; preparation does not submit anything.', { exact: true }).waitFor();
+    assert.equal(await hasHorizontalOverflow(page), false, 'The English application warning fits at 390 px');
+
+    await setLocale(page, 'es'); await page.goto(`/applications?id=${closedApplication.id}`);
+    const closedRow = page.locator('.tracker-row').filter({ hasText: manuallyClosed.title });
+    await closedRow.getByText('Cerrada', { exact: true }).waitFor();
+    await page.locator('.preparation-action').getByText('La oferta figura como «Cerrada». Comprueba el anuncio original antes de continuar; preparar no envía nada.', { exact: true }).waitFor();
+    const prepareClosed = page.locator('.preparation-action').getByRole('button', { name: 'Preparar mi solicitud', exact: true });
+    assert.equal(await prepareClosed.isEnabled(), true, 'A closed job can still be prepared manually');
+    const manualPreparation = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/api/v1/preparations'));
+    await prepareClosed.click();
+    const preparationResponse = await manualPreparation;
+    assert.equal(preparationResponse.status(), 200, 'Manual preparation for a closed job is allowed');
+    assert.notEqual((await preparationResponse.json()).status, 'BLOCKED');
+    assert.equal(await hasHorizontalOverflow(page), false, 'The closed-job warning fits at 390 px');
+  });
+
   await run('english-mobile-tracker-and-search-errors', async () => {
     await setLocale(page, 'en'); await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/applications?id=${app.id}`);
