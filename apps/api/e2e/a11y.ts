@@ -22,8 +22,14 @@ export const a11yScenarios: Scenario[] = [{
     await profilePage.getByRole('complementary', { name: 'Menú principal', exact: true }).waitFor();
     await profilePage.getByRole('complementary', { name: 'Tu progreso', exact: true }).waitFor();
     await profilePage.locator('details.profile-preferences > summary').click();
+    // Wait for the profile request to finish before exercising a controlled input. The field is
+    // present in the initial render while the form is still locked, and the full suite can reach
+    // this page while its separate tab is still loading.
+    const region = profilePage.getByRole('region', { name: 'Lo que has guardado' });
+    await region.getByText(`A11y example ${marker}`).waitFor();
     const mode = profilePage.locator('.work-mode-field .tag-row button').first();
     await mode.waitFor();
+    await eventually(() => mode.isEnabled(), (enabled) => enabled, 'The work-mode control should be ready after profile loading');
     const accessibleName = (snapshot: string) => snapshot.match(/button "([^"]+)"/)?.[1] ?? '';
     const modeBefore = await mode.ariaSnapshot();
     assert.ok(!modeBefore.includes('✓'), 'The selected work-mode checkmark is still exposed to assistive technology');
@@ -34,10 +40,7 @@ export const a11yScenarios: Scenario[] = [{
     assert.equal(accessibleName(modeAfter), accessibleName(modeBefore), 'The work-mode accessible name should not change when toggled');
     await eventually(() => mode.getAttribute('aria-pressed'), (pressed) => pressed !== pressedBefore, 'The toggle state should still change');
     // #65: the list is a <section aria-labelledby>, so it is exposed as a named region.
-    const region = profilePage.getByRole('region', { name: 'Lo que has guardado' });
     await region.waitFor();
-    // The region renders before the profile data loads, so wait for the entry to appear first.
-    await region.getByText(`A11y example ${marker}`).waitFor();
     const regionSnapshot = await region.ariaSnapshot();
     assert.ok(regionSnapshot.includes(`A11y example ${marker}`), 'The saved region snapshot should contain the approved entry');
     // #64: the approved-entry marker (✓) is decorative; the state is already announced by the tag text.
