@@ -154,6 +154,8 @@ jobs:
       - name: Verify AI foundations with synthetic processes (no provider account)
         run: pnpm run test:ai
       - run: pnpm run test:ui-logic
+      - name: Verify the launcher scripts can start pnpm on every platform
+        run: pnpm run test:spawn-tool
       # Includes the private temporary folder check, which uses a user-only ACL on Windows.
       - name: Verify backup encryption on this system
         run: pnpm run test:backup-crypto
