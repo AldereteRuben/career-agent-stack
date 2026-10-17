@@ -157,6 +157,10 @@ test('editing an unsupported sentence needs fresh confirmation unless it is unch
   assert.deepEqual(saveApplicationDocumentSentenceEdit({
     original, text: original.text, sourceFactIds: original.sourceFactIds, workspaceId, facts, offer,
   }), { ok: true, sentence: original });
+  const unsupportedWithCitation = claim({ text: 'Used Python.', origin: 'USER_UNSUPPORTED', sourceFactIds: ['fact-supported'] });
+  assert.deepEqual(saveApplicationDocumentSentenceEdit({
+    original: unsupportedWithCitation, text: unsupportedWithCitation.text, sourceFactIds: unsupportedWithCitation.sourceFactIds, workspaceId, facts, offer,
+  }), { ok: true, sentence: unsupportedWithCitation });
 });
 
 test('assistant proposals must be claims and pass the same provenance checks', () => {

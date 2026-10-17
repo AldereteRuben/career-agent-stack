@@ -155,6 +155,21 @@ export function saveApplicationDocumentSentenceEdit(input: {
 }): ApplicationDocumentValidationResult {
   const unchanged = input.text === input.original.text && input.sourceFactIds.length === input.original.sourceFactIds.length
     && input.sourceFactIds.every((id, index) => id === input.original.sourceFactIds[index]);
+  if (unchanged && input.original.origin === 'USER_UNSUPPORTED') {
+    if (input.original.kind !== 'CANDIDATE_CLAIM') {
+      return { ok: false, issue: { code: 'INVALID_SENTENCE_KIND', sentenceId: input.original.sentenceId } };
+    }
+    if (new Set(input.original.sourceFactIds).size !== input.original.sourceFactIds.length) {
+      return { ok: false, issue: { code: 'DUPLICATE_CITATION', sentenceId: input.original.sentenceId } };
+    }
+    for (const factId of input.original.sourceFactIds) {
+      const fact = input.facts.find((candidate) => candidate.id === factId);
+      if (!fact || fact.workspaceId !== input.workspaceId || fact.approval !== 'USER_APPROVED') {
+        return { ok: false, issue: { code: 'FACT_NOT_APPROVED', sentenceId: input.original.sentenceId, factId } };
+      }
+    }
+    return { ok: true, sentence: input.original };
+  }
   if (unchanged) return validateApplicationDocumentSentence({ sentence: input.original, workspaceId: input.workspaceId, facts: input.facts, offer: input.offer });
 
   const draft: ApplicationDocumentSentence = {
