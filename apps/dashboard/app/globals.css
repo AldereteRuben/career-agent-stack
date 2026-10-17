@@ -1813,10 +1813,7 @@ main:focus {
   justify-content: space-between;
   gap: 7px;
   margin-top: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
+  padding: 10px 0 0;
 }
 
 .job-card-metrics > div {
