@@ -113,6 +113,13 @@
       "when": 1791878400000,
       "tag": "0015_resume_contacts_and_application_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792247368000,
+      "tag": "0016_document_paper_size",
+      "breakpoints": true
     }
   ]
 }

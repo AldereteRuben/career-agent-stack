@@ -19,7 +19,7 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
 - Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive, Arbeitnow e Himalayas. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
-- Generar, visualizar, revisar y descargar versiones de tu CV. Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
+- Generar, visualizar, revisar y descargar versiones de tu CV en A4 o Carta (EE. UU.). Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
@@ -60,6 +60,18 @@ Las búsquedas existentes conservan sus fuentes y reglas hasta que aceptes las m
 Abre **Mis solicitudes → Por revisar** para revisar el PDF generado y los datos pendientes. En una candidatura de Lever, sigue **Revisar datos → Revisar navegador** y elige continuar manualmente o autorizar por separado el envío compatible. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Las páginas públicas de Lever inspeccionadas para esta versión requirieron intervención manual; no se ha verificado un envío a una empresa real. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
 
 ## Empieza aquí
+
+Estas capturas utilizan datos ficticios de demostración. Los pasos numerados siguen completos aunque no se carguen las imágenes.
+
+![Todas las ofertas encontradas para un puesto ficticio de ingeniería de automatización de calidad.](docs/images/ofertas-es.webp)
+
+![Detalle de una oferta ficticia y acceso a la preparación de la solicitud.](docs/images/detalle-oferta-es.webp)
+
+![Detalle de una oferta ficticia en una pantalla móvil.](docs/images/detalle-oferta-es-movil.webp)
+
+![Revisión de un CV ficticio antes de solicitar el puesto.](docs/images/cv-revisar-es.webp)
+
+![Seguimiento de una solicitud ficticia y sus siguientes pasos.](docs/images/candidaturas-es.webp)
 
 ### 1. Instala los requisitos
 

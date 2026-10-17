@@ -19,7 +19,7 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 - Keep reusable answers with their question and country context.
 - Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter saved jobs and availability, archive or restore offers, and see explainable matching.
-- Generate versioned resumes with English or Spanish headings, zoom the PDF preview, and reuse earlier content without altering previous PDFs.
+- Generate versioned resumes on A4 or US Letter paper, with English or Spanish headings; zoom the PDF preview and reuse earlier content without altering previous PDFs.
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
@@ -54,6 +54,16 @@ Existing searches retain their sources and matching rules until you opt into enh
 Open **My applications → To review** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 ## Start here
+
+These screenshots use fictional demo data. The numbered steps below remain complete without them.
+
+![All jobs found for a fictional QA Automation Engineer role.](docs/images/jobs-en.webp)
+
+![Details for a fictional QA Automation Engineer job, with the application preparation flow below.](docs/images/job-detail-en.webp)
+
+![Reviewing a fictional resume before applying.](docs/images/resume-review-en.webp)
+
+![Tracking a fictional application and its next steps.](docs/images/tracker-en.webp)
 
 ### 1. Install the prerequisites
 
