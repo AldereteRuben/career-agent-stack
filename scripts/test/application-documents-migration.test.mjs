@@ -1,3 +1,146 @@
-import test from 'node:test';
+// Creates a disposable loopback database and applies every checked-in migration in order.
+import assert from 'node:assert/strict';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
 
-test('application document migration coverage is wired for task 1.2', { skip: 'Migration assertions are added with migration 0019 in task 1.2.' }, () => {});
+const root = new URL('../../', import.meta.url);
+const { Client } = createRequire(new URL('packages/db/package.json', root))('pg');
+const adminUrl = process.env.CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL;
+const migrationDir = new URL('packages/db/migrations/', root);
+const applyMigration = async (client, file) => {
+  const sql = await readFile(new URL(file, migrationDir), 'utf8');
+  for (const statement of sql.split('--> statement-breakpoint').filter((part) => part.trim())) await client.query(statement);
+};
+const foreignKey = (constraint) => (error) => error.code === '23503' && error.constraint === constraint;
+
+test('0019 adds application documents without changing attached resumes and enforces workspace constraints', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
+  assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
+  const database = `career_appdocs_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let client; let files;
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
+    maintenance.pathname = `/${database}`;
+    client = new Client({ connectionString: maintenance.toString() });
+    await client.connect();
+
+    const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
+    assert.equal(migrations.at(-1), '0019_application_documents.sql');
+    for (const file of migrations.slice(0, -1)) await applyMigration(client, file);
+
+    // Seed a pre-existing application with its approved, linked general resume.
+    const workspaceId = randomUUID(); const jobId = randomUUID(); const snapshotId = randomUUID();
+    const applicationId = randomUUID(); const legacyDocumentId = randomUUID();
+    files = await mkdtemp(join(tmpdir(), 'career-application-documents-migration-'));
+    const legacyBytes = Buffer.from('synthetic approved resume bytes');
+    const legacyPath = join(files, 'legacy-resume.pdf');
+    await writeFile(legacyPath, legacyBytes);
+    const legacyDigest = createHash('sha256').update(legacyBytes).digest('hex');
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [workspaceId]);
+    await client.query('INSERT INTO jobs(id,workspace_id,company,title) VALUES ($1,$2,$3,$4)', [jobId, workspaceId, 'Example Co', 'Designer']);
+    await client.query('INSERT INTO job_snapshots(id,workspace_id,job_id,title,description_text,snapshot_hash) VALUES ($1,$2,$3,$4,$5,$6)', [snapshotId, workspaceId, jobId, 'Designer', 'Synthetic offer', 'a'.repeat(64)]);
+    await client.query('INSERT INTO applications(id,workspace_id,job_id,company,role,location) VALUES ($1,$2,$3,$4,$5,$6)', [applicationId, workspaceId, jobId, 'Example Co', 'Designer', 'Madrid']);
+    await client.query(`INSERT INTO document_versions(id,workspace_id,name,revision,media_type,storage_path,sha256,approval_status)
+      VALUES ($1,$2,'Attached resume',1,'application/pdf',$3,$4,'USER_APPROVED')`, [legacyDocumentId, workspaceId, legacyPath, legacyDigest]);
+    await client.query('UPDATE applications SET document_id=$2 WHERE id=$1', [applicationId, legacyDocumentId]);
+    const applicationBefore = (await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0];
+    const resumeBefore = (await client.query('SELECT * FROM document_versions WHERE id=$1', [legacyDocumentId])).rows[0];
+
+    await applyMigration(client, migrations.at(-1));
+    const applicationAfter = (await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0];
+    const resumeAfter = (await client.query('SELECT * FROM document_versions WHERE id=$1', [legacyDocumentId])).rows[0];
+    assert.deepEqual(applicationAfter, applicationBefore, 'application row and legacy link are unchanged');
+    assert.deepEqual(resumeAfter, resumeBefore, 'legacy approval, digest, and storage path are unchanged');
+    assert.deepEqual(await readFile(legacyPath), legacyBytes, 'legacy file bytes are unchanged');
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM application_documents')).rows[0].n, 0, 'no legacy documents are converted');
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM application_document_revisions')).rows[0].n, 0);
+
+    let applicationCycle = 2;
+    const makeApplication = async (workspace, job, company = 'Example Co') => {
+      const id = randomUUID();
+      await client.query('INSERT INTO applications(id,workspace_id,job_id,application_cycle,company,role,location) VALUES ($1,$2,$3,$4,$5,$6,$7)', [id, workspace, job, applicationCycle++, company, 'Designer', 'Madrid']);
+      return id;
+    };
+    const makeDocument = async (workspace, application, kind = 'RESUME') => {
+      const id = randomUUID();
+      await client.query('INSERT INTO application_documents(id,workspace_id,application_id,kind,language) VALUES ($1,$2,$3,$4,$5)', [id, workspace, application, kind, 'es']);
+      return id;
+    };
+    const insertRevision = async ({ workspace = workspaceId, document, snapshot = snapshotId, revision = 1, offerSnapshot = snapshot } = {}) => {
+      return client.query(`INSERT INTO application_document_revisions
+        (workspace_id,document_id,revision,claims,content_hash,offer_snapshot_id,offer_hash,facts_hash,paper_size,text_storage_path,text_sha256,pdf_storage_path,pdf_sha256)
+        VALUES ($1,$2,$3,'[]',$4,$5,$6,$7,'A4','synthetic.txt',$8,'synthetic.pdf',$9)`,
+      [workspace, document, revision, 'b'.repeat(64), offerSnapshot, 'c'.repeat(64), 'd'.repeat(64), 'e'.repeat(64), 'f'.repeat(64)]);
+    };
+
+    // Restrictive one-way references; deleting dependents first leaves unrelated applications intact.
+    const appA = await makeApplication(workspaceId, jobId);
+    const appB = await makeApplication(workspaceId, jobId);
+    const docA = await makeDocument(workspaceId, appA);
+    const docB = await makeDocument(workspaceId, appB, 'COVER_LETTER');
+    await insertRevision({ document: docA });
+    await insertRevision({ document: docB });
+    await assert.rejects(client.query('DELETE FROM applications WHERE id=$1', [appA]), foreignKey('application_documents_workspace_application_fk'));
+    await assert.rejects(client.query('DELETE FROM application_documents WHERE id=$1', [docA]), foreignKey('application_document_revisions_workspace_document_fk'));
+    await assert.rejects(client.query('DELETE FROM job_snapshots WHERE id=$1', [snapshotId]), foreignKey('application_document_revisions_workspace_offer_snapshot_fk'));
+    await client.query('DELETE FROM application_document_revisions WHERE document_id=$1', [docA]);
+    await client.query('DELETE FROM application_documents WHERE id=$1', [docA]);
+    await client.query('DELETE FROM applications WHERE id=$1', [appA]);
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM application_documents WHERE id=$1', [docB])).rows[0].n, 1);
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM application_document_revisions WHERE document_id=$1', [docB])).rows[0].n, 1);
+
+    const foreignWorkspace = randomUUID(); const foreignJob = randomUUID();
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [foreignWorkspace]);
+    await client.query('INSERT INTO jobs(id,workspace_id,company,title) VALUES ($1,$2,$3,$4)', [foreignJob, foreignWorkspace, 'Other Co', 'Designer']);
+    const foreignApp = await makeApplication(foreignWorkspace, foreignJob, 'Other Co');
+    const foreignDoc = await makeDocument(foreignWorkspace, foreignApp);
+    await assert.rejects(insertRevision({ workspace: workspaceId, document: foreignDoc }), foreignKey('application_document_revisions_workspace_document_fk'), 'cross-workspace document reference is rejected');
+    await assert.rejects(insertRevision({ document: docB, offerSnapshot: null }), (error) => error.code === '23502' && error.column === 'offer_snapshot_id', 'offer snapshot is mandatory');
+
+    const relationRows = (await client.query(`SELECT conrelid::regclass::text AS from_table, confrelid::regclass::text AS to_table
+      FROM pg_constraint WHERE contype='f' AND conrelid IN ('applications'::regclass,'application_document_revisions'::regclass)`)).rows;
+    assert.equal(relationRows.some((row) => row.from_table === 'applications' && row.to_table === 'application_documents'), false, 'applications do not reference offer documents');
+    assert.equal(relationRows.some((row) => row.from_table === 'application_document_revisions' && row.to_table === 'application_document_revisions'), false, 'revision parent is not a self foreign key');
+
+    // G1: preserve all existing AI operations, allow DOCUMENT_REWORD and reject any unknown operation.
+    const connectionId = randomUUID(); const consentId = randomUUID(); const fingerprint = '1'.repeat(64);
+    await client.query('INSERT INTO ai_connections(id,workspace_id,provider,account_fingerprint) VALUES ($1,$2,$3,$4)', [connectionId, workspaceId, 'codex', fingerprint]);
+    await client.query(`INSERT INTO ai_consents(id,workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,notice_version)
+      VALUES ($1,$2,$3,'codex',$4,1,1,'DOCUMENT_REWORD','["APPROVED_FACTS","JOB_POSTING"]','documents-v1')`, [consentId, workspaceId, connectionId, fingerprint]);
+    const makeRun = async (operation) => {
+      const id = randomUUID();
+      await client.query(`INSERT INTO ai_runs(id,workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,
+        operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions)
+        VALUES ($1,$2,$3,$4,'codex',1,1,$5,$6,'MANUAL','SUCCEEDED',$7,'content','account',$8,$9,'{}')`,
+      [id, workspaceId, connectionId, consentId, fingerprint, operation, `idempotency-${id}`, JSON.stringify({ payloadSha256: 'a'.repeat(64) }), 'a'.repeat(64)]);
+      return id;
+    };
+    for (const operation of ['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'DOCUMENT_REWORD']) await makeRun(operation);
+    await assert.rejects(makeRun('NOT_AN_OPERATION'), (error) => error.code === '23514' && error.constraint === 'ai_runs_operation_check');
+    const documentRunId = await makeRun('DOCUMENT_REWORD');
+    await assert.rejects(client.query('UPDATE ai_runs SET snapshot=$2 WHERE id=$1', [documentRunId, JSON.stringify({ tampered: true })]), /AI run identity and input are immutable/);
+
+    // G5: proposal history contains hashes and identifiers only, is unique per sentence, and follows run deletion.
+    const proposalColumns = (await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='ai_document_reword_proposals' ORDER BY ordinal_position`)).rows.map((row) => row.column_name);
+    assert.deepEqual(proposalColumns, ['workspace_id', 'run_id', 'sentence_id', 'proposal_sha256']);
+    const proposal = (sentenceId, runId = documentRunId, workspace = workspaceId) => client.query(`INSERT INTO ai_document_reword_proposals(workspace_id,run_id,sentence_id,proposal_sha256) VALUES($1,$2,$3,$4)`, [workspace, runId, sentenceId, '9'.repeat(64)]);
+    await proposal('sentence-1');
+    await assert.rejects(proposal('sentence-1'), (error) => error.code === '23505');
+    await assert.rejects(proposal('sentence-cross-workspace', documentRunId, foreignWorkspace), foreignKey('ai_document_reword_proposals_workspace_run_fk'));
+    await assert.rejects(proposal('sentence-missing-run', randomUUID()), foreignKey('ai_document_reword_proposals_workspace_run_fk'));
+    await client.query('DELETE FROM ai_runs WHERE id=$1', [documentRunId]);
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM ai_document_reword_proposals WHERE run_id=$1', [documentRunId])).rows[0].n, 0, 'run deletion cascades only hash rows');
+  } finally {
+    await client?.end().catch(() => {});
+    if (files) await rm(files, { recursive: true, force: true });
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
+    await admin.end().catch(() => {});
+  }
+});
