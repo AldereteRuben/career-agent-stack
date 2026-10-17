@@ -1,4 +1,5 @@
 export * from './matching.js';
+export * from './job-report.js';
 export * from './search-matching.js';
 export * from './states.js';
 export * from './job-availability.js';
@@ -16,3 +17,4 @@ export * from './ai-budget.js';
 export * from './security-headers.js';
 export * from './fact-import.js';
 export * from './profile-import.js';
+export * from './resume-sections.js';

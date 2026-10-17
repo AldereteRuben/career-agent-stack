@@ -16,6 +16,7 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 ## Qué puedes hacer
 
 - Completar experiencia laboral y formación con fechas editables; corregir, archivar y confirmar los datos que se usan en tu CV.
+- Importar un CV en PDF (o pegar su texto) desde **Perfil → Importar desde un CV**. El navegador lo lee y propone entradas; nada se usa hasta que lo confirmas, y ni el PDF ni su texto se envían o se guardan. Aún no se admiten PDF escaneados, DOCX ni la importación con IA.
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
 - Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive, Arbeitnow e Himalayas. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.

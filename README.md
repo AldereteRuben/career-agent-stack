@@ -16,6 +16,7 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 ## What you can do
 
 - Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
+- Import an existing resume PDF (or its pasted text) in **Profile → Import from a resume**. The browser reads it and proposes entries; nothing is used until you confirm it, and the PDF and its text are never uploaded or stored. Scanned PDFs, DOCX and AI-assisted import are not supported yet.
 - Keep reusable answers with their question and country context.
 - Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter saved jobs and availability, archive or restore offers, and see explainable matching.

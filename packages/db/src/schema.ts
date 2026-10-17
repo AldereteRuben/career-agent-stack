@@ -55,8 +55,10 @@ export const jobs = pgTable('jobs', {
   closedByUser: boolean('closed_by_user').notNull().default(false),
   discoveredAt: timestamp('discovered_at', { withTimezone: true }),
   seenAt: timestamp('seen_at', { withTimezone: true }),
+  // When the person last saved this job; null when it is not saved or was saved before this was recorded.
+  savedAt: timestamp('saved_at', { withTimezone: true }),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), company: varchar('company', { length: 200 }).notNull(), title: varchar('title', { length: 300 }).notNull(), location: varchar('location', { length: 300 }), canonicalUrl: text('canonical_url'), availability: availabilityEnum('availability').notNull().default('UNKNOWN'), shortlistDecision: shortlistEnum('shortlist_decision').notNull().default('UNREVIEWED'), fitScore: integer('fit_score'), evidenceCoverage: integer('evidence_coverage'), eligibility: varchar('eligibility', { length: 20 }).notNull().default('NEEDS_REVIEW'), reasons: jsonb('reasons').$type<string[]>().notNull().default([]), createdAt: created(), updatedAt: changed(),
-}, (t) => [unique('jobs_workspace_id_uq').on(t.workspaceId, t.id), index('jobs_workspace_availability_idx').on(t.workspaceId, t.availability), index('jobs_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
+}, (t) => [unique('jobs_workspace_id_uq').on(t.workspaceId, t.id), index('jobs_workspace_availability_idx').on(t.workspaceId, t.availability), index('jobs_workspace_created_idx').on(t.workspaceId, t.createdAt), index('jobs_workspace_saved_idx').on(t.workspaceId, t.savedAt).where(sql`${t.savedAt} is not null`)]);
 
 export const jobOccurrences = pgTable('job_occurrences', {
   // Consecutive complete board refreshes that did not list this job (ADR 021).
@@ -72,11 +74,11 @@ export const applications = pgTable('applications', {
   documentId: uuid('document_id'),
   nextStep: varchar('next_step', { length: 500 }), followUpDate: date('follow_up_date'), interviewAt: timestamp('interview_at', { withTimezone: true }), interviewTimezone: varchar('interview_timezone', { length: 100 }),
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), jobId: uuid('job_id'), applicationCycle: integer('application_cycle').notNull().default(1), company: varchar('company', { length: 200 }).notNull(), role: varchar('role', { length: 300 }).notNull(), location: varchar('location', { length: 300 }), canonicalUrl: text('canonical_url'), state: applicationStateEnum('state').notNull().default('DRAFT'), recruitmentStage: recruitmentStageEnum('recruitment_stage').notNull().default('NO_RESPONSE'), shortlistDecision: shortlistEnum('shortlist_decision').notNull().default('UNREVIEWED'), notes: text('notes').notNull().default(''), version: integer('version').notNull().default(1), createdAt: created(), updatedAt: changed(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.documentId], foreignColumns: [documentVersions.workspaceId, documentVersions.id], name: 'applications_workspace_document_fk' }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'applications_workspace_job_fk' }), unique('applications_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('applications_workspace_job_cycle_uq').on(t.workspaceId, t.jobId, t.applicationCycle), index('applications_workspace_state_idx').on(t.workspaceId, t.state, t.updatedAt), index('applications_workspace_created_idx').on(t.workspaceId, t.createdAt), index('applications_workspace_follow_up_idx').on(t.workspaceId, t.followUpDate).where(sql`${t.followUpDate} is not null`)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.documentId], foreignColumns: [documentVersions.workspaceId, documentVersions.id], name: 'applications_workspace_document_fk' }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'applications_workspace_job_fk' }), unique('applications_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('applications_workspace_job_cycle_uq').on(t.workspaceId, t.jobId, t.applicationCycle), index('applications_workspace_state_idx').on(t.workspaceId, t.state, t.updatedAt), index('applications_workspace_created_idx').on(t.workspaceId, t.createdAt), index('applications_workspace_follow_up_idx').on(t.workspaceId, t.followUpDate).where(sql`${t.followUpDate} is not null`), index('applications_workspace_interview_idx').on(t.workspaceId, t.interviewAt).where(sql`${t.interviewAt} is not null`)]);
 
 export const applicationEvents = pgTable('application_events', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), applicationId: uuid('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }), actor: varchar('actor', { length: 80 }).notNull().default('USER'), eventType: varchar('event_type', { length: 100 }).notNull(), reason: text('reason'), priorState: varchar('prior_state', { length: 40 }), newState: varchar('new_state', { length: 40 }), evidence: jsonb('evidence').$type<Record<string, unknown>>(), aggregateVersion: integer('aggregate_version').notNull(), createdAt: created(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_events_workspace_application_fk' }).onDelete('cascade'), index('application_events_workspace_application_idx').on(t.workspaceId, t.applicationId, t.createdAt)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_events_workspace_application_fk' }).onDelete('cascade'), index('application_events_workspace_application_idx').on(t.workspaceId, t.applicationId, t.createdAt), index('application_events_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
 
 export const documentVersions = pgTable('document_versions', {
   paperSize: varchar('paper_size', { length: 6 }).notNull().default('A4'),
@@ -250,6 +252,33 @@ export const jobIdentityMembers = pgTable('job_identity_members', {
 export const searchPreparationBudget = pgTable('search_preparation_budget', {
   workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}),day:date('day').notNull(),attempted:integer('attempted').notNull().default(0),
 },t=>[primaryKey({columns:[t.workspaceId,t.day]})]);
+
+/**
+ * Job evaluation batches (#110). One running or paused batch per workspace; items keep the report computed for each job
+ * so pausing or cancelling never loses what was evaluated. Items do not reference jobs: a job that disappears is
+ * reported as failed instead of silently removed.
+ */
+export const jobReportBatches = pgTable('job_report_batches', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  idempotencyKey: uuid('idempotency_key').notNull(), status: varchar('status', { length: 16 }).notNull().default('RUNNING'), total: integer('total').notNull(),
+  reportVersion: integer('report_version').notNull(), createdAt: created(), updatedAt: changed(), finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (t) => [
+  unique('job_report_batches_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('job_report_batches_idempotency_uq').on(t.workspaceId, t.idempotencyKey),
+  uniqueIndex('job_report_batches_one_active_uq').on(t.workspaceId).where(sql`${t.status} in ('RUNNING', 'PAUSED')`), index('job_report_batches_workspace_created_idx').on(t.workspaceId, t.createdAt),
+  check('job_report_batches_status_check', sql`${t.status} in ('RUNNING', 'PAUSED', 'CANCELLED', 'COMPLETED')`), check('job_report_batches_total_check', sql`${t.total} between 1 and 50`),
+]);
+export const jobReportBatchItems = pgTable('job_report_batch_items', {
+  workspaceId: uuid('workspace_id').notNull(), batchId: uuid('batch_id').notNull(), jobId: uuid('job_id').notNull(), position: integer('position').notNull(),
+  company: varchar('company', { length: 200 }), title: varchar('title', { length: 300 }),
+  status: varchar('status', { length: 16 }).notNull().default('PENDING'), verdict: varchar('verdict', { length: 24 }), errorCode: varchar('error_code', { length: 40 }),
+  report: jsonb('report').$type<import('@career/domain').JobReport>(), evaluatedAt: timestamp('evaluated_at', { withTimezone: true }),
+}, (t) => [
+  primaryKey({ columns: [t.workspaceId, t.batchId, t.jobId] }),
+  foreignKey({ columns: [t.workspaceId, t.batchId], foreignColumns: [jobReportBatches.workspaceId, jobReportBatches.id], name: 'job_report_batch_items_workspace_batch_fk' }).onDelete('cascade'),
+  index('job_report_batch_items_pending_idx').on(t.workspaceId, t.batchId, t.status, t.position),
+  check('job_report_batch_items_status_check', sql`${t.status} in ('PENDING', 'DONE', 'FAILED', 'SKIPPED')`),
+  check('job_report_batch_items_verdict_check', sql`${t.verdict} is null or ${t.verdict} in ('GOOD_OPTION', 'REVIEW', 'PROBABLY_NOT_A_FIT')`),
+]);
 
 /** Every change of a job's availability and why (ADR 021). Holds no job content beyond the reference. */
 export const jobAvailabilityEvents = pgTable('job_availability_events', {

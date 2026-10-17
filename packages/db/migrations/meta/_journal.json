@@ -120,6 +120,20 @@
       "when": 1792247368000,
       "tag": "0016_document_paper_size",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792252116815,
+      "tag": "0017_job_report_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792254547269,
+      "tag": "0018_timeline_saved_jobs",
+      "breakpoints": true
     }
   ]
 }

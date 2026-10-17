@@ -12,7 +12,7 @@ export const any = (...phrases: string[]) => new RegExp(phrases.map(escape).join
 export const locales = ['es', 'en'] as const;
 export type Locale = (typeof locales)[number];
 
-export const routes = ['/searches', '/overview', '/jobs', '/jobs?scope=favorites', '/applications', '/profile', '/documents', '/boards', '/settings'] as const;
+export const routes = ['/searches', '/overview', '/jobs', '/jobs?scope=favorites', '/applications', '/timeline', '/profile', '/documents', '/boards', '/settings'] as const;
 
 export async function currentLocale(page: Page): Promise<string> {
   return ((await page.locator('html').getAttribute('lang')) ?? '').slice(0, 2).toLowerCase();

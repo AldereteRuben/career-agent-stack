@@ -51,11 +51,13 @@
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
     "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts test/himalayas-source.test.ts test/search-execution.test.ts test/search-results.test.ts test/job-identity.test.ts test/job-availability-feeds.test.ts test/job-availability-routes.test.ts",
     "test:fact-import": "pnpm --filter @career/api exec tsx --test test/fact-import.test.ts",
+    "test:job-reports": "pnpm --filter @career/api exec tsx --test test/job-reports.test.ts",
+    "test:timeline": "pnpm --filter @career/api exec tsx --test test/activity-days.test.ts test/activity-timeline.integration.test.ts",
     "test:preparation": "pnpm --filter @career/api exec tsx --test test/preparation*.test.ts",
     "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
     "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts",
     "test:ai-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v090.mts",
-    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts ../dashboard/lib/resume-pdf-text.test.ts"
+    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts ../dashboard/lib/resume-pdf-text.test.ts ../dashboard/lib/resume-import.test.ts ../dashboard/lib/timeline.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

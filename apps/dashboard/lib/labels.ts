@@ -145,6 +145,66 @@ export const matchNotes: LabelMap = {
   PROVISIONAL_LOW_EVIDENCE: { es: 'Resultado provisional: hay poca información para comparar.', en: 'Provisional result: there is little information to compare.' },
 };
 
+/** Job evaluation report (#109). Conclusions are words, never a number that could read as a hiring probability. */
+export const jobReportVerdictLabels: LabelMap = {
+  GOOD_OPTION: { es: 'Buena opción', en: 'Good option' },
+  REVIEW: { es: 'Conviene revisar', en: 'Worth reviewing' },
+  PROBABLY_NOT_A_FIT: { es: 'Probablemente no encaja', en: 'Probably not a fit' },
+};
+export const jobReportReasonLabels: LabelMap = {
+  MOST_REQUIREMENTS_SUPPORTED: { es: 'Tu experiencia confirmada respalda la mayoría de lo que pide la oferta.', en: 'Your confirmed experience supports most of what the job asks for.' },
+  TITLE_MATCHES_TARGET: { es: 'El puesto coincide con uno de los que buscas.', en: 'The role matches one you are looking for.' },
+  NOT_ENOUGH_INFORMATION: { es: 'No hay datos suficientes para concluir: faltan requisitos claros en la oferta o datos confirmados en tu perfil.', en: 'There is not enough information to conclude: the job lacks clear requirements or your profile lacks confirmed details.' },
+  SOME_REQUIREMENTS_UNCONFIRMED: { es: 'Parte de lo que pide la oferta todavía no está confirmado en tu perfil.', en: 'Part of what the job asks for is not confirmed in your profile yet.' },
+  REQUIRED_SKILL_UNCONFIRMED: { es: 'La oferta exige algo que todavía no tienes confirmado.', en: 'The job requires something you have not confirmed yet.' },
+  TITLE_NOT_COMPARED: { es: 'No comparamos el puesto porque aún no indicaste qué puestos buscas.', en: 'The role was not compared because you have not said which roles you are looking for.' },
+  TITLE_NOT_TARGETED: { es: 'El puesto no coincide con los que buscas.', en: 'The role does not match the ones you are looking for.' },
+  FEW_REQUIREMENTS_SUPPORTED: { es: 'Casi nada de lo que pide la oferta está respaldado por tu experiencia confirmada.', en: 'Almost nothing the job asks for is backed by your confirmed experience.' },
+  LOCATION_TO_CONFIRM: { es: 'Confirma desde dónde se puede trabajar antes de postular.', en: 'Confirm where the job can be done from before applying.' },
+  LOCATION_INCOMPATIBLE: { es: 'La ubicación no es compatible con la tuya.', en: 'The location is not compatible with yours.' },
+  WORK_MODE_DIFFERS: { es: 'La modalidad de trabajo no coincide con la que prefieres.', en: 'The work mode differs from the one you prefer.' },
+};
+export const jobReportUnknownLabels: LabelMap = {
+  NO_JOB_DESCRIPTION: { es: 'La oferta no tiene descripción guardada.', en: 'The job has no saved description.' },
+  NO_CLEAR_REQUIREMENTS: { es: 'No encontramos requisitos concretos en la descripción.', en: 'We found no specific requirements in the description.' },
+  NO_APPROVED_FACTS: { es: 'Aún no has confirmado datos de experiencia en tu perfil.', en: 'You have not confirmed any experience details in your profile yet.' },
+  NO_TARGET_TITLES: { es: 'No indicaste qué puestos buscas.', en: 'You have not said which roles you are looking for.' },
+  LOCATION_NOT_STATED: { es: 'La oferta no indica la ubicación.', en: 'The job does not state a location.' },
+  LOCATION_UNCLEAR: { es: 'No está claro si puedes trabajar desde tu país.', en: 'It is unclear whether you can work from your country.' },
+  SALARY_NOT_STATED: { es: 'La oferta no menciona el salario.', en: 'The job does not mention pay.' },
+  WORK_MODE_NOT_STATED: { es: 'La oferta no indica si es remota, híbrida o presencial.', en: 'The job does not say whether it is remote, hybrid or on-site.' },
+  WORK_AUTHORIZATION_UNANSWERED: { es: 'No sabemos si tienes permiso de trabajo donde está el puesto; nunca lo suponemos.', en: 'We do not know whether you can legally work where the job is; we never assume it.' },
+};
+export const jobReportCheckLabels: LabelMap = {
+  SALARY: { es: 'Salario', en: 'Pay' },
+  WORK_MODE: { es: 'Modalidad', en: 'Work mode' },
+  LOCATION: { es: 'Ubicación', en: 'Location' },
+};
+export const jobReportCheckStatusLabels: LabelMap = {
+  STATED: { es: 'Indicado en la oferta', en: 'Stated in the job' },
+  NOT_STATED: { es: 'No lo indica', en: 'Not stated' },
+  MATCHES_PREFERENCE: { es: 'Coincide con tus preferencias', en: 'Matches your preferences' },
+  DIFFERS_FROM_PREFERENCE: { es: 'No coincide con tus preferencias', en: 'Differs from your preferences' },
+  TO_CONFIRM: { es: 'Por confirmar', en: 'To confirm' },
+};
+export const jobReportLevelLabels: LabelMap = {
+  REQUIRED: { es: 'Obligatorio', en: 'Required' },
+  PREFERRED: { es: 'Deseable', en: 'Nice to have' },
+  UNSPECIFIED: { es: 'Sin indicar', en: 'Not specified' },
+};
+export const jobReportBatchStateLabels: LabelMap = {
+  RUNNING: { es: 'Evaluando', en: 'Evaluating' },
+  PAUSED: { es: 'En pausa', en: 'Paused' },
+  CANCELLED: { es: 'Cancelada', en: 'Cancelled' },
+  COMPLETED: { es: 'Terminada', en: 'Finished' },
+};
+export const jobReportItemErrorLabels: LabelMap = {
+  JOB_NOT_FOUND: { es: 'La oferta ya no existe en tu espacio de trabajo.', en: 'The job no longer exists in your workspace.' },
+  JOB_ARCHIVED: { es: 'Omitida: la oferta está archivada.', en: 'Skipped: the job is archived.' },
+  REPORT_FAILED: { es: 'No pudimos evaluar esta oferta. Ábrela para ver su informe.', en: 'We could not evaluate this job. Open it to see its report.' },
+  CANCELLED: { es: 'Sin evaluar: cancelaste la evaluación.', en: 'Not evaluated: you cancelled the evaluation.' },
+};
+
 export const labelFor = {
   applicationState: (value: string | null | undefined, locale: Locale) => label(applicationStates, value, locale, { es: 'Inicio', en: 'Start' }),
   recruitmentStage: (value: string | null | undefined, locale: Locale) => label(recruitmentStages, value, locale, { es: 'Inicio', en: 'Start' }),
@@ -161,6 +221,14 @@ export const labelFor = {
   region: (value: string, locale: Locale) => label(providerRegions, value, locale),
   /** Eligibility reasons and match notes share one namespace of codes. */
   matchCode: (value: string, locale: Locale) => label({ ...matchReasons, ...matchNotes }, value, locale),
+  reportVerdict: (value: string, locale: Locale) => label(jobReportVerdictLabels, value, locale),
+  reportReason: (value: string, locale: Locale) => label(jobReportReasonLabels, value, locale),
+  reportUnknown: (value: string, locale: Locale) => label(jobReportUnknownLabels, value, locale),
+  reportCheck: (value: string, locale: Locale) => label(jobReportCheckLabels, value, locale),
+  reportCheckStatus: (value: string, locale: Locale) => label(jobReportCheckStatusLabels, value, locale),
+  reportLevel: (value: string, locale: Locale) => label(jobReportLevelLabels, value, locale),
+  reportBatchState: (value: string, locale: Locale) => label(jobReportBatchStateLabels, value, locale),
+  reportItemError: (value: string, locale: Locale) => label(jobReportItemErrorLabels, value, locale),
 };
 
 /** Countries offered first in pickers. */

@@ -34,6 +34,7 @@ const secondaryLinks: NavLink[] = [
 const toolsLabel: Copy = { es: 'Perfil y herramientas', en: 'Profile and tools' };
 const jobDetailLabel: Copy = { es: 'Detalle de la oferta', en: 'Job details' };
 const notFoundLabel: Copy = { es: 'Página no encontrada', en: 'Page not found' };
+const timelineLabel: Copy = { es: 'Cronología', en: 'Timeline' };
 
 type Route = { active: string | null; crumbs: Copy[] };
 
@@ -62,6 +63,8 @@ function resolveRoute(pathname: string, search: URLSearchParams | null): Route {
   if (pathname === '/jobs') { const key = jobsListKey(search); return { active: key, crumbs: [linkLabel(key)] }; }
   if (pathname.startsWith('/jobs/')) { const origin = jobOrigin(search); return { active: origin, crumbs: origin ? [linkLabel(origin), jobDetailLabel] : [jobDetailLabel] }; }
   if (pathname === '/preparations') return { active: null, crumbs: [{ es: 'Candidaturas preparadas', en: 'Prepared applications' }] };
+  // The timeline belongs to Applications, so the first menu keeps its four destinations.
+  if (pathname === '/timeline') return { active: 'applications', crumbs: [linkLabel('applications'), timelineLabel] };
   if (pathname === '/start') return { active: null, crumbs: [{ es: 'Primeros pasos', en: 'Getting started' }] };
   const primary = primaryLinks.find((link) => link.key !== 'saved' && within(pathname, link.href));
   if (primary) return { active: primary.key, crumbs: [primary.label] };
