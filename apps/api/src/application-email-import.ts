@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { applicationEvents, applications, db } from '@career/db';
+import { applicationEvents, applications, assistedAttempts, db } from '@career/db';
 import { classifyRecruitmentStageChange, type RecruitmentStage } from '@career/domain';
 import { findStage, MAX_EMAIL_BYTES, parseEml } from './email-import-parser.js';
 
@@ -85,6 +85,10 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
       const current = (await tx.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, workspaceId))).limit(1).for('update'))[0];
       if (!current) return { error: 'NOT_FOUND' as const };
       if (current.version !== pending.expectedVersion || current.recruitmentStage !== pending.expectedStage) return { error: 'STALE_APPLICATION_VERSION' as const };
+      if (body.applyStage) {
+        const activeAssist = await tx.select({ id: assistedAttempts.id }).from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, workspaceId), eq(assistedAttempts.applicationId, applicationId), inArray(assistedAttempts.status, ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN']))).limit(1);
+        if (activeAssist.length) return { error: 'ASSIST_ACTIVE_ATTEMPT' as const };
+      }
       const duplicate = await tx.select({ id: applicationEvents.id }).from(applicationEvents).where(and(eq(applicationEvents.workspaceId, workspaceId), eq(applicationEvents.applicationId, applicationId), sql`${applicationEvents.evidence}->>'messageRef' = ${pending.messageRef}`)).orderBy(desc(applicationEvents.createdAt)).limit(1);
       if (duplicate.length) return { error: 'EMAIL_ALREADY_IMPORTED' as const };
       let version = current.version;

@@ -3,8 +3,8 @@ import type { RecruitmentStage } from '@career/domain';
 
 export const MAX_EMAIL_BYTES = 1_000_000;
 const stageRules: Array<{ stage: RecruitmentStage; expressions: RegExp[] }> = [
-  { stage: 'OFFER', expressions: [/\b(?:offer(?:ed)?|employment contract|contrato|oferta)\b/i, /\bpleased to offer\b/i] },
-  { stage: 'REJECTED', expressions: [/\b(?:not moving forward|decided not to proceed|regret to inform|not selected|unsuccessful|no podemos continuar|no seguiremos|no has sido seleccionado|no hemos seleccionado)\b/i] },
+  { stage: 'REJECTED', expressions: [/\b(?:not\s+(?:be\s+)?moving forward|decided not to proceed|regret to inform|not selected|unsuccessful|no podemos continuar|no seguiremos|no has sido seleccionado|no hemos seleccionado)\b/i, /\b(?:we have decided|we decided) to offer (?:the position|the role) to another candidate\b/i] },
+  { stage: 'OFFER', expressions: [/\b(?:pleased|excited|delighted) to offer\b/i, /\b(?:we would like|we'd like|i would like|i'd like) to offer\b/i, /\b(?:offer you the (?:position|role)|job offer|offer letter|employment contract|contrato de trabajo|te ofrecemos el puesto|le ofrecemos el puesto)\b/i] },
   { stage: 'INTERVIEW', expressions: [/\b(?:interview|interviewing|schedule an? (?:interview|call)|invite you to (?:an? )?interview|entrevista|agendar una llamada)\b/i] },
   { stage: 'ASSESSMENT', expressions: [/\b(?:assessment|coding challenge|technical test|take[- ]home|prueba técnica|evaluación)\b/i] },
   { stage: 'RECRUITER_CONTACT', expressions: [/\b(?:recruiter|recruitment team|phone screen|screening call|recruiting team|equipo de selección|llamada inicial)\b/i] },

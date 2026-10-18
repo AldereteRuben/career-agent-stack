@@ -74,6 +74,8 @@ describe('activity timeline with a disposable database', { skip: !adminUrl, conc
     await insertApplication('foreign', otherWorkspace, { createdAt: '2026-10-05T10:00:00Z', followUp: '2026-10-01', interviewAt: '2026-10-21T10:00:00Z', interviewZone: 'UTC' });
     ids.submitted = await insertEvent('main', workspace, 'APPLICATION_STATE_CHANGED', 'READY', 'CONFIRMED', '2026-10-07T08:00:00Z');
     ids.stage = await insertEvent('main', workspace, 'RECRUITMENT_STAGE_CHANGED', 'NO_RESPONSE', 'INTERVIEW', '2026-10-08T08:00:00Z');
+    ids.emailStage = await insertEvent('main', workspace, 'EMAIL_IMPORTED', 'INTERVIEW', 'OFFER', '2026-10-08T09:00:00Z');
+    await insertEvent('main', workspace, 'EMAIL_IMPORTED', 'OFFER', 'OFFER', '2026-10-08T09:30:00Z');
     ids.correction = await insertEvent('main', workspace, 'RECRUITMENT_STAGE_CORRECTED', 'INTERVIEW', 'RECRUITER_CONTACT', '2026-10-09T08:00:00Z');
     await insertEvent('main', workspace, 'PREPARATION_CREATED', 'DRAFT', 'REVIEW_REQUIRED', '2026-10-07T09:00:00Z');
     await insertEvent('main', workspace, 'FOLLOW_UP_UPDATED', null, null, '2026-10-07T10:00:00Z');
@@ -95,6 +97,7 @@ describe('activity timeline with a disposable database', { skip: !adminUrl, conc
       ['JOB_FOUND', '2026-10-06', ids.manualFound],
       ['APPLICATION_STATUS_CHANGED', '2026-10-07', ids.main],
       ['STAGE_CHANGED', '2026-10-08', ids.main],
+      ['STAGE_CHANGED', '2026-10-08', ids.main],
       ['STAGE_CHANGED', '2026-10-09', ids.main],
       ['FOLLOW_UP', '2026-10-10', ids.main],
       ['FOLLOW_UP', '2026-10-18', ids.today],
@@ -104,6 +107,7 @@ describe('activity timeline with a disposable database', { skip: !adminUrl, conc
     assert.deepEqual(byId.get(`APPLICATION_STATUS_CHANGED:${ids.submitted}`), { id: `APPLICATION_STATUS_CHANGED:${ids.submitted}`, type: 'APPLICATION_STATUS_CHANGED', day: '2026-10-07', at: '2026-10-07T08:00:00.000Z', application: { id: ids.main, role: 'Application main', company: 'Fictional Labs' }, priorState: 'READY', newState: 'CONFIRMED' });
     assert.equal(byId.get(`STAGE_CHANGED:${ids.stage}`)?.correction, false);
     assert.equal(byId.get(`STAGE_CHANGED:${ids.correction}`)?.correction, true);
+    assert.equal(byId.get(`STAGE_CHANGED:${ids.emailStage}`)?.correction, false);
     assert.equal(byId.get(`INTERVIEW:${ids.main}`)?.interviewTimeZone, 'America/New_York');
     assert.equal(byId.get(`INTERVIEW:${ids.main}`)?.at, '2026-10-20T23:30:00.000Z');
     assert.deepEqual([byId.get(`FOLLOW_UP:${ids.main}`)?.followUpStatus, byId.get(`FOLLOW_UP:${ids.main}`)?.nextStep, byId.get(`FOLLOW_UP:${ids.today}`)?.followUpStatus, byId.get(`FOLLOW_UP:${ids.today}`)?.at], ['overdue', 'Email the recruiter', 'due-today', null]);

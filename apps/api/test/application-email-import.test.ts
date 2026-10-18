@@ -38,6 +38,13 @@ test('stage detection returns only a short, visible evidence excerpt', () => {
   assert.equal(findStage('We received your application.').stage, null);
 });
 
+test('rejection wording wins over offer vocabulary and positive offers remain detectable', () => {
+  assert.equal(findStage('We have decided to offer the position to another candidate.').stage, 'REJECTED');
+  assert.equal(findStage('We will not be moving forward to interview.').stage, 'REJECTED');
+  assert.equal(findStage('No seguiremos con tu candidatura para esta oferta.').stage, 'REJECTED');
+  assert.equal(findStage('We are pleased to offer you the role.').stage, 'OFFER');
+});
+
 test('rejects oversized messages before parsing', async () => {
   await assert.rejects(parseEml(new Uint8Array(1_000_001)), /EMAIL_FILE_TOO_LARGE/);
 });

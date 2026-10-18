@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Notice, TextareaField } from '@/components/ui';
 import { useLocale } from '@/lib/i18n';
-import { api, errorMessage } from '@/lib/api';
+import { ApiError, api, errorMessage } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
 import type { RecruitmentStage } from '@career/domain';
 
@@ -46,7 +46,10 @@ export function ApplicationEmailImport({ applicationId, onImported }: { applicat
       setPreview(null); setFile(null); setApplyStage(false);
       setMessage(c('Mensaje guardado en el historial. El contenido del email no se conserva.', 'Message added to the history. The email content is not retained.'));
       onImported();
-    } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'STALE_APPLICATION_VERSION') { resetPreview(); onImported(); }
+      setError(errorMessage(err));
+    } finally { setBusy(false); }
   };
 
   return <details className="application-email-import">

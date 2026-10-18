@@ -306,7 +306,7 @@ function ApplicationsView() {
 
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
-          <ApplicationEmailImport applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
+          <ApplicationEmailImport key={selected.id} applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
           <div className="tracker-controls">
             <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
             <Field label={c('Recordatorio para', 'Follow-up date')} type="date" value={followUpDateDraft} disabled={busy !== null} onChange={(event) => setFollowUpDateDraft(event.target.value)}/>
