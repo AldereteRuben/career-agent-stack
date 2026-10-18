@@ -124,7 +124,7 @@ export const patchScenarios: Scenario[] = [
           await page.locator('.tracker-detail').getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
           const detail = page.locator('.tracker-detail');
           assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, `${locale} has one in-app job link at ${viewport.width}px`);
-          assert.equal(await detail.locator(`a[href="${canonicalUrl}"]`).count(), 1, `${locale} has one employer link at ${viewport.width}px`);
+          await eventually(() => detail.locator(`a[href="${canonicalUrl}"]`).count(), (count) => count === 1, `${locale} has one employer link at ${viewport.width}px`);
           await detail.getByRole('button', { name: locale === 'es' ? 'Volver a comprobar CV y datos' : 'Re-check resume and details', exact: true }).waitFor();
           assert.equal(await hasHorizontalOverflow(page), false, `${locale} application detail overflows at ${viewport.width}px`);
           await page.screenshot({ path: join(artifacts, `v031-application-detail-${locale}-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
