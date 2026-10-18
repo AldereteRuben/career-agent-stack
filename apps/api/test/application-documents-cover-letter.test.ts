@@ -138,3 +138,33 @@ test('saving a cover-letter draft stores one pending PDF and matching text revis
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('saving a later cover-letter revision requires its current parent revision', async () => {
+  const app = Fastify();
+  const fixture = fakeDatabase();
+  fixture.rows.set(applicationDocuments, [{
+    id: '88888888-8888-4888-8888-888888888888', workspaceId, applicationId,
+    kind: 'COVER_LETTER', language: 'en',
+  }]);
+  fixture.rows.set(applicationDocumentRevisions, [{
+    id: '99999999-9999-4999-8999-999999999999', workspaceId,
+    documentId: '88888888-8888-4888-8888-888888888888', revision: 2,
+  }]);
+  const root = await mkdtemp(join(tmpdir(), 'cover-letter-parent-'));
+  registerApplicationCoverLetterRoutes(app, () => workspaceId, {
+    database: fixture.database,
+    storageRoot: root,
+  });
+  try {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/applications/${applicationId}/cover-letter/revisions`,
+      payload: { language: 'en' },
+    });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().error, 'APPLICATION_DOCUMENT_REVISION_CHANGED');
+  } finally {
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

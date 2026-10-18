@@ -103,7 +103,10 @@ export function registerApplicationCoverLetterRoutes(
       const rows = await database.select().from(applicationDocumentRevisions).where(and(eq(applicationDocumentRevisions.workspaceId, workspaceId), eq(applicationDocumentRevisions.documentId, document.id))).orderBy(desc(applicationDocumentRevisions.revision)).limit(1);
       previous = rows[0];
     }
-    if (body.data.parentRevisionId && previous?.id !== body.data.parentRevisionId) return reply.code(409).send({ error: 'APPLICATION_DOCUMENT_REVISION_CHANGED' });
+    if ((previous && body.data.parentRevisionId !== previous.id)
+      || (!previous && body.data.parentRevisionId)) {
+      return reply.code(409).send({ error: 'APPLICATION_DOCUMENT_REVISION_CHANGED' });
+    }
 
     const sourceClaims = previous
       ? previous.claims as unknown as ApplicationDocumentRevisionClaim[]
