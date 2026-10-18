@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { Route } from 'playwright';
 import type { Scenario } from './scenarios.js';
 import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
 
@@ -111,7 +112,7 @@ export const patchScenarios: Scenario[] = [
   },
   {
     name: 'v031-application-detail-has-one-job-link-and-clear-refresh-action',
-    async run({ page, api, marker, artifacts }) {
+    async run({ page, api, marker, artifacts, allowConsole }) {
       const canonicalUrl = `https://example.test/jobs/${marker}/application-detail`;
       const job = await api.post<{ id: string }>('/jobs/import', { company: `Fictional ${marker}`, title: `QA role ${marker}`, jobUrl: canonicalUrl });
       const application = await api.post<{ id: string }>('/applications', { jobId: job.id, company: `Fictional ${marker}`, role: `QA role ${marker}`, canonicalUrl, state: 'DRAFT', notes: '' });
@@ -130,6 +131,28 @@ export const patchScenarios: Scenario[] = [
           await page.screenshot({ path: join(artifacts, `v031-application-detail-${locale}-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
         }
       }
+
+      // The header keeps its employer link whenever "Next step" does not offer one itself: while the block cannot load, and once the application is closed.
+      const detail = page.locator('.tracker-detail');
+      const employerLinks = () => detail.locator(`a[href="${canonicalUrl}"]`).count();
+      await setLocale(page, 'es');
+      await page.setViewportSize({ width: 390, height: 844 });
+      const failAssist = (route: Route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'INTERNAL', message: 'forced failure' } }) });
+      allowConsole(/status of 500/);
+      await page.route('**/api/v1/applications/*/assist', failAssist);
+      try {
+        await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+        await detail.getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
+        await detail.getByRole('link', { name: /Abrir oferta original/ }).waitFor();
+        assert.equal(await employerLinks(), 1, 'An open application whose next step cannot load still links to the original post');
+      } finally { await page.unroute('**/api/v1/applications/*/assist', failAssist); }
+
+      await api.patch(`/applications/${application.id}`, { state: 'CANCELLED' });
+      await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+      await detail.getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
+      await detail.getByRole('link', { name: /Abrir oferta original/ }).waitFor();
+      assert.equal(await employerLinks(), 1, 'A closed application links once to the original post');
+      assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, 'A closed application keeps one in-app job link');
     },
   },
 ];

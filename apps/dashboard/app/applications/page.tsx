@@ -86,6 +86,7 @@ function ApplicationsView() {
   const sort = searchParams.get('sort') === 'follow-up' ? 'follow-up' : 'recent';
   const [filter, setFilter] = useState(query);
   const [pagination, setPagination] = useState({ total: 0, offset: 0, limit: 25 });
+  const [stepOffersOriginal, setStepOffersOriginal] = useState(false);
   const listRequest = useRef(0);
   useEffect(() => { setFilter(query); }, [query]);
   const [rows, setRows] = useState<Application[]>([]); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -288,7 +289,7 @@ function ApplicationsView() {
         </Card>
         <Card className="tracker-detail">{selected ? <><Button variant="quiet" onClick={() => select(null)}>{c('Volver a la lista de solicitudes', 'Back to application list')}</Button>
           <div className="tracker-detail-head"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('TU HISTORIAL', 'YOUR HISTORY')}</div><h2 className="focus-heading" ref={detailHeading} tabIndex={-1}>{selected.role}</h2><p>{selected.company}{selected.location ? ` · ${selected.location}` : ''}</p>
-            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={withSearchOrigin(`/jobs/${selected.jobId}`, returnTo)}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && isApplicationClosedForPreparation(selected) && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}{selected.jobAvailability && selected.jobAvailability !== 'OPEN' && <Tag tone={selected.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(selected.jobAvailability, locale)}</Tag>}</div>
+            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={withSearchOrigin(`/jobs/${selected.jobId}`, returnTo)}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && !stepOffersOriginal && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}{selected.jobAvailability && selected.jobAvailability !== 'OPEN' && <Tag tone={selected.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(selected.jobAvailability, locale)}</Tag>}</div>
           </div><Tag tone={stateTone(selected.state)}>{labelFor.applicationState(selected.state, locale)}</Tag></div>
           {!isApplicationClosedForPreparation(selected) && <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application" returnTo={returnTo} hideJobLink/>}
           {canAutoPrepare && selected.jobId && <ApplicationPreparationAction key={`prepare:${selected.id}`} jobId={selected.jobId} applicationId={selected.id} returnTo={returnTo} availability={selected.jobAvailability} disabled={busy !== null}/>}
@@ -300,7 +301,7 @@ function ApplicationsView() {
             </div>
           </div>}
 
-          <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
+          <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onOriginalLink={setStepOffersOriginal} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
           <div className="tracker-controls">
             <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
