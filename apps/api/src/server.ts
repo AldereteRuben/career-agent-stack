@@ -31,6 +31,7 @@ import { registerJobFilterRoutes } from './job-filter-routes.js';
 import { emptyJobFilterPreferences, evaluateJobFilters, jobFilterExclusionSql } from './job-filter-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { registerJobReportRoutes } from './job-report-routes.js';
+import { registerApplicationPacketRoutes } from './application-packet-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
@@ -448,6 +449,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 
 registerJobAvailabilityRoutes(app, workspace);
 registerJobReportRoutes(app, workspace);
+registerApplicationPacketRoutes(app, workspace, { filesRoot: config.FILES_LOCAL_PATH });
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
