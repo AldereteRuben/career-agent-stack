@@ -145,6 +145,37 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     assert.equal((await app.inject('/api/v1/job-searches/results?view=filtered&limit=20')).json().total, 0, 'another workspace does not inherit preferences or exceptions');
   });
 
+  test('saved-search filters use the same NFKD accent folding as discovered-job filters', async () => {
+    activeWorkspace = workspace;
+    const target = (await client.query(`SELECT id FROM jobs WHERE workspace_id=$1 AND canonical_url='https://jobs.example.test/v080/12'`, [workspace])).rows[0].id as string;
+    await client.query(`UPDATE jobs SET company='Mestsky',title='Rôle legacy QA developer' WHERE workspace_id=$1 AND id=$2`, [workspace, target]);
+    await client.query('DELETE FROM job_filter_overrides WHERE workspace_id=$1 AND job_id=$2', [workspace, target]);
+    const savePreferences = (preferences: { excludedCompanies: string[]; requiredTerms: string[]; excludedTerms: string[] }) =>
+      app.inject({ method: 'PUT', url: '/api/v1/job-filters', payload: { preferences } });
+    const filtered = async () => (await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`)).json().items as Array<{ id: string; canonicalUrl: string; preferenceReasons: { excludedCompany: string | null; missingRequiredTerms: string[]; matchedExcludedTerms: string[] } }>;
+    const visible = async () => (await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all&limit=20`)).json().items as Array<{ id: string }>;
+
+    const companyPreferences = { excludedCompanies: ['Městský'], requiredTerms: [], excludedTerms: [] };
+    assert.equal((await savePreferences(companyPreferences)).statusCode, 200);
+    const jobFilter = await import('../src/job-filter-routes.js');
+    const discoveredMatches = await database.db.select({ id: database.jobs.id }).from(database.jobs)
+      .where(and(eq(database.jobs.workspaceId, workspace), not(jobFilter.jobFilterExclusionSql(companyPreferences, workspace))));
+    assert.ok(!discoveredMatches.some((row) => row.id === target), 'the discovered-job filter excludes Mestsky for Městský');
+    let row = (await filtered()).find((item) => item.id === target);
+    assert.ok(row, `saved search should show the excluded company in its recoverable view: ${JSON.stringify(await filtered())}`);
+    assert.equal(row.preferenceReasons.excludedCompany, 'Mestsky');
+    assert.ok(!(await visible()).some((item) => item.id === target));
+
+    assert.equal((await savePreferences({ excludedCompanies: [], requiredTerms: ['role'], excludedTerms: [] })).statusCode, 200);
+    assert.ok((await visible()).some((item) => item.id === target), 'Rôle satisfies required term role');
+    assert.ok(!(await filtered()).some((item) => item.id === target));
+
+    assert.equal((await savePreferences({ excludedCompanies: [], requiredTerms: [], excludedTerms: ['role'] })).statusCode, 200);
+    assert.ok(!(await visible()).some((item) => item.id === target));
+    row = (await filtered()).find((item) => item.id === target);
+    assert.deepEqual(row?.preferenceReasons.matchedExcludedTerms, ['role']);
+  });
+
   test('discovered-job SQL uses the same Unicode normalization as search results', async () => {
     activeWorkspace = workspace;
     const id = randomUUID();
