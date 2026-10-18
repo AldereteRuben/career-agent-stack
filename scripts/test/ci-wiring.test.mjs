@@ -62,3 +62,11 @@ test('document API tests run in the database job after Chromium and Poppler are 
   assert.match(quality.slice(documents, documents + 300), /CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL:/, 'document test step has no database admin URL');
   assert.match(quality.slice(documents, documents + 300), /CAREER_V090_PDF_TEST:\s*'true'/, 'real PDF tests are not explicitly enabled');
 });
+
+test('bootstrap reads existing environment files through the verified private-file handle', async () => {
+  const bootstrap = await read('scripts/bootstrap.mjs');
+  assert.match(bootstrap, /import\s*\{[^}]*readPrivateFile[^}]*\}\s*from '\.\/lib\/private-files\.mjs'/);
+  assert.match(bootstrap, /readPrivateFile\(pendingEnvPath\)/);
+  assert.match(bootstrap, /readPrivateFile\(envPath\)/);
+  assert.doesNotMatch(bootstrap, /readFile\((?:pendingEnvPath|envPath),\s*['"]utf8['"]\)/);
+});
