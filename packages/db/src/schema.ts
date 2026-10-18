@@ -240,6 +240,17 @@ export const jobFilterOverrides = pgTable('job_filter_overrides', {
   workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(), createdAt: created(),
 }, (t) => [primaryKey({ columns: [t.workspaceId, t.jobId], name: 'job_filter_overrides_pkey' }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_filter_overrides_workspace_job_fk' }).onDelete('cascade')]);
 
+/** Explicit personal feedback about an offer; kept separate from seen, saved and computed match state. */
+export const jobMatchFeedback = pgTable('job_match_feedback', {
+  workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(),
+  rating: varchar('rating', { length: 20 }).notNull(), reason: varchar('reason', { length: 24 }),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.jobId], name: 'job_match_feedback_pkey' }),
+  foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_match_feedback_workspace_job_fk' }).onDelete('cascade'),
+  check('job_match_feedback_rating_check', sql`${t.rating} in ('INTERESTED','NOT_FOR_ME')`),
+  check('job_match_feedback_reason_check', sql`${t.reason} is null or ${t.reason} in ('LOCATION','SENIORITY','WORK_MODE','ROLE_TYPE','REQUIREMENT','OTHER')`),
+  index('job_match_feedback_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
+
 /** Consent snapshots are one-use records; no browser cookies or session state is persisted. */
 export const assistedAttempts = pgTable('assisted_attempts', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
