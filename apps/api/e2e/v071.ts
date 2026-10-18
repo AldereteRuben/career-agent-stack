@@ -93,7 +93,9 @@ export const v071Scenarios: Scenario[] = [
   },
   {
     name: 'v071-simple-application-continuation-es-en',
-    async run({ page, api, marker, artifacts }) {
+    async run({ page, api, marker, artifacts, allowConsole }) {
+      // An application with no saved cover letter returns 404 for its empty history endpoint.
+      allowConsole(/Failed to load resource: the server responded with a status of 404 \(Not Found\)/);
       const profile = await api.get<{ revision: number; profile: Record<string, unknown> }>('/profile');
       await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Alex Fictional', email: 'alex@example.test' } } });
       const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: 'Designed accessible interfaces and automated Playwright tests.', tags: ['design', 'Playwright'] });

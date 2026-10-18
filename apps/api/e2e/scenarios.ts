@@ -18,6 +18,7 @@ import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
+import { applicationsCsvScenario } from './applications-csv.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
 import { emailImportScenario } from './email-import.js';
@@ -97,6 +98,7 @@ export const scenarios: Scenario[] = [
     },
   },
   phase1FollowUpScenario,
+  applicationsCsvScenario,
   jobReportsScenario,
   timelineScenario,
   emailImportScenario,
@@ -279,7 +281,7 @@ export const scenarios: Scenario[] = [
       await page.getByRole('button', { name: any('Guardar solicitud', 'Save application', 'Guardar', 'Save') }).first().click();
       await page.getByRole('heading', { name: title }).first().waitFor();
       const note = `Prepare technical examples ${marker}`;
-      const noteField = page.getByLabel(any('Añadir nota', 'Add a note', 'Add note', 'Nota', 'Note')).first();
+      const noteField = page.getByRole('textbox', { name: any('Añadir nota al historial', 'Add a note to the history') });
       await noteField.fill(note);
       await page.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first().click();
       await page.locator('.timeline-item').getByText(note, { exact: true }).waitFor();
