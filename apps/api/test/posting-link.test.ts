@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { clipUtf16, parsePostingUrl, postingPrefill } from '../src/posting-link.js';
+import { clipUtf16, createPostingLookupHandleStore, parsePostingUrl, postingPrefill } from '../src/posting-link.js';
 import { readPosting, type PostingFeedCache, type SourceReadOptions } from '../src/sources.js';
 
 // All postings below are synthetic; none is a real company's data.
@@ -45,6 +45,34 @@ describe('parsePostingUrl', () => {
     ];
     for (const link of rejected) assert.equal(parsePostingUrl(link), null, link);
     assert.equal(parsePostingUrl(`https://jobs.lever.co/acme/${leverId}?${'x'.repeat(3000)}`), null, 'an overlong link');
+  });
+});
+
+describe('posting lookup handles', () => {
+  const ref = { provider: 'greenhouse' as const, region: 'global', tenant: 'fictional-board', id: '123456' };
+  it('binds the source payload to one workspace, posting identity and canonical URL', () => {
+    const store = createPostingLookupHandleStore<{ title: string }>();
+    const token = store.issue('workspace-a', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456', { title: 'Synthetic role' });
+    assert.match(token, /^[0-9a-f-]{36}$/i);
+    assert.deepEqual(store.get(token, 'workspace-a', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456'), { title: 'Synthetic role' });
+    assert.equal(store.get(token, 'workspace-b', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456'), null);
+    assert.equal(store.get(token, 'workspace-a', { ...ref, id: '654321' }, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456'), null);
+    assert.equal(store.get(token, 'workspace-a', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/654321'), null);
+  });
+
+  it('expires handles and bounds the number retained', () => {
+    let now = 1000;
+    const store = createPostingLookupHandleStore<string>({ ttlMs: 50, maxEntries: 1, now: () => now });
+    const first = store.issue('workspace-a', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456', 'first');
+    const second = store.issue('workspace-a', { ...ref, id: '123457' }, 'https://job-boards.greenhouse.io/fictional-board/jobs/123457', 'second');
+    assert.equal(store.get(first, 'workspace-a', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456'), null, 'old entries are evicted at the cap');
+    now += 50;
+    assert.equal(store.get(second, 'workspace-a', { ...ref, id: '123457' }, 'https://job-boards.greenhouse.io/fictional-board/jobs/123457'), null, 'expired handles cannot be used');
+  });
+
+  it('rejects an oversized source payload instead of retaining it in memory', () => {
+    const store = createPostingLookupHandleStore<string>({ maxEntryBytes: 3 });
+    assert.equal(store.issue('workspace-a', ref, 'https://job-boards.greenhouse.io/fictional-board/jobs/123456', 'payload too large'), null);
   });
 });
 
