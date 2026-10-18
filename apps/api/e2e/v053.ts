@@ -91,7 +91,9 @@ export const v053Scenarios: Scenario[] = [
   },
   {
     name: 'v053-linked-resume-review-and-change',
-    async run({ page, api, marker, artifacts }) {
+    async run({ page, api, marker, artifacts, allowConsole }) {
+      // An application with no saved cover letter returns 404 for its empty history endpoint.
+      allowConsole(/Failed to load resource: the server responded with a status of 404 \(Not Found\)/);
       const profile = await api.get<Profile>('/profile');
       await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Linked Example', email: 'linked@example.com' } } });
       const facts = [];
