@@ -10,6 +10,7 @@ import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { ApplicationQueue, ApplicationPreparationAction } from '@/components/application-preparation';
 import { ApplicationSections } from '@/components/application-sections';
 import { ApplicationJourney } from '@/components/application-journey';
+import { ApplicationCoverLetter } from '@/components/application-cover-letter';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
@@ -300,6 +301,7 @@ function ApplicationsView() {
             </div>
           </div>}
 
+          {selected.jobId && <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id}/>}
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
           <div className="tracker-controls">
