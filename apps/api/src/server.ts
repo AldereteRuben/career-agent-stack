@@ -109,7 +109,7 @@ app.get('/api/v1/tracking-metrics', async (request, reply) => {
   const period = parseTrackingPeriod((request.query as { period?: unknown }).period);
   if (!period) return fail(reply, 400, 'INVALID_INPUT');
   const id = workspace(request);
-  const events = await db.select({ applicationId: applicationEvents.applicationId, eventType: applicationEvents.eventType, newState: applicationEvents.newState, createdAt: applicationEvents.createdAt })
+  const events = await db.select({ applicationId: applicationEvents.applicationId, eventType: applicationEvents.eventType, priorState: applicationEvents.priorState, newState: applicationEvents.newState, createdAt: applicationEvents.createdAt })
     .from(applicationEvents)
     .where(and(eq(applicationEvents.workspaceId, id), inArray(applicationEvents.eventType, ['MANUAL_APPLICATION_RECORDED', 'APPLICATION_STATE_CHANGED', 'ASSIST_SUBMISSION_CONFIRMED', 'ASSIST_USER_RECONCILED', 'RECRUITMENT_STAGE_CHANGED', 'RECRUITMENT_STAGE_CORRECTED'])));
   const applicationIds = [...new Set(events.filter((event) => event.newState === 'CONFIRMED').map((event) => event.applicationId))];

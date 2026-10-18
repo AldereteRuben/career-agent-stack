@@ -23,19 +23,24 @@ export function trackingMetricsStart(period: TrackingPeriod, now: Date): Date | 
 }
 
 type Application = { id: string; state: string; recruitmentStage: string };
-type ApplicationEvent = { applicationId: string; eventType: string; newState: string | null; createdAt: Date | string };
+type ApplicationEvent = { applicationId: string; eventType: string; priorState?: string | null; newState: string | null; createdAt: Date | string };
 
 function reachedInterview(events: ApplicationEvent[], currentStage: string) {
   const stageEvents = events.filter((event) => stageEventTypes.has(event.eventType))
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   if (!stageEvents.length) return interviewStages.has(currentStage);
-  let reached = false;
+  const stageHistory: string[] = [];
   for (const event of stageEvents) {
     if (!event.newState) continue;
-    if (event.eventType === 'RECRUITMENT_STAGE_CORRECTED') reached = interviewStages.has(event.newState);
-    else if (interviewStages.has(event.newState)) reached = true;
+    if (event.eventType === 'RECRUITMENT_STAGE_CORRECTED') {
+      const correctedIndex = event.priorState
+        ? stageHistory.lastIndexOf(event.priorState)
+        : stageHistory.length - 1;
+      if (correctedIndex >= 0) stageHistory.splice(correctedIndex, 1);
+    }
+    stageHistory.push(event.newState);
   }
-  return reached;
+  return stageHistory.some((stage) => interviewStages.has(stage));
 }
 
 export function calculateTrackingMetrics(input: {

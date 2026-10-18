@@ -6,6 +6,7 @@ const now = new Date('2026-10-18T12:00:00Z');
 const apps = [
   { id: 'interview', state: 'CONFIRMED', recruitmentStage: 'REJECTED' },
   { id: 'corrected', state: 'CONFIRMED', recruitmentStage: 'REJECTED' },
+  { id: 'later-corrected', state: 'CONFIRMED', recruitmentStage: 'REJECTED' },
   { id: 'recent', state: 'CONFIRMED', recruitmentStage: 'NO_RESPONSE' },
   { id: 'old', state: 'CONFIRMED', recruitmentStage: 'NO_RESPONSE' },
   { id: 'cancelled', state: 'CANCELLED', recruitmentStage: 'NO_RESPONSE' },
@@ -18,8 +19,13 @@ const events = [
   { applicationId: 'interview', eventType: 'RECRUITMENT_STAGE_CHANGED', newState: 'REJECTED', createdAt: '2026-10-12T12:00:00Z' },
   { applicationId: 'corrected', eventType: 'MANUAL_APPLICATION_RECORDED', newState: 'CONFIRMED', createdAt: '2026-10-10T12:00:00Z' },
   { applicationId: 'corrected', eventType: 'RECRUITMENT_STAGE_CHANGED', newState: 'INTERVIEW', createdAt: '2026-10-11T12:00:00Z' },
-  { applicationId: 'corrected', eventType: 'RECRUITMENT_STAGE_CORRECTED', newState: 'ASSESSMENT', createdAt: '2026-10-12T12:00:00Z' },
+  { applicationId: 'corrected', eventType: 'RECRUITMENT_STAGE_CORRECTED', priorState: 'INTERVIEW', newState: 'ASSESSMENT', createdAt: '2026-10-12T12:00:00Z' },
   { applicationId: 'corrected', eventType: 'RECRUITMENT_STAGE_CHANGED', newState: 'REJECTED', createdAt: '2026-10-13T12:00:00Z' },
+  { applicationId: 'later-corrected', eventType: 'MANUAL_APPLICATION_RECORDED', newState: 'CONFIRMED', createdAt: '2026-10-10T12:00:00Z' },
+  { applicationId: 'later-corrected', eventType: 'RECRUITMENT_STAGE_CHANGED', newState: 'INTERVIEW', createdAt: '2026-10-11T12:00:00Z' },
+  { applicationId: 'later-corrected', eventType: 'RECRUITMENT_STAGE_CHANGED', priorState: 'INTERVIEW', newState: 'OFFER', createdAt: '2026-10-12T12:00:00Z' },
+  { applicationId: 'later-corrected', eventType: 'RECRUITMENT_STAGE_CORRECTED', priorState: 'OFFER', newState: 'ASSESSMENT', createdAt: '2026-10-13T12:00:00Z' },
+  { applicationId: 'later-corrected', eventType: 'RECRUITMENT_STAGE_CHANGED', priorState: 'ASSESSMENT', newState: 'REJECTED', createdAt: '2026-10-14T12:00:00Z' },
   { applicationId: 'recent', eventType: 'APPLICATION_STATE_CHANGED', newState: 'CONFIRMED', createdAt: '2026-10-15T12:00:00Z' },
   { applicationId: 'old', eventType: 'ASSIST_SUBMISSION_CONFIRMED', newState: 'CONFIRMED', createdAt: '2026-10-01T12:00:00Z' },
   { applicationId: 'cancelled', eventType: 'MANUAL_APPLICATION_RECORDED', newState: 'CONFIRMED', createdAt: '2026-10-10T12:00:00Z' },
@@ -36,10 +42,10 @@ test('tracking metrics validate periods and use rolling UTC windows', () => {
   assert.equal(trackingMetricsStart('all', now), null);
 });
 
-test('tracking metrics count only currently confirmed applications with evidence and respect corrected stages', () => {
+test('tracking metrics count only currently confirmed applications and retain earlier interview evidence after correcting a later stage', () => {
   assert.deepEqual(calculateTrackingMetrics({ period: '30d', now, applications: apps, events }), {
-    period: '30d', periodStart: '2026-09-18T12:00:00.000Z', confirmed: 4, interviewed: 1,
-    interviewConversionPercent: 25, noResponseYet: 1, noResponseAfter14Days: 1, noResponseThresholdDays: 14,
+    period: '30d', periodStart: '2026-09-18T12:00:00.000Z', confirmed: 5, interviewed: 2,
+    interviewConversionPercent: 40, noResponseYet: 1, noResponseAfter14Days: 1, noResponseThresholdDays: 14,
   });
 });
 
