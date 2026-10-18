@@ -9,7 +9,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, jobReportBatchItems, jobReportBatches, jobs, jobSearchSources } from '@career/db';
 import {
-  buildJobReport, jobReportBatchTransition, sortJobReportBatchItems, JOB_REPORT_BATCH_LIMITS, JOB_REPORT_VERSION,
+  buildJobReport, buildSkillGapReport, jobReportBatchTransition, sortJobReportBatchItems, JOB_REPORT_BATCH_LIMITS, JOB_REPORT_VERSION,
   type JobReportBatchItemError, type JobReportBatchItemState, type JobReportBatchState, type JobReportVerdict,
 } from '@career/domain';
 import { plainDescription } from './job-search-sources.js';
@@ -154,6 +154,16 @@ export async function changeJobReportBatch(workspaceId: string, batchId: string,
 
 export function registerJobReportRoutes(app: FastifyInstance, workspace: (request: FastifyRequest) => string, options: { build?: ReportBuilder } = {}) {
   const build = options.build ?? buildJobReport;
+  app.get('/api/v1/skill-gap-report', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const workspaceId = workspace(request);
+    const savedJobs = await db.select({ id: jobs.id, company: jobs.company, title: jobs.title, canonicalUrl: jobs.canonicalUrl, location: jobs.location })
+      .from(jobs).where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.shortlistDecision, 'SHORTLISTED'))).orderBy(desc(jobs.savedAt), desc(jobs.id));
+    const jobIds = savedJobs.map((job) => job.id);
+    const [context, descriptions] = await Promise.all([loadMatchingContext(db, workspaceId), readableDescriptions(db, workspaceId, jobIds)]);
+    return buildSkillGapReport(savedJobs.map((job) => ({ ...job, description: descriptions.get(job.id) ?? null })), context);
+  });
+
   app.get('/api/v1/jobs/:id/report', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     const params = idParams.safeParse(request.params);

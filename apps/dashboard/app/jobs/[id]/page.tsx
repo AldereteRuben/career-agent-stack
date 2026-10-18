@@ -4,6 +4,7 @@ import { ApplicationPreparationAction } from '@/components/application-preparati
 import { AiDraftAction, useAiAvailable } from '@/components/ai/draft-action';
 import { AiAutomationPanel } from '@/components/ai/automation';
 import { JobFitReport } from '@/components/job-report';
+import { JobMatchFeedback } from '@/components/job-match-feedback';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
@@ -207,6 +208,7 @@ export default function JobDetailPage() {
           </div>
           <div className={styles.researchActions}><Button variant="secondary" disabled={busy !== null} onClick={() => void saveResearch()}>{busy === 'research' ? c('Guardando…', 'Saving…') : c('Guardar notas', 'Save notes')}</Button></div>
         </Card>
+        <JobMatchFeedback jobId={job.id}/>
         <details className={`card ${styles.fit}`}><summary>{c('Encaje con tu perfil (opcional)', 'Fit with your profile (optional)')} <small>{fitPending ? c('Faltan datos para valorarlo', 'Not enough information yet') : `${job.fitScore} / 100`}</small></summary><div className={styles.fitBody}>
           <p>{c('No necesitas revisarlo para preparar tu solicitud. Comparamos la oferta con tus datos que confirmaste y los puestos que buscas. No es la probabilidad de que te contraten.', 'You do not need to review this to prepare your application. We compare the job with your confirmed profile details and the roles you are looking for. It is not the probability of being hired.')}</p>
           <div className="detail-score"><div><span className="eyebrow"><span className="eyebrow-mark"/> {c('LECTURA BASADA EN EVIDENCIA', 'EVIDENCE-BASED READING')}</span><h2>{fitPending ? c('Faltan datos para valorar el encaje', 'More information needed to assess fit') : `${job.fitScore} / 100`}</h2><p>{job.provisional ? c('La información disponible es limitada. Revisa los requisitos de la oferta y confirma experiencia relacionada en tu perfil.', 'Available information is limited. Review the job requirements and confirm related experience in your profile.') : c('El encaje compara tus datos confirmados con la oferta; no predice una contratación.', 'The match compares your confirmed details with the job; it does not predict hiring.')}</p></div><div className="score-ring" aria-hidden="true" style={{ ['--score' as string]: `${job.provisional ? 0 : job.fitScore ?? 0}%` }}><div><strong>{job.provisional ? '—' : job.fitScore ?? '—'}</strong><small>{c('encaje', 'match')}</small></div></div></div>

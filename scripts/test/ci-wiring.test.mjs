@@ -51,6 +51,14 @@ test('the application documents migration proof is enabled in CI integration tes
   assert.match(integration, /CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL:/, 'migration proof would silently skip in CI');
 });
 
+test('company research database tests are enabled in CI', () => {
+  const quality = workflow.split(/^ {2}platform-build:/m)[0];
+  const step = quality.match(/- name: Verify company research notes with a disposable database[\s\S]{0,260}/)?.[0];
+  assert.ok(step, 'company research persistence test is not run by CI');
+  assert.match(step, /run: pnpm run test:company-research/, 'CI invokes the wrong company research test');
+  assert.match(step, /CAREER_COMPANY_RESEARCH_TEST_ADMIN_URL:/, 'company research test would silently skip without a database admin URL');
+});
+
 test('document API tests run in the database job after Chromium and Poppler are installed', () => {
   const quality = workflow.split(/^ {2}platform-build:/m)[0];
   assert.match(quality, /services:\s+postgres:/, 'quality job has no disposable PostgreSQL service');
@@ -61,4 +69,12 @@ test('document API tests run in the database job after Chromium and Poppler are 
   assert.ok(chromium < documents && poppler < documents, 'document tests must run after Chromium and Poppler installation');
   assert.match(quality.slice(documents, documents + 300), /CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL:/, 'document test step has no database admin URL');
   assert.match(quality.slice(documents, documents + 300), /CAREER_V090_PDF_TEST:\s*'true'/, 'real PDF tests are not explicitly enabled');
+});
+
+test('bootstrap reads existing environment files through the verified private-file handle', async () => {
+  const bootstrap = await read('scripts/bootstrap.mjs');
+  assert.match(bootstrap, /import\s*\{[^}]*readPrivateFile[^}]*\}\s*from '\.\/lib\/private-files\.mjs'/);
+  assert.match(bootstrap, /readPrivateFile\(pendingEnvPath\)/);
+  assert.match(bootstrap, /readPrivateFile\(envPath\)/);
+  assert.doesNotMatch(bootstrap, /readFile\((?:pendingEnvPath|envPath),\s*['"]utf8['"]\)/);
 });

@@ -71,7 +71,7 @@ export const jobOccurrences = pgTable('job_occurrences', {
 
 export const jobSnapshots = pgTable('job_snapshots', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(), occurrenceId: uuid('occurrence_id'), title: varchar('title', { length: 300 }).notNull(), descriptionText: text('description_text'), snapshotHash: varchar('snapshot_hash', { length: 64 }).notNull(), fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_snapshots_workspace_job_fk' }).onDelete('cascade'), unique('job_snapshots_workspace_id_uq').on(t.workspaceId, t.id)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_snapshots_workspace_job_fk' }).onDelete('cascade'), unique('job_snapshots_workspace_id_uq').on(t.workspaceId, t.id), index('job_snapshots_workspace_job_fetched_idx').on(t.workspaceId, t.jobId, t.fetchedAt, t.id)]);
 
 export const applications = pgTable('applications', {
   documentId: uuid('document_id'),
@@ -82,6 +82,22 @@ export const applications = pgTable('applications', {
 export const applicationEvents = pgTable('application_events', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), applicationId: uuid('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }), actor: varchar('actor', { length: 80 }).notNull().default('USER'), eventType: varchar('event_type', { length: 100 }).notNull(), reason: text('reason'), priorState: varchar('prior_state', { length: 40 }), newState: varchar('new_state', { length: 40 }), evidence: jsonb('evidence').$type<Record<string, unknown>>(), aggregateVersion: integer('aggregate_version').notNull(), createdAt: created(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_events_workspace_application_fk' }).onDelete('cascade'), index('application_events_workspace_application_idx').on(t.workspaceId, t.applicationId, t.createdAt), index('application_events_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
+
+export const workspaceContacts = pgTable('workspace_contacts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 160 }).notNull(), profileUrl: text('profile_url'), createdAt: created(), updatedAt: changed(),
+}, (t) => [unique('workspace_contacts_workspace_id_uq').on(t.workspaceId, t.id), index('workspace_contacts_workspace_name_idx').on(t.workspaceId, t.name)]);
+
+export const applicationContacts = pgTable('application_contacts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), applicationId: uuid('application_id').notNull(), contactId: uuid('contact_id').notNull(),
+  role: varchar('role', { length: 120 }).notNull(), note: text('note').notNull().default(''), createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  unique('application_contacts_workspace_id_uq').on(t.workspaceId, t.id),
+  uniqueIndex('application_contacts_application_contact_uq').on(t.workspaceId, t.applicationId, t.contactId),
+  foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_contacts_workspace_application_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.contactId], foreignColumns: [workspaceContacts.workspaceId, workspaceContacts.id], name: 'application_contacts_workspace_contact_fk' }).onDelete('cascade'),
+  index('application_contacts_workspace_application_idx').on(t.workspaceId, t.applicationId),
+]);
 
 export const documentVersions = pgTable('document_versions', {
   paperSize: varchar('paper_size', { length: 6 }).notNull().default('A4'),
@@ -231,6 +247,28 @@ export const savedJobSearchMatches = pgTable('saved_job_search_matches', {
   autoPreparedAt: timestamp('auto_prepared_at', { withTimezone: true }), autoPrepareAttempts: integer('auto_prepare_attempts').notNull().default(0), autoPrepareError: varchar('auto_prepare_error', { length: 80 }), autoPrepareNextAttemptAt: timestamp('auto_prepare_next_attempt_at', { withTimezone: true }),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'saved_job_search_matches_workspace_search_fk' }).onDelete('cascade'), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'saved_job_search_matches_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('saved_job_search_matches_identity_uq').on(t.workspaceId, t.searchId, t.jobId), index('saved_job_search_matches_search_idx').on(t.searchId, t.lastMatchedAt), index('saved_job_search_matches_pending_idx').on(t.autoPreparedAt, t.autoPrepareNextAttemptAt, t.workspaceId)]);
 
+/** Explicit workspace-level rules for hiding, never deleting, job search results. */
+export const jobFilterPreferences = pgTable('job_filter_preferences', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  preferences: jsonb('preferences').$type<{ excludedCompanies: string[]; requiredTerms: string[]; excludedTerms: string[] }>().notNull().default({ excludedCompanies: [], requiredTerms: [], excludedTerms: [] }),
+  updatedAt: changed(),
+});
+
+/** Per-job restore is an explicit exception and does not edit the global preference lists. */
+export const jobFilterOverrides = pgTable('job_filter_overrides', {
+  workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(), createdAt: created(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.jobId], name: 'job_filter_overrides_pkey' }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_filter_overrides_workspace_job_fk' }).onDelete('cascade')]);
+
+/** Explicit personal feedback about an offer; kept separate from seen, saved and computed match state. */
+export const jobMatchFeedback = pgTable('job_match_feedback', {
+  workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(),
+  rating: varchar('rating', { length: 20 }).notNull(), reason: varchar('reason', { length: 24 }),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.jobId], name: 'job_match_feedback_pkey' }),
+  foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_match_feedback_workspace_job_fk' }).onDelete('cascade'),
+  check('job_match_feedback_rating_check', sql`${t.rating} in ('INTERESTED','NOT_FOR_ME')`),
+  check('job_match_feedback_reason_check', sql`${t.reason} is null or ${t.reason} in ('LOCATION','SENIORITY','WORK_MODE','ROLE_TYPE','REQUIREMENT','OTHER')`),
+  index('job_match_feedback_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
 /** Consent snapshots are one-use records; no browser cookies or session state is persisted. */
 export const assistedAttempts = pgTable('assisted_attempts', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

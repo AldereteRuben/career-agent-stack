@@ -10,6 +10,10 @@ import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { ApplicationQueue, ApplicationPreparationAction } from '@/components/application-preparation';
 import { ApplicationSections } from '@/components/application-sections';
 import { ApplicationJourney } from '@/components/application-journey';
+import { ApplicationContacts } from '@/components/application-contacts';
+import { ApplicationEmailImport } from '@/components/application-email-import';
+import { ApplicationMaterialsPacket } from '@/components/application-materials-packet';
+import { ApplicationCoverLetter } from '@/components/application-cover-letter';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
@@ -19,10 +23,11 @@ import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import { AppShell, DetailTitle, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, ButtonLink, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
+import { applicationsCsv, defaultCsvSeparator, type CsvSeparator } from '@/lib/applications-csv';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
 import type { Locale } from '@/lib/locale';
 
-type Application = { documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; jobAvailability?: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: ApplicationState; recruitmentStage: RecruitmentStage; shortlistDecision: string; notes: string; nextStep?: string | null; followUpDate?: string | null; interviewAt?: string | null; interviewTimezone?: string | null; updatedAt: string; version: number };
+type Application = { createdAt?: string | null; documentApprovalStatus?: string | null; documentId: string | null; id: string; jobId: string | null; jobAvailability?: string | null; company: string; role: string; location: string | null; canonicalUrl: string | null; state: ApplicationState; recruitmentStage: RecruitmentStage; shortlistDecision: string; notes: string; nextStep?: string | null; followUpDate?: string | null; interviewAt?: string | null; interviewTimezone?: string | null; updatedAt: string; version: number };
 type AppEvent = { id: string; eventType: string; reason: string | null; createdAt: string; priorState: string | null; newState: string | null; evidence?: Record<string, unknown> | null };
 type Patch = { state?: string; recruitmentStage?: string; nextStep?: string | null; followUpDate?: string | null; interview?: { localAt: string; timeZone: string } | null; confirmationEvidence?: 'USER_ATTESTATION'; correction?: true };
 
@@ -70,6 +75,9 @@ function eventDetail(event: AppEvent, locale: Locale) {
   if (event.eventType === 'PREPARATION_CREATED') return c('Se comprobaron los datos disponibles y los pasos pendientes. Preparar no envía la solicitud.', 'Available details and remaining steps were checked. Preparing does not submit the application.');
   if (event.eventType === 'APPLICATION_RESUME_SELECTED') return c('CV seleccionado para esta solicitud: ', 'Resume selected for this application: ') + (event.reason ?? '');
   if (event.eventType === 'APPLICATION_STATE_CHANGED') return `${labelFor.applicationState(event.priorState, locale)} → ${labelFor.applicationState(event.newState, locale)}`;
+  if (event.eventType === 'EMAIL_IMPORTED') return event.newState && event.newState !== event.priorState
+    ? `${c('Cambio confirmado desde un email: ', 'Change confirmed from an email: ')}${labelFor.recruitmentStage(event.priorState, locale)} → ${labelFor.recruitmentStage(event.newState, locale)}`
+    : c('Mensaje revisado y guardado; no se cambió la etapa.', 'Message reviewed and saved; the stage was not changed.');
   if (event.eventType.startsWith('ASSIST_') && event.eventType !== 'ASSIST_USER_RECONCILED') return c('Acción registrada para esta solicitud. Consulta el resultado y la evidencia del envío.', 'Action recorded for this application. Check the submission result and evidence.');
   if (event.reason === 'Manual user record') return c('Registro manual', 'Added manually');
   if (event.reason === 'User-attested confirmation') return c('Confirmación declarada por ti', 'Confirmation reported by you');
@@ -101,6 +109,9 @@ function ApplicationsView() {
   const note = selectedId ? notes.value[selectedId] ?? '' : '';
   const setNote = (text: string) => { if (selectedId) notes.update((drafts) => ({ ...drafts, [selectedId]: text })); }; const [pendingStage, setPendingStage] = useState<string | null>(null); const [confirmApplied, setConfirmApplied] = useState(false);
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
+  const [csvNotes, setCsvNotes] = useState(false); const [csvBusy, setCsvBusy] = useState(false); const [csvSeparator, setCsvSeparator] = useState<CsvSeparator>(',');
+  // The server cannot know the regional format, so the separator is chosen once the page is in the browser.
+  useEffect(() => { setCsvSeparator(defaultCsvSeparator(navigator.language)); }, []);
   const errorFocus = useErrorFocus(error);
   const eventsRequest = useRef(0);
   // The selection as of now, not as of the render that started a request: async handlers compare against it after every await.
@@ -154,6 +165,33 @@ function ApplicationsView() {
       setRows(page.items); setPagination(page); setLoadState('ready'); return page.items;
     } catch (err) { if (ticket === listRequest.current) { setError(errorMessage(err)); setLoadState('error'); } return null; }
   }, [offset, query, sort]);
+  /** Every application that matches the current search, not just the page on screen, as a spreadsheet file. */
+  const downloadCsv = async () => {
+    setCsvBusy(true); setError(''); setMessage('');
+    try {
+      // Pages are read by offset, so an application that changes during the export can move between pages: keep each id once,
+      // and stop when a page brings nothing new (the server answers an offset past the end with the last page).
+      const found = new Map<string, Application>(); let total = 0;
+      do {
+        const params = new URLSearchParams({ offset: String(found.size), limit: '100', q: query, sort });
+        const page = await api<{ items: Application[]; total: number }>(`/applications?${params}`);
+        total = page.total;
+        const before = found.size;
+        for (const item of page.items) if (!found.has(item.id)) found.set(item.id, item);
+        if (found.size === before) break;
+      } while (found.size < total && found.size < 5000);
+      const all = [...found.values()];
+      const url = URL.createObjectURL(new Blob([applicationsCsv(all, locale, { includeNotes: csvNotes, separator: csvSeparator })], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url; link.download = `${locale === 'es' ? 'solicitudes' : 'applications'}-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage(all.length < total
+        ? c(`Archivo preparado con las primeras ${all.length} de ${total} solicitudes. Acota la búsqueda para descargar el resto.`, `File prepared with the first ${all.length} of ${total} applications. Narrow the search to download the rest.`)
+        : c(`Archivo preparado con ${all.length} solicitudes. Guárdalo en un lugar privado.`, `File prepared with ${all.length} applications. Keep it in a private location.`));
+    } catch (err) { setError(errorMessage(err)); }
+    finally { setCsvBusy(false); }
+  };
   /** Only the most recent request may write events, so a slow response for a previous selection never shows under the current one. */
   const loadEvents = useCallback(async (id: string) => {
     const ticket = ++eventsRequest.current; setEventsState('loading');
@@ -275,6 +313,11 @@ function ApplicationsView() {
       {query && <Button type="button" variant="quiet" onClick={() => { setFilter(''); navigateList(0, ''); }}>{c('Limpiar búsqueda', 'Clear search')}</Button>}
       <Button type="button" variant="quiet" aria-pressed={sort === 'follow-up'} onClick={() => { const params = new URLSearchParams(window.location.search); if (sort === 'follow-up') params.delete('sort'); else params.set('sort', 'follow-up'); params.set('offset', '0'); router.replace(`${pathname}?${params}`, { scroll: false }); }}>{c('Ordenar por próximo paso', 'Sort by follow-up')}</Button>
     </form>
+    <div className="tracker-export">
+      <Button type="button" variant="quiet" disabled={csvBusy || loadState !== 'ready' || !pagination.total} onClick={() => void downloadCsv()}>{csvBusy ? c('Preparando CSV…', 'Preparing CSV…') : c('Descargar CSV', 'Download CSV')}</Button>
+      <SelectField label={c('Separador de columnas', 'Column separator')} hint={c('Elegido según el formato regional de tu navegador. Si Excel muestra todo en una columna, prueba el otro.', 'Chosen from your browser’s regional format. If Excel shows everything in one column, try the other.')} value={csvSeparator} onChange={(event) => setCsvSeparator(event.target.value as CsvSeparator)}><option value=";">{c('Punto y coma (;): Excel de España o Argentina', 'Semicolon (;): Excel in Spain or Argentina')}</option><option value=",">{c('Coma (,): Excel de México o EE. UU., Google Sheets', 'Comma (,): Excel in Mexico or the US, Google Sheets')}</option></SelectField>
+      <label className="checkbox-line"><input type="checkbox" checked={csvNotes} onChange={(event) => setCsvNotes(event.target.checked)}/><span>{c('Incluir mis notas', 'Include my notes')}<small>{c('Pueden contener datos personales. Comparte el archivo con cuidado.', 'They may contain personal data. Share the file with care.')}</small></span></label>
+    </div>
     {loadState === 'loading' ? <Notice>{c('Cargando solicitudes…', 'Loading applications…')}</Notice>
       : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty headingLevel="h2" title={c('No pudimos cargar tus solicitudes', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
       : (rows.length || selectedId || query) ? <div className={`tracker-layout ${selected ? 'tracker-has-selection' : ''}`}>
@@ -300,8 +343,12 @@ function ApplicationsView() {
             </div>
           </div>}
 
+          <ApplicationMaterialsPacket key={selected.id} applicationId={selected.id}/>
+          {selected.jobId && <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id}/>}
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
+          <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
+          <ApplicationEmailImport key={selected.id} applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
           <div className="tracker-controls">
             <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
             <Field label={c('Recordatorio para', 'Follow-up date')} type="date" value={followUpDateDraft} disabled={busy !== null} onChange={(event) => setFollowUpDateDraft(event.target.value)}/>
