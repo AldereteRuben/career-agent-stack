@@ -20,6 +20,7 @@ import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
+import { trackingMetricsScenario } from './tracking-metrics.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -98,6 +99,7 @@ export const scenarios: Scenario[] = [
   phase1FollowUpScenario,
   jobReportsScenario,
   timelineScenario,
+  trackingMetricsScenario,
   {
     name: 'es-en-labels-on-every-page',
     async run({ page }) {
