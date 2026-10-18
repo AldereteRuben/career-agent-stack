@@ -161,7 +161,8 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
       .where(and(eq(database.jobs.workspaceId, workspace), not(jobFilter.jobFilterExclusionSql(companyPreferences, workspace))));
     assert.ok(!discoveredMatches.some((row) => row.id === target), 'the discovered-job filter excludes Mestsky for Městský');
     let row = (await filtered()).find((item) => item.id === target);
-    assert.equal(row?.preferenceReasons.excludedCompany, 'Mestsky');
+    assert.ok(row, `saved search should show the excluded company in its recoverable view: ${JSON.stringify(await filtered())}`);
+    assert.equal(row.preferenceReasons.excludedCompany, 'Mestsky');
     assert.ok(!(await visible()).some((item) => item.id === target));
 
     assert.equal((await savePreferences({ excludedCompanies: [], requiredTerms: ['role'], excludedTerms: [] })).statusCode, 200);
