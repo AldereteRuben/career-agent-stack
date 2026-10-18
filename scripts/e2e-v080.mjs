@@ -214,9 +214,9 @@ try {
   await page.goto(new URL('/overview', ui).toString());
   await setLocale(page, 'es');
   await page.locator('.getting-started > .eyebrow').filter({ hasText: /^TU SIGUIENTE PASO$/i }).waitFor();
-  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV pendiente de revisión' });
+  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV por revisar' });
   await pendingResumeMetric.waitFor();
-  assert.equal(await pendingResumeMetric.locator('strong').innerText(), '1', 'The overview shows one resume waiting for review');
+  assert.equal(await pendingResumeMetric.locator('strong').innerText(), '1', 'The overview shows one resume needing review');
   await page.getByRole('link', { name: /Review resumes|Revisar CV/i }).waitFor();
   await page.screenshot({ path: join(artifacts, 'home-inbox-es.png'), fullPage: true });
   await page.goto(new URL('/searches?search=all&view=new', ui).toString());
@@ -231,8 +231,8 @@ try {
   await appLink.waitFor();
   assert.match(await appLink.getAttribute('href'), /returnTo=.*search%3Dall/);
   await page.getByText(/Submission in progress|Envío en curso/).first().waitFor();
-  await page.getByText(/Waiting for review|Pendiente de revisión/).first().waitFor();
-  await page.getByText(/This job has records with different decisions or applications|Esta oferta tiene registros con decisiones o candidaturas diferentes/).waitFor();
+  await page.getByText(/Needs review|Por revisar/).first().waitFor();
+  await page.getByText(/This job has records with different decisions or applications|Esta oferta tiene registros con decisiones o solicitudes diferentes/).waitFor();
   await page.locator('#search-result-list details summary').first().click();
   await page.getByText(/Checked|Comprobada/).first().waitFor();
   await page.getByRole('button', { name: /Manage searches|Administrar búsquedas/ }).click();
