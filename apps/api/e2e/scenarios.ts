@@ -18,6 +18,7 @@ import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
+import { jobCompensationScenario } from './job-compensation.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
@@ -97,6 +98,7 @@ export const scenarios: Scenario[] = [
   },
   phase1FollowUpScenario,
   jobReportsScenario,
+  jobCompensationScenario,
   timelineScenario,
   {
     name: 'es-en-labels-on-every-page',

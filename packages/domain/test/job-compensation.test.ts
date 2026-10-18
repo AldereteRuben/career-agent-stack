@@ -5,8 +5,13 @@ import { compensationPeriod, firstJobCompensation, formatJobCompensation, jobCom
 // Synthetic payloads shaped like each source's documented fields; none comes from a real posting.
 test('Lever: reads salaryRange and keeps the interval and currency as written', () => {
   const payload = { salaryRange: { currency: 'usd', interval: 'per-year-salary', min: 90000, max: 120000 }, salaryDescriptionPlain: 'Base salary range' };
-  assert.deepEqual(jobCompensationFromSource('lever', payload), { min: 90000, max: 120000, currency: 'USD', period: 'YEAR', text: 'Base salary range' });
+  assert.deepEqual(jobCompensationFromSource('lever', payload), { min: 90000, max: 120000, currency: 'USD', period: 'YEAR', text: null });
   assert.equal(jobCompensationFromSource('lever', { salaryRange: { currency: 'EUR', interval: 'per-hour-wage', min: 20, max: 20 } })?.period, 'HOUR');
+});
+
+// The description is usually a paragraph of legal text; without a range it is not pay.
+test('Lever: a description without a range is not shown as pay', () => {
+  assert.equal(jobCompensationFromSource('lever', { salaryDescriptionPlain: 'The salary range is determined by location, skills and experience. '.repeat(8) }), null);
 });
 
 test('Ashby: uses the Salary component, ignores equity and bonus', () => {
@@ -16,6 +21,12 @@ test('Ashby: uses the Salary component, ignores equity and bonus', () => {
     { compensationType: 'Bonus', interval: '1 YEAR', currencyCode: 'USD', minValue: 5000, maxValue: 5000 },
   ] } };
   assert.deepEqual(jobCompensationFromSource('ashby', payload), { min: 81000, max: 87000, currency: 'USD', period: 'YEAR', text: '$81K - $87K' });
+});
+
+test('Ashby: the tier summary is never used as text because it also lists equity and bonus', () => {
+  const tier = '€110K – €185K • Offers Equity • Offers Bonus';
+  assert.equal(jobCompensationFromSource('ashby', { compensation: { compensationTierSummary: tier, summaryComponents: [{ compensationType: 'EquityPercentage', interval: 'NONE', currencyCode: null, minValue: null, maxValue: null }] } }), null);
+  assert.deepEqual(jobCompensationFromSource('ashby', { compensation: { compensationTierSummary: tier, summaryComponents: [{ compensationType: 'Salary', interval: '1 YEAR', currencyCode: 'EUR', minValue: 110000, maxValue: 185000 }] } }), { min: 110000, max: 185000, currency: 'EUR', period: 'YEAR', text: null });
 });
 
 test('Himalayas: numbers with a currency; a missing period is annual as documented, an unknown one is not guessed', () => {
@@ -54,6 +65,12 @@ test('the first source that states pay wins, in the order given', () => {
 test('maps interval words from every source and does not convert between them', () => {
   for (const [word, period] of [['per-year-salary', 'YEAR'], ['1 MONTH', 'MONTH'], ['weekly', 'WEEK'], ['fortnightly', 'FORTNIGHT'], ['daily', 'DAY'], ['per-hour-wage', 'HOUR'], ['annual', 'YEAR']] as const) assert.equal(compensationPeriod(word), period);
   assert.equal(compensationPeriod('NONE'), null);
+  // A multiplier other than 1 is a different period: "2 WEEK" is not "per week" and "6 MONTH" is not "per month".
+  for (const word of ['2 WEEK', '6 MONTH', '3 YEAR', '0 DAY']) assert.equal(compensationPeriod(word), null, word);
+  assert.equal(jobCompensationFromSource('ashby', { compensation: { summaryComponents: [{ compensationType: 'Salary', interval: '6 MONTH', currencyCode: 'USD', minValue: 30000, maxValue: 40000 }] } })?.period, null);
+  assert.equal(compensationPeriod('1 YEAR'), 'YEAR');
+  assert.equal(compensationPeriod('hourly'), 'HOUR');
+  assert.equal(compensationPeriod('monthly'), 'MONTH');
   assert.equal(compensationPeriod(5), null);
 });
 

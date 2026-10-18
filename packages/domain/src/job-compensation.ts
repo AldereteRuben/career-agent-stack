@@ -25,10 +25,16 @@ const cleanText = (value: unknown): string | null => {
   return text ? text.slice(0, maxText) : null;
 };
 
-/** Maps the interval words of Lever ("per-year-salary"), Ashby ("1 YEAR") and Himalayas ("annual") to one list. */
+/**
+ * Maps the interval words of Lever ("per-year-salary"), Ashby ("1 YEAR") and Himalayas ("annual", "hourly") to one list.
+ * An interval with a multiplier other than 1 ("2 WEEK", "6 MONTH") is not one of those periods, so it gives null
+ * instead of a figure labelled with the wrong period.
+ */
 export function compensationPeriod(value: unknown): CompensationPeriod | null {
   if (typeof value !== 'string') return null;
   const word = value.toLowerCase();
+  const multiplier = /^\s*(\d+)\s/.exec(word);
+  if (multiplier && Number(multiplier[1]) !== 1) return null;
   if (/fortnight|bi-?week/.test(word)) return 'FORTNIGHT';
   if (/year|annual/.test(word)) return 'YEAR';
   if (/month/.test(word)) return 'MONTH';
@@ -55,13 +61,15 @@ export function jobCompensationFromSource(provider: string, payload: unknown): J
   if (!raw) return null;
   if (provider === 'lever') {
     const range = record(raw.salaryRange);
-    return build(range?.min, range?.max, range?.currency, range?.interval, raw.salaryDescriptionPlain);
+    // salaryDescriptionPlain is usually a paragraph of legal text, so it is not used as pay when there is no range.
+    return build(range?.min, range?.max, range?.currency, range?.interval, null);
   }
   if (provider === 'ashby') {
     const compensation = record(raw.compensation);
     const components = Array.isArray(compensation?.summaryComponents) ? compensation.summaryComponents : [];
     const salary = components.map(record).find((component) => component?.compensationType === 'Salary');
-    return build(salary?.minValue, salary?.maxValue, salary?.currencyCode, salary?.interval, compensation?.scrapeableCompensationSalarySummary ?? compensation?.compensationTierSummary);
+    // Only the salary-only summary is used as text: compensationTierSummary also lists equity and bonus.
+    return build(salary?.minValue, salary?.maxValue, salary?.currencyCode, salary?.interval, compensation?.scrapeableCompensationSalarySummary);
   }
   if (provider === 'himalayas') {
     // Himalayas documents the period as a text with annual as the default; an unknown word is not guessed.

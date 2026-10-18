@@ -44,13 +44,13 @@ The app shows pay only when the source states it, as the source states it: no cu
 | Source | Pay in the data it returns | What is read |
 | --- | --- | --- |
 | Greenhouse | Only the single-job endpoint, with `pay_transparency=true` (`pay_input_ranges`: `min_cents`, `max_cents`, `currency_type`). The job list the adapter calls (`?content=true`) does not carry it. | Nothing. Reading it would need one extra request per job, so it is left out. |
-| Lever | `salaryRange` (`currency`, `interval`, `min`, `max`, optional) and `salaryDescriptionPlain` | Range, currency and interval; the description as text |
-| Ashby | With `includeCompensation=true`: `compensation.summaryComponents[]` (`compensationType`, `interval`, `currencyCode`, `minValue`, `maxValue`) and summary strings | The `Salary` component only (equity and bonus are ignored); the summary as text |
+| Lever | `salaryRange` (`currency`, `interval`, `min`, `max`, optional) and `salaryDescriptionPlain` | Range, currency and interval. `salaryDescriptionPlain` is not used: it is usually a paragraph of legal text, not pay |
+| Ashby | With `includeCompensation=true`: `compensation.summaryComponents[]` (`compensationType`, `interval`, `currencyCode`, `minValue`, `maxValue`) and summary strings | The `Salary` component only (equity and bonus are ignored) and `scrapeableCompensationSalarySummary` (salary only) as text. `compensationTierSummary` is not used because it also lists equity and bonus. An interval whose multiplier is not 1 (`2 WEEK`, `6 MONTH`) leaves the period empty |
 | Remotive | `salary`, optional free text (for example `$40,000 - $50,000`) | The text as written, never parsed into numbers |
 | Himalayas | `minSalary`, `maxSalary` (number or null), `currency` (ISO 4217), and a period that defaults to annual | Range and currency; an unknown period is left empty |
 | Arbeitnow | No pay field in the job objects | Nothing |
 
-The documentation of Ashby places `compensation` under `jobs[]` in its field table but at the top level in its example, and Himalayas lists the period in its text but not in its schema. The adapter therefore reads per-job `compensation` and an optional period, and a payload that does not match gives no pay rather than a wrong one. Verify both against a live response before relying on them.
+Checked against live public responses on 2026-10-18 (4 Ashby boards, 387 jobs, and the first 20 Himalayas jobs, read once and not stored): Ashby returns `compensation` per job with `summaryComponents[]` and intervals `1 YEAR`, `1 MONTH` and `NONE`; its `compensationTierSummary` does include text such as `• Offers Equity • Offers Bonus`; two boards return empty `compensation` objects, which show no pay. Himalayas returns `minSalary`, `maxSalary`, `currency` and `salaryPeriod` (`annual`, `monthly`, `hourly`); many jobs have no numbers. Greenhouse, Lever and Remotive were not called, so their rows still rest on the documentation.
 
 Rules applied to every provider:
 
