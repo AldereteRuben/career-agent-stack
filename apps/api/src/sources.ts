@@ -5,7 +5,10 @@ import type { ProviderId } from './types.js';
 export type ProviderJob = { externalId: string; title: string; location: string | null; description: string | null; jobUrl: string; applyUrl: string | null; postedAt: string | null; updatedAt: string | null; raw: Record<string, unknown> };
 export type BoardForSource = { provider: ProviderId; tenant: string; region: string };
 /** Test seam and limits; production callers pass nothing. */
-export type SourceReadOptions = { fetch?: typeof fetch; timeoutMs?: number; maxBytes?: number };
+/** Recently read Ashby board feeds, so looking up several postings of one board does not download the whole feed each time. */
+export type PostingFeedCache = Map<string, { at: number; payload: unknown }>;
+export type SourceReadOptions = { fetch?: typeof fetch; timeoutMs?: number; maxBytes?: number; feedCache?: PostingFeedCache };
+const feedCacheMs = 60_000; const feedCacheEntries = 3;
 /** What a read produced, including jobs dropped by per-job validation. Used by the validation CLI. */
 export type BoardReadReport = { jobs: ProviderJob[]; host: string; url: string; bytes: number; received: number; unlisted: number; skipped: number; skipReasons: Record<string, number> };
 
@@ -268,7 +271,16 @@ export async function readPosting(ref: PostingRef, options: SourceReadOptions = 
   let mapped: Mapped;
   try {
     if (ref.provider === 'ashby') {
-      const { payload } = await readJson(sourceUrl({ provider: 'ashby', tenant: ref.tenant, region: ref.region }), host, options);
+      const cacheKey = `${ref.region}/${ref.tenant}`; const cached = options.feedCache?.get(cacheKey);
+      let payload: unknown;
+      if (cached && Date.now() - cached.at < feedCacheMs) payload = cached.payload;
+      else {
+        payload = (await readJson(sourceUrl({ provider: 'ashby', tenant: ref.tenant, region: ref.region }), host, options)).payload;
+        if (options.feedCache) {
+          options.feedCache.delete(cacheKey); options.feedCache.set(cacheKey, { at: Date.now(), payload });
+          while (options.feedCache.size > feedCacheEntries) options.feedCache.delete(options.feedCache.keys().next().value!);
+        }
+      }
       const feed = ashbyFeed.safeParse(payload); if (!feed.success) throw new Error('SOURCE_SCHEMA_INVALID');
       const found = feed.data.jobs.find((job) => { const parsed = ashbyJob.safeParse(job); return parsed.success && (externalId(parsed.data.id) ?? idFromUrl(sourceUrlField(parsed.data.jobUrl))) === ref.id; });
       if (!found) throw new Error('POSTING_NOT_FOUND');

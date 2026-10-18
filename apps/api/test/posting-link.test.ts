@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parsePostingUrl, postingPrefill } from '../src/posting-link.js';
-import { readPosting, type SourceReadOptions } from '../src/sources.js';
+import { clipUtf16, parsePostingUrl, postingPrefill } from '../src/posting-link.js';
+import { readPosting, type PostingFeedCache, type SourceReadOptions } from '../src/sources.js';
 
 // All postings below are synthetic; none is a real company's data.
 const leverId = '681fbc53-1e34-4a46-8677-3a78118674eb';
@@ -76,6 +76,17 @@ describe('readPosting', () => {
     assert.equal(postingPrefill(ref, job).description?.length, 50_000);
   });
 
+  it('counts the limit in UTF-16 units like the form schema, so emoji never push a description over it', async () => {
+    const ref = parsePostingUrl('https://boards.greenhouse.io/acme/jobs/8860302002')!;
+    const job = await readPosting(ref, mockFetch(() => json({ ...greenhouse, content: `&lt;p&gt;${'😀'.repeat(60_000)}&lt;/p&gt;` })).options);
+    const description = postingPrefill(ref, job).description!;
+    assert.equal(description.length, 50_000, 'whole characters up to the limit, counted in UTF-16 units');
+    assert.ok(description.isWellFormed(), 'no lone surrogate');
+    assert.equal(clipUtf16('ab😀', 3), 'ab', 'a pair that would be cut in half is dropped');
+    assert.equal(clipUtf16('ab😀', 4), 'ab😀');
+    assert.equal(clipUtf16('short', 50_000), 'short');
+  });
+
   it('reads one Lever posting, in the EU region too, and falls back to the board name for the company', async () => {
     const { calls, options } = mockFetch(() => json(lever));
     const ref = parsePostingUrl(`https://jobs.eu.lever.co/acme-labs/${leverId}`)!;
@@ -97,6 +108,16 @@ describe('readPosting', () => {
     const missing = mockFetch(() => new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } }));
     await rejects(readPosting(parsePostingUrl('https://boards.greenhouse.io/acme/jobs/1')!, missing.options), 'POSTING_NOT_FOUND');
     await rejects(readPosting(parsePostingUrl(`https://jobs.lever.co/acme/${leverId}`)!, missing.options), 'POSTING_NOT_FOUND');
+    const cache: PostingFeedCache = new Map();
+    const ref = parsePostingUrl(`https://jobs.ashbyhq.com/acme/${ashbyId}`)!;
+    const first = mockFetch(() => json(ashbyFeed));
+    await readPosting(ref, { ...first.options, feedCache: cache }); await readPosting(ref, { ...first.options, feedCache: cache });
+    assert.equal(first.calls.length, 1, 'the board feed is downloaded once and reused');
+    const other = mockFetch(() => json(ashbyFeed));
+    await readPosting(ref, other.options); await readPosting(ref, other.options);
+    assert.equal(other.calls.length, 2, 'without a cache every lookup reads the feed');
+    for (const tenant of ['b', 'c', 'd']) await readPosting(parsePostingUrl(`https://jobs.ashbyhq.com/${tenant}/${ashbyId}`)!, { ...mockFetch(() => json(ashbyFeed)).options, feedCache: cache }).catch(() => undefined);
+    assert.ok(cache.size <= 3, 'only a few feeds are kept');
     await rejects(readPosting(parsePostingUrl(`https://jobs.ashbyhq.com/acme/cccccccc-0000-0000-0000-000000000000`)!, mockFetch(() => json(ashbyFeed)).options), 'POSTING_NOT_FOUND');
   });
 

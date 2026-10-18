@@ -64,6 +64,13 @@ export type PostingPrefill = {
   location: string | null; description: string | null; jobUrl: string; applyUrl: string | null;
 };
 
+/** Cuts to at most `max` UTF-16 units, the way the job form's schema counts, without leaving half of a surrogate pair. */
+export function clipUtf16(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const last = text.charCodeAt(max - 1);
+  return text.slice(0, last >= 0xD800 && last <= 0xDBFF ? max - 1 : max);
+}
+
 const guessCompany = (tenant: string) => tenant.replace(/[._-]+/g, ' ').trim().split(/\s+/).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ').slice(0, 200);
 
 export function postingPrefill(ref: PostingRef, job: { externalId: string; title: string; location: string | null; description: string | null; jobUrl: string; applyUrl: string | null; raw: Record<string, unknown> }): PostingPrefill {
@@ -72,7 +79,7 @@ export function postingPrefill(ref: PostingRef, job: { externalId: string; title
   return {
     provider: ref.provider, region: ref.region, tenant: ref.tenant, externalId: job.externalId, title: job.title,
     company: named || guessCompany(ref.tenant), companyConfirmed: Boolean(named),
-    // The job form accepts at most 50,000 characters of description, so a longer one is cut here instead of failing on save.
-    location: job.location, description: job.description ? Array.from(job.description).slice(0, 50_000).join('') : null, jobUrl: job.jobUrl, applyUrl: job.applyUrl,
+    // The job form accepts at most 50,000 characters of description, counted in UTF-16 units like the schema, so a longer one is cut here instead of failing on save.
+    location: job.location, description: job.description ? clipUtf16(job.description, 50_000) : null, jobUrl: job.jobUrl, applyUrl: job.applyUrl,
   };
 }
