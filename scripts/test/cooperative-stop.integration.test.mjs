@@ -67,7 +67,10 @@ async function stopWorker({ envFile }) {
   let stderr = '';
   stopped.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
   stopped.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
-  const [code] = await once(stopped, 'close');
+  const timeout = setTimeout(() => stopped.kill(), 30_000);
+  let code;
+  try { [code] = await once(stopped, 'close'); }
+  finally { clearTimeout(timeout); }
   assert.equal(code, 0, stderr || stdout);
   return `${stdout}\n${stderr}`;
 }
