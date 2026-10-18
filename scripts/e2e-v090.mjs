@@ -76,6 +76,7 @@ try {
     if (path === `/applications/${ids.application}/cover-letter/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
     if (path === `/applications/${ids.application}/cover-letter`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
     if (path === `/applications/${ids.application}/events` || path === '/preparations') return response(route, []);
+    if (/^\/applications\/[0-9a-f-]+\/contacts$/.test(path)) return response(route, { links: [], contacts: [] });
     if (path === `/applications/${ids.application}/assist`) return response(route, { supported: false, url: job.canonicalUrl, identity: { fullName: 'Alex Example', email: 'alex@example.test' }, application, documents: [], attempts: [] });
     if (path === `/applications/${ids.application}/materials` && method === 'GET') return response(route, { files: [] });
     if (path === `/applications/${ids.application}/materials.zip` && method === 'POST') return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('PK\u0005\u0006\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000') });

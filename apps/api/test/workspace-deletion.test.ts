@@ -9,6 +9,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { CLEARED_CACHES, DELETION_ORDER, KEPT_TABLES, deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem } from '../src/workspace-deletion.js';
 
+test('workspace deletion includes application contacts before removing their parent records', () => {
+  assert.ok(DELETION_ORDER.includes('application_contacts'));
+  assert.ok(DELETION_ORDER.includes('workspace_contacts'));
+  assert.ok(DELETION_ORDER.indexOf('application_contacts') < DELETION_ORDER.indexOf('applications'));
+  assert.ok(DELETION_ORDER.indexOf('workspace_contacts') < DELETION_ORDER.indexOf('applications'));
+});
+
 const root = new URL('../../../', import.meta.url);
 const { Client, Pool } = createRequire(new URL('packages/db/package.json', root))('pg');
 const adminUrl = process.env.CAREER_DELETION_TEST_ADMIN_URL;

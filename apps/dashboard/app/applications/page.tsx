@@ -10,6 +10,7 @@ import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { ApplicationQueue, ApplicationPreparationAction } from '@/components/application-preparation';
 import { ApplicationSections } from '@/components/application-sections';
 import { ApplicationJourney } from '@/components/application-journey';
+import { ApplicationContacts } from '@/components/application-contacts';
 import { ApplicationEmailImport } from '@/components/application-email-import';
 import { ApplicationMaterialsPacket } from '@/components/application-materials-packet';
 import { ApplicationCoverLetter } from '@/components/application-cover-letter';
@@ -345,6 +346,7 @@ function ApplicationsView() {
           <ApplicationMaterialsPacket key={selected.id} applicationId={selected.id}/>
           {selected.jobId && <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id}/>}
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
+          <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
           <ApplicationEmailImport key={selected.id} applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
           <div className="tracker-controls">
