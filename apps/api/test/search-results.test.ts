@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { after, before, describe, test } from 'node:test';
 import { performance } from 'node:perf_hooks';
 import Fastify from 'fastify';
+import { and, eq, not } from 'drizzle-orm';
 import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
@@ -97,6 +98,8 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     await client.query(`INSERT INTO applications(workspace_id,job_id,company,role,state)
       VALUES($1,$2,'Synthetic Company 76','QA Engineer 9996','IN_PROGRESS')`, [performanceWorkspace, metadataJob]);
     routes.registerJobSearchRoutes(app, () => activeWorkspace);
+    const filters = await import('../src/job-filter-routes.js'); filters.registerJobFilterRoutes(app, () => activeWorkspace);
+    const feedback = await import('../src/job-match-feedback.js'); feedback.registerJobMatchFeedbackRoutes(app, () => activeWorkspace);
   });
 
   after(async () => {
@@ -124,6 +127,89 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     assert.equal((await service.searchResults(otherWorkspace, null, { limit: '20' })).total, 1);
   });
 
+  test('workspace filters hide matching jobs, explain the rule, and restore only the selected job', async () => {
+    activeWorkspace = workspace;
+    const saved = await app.inject({ method: 'PUT', url: '/api/v1/job-filters', payload: { preferences: { excludedCompanies: ['Legacy Co'], requiredTerms: [], excludedTerms: [] } } });
+    assert.equal(saved.statusCode, 200, saved.body);
+    const normal = await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all&limit=20`);
+    assert.equal(normal.json().total, 0);
+    const filtered = await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`);
+    assert.equal(filtered.json().total, 4, 'archived listings stay in Archived; only active matches appear in this view');
+    const first = filtered.json().items[0];
+    assert.deepEqual(first.preferenceReasons, { excludedCompany: 'Legacy Co', missingRequiredTerms: [], matchedExcludedTerms: [] });
+    const restore = await app.inject({ method: 'POST', url: `/api/v1/job-filters/${first.id}/restore`, payload: {} });
+    assert.equal(restore.statusCode, 200, restore.body);
+    assert.equal((await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all&limit=20`)).json().total, 1);
+    assert.equal((await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`)).json().total, 3);
+    activeWorkspace = otherWorkspace;
+    assert.equal((await app.inject('/api/v1/job-searches/results?view=filtered&limit=20')).json().total, 0, 'another workspace does not inherit preferences or exceptions');
+  });
+
+  test('saved-search filters use the same NFKD accent folding as discovered-job filters', async () => {
+    activeWorkspace = workspace;
+    const target = (await client.query(`SELECT id FROM jobs WHERE workspace_id=$1 AND canonical_url='https://jobs.example.test/v080/12'`, [workspace])).rows[0].id as string;
+    await client.query(`UPDATE jobs SET company='Mestsky',title='Rôle legacy QA developer' WHERE workspace_id=$1 AND id=$2`, [workspace, target]);
+    await client.query('DELETE FROM job_filter_overrides WHERE workspace_id=$1 AND job_id=$2', [workspace, target]);
+    const savePreferences = (preferences: { excludedCompanies: string[]; requiredTerms: string[]; excludedTerms: string[] }) =>
+      app.inject({ method: 'PUT', url: '/api/v1/job-filters', payload: { preferences } });
+    const filtered = async () => (await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`)).json().items as Array<{ id: string; canonicalUrl: string; preferenceReasons: { excludedCompany: string | null; missingRequiredTerms: string[]; matchedExcludedTerms: string[] } }>;
+    const visible = async () => (await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all&limit=20`)).json().items as Array<{ id: string }>;
+
+    const companyPreferences = { excludedCompanies: ['Městský'], requiredTerms: [], excludedTerms: [] };
+    assert.equal((await savePreferences(companyPreferences)).statusCode, 200);
+    const jobFilter = await import('../src/job-filter-routes.js');
+    const discoveredMatches = await database.db.select({ id: database.jobs.id }).from(database.jobs)
+      .where(and(eq(database.jobs.workspaceId, workspace), not(jobFilter.jobFilterExclusionSql(companyPreferences, workspace))));
+    assert.ok(!discoveredMatches.some((row) => row.id === target), 'the discovered-job filter excludes Mestsky for Městský');
+    let row = (await filtered()).find((item) => item.id === target);
+    assert.ok(row, `saved search should show the excluded company in its recoverable view: ${JSON.stringify(await filtered())}`);
+    assert.equal(row.preferenceReasons.excludedCompany, 'Mestsky');
+    assert.ok(!(await visible()).some((item) => item.id === target));
+
+    assert.equal((await savePreferences({ excludedCompanies: [], requiredTerms: ['role'], excludedTerms: [] })).statusCode, 200);
+    assert.ok((await visible()).some((item) => item.id === target), 'Rôle satisfies required term role');
+    assert.ok(!(await filtered()).some((item) => item.id === target));
+
+    assert.equal((await savePreferences({ excludedCompanies: [], requiredTerms: [], excludedTerms: ['role'] })).statusCode, 200);
+    assert.ok(!(await visible()).some((item) => item.id === target));
+    row = (await filtered()).find((item) => item.id === target);
+    assert.deepEqual(row?.preferenceReasons.matchedExcludedTerms, ['role']);
+  });
+
+  test('discovered-job SQL uses the same Unicode normalization as search results', async () => {
+    activeWorkspace = workspace;
+    const id = randomUUID();
+    await client.query(`INSERT INTO jobs(id,workspace_id,company,title,availability) VALUES($1,$2,'Acme','Rôle developer','OPEN')`, [id, workspace]);
+    const preferences = { excludedCompanies: [], requiredTerms: ['role'], excludedTerms: [] };
+    const service = await import('../src/job-filter-routes.js');
+    const matched = await database.db.select({ id: database.jobs.id }).from(database.jobs)
+      .where(and(eq(database.jobs.workspaceId, workspace), not(service.jobFilterExclusionSql(preferences, workspace))));
+    assert.ok(matched.some((row) => row.id === id), 'NFKD accent folding should keep Rôle when role is required');
+    const evaluated = service.evaluateJobFilters({ company: 'Acme', title: 'Rôle developer' }, preferences);
+    assert.equal(evaluated.excluded, false, 'in-memory search-result evaluation agrees with the discovered-job SQL');
+  });
+
+  test('personal match feedback can be edited, summarized and deleted within one workspace', async () => {
+    activeWorkspace = workspace;
+    const jobId = (await client.query('SELECT id FROM jobs WHERE workspace_id=$1 LIMIT 1', [workspace])).rows[0].id as string;
+    assert.equal((await app.inject(`/api/v1/jobs/${jobId}/feedback`)).json(), null);
+    const invalid = await app.inject({ method: 'PUT', url: `/api/v1/jobs/${jobId}/feedback`, payload: { rating: 'SEEN', reason: null } });
+    assert.equal(invalid.statusCode, 400);
+    const saved = await app.inject({ method: 'PUT', url: `/api/v1/jobs/${jobId}/feedback`, payload: { rating: 'NOT_FOR_ME', reason: 'LOCATION' } });
+    assert.equal(saved.statusCode, 200, saved.body); assert.equal(saved.json().rating, 'NOT_FOR_ME');
+    const summary = await app.inject('/api/v1/job-feedback/summary');
+    assert.equal(summary.json().total, 1); assert.equal(summary.json().notForMe, 1); assert.deepEqual(summary.json().patterns, []);
+    await client.query(`UPDATE job_match_feedback SET created_at=now()-interval '120 days' WHERE workspace_id=$1 AND job_id=$2`, [workspace, jobId]);
+    const edited = await app.inject({ method: 'PUT', url: `/api/v1/jobs/${jobId}/feedback`, payload: { rating: 'INTERESTED', reason: null } });
+    assert.equal(edited.statusCode, 200, edited.body);
+    const afterEdit = await app.inject('/api/v1/job-feedback/summary');
+    assert.equal(afterEdit.json().total, 1); assert.equal(afterEdit.json().interested, 1, 'an old record edited today is included in the recent summary');
+    activeWorkspace = otherWorkspace;
+    assert.equal((await app.inject(`/api/v1/jobs/${jobId}/feedback`)).statusCode, 404, 'a different workspace cannot read or overwrite the feedback');
+    activeWorkspace = workspace;
+    assert.equal((await app.inject({ method: 'DELETE', url: `/api/v1/jobs/${jobId}/feedback` })).json().ok, true);
+    assert.equal((await app.inject('/api/v1/job-feedback/summary')).json().total, 0);
+  });
   test('strong identity duplicates group, but conflicting saved/archive decisions stay separate', async () => {
     activeWorkspace = performanceWorkspace;
     const initialStarted = performance.now();

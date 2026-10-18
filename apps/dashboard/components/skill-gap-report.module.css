@@ -1,0 +1,82 @@
+.panel {
+  display: grid;
+  gap: 12px;
+}
+
+.heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.heading h2,
+.heading p,
+.summary,
+.evidence,
+.jobs p {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.groups,
+.jobs {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.groups > li {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.groups summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  cursor: pointer;
+}
+
+.skill {
+  font-weight: 700;
+}
+
+.counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.evidence {
+  margin-top: 12px;
+}
+
+.jobs {
+  margin-top: 10px;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.jobs li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.jobs p {
+  margin-top: 4px;
+  color: var(--muted);
+}

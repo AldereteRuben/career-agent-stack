@@ -11,16 +11,18 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, openSync, unlinkSync, writeFileSync } from 'node:fs';
-import { access, chmod, mkdir, open, readFile } from 'node:fs/promises';
+import { access, open, readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, markDependenciesCurrent, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
-  pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
+  dataRootReadProblem, pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
   runPnpm, waitFor, warn, whoUsesPort, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { clipboardTools, missingClipboardAdvice } from './lib/clipboard.mjs';
+import { ensurePrivateDir, ensurePrivateFile, ensurePrivateTree, isPrivate, isPrivateTree } from './lib/private-files.mjs';
+import { renderStatus as autostartStatus, statusMessage as autostartStatusMessage } from './autostart.mjs';
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
@@ -42,7 +44,7 @@ const exists = async (path) => { try { await access(path); return true; } catch 
 // a compiler child can still be running after its launcher has been interrupted.
 async function lockStartup() {
   const lockPath = at('data/launcher.lock');
-  await mkdir(at('data'), { recursive: true, mode: 0o700 });
+  await ensurePrivateDir(at('data'));
   const deadline = Date.now() + 300_000;
   let announced = false;
   while (true) {
@@ -108,7 +110,12 @@ async function checkDependencies() {
 }
 
 async function loadEnvironment() {
+  await guardPrivatePath(envPath, 'el archivo .env / the .env file', false);
   let env = await readLocalEnv();
+  if (env) {
+    await guardPrivatePath(localDataPath(env), 'la carpeta de datos / the data folder', true);
+    await guardPrivatePath(resolve(projectRoot, env.FILES_LOCAL_PATH || resolve(localDataPath(env), 'files')), 'la carpeta de documentos / the documents folder', true);
+  }
   if (!env && alternateEnv) throw new RecoveryError({
     es: `No existe el archivo de configuración indicado en CAREER_ENV_FILE (${envPath}).`, en: `The configuration file given in CAREER_ENV_FILE does not exist (${envPath}).`,
     fixes: [fix('Comprueba la ruta (por ejemplo, el .env de la carpeta restaurada). Con CAREER_ENV_FILE no se prepara nada nuevo.', 'Check the path (for example the .env of the restored folder). With CAREER_ENV_FILE nothing new is set up.')],
@@ -125,6 +132,11 @@ async function loadEnvironment() {
       fixes: [fix('Lee el mensaje anterior y vuelve a ejecutar: pnpm run bootstrap', 'Read the message above and run again: pnpm run bootstrap')],
     });
     env = await readLocalEnv();
+    await guardPrivatePath(envPath, 'el archivo .env / the .env file', false);
+    if (env) {
+      await guardPrivatePath(localDataPath(env), 'la carpeta de datos / the data folder', true);
+      await guardPrivatePath(resolve(projectRoot, env.FILES_LOCAL_PATH || resolve(localDataPath(env), 'files')), 'la carpeta de documentos / the documents folder', true);
+    }
   }
   const database = describeDatabase(env?.DATABASE_URL ?? '');
   const secretsReady = (env?.APP_ENCRYPTION_KEY ?? '').length >= 32 && (env?.APP_SESSION_SECRET ?? '').length >= 32;
@@ -146,6 +158,26 @@ async function loadEnvironment() {
   else ok('Configuración privada presente (no se muestra)', 'Private configuration present (not shown)');
   // Child processes get this installation's .env values, never DATABASE_URL, keys or ports exported in the shell.
   return { database, apiPort, webPort, apiBase, webOrigin, childEnv: installEnv(env) };
+}
+
+async function guardPrivatePath(path, label, directory) {
+  let present = true;
+  try { await access(path); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    present = false;
+  }
+  if (!present) {
+    if (directory && !checkOnly) await ensurePrivateTree(path);
+    return;
+  }
+  if (checkOnly) {
+    if (!(directory ? await isPrivateTree(path) : await isPrivate(path))) throw new RecoveryError({
+      es: `No se puede verificar la privacidad de ${label}; el arranque se detendría para proteger tus datos.`,
+      en: `Could not verify the privacy of ${label}; startup would stop to protect your data.`,
+      fixes: [fix('Ejecuta pnpm start para aplicar y verificar los permisos antes de continuar.', 'Run pnpm start to apply and verify permissions before continuing.')],
+    });
+  } else if (directory) await ensurePrivateTree(path);
+  else await ensurePrivateFile(path, { create: false });
 }
 
 /**
@@ -214,10 +246,10 @@ async function dashboardNeedsBuild(apiBase, { strict = false } = {}) {
  * working directory and absolute entry point). `pnpm run stop` only signals a process that still matches it.
  */
 async function startDetached(name, command, commandArgs, { cwd, env, entry, titles = [] }) {
-  await mkdir(logDir, { recursive: true, mode: 0o700 });
+  await ensurePrivateDir(logDir);
   const logPath = resolve(logDir, `${name}.log`);
+  await ensurePrivateFile(logPath);
   const log = await open(logPath, 'a', 0o600);
-  await chmod(logPath, 0o600);
   const child = spawn(command, commandArgs, { cwd, env, detached: true, windowsHide: true, stdio: ['ignore', log.fd, log.fd] });
   child.unref();
   await log.close();
@@ -398,6 +430,8 @@ async function signInHint() {
 
 async function main() {
   say(checkOnly ? 'Career Agent Stack · estado (solo lectura)' : 'Career Agent Stack · inicio local', checkOnly ? 'Career Agent Stack · status (read-only)' : 'Career Agent Stack · local start');
+  const automatic = autostartStatus();
+  say(...autostartStatusMessage(automatic));
   checkNode();
   await checkDependencies();
   const settings = await loadEnvironment();
@@ -429,6 +463,11 @@ async function main() {
 
 let releaseStartup;
 try {
+  if (dataRootReadProblem) throw new RecoveryError({
+    es: 'No se pudo verificar la privacidad del archivo .env al preparar las rutas locales; se detuvo el arranque.',
+    en: 'The privacy of .env could not be verified while preparing local paths; startup was stopped.',
+    fixes: [fix('Ejecuta pnpm run doctor para revisar permisos y vuelve a iniciar.', 'Run pnpm run doctor to inspect permissions, then start again.')],
+  });
   if (!checkOnly) releaseStartup = await lockStartup();
   await main();
 } catch (error) { printRecovery(error); process.exitCode = 1; }

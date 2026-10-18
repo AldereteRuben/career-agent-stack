@@ -40,6 +40,10 @@ export const v051Last: Scenario = {
     const doc = await api.post<Resume>('/documents', { name: `UX resume ${marker}`, locale: 'es', factIds: [fact.id] });
     assert.equal(doc.language, 'es');
     assert.equal((await api.get<Resume[]>('/documents')).find((row) => row.id === doc.id)?.reviewReady, true);
+    // The earlier home-flow scenario deliberately leaves an unsaved setup draft in sessionStorage.
+    // This scenario creates its own profile and resume through the API, so discard that unrelated draft
+    // before loading the guide; otherwise its `edited` flag keeps the guide on step 1.
+    await page.evaluate(() => sessionStorage.removeItem('career:draft:v1:getting-started'));
     await goTo(page, '/profile/setup'); await setLocale(page, 'es');
     await page.getByRole('link', { name: 'Continuar revisando mi CV', exact: true }).click();
     await page.getByRole('heading', { name: 'Revisa esta versión', exact: true }).waitFor();

@@ -9,6 +9,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { CLEARED_CACHES, DELETION_ORDER, KEPT_TABLES, deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem } from '../src/workspace-deletion.js';
 
+test('workspace deletion includes application contacts before removing their parent records', () => {
+  assert.ok(DELETION_ORDER.includes('application_contacts'));
+  assert.ok(DELETION_ORDER.includes('workspace_contacts'));
+  assert.ok(DELETION_ORDER.indexOf('application_contacts') < DELETION_ORDER.indexOf('applications'));
+  assert.ok(DELETION_ORDER.indexOf('workspace_contacts') < DELETION_ORDER.indexOf('applications'));
+});
+
 const root = new URL('../../../', import.meta.url);
 const { Client, Pool } = createRequire(new URL('packages/db/package.json', root))('pg');
 const adminUrl = process.env.CAREER_DELETION_TEST_ADMIN_URL;
@@ -106,6 +113,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
       await q(`insert into profile_facts (workspace_id, profile_version_id, kind, statement) values ($1, $2, 'skill', 'Fictional skill')`, [ws, pv2]);
       await q(`insert into answer_versions (workspace_id, semantic_key, jurisdiction, question_scope, strategy, revision) values ($1, 'salary', 'ES', 'fictional', 'MANUAL', 1)`, [ws]);
       await q(`insert into jobs (id, workspace_id, company, title) values ($1, $2, 'Fictional Co', 'Designer')`, [job, ws]);
+      await q(`insert into job_match_feedback (workspace_id, job_id, rating, reason) values ($1, $2, 'NOT_FOR_ME', 'LOCATION')`, [ws, job]);
       await q(`insert into job_snapshots (id, workspace_id, job_id, title, snapshot_hash) values ($1, $2, $3, 'Designer', $4)`, [snapshot, ws, job, 'b'.repeat(64)]);
       await q(`insert into job_occurrences (workspace_id, job_id, provider, region, tenant, external_job_id, job_url, source_payload) values ($1, $2, 'greenhouse', 'us', 'fictional', 'e1', 'https://example.test/j', '{}')`, [ws, job]);
       await q(`insert into job_search_sources (workspace_id, job_id, provider, external_id, source_url) values ($1, $2, 'remotive', 'e1', 'https://example.test/j')`, [ws, job]);

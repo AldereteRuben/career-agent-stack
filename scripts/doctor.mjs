@@ -1,9 +1,10 @@
 // Read-only diagnosis of this installation (pnpm run doctor). Changes nothing, starts nothing, prints no secrets.
 // Exits 1 when something blocks a start, with the next step for each problem in Spanish and English.
-import { readFile, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { access, readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
-import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, runPnpm, say, whoUsesPort } from './lib/local-env.mjs';
+import { alternateEnv, alternateEnvProblem, describeDatabase, envPath, loadPg, localDataPath, mtimeOf, pendingEnvPath, portIsFree, portIsOpen, projectRoot, readLocalEnv, runPnpm, say, whoUsesPort } from './lib/local-env.mjs';
+import { isPrivate, isPrivateTree } from './lib/private-files.mjs';
 
 let failed = 0;
 const pass = (es, en) => say(`✓ ${es}`, `✓ ${en}`);
@@ -25,7 +26,13 @@ async function main() {
   if (installed && installed >= await mtimeOf(at('pnpm-lock.yaml'))) pass('Dependencias instaladas', 'Dependencies installed');
   else fail('Dependencias ausentes o desactualizadas', 'Dependencies missing or outdated', 'pnpm start (instala lo que falte y deja el aviso al día)', 'pnpm start (installs what is missing and clears the warning)');
 
-  const env = await readLocalEnv();
+  let envExists = true;
+  try { await access(envPath); } catch (error) { if (error?.code === 'ENOENT') envExists = false; else throw error; }
+  if (envExists && !(await isPrivate(envPath))) {
+    fail('No se pudo verificar la privacidad de .env; no se ha leído.', 'Could not verify the privacy of .env; it was not read.', 'pnpm start (restringe y verifica los permisos antes de leer .env)', 'pnpm start (restricts and verifies permissions before reading .env)');
+    return;
+  }
+  const env = envExists ? await readLocalEnv() : null;
   if (!env && alternateEnv) return fail(`No existe ${envPath} (CAREER_ENV_FILE)`, `${envPath} (CAREER_ENV_FILE) does not exist`);
   if (alternateEnv) {
     const problem = alternateEnvProblem(env);
@@ -33,13 +40,26 @@ async function main() {
     else pass(`Configuración de CAREER_ENV_FILE: ${envPath}`, `CAREER_ENV_FILE configuration: ${envPath}`);
   }
   if (!env) {
-    const pending = await readLocalEnv(pendingEnvPath);
+    let pendingExists = true;
+    try { await access(pendingEnvPath); }
+    catch (error) { if (error?.code === 'ENOENT') pendingExists = false; else throw error; }
+    if (pendingExists && !(await isPrivate(pendingEnvPath))) {
+      fail('No se pudo verificar la privacidad de .env.pending; no se ha leído.', 'Could not verify the privacy of .env.pending; it was not read.', 'pnpm run bootstrap (restringe y verifica el archivo antes de retomarlo)', 'pnpm run bootstrap (restricts and verifies the file before resuming it)');
+      return;
+    }
+    const pending = pendingExists ? await readLocalEnv(pendingEnvPath) : null;
     if (pending) fail('La preparación inicial no terminó (.env.pending existe, .env todavía no)', 'Initial setup did not finish (.env.pending exists, .env does not yet)', 'pnpm run bootstrap (retoma con las mismas claves)', 'pnpm run bootstrap (resumes with the same keys)');
     else fail('Falta .env: este equipo aún no está preparado', '.env is missing: this machine is not set up yet', 'pnpm run bootstrap', 'pnpm run bootstrap');
     return;
   }
-  if (((await stat(envPath)).mode & 0o077) === 0) pass('.env existe y es privado (0600)', '.env exists and is private (0600)');
-  else fail('.env es legible por otros usuarios del equipo', '.env is readable by other users of this machine', 'chmod 600 .env', 'chmod 600 .env');
+  pass('.env existe y sus permisos privados están verificados', '.env exists and its private permissions are verified');
+  for (const directory of [localDataPath(env), resolve(projectRoot, env.FILES_LOCAL_PATH || join(localDataPath(env), 'files'))]) {
+    try { await access(directory); } catch (error) { if (error?.code === 'ENOENT') continue; throw error; }
+    if (!(await isPrivateTree(directory))) {
+      fail(`No se pudo verificar la privacidad de ${directory}`, `Could not verify the privacy of ${directory}`, 'pnpm start (restringe y verifica los archivos antes de arrancar)', 'pnpm start (restricts and verifies the files before starting)');
+      return;
+    }
+  }
   if ((env.APP_ENCRYPTION_KEY ?? '').length >= 32 && (env.APP_SESSION_SECRET ?? '').length >= 32) pass('Claves locales configuradas (no se muestran)', 'Local keys configured (not shown)');
   else fail('Faltan claves locales en .env', 'Local keys are missing from .env', 'No borres .env; compáralo con .env.example', 'Do not delete .env; compare it with .env.example');
 
