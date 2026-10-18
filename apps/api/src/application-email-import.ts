@@ -59,7 +59,8 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
     if (!application) return reply.code(404).send({ error: 'NOT_FOUND' });
     const suggestion = findStage(text);
     const stageChange = suggestion.stage ? classifyRecruitmentStageChange(application.recruitmentStage, suggestion.stage) : 'UNCHANGED';
-    const nextStage = suggestion.stage && stageChange === 'ADVANCE' ? suggestion.stage : null;
+    const offerProtected = application.recruitmentStage === 'OFFER' && suggestion.stage === 'REJECTED';
+    const nextStage = suggestion.stage && stageChange === 'ADVANCE' && !offerProtected ? suggestion.stage : null;
     const token = randomUUID();
     trimExpired();
     pendingImports.set(token, {
@@ -68,7 +69,7 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
       messageDate, proposedStage: nextStage,
       expectedVersion: application.version, expectedStage: application.recruitmentStage, expiresAt: Date.now() + PREVIEW_TTL_MS,
     });
-    return reply.header('Cache-Control', 'no-store').send({ token, source: body.source, messageDate, currentStage: application.recruitmentStage, detectedStage: suggestion.stage, proposedStage: nextStage, evidence: suggestion.excerpt.slice(0, 360), stageAlreadyReached: stageChange === 'UNCHANGED' && suggestion.stage === application.recruitmentStage, stageRegressionBlocked: stageChange === 'REJECTED_REGRESSION', offerProtected: application.recruitmentStage === 'OFFER' && stageChange === 'REJECTED_REGRESSION' });
+    return reply.header('Cache-Control', 'no-store').send({ token, source: body.source, messageDate, currentStage: application.recruitmentStage, detectedStage: suggestion.stage, proposedStage: nextStage, evidence: suggestion.excerpt.slice(0, 360), stageAlreadyReached: stageChange === 'UNCHANGED' && suggestion.stage === application.recruitmentStage, stageRegressionBlocked: stageChange === 'REJECTED_REGRESSION' || offerProtected, offerProtected });
   });
 
   app.post('/api/v1/applications/:id/email-import/confirm', async (request, reply) => {
