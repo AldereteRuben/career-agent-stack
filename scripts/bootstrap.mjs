@@ -23,7 +23,7 @@
 //   CAREER_SKIP_BROWSER_INSTALL=1       skip the Chromium download (PDF export then fails until it is installed)
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
 import process from 'node:process';
@@ -32,6 +32,7 @@ import {
   printRecovery, projectRoot, promoteWithoutOverwrite, runPnpm, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
+import { ensurePrivateFile, ensurePrivateTree } from './lib/private-files.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
@@ -288,7 +289,7 @@ function installBrowser() {
 
 async function privateFolders(values) {
   for (const path of [values.DATA_LOCAL_PATH || './data', values.FILES_LOCAL_PATH || './data/files', ...(alternateEnv ? [] : ['backups'])]) {
-    await mkdir(resolve(projectRoot, path), { recursive: true, mode: 0o700 });
+    await ensurePrivateTree(resolve(projectRoot, path));
   }
 }
 
@@ -297,6 +298,8 @@ async function main() {
   checkTools();
   await ensureDependencies();
 
+  try { await access(envPath); await ensurePrivateFile(envPath, { create: false }); }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
   const current = await readText(envPath);
   if (alternateEnv && current === null) throw new RecoveryError({
     es: `No existe ${envPath} (CAREER_ENV_FILE). Con CAREER_ENV_FILE solo se comprueba una instalación existente; no se crea ninguna.`,
@@ -304,7 +307,6 @@ async function main() {
   });
   if (alternateEnv && alternateEnvProblem(parseEnv(current))) throw new RecoveryError(alternateEnvProblem(parseEnv(current)));
   if (current !== null) {
-    if (((await stat(envPath)).mode & 0o077) !== 0) warn('.env es legible por otros usuarios de este equipo; corrígelo con: chmod 600 .env', '.env is readable by other users of this machine; fix it with: chmod 600 .env');
     ok('.env ya existe; no se modifica', '.env already exists; left unchanged');
     const values = parseEnv(current);
     const database = describeDatabase(values.DATABASE_URL ?? '');

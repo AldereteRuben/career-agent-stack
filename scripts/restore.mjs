@@ -16,13 +16,14 @@
 // If anything fails after creation, only the database and folder created by this run are removed.
 import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { chmod, lstat, mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
 import { RecoveryError, describeDatabase, ok, portIsOpen, printRecovery, projectRoot, say, step, warn } from './lib/local-env.mjs';
 import { safeJoin } from './lib/backup-archive.mjs';
+import { ensurePrivateDir, ensurePrivateFile } from './lib/private-files.mjs';
 import {
   canonicalPath, connect, databaseLabel, documentRows, fix, hasTable, isInside, projectPath, readEnvFile, readKeyFile, repoMigrations,
   runPgTool, safeMessage, sameServer, shown, tableCounts, withDatabase, writePrivateFile,
@@ -237,8 +238,7 @@ async function restore(options) {
     if (await portIsOpen('127.0.0.1', value)) warn(`El puerto ${value} (${flag}) está en uso ahora; la copia restaurada no podrá iniciarse en él mientras siga ocupado.`, `Port ${value} (${flag}) is in use right now; the restored copy cannot start on it while it stays busy.`);
   }
 
-  const { key, loose } = await readKeyFile(keyFile);
-  if (loose) warn(`El archivo de clave es legible por otros usuarios: chmod 600 "${keyFile}"`, `The key file is readable by other users: chmod 600 "${keyFile}"`);
+  const { key } = await readKeyFile(keyFile);
 
   let createdTarget = false;
   let createdDatabase = false;
@@ -247,8 +247,9 @@ async function restore(options) {
   try {
     await mkdir(target, { mode: 0o700 });
     createdTarget = true;
-    await chmod(target, 0o700);
+    await ensurePrivateDir(target);
     const staging = await mkdtemp(join(target, '.staging-'));
+    await ensurePrivateDir(staging);
 
     step(`Verificando ${shown(archive)} (estructura, hashes, firma, volcado)…`, `Verifying ${shown(archive)} (structure, hashes, signature, dump)…`);
     const opened = await openBackup(archive, staging, { key, allowUnencrypted: options['allow-unencrypted'] });
@@ -336,12 +337,13 @@ async function restore(options) {
     // New installation folder: data/files with the documents, verified again after they are moved in place.
     const dataDir = join(target, 'data');
     const filesDir = join(dataDir, 'files');
-    await mkdir(filesDir, { recursive: true, mode: 0o700 });
+    await ensurePrivateDir(dataDir);
+    await ensurePrivateDir(filesDir);
     for (const document of manifest.documents) {
       const destination = safeJoin(filesDir, document.storagePath);
-      await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+      await ensurePrivateDir(dirname(destination));
       await rename(files.get(document.archivePath).path, destination);
-      await chmod(destination, 0o600);
+      await ensurePrivateFile(destination, { create: false });
       if ((await hashFile(destination)) !== document.sha256) throw new RecoveryError({ es: `El documento ${document.id} no coincide tras copiarlo.`, en: `Document ${document.id} does not match after copying.` });
     }
     await rm(staging, { recursive: true, force: true });

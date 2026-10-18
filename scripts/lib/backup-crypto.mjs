@@ -2,9 +2,8 @@
 // APP_ENCRYPTION_KEY, so restoring needs the same key file as before and no new secret. Files are encrypted and
 // decrypted as streams, so a large backup is never held in memory. Plaintext only ever lands in a private
 // temporary folder, which is removed when the caller is done or anything fails.
-import { execFileSync } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { chmod, mkdtemp, open, rm, stat } from 'node:fs/promises';
+import { mkdtemp, open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -14,6 +13,8 @@ import { pipeline } from 'node:stream/promises';
 import { bech32 } from '@scure/base';
 import { Decrypter, Encrypter, identityToRecipient } from 'age-encryption';
 import { ageIdentityBytes } from './backup-core.mjs';
+import { ensurePrivateDir, ensurePrivateFile } from './private-files.mjs';
+export { parseIcacls, restrictToCurrentUser } from './private-files.mjs';
 
 /** Every age file starts with this line (https://age-encryption.org/v1). */
 export const AGE_HEADER = 'age-encryption.org/v1\n';
@@ -59,6 +60,7 @@ async function streamTo(destination, makeStream) {
   const output = createWriteStream(destination, { flags: 'wx', mode: 0o600 });
   await once(output, 'open');
   try {
+    await ensurePrivateFile(destination, { create: false });
     await pipeline(Readable.fromWeb(await makeStream()), output);
   } catch (error) {
     output.destroy();
@@ -70,42 +72,16 @@ async function streamTo(destination, makeStream) {
 const windows = process.platform === 'win32';
 
 /** The current Windows user as `DOMAIN\name` and its SID, from `whoami`. */
-function windowsUser(run = execFileSync) {
-  const [name, sid] = run('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true }).trim().split('","').map((part) => part.replace(/"/g, ''));
-  if (!name || !/^S-1-[\d-]+$/.test(sid ?? '')) throw new Error('Could not identify the current Windows user.');
-  return { name, sid };
-}
-
 /**
  * Access entries of a Windows path, parsed from `icacls` output: the first line starts with the path, each entry is
  * `PRINCIPAL:(flags)…`, and the output ends with a summary line.
  */
-export function parseIcacls(output, path) {
-  const lines = output.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean).filter((line) => !/^Successfully processed|^Se procesaron/i.test(line));
-  if (!lines.length || !lines[0].toLowerCase().startsWith(path.toLowerCase())) return [];
-  lines[0] = lines[0].slice(path.length);
-  return lines.map((line) => line.trim()).filter(Boolean).map((entry) => entry.slice(0, entry.indexOf(':(') === -1 ? undefined : entry.indexOf(':(')));
-}
-
 /**
  * Restricts a Windows folder (or, with `{ file: true }`, a file) to the current user: inheritance removed, full
  * control for the user, and any other entry removed (a folder can carry explicit entries for SYSTEM or
  * Administrators, which `/inheritance:r` keeps). Throws unless `icacls` then lists exactly that user, so a failure
  * stops the caller before anything private is written.
  */
-export function restrictToCurrentUser(path, run = execFileSync, { file = false } = {}) {
-  const user = windowsUser(run);
-  const icacls = (...args) => run('icacls', [path, ...args], { encoding: 'utf8', windowsHide: true });
-  const others = (listing) => parseIcacls(listing, path).filter((name) => name.toLowerCase() !== user.name.toLowerCase());
-  icacls('/inheritance:r', '/grant:r', `*${user.sid}:${file ? '' : '(OI)(CI)'}F`);
-  for (const other of others(icacls())) icacls('/remove:g', other);
-  const listing = icacls();
-  const principals = parseIcacls(listing, path);
-  if (principals.length !== 1 || others(listing).length) {
-    throw new Error(`The temporary folder could not be restricted to ${user.name} (found: ${principals.join(', ') || 'no entries'}).\n${listing.trim()}`);
-  }
-}
-
 /**
  * A new, empty folder readable only by the current user, for decrypted backups (ADR 019): mode 0700 on macOS and
  * Linux, checked after creation; on Windows, created in the user's own temporary folder with a user-only ACL. If the
@@ -113,15 +89,6 @@ export function restrictToCurrentUser(path, run = execFileSync, { file = false }
  */
 export async function privateTempDir(prefix, { parent = tmpdir() } = {}) {
   const folder = await mkdtemp(join(windows ? tmpdir() : parent, prefix));
-  try {
-    if (windows) restrictToCurrentUser(folder);
-    else {
-      await chmod(folder, 0o700);
-      if ((await stat(folder)).mode & 0o077) throw new Error('The temporary folder is accessible to other users.');
-    }
-    return folder;
-  } catch (error) {
-    await rm(folder, { recursive: true, force: true });
-    throw error;
-  }
+  try { await ensurePrivateDir(folder); return folder; }
+  catch (error) { await rm(folder, { recursive: true, force: true }); throw error; }
 }

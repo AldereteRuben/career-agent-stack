@@ -34,7 +34,7 @@
     "test:sources": "pnpm --filter @career/api exec tsx --test test/sources.test.ts",
     "verify:sources": "pnpm --filter @career/api exec tsx scripts/verify-sources.ts",
     "test:backup": "node --test scripts/test/backup-archive.test.mjs",
-    "test:backup-crypto": "node --test scripts/test/backup-crypto.test.mjs",
+    "test:backup-crypto": "node --test scripts/test/backup-crypto.test.mjs scripts/test/private-files.test.mjs",
     "test:uninstall": "node --test --test-concurrency=1 scripts/test/uninstall-paths.test.mjs scripts/test/uninstall.integration.test.mjs",
     "test:backup-api": "pnpm --filter @career/api exec tsx --test test/backup-routes.test.ts",
     "test:deletion": "pnpm --filter @career/api exec tsx --test test/workspace-deletion.test.ts test/request-gate.test.ts",

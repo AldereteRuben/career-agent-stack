@@ -3,9 +3,7 @@
 // dropRole and deletePath, which the caller runs only after every check has passed.
 import { lstat, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import process from 'node:process';
 import { allowAdminToUseRole, runAsRole } from './bootstrap-database.mjs';
-import { restrictToCurrentUser } from './backup-crypto.mjs';
 import { RecoveryError, writePrivateFileAtomic } from './local-env.mjs';
 
 export const PROGRESS_NAME = '.uninstall-progress.json';
@@ -134,7 +132,6 @@ export async function readProgress(folder) {
 export async function writeProgress(folder, progress) {
   const path = progressPath(folder);
   await writePrivateFileAtomic(path, `${JSON.stringify(progress, null, 2)}\n`);
-  if (process.platform === 'win32') restrictToCurrentUser(path, undefined, { file: true });
 }
 
 // ---- PostgreSQL ----------------------------------------------------------------------------------------
