@@ -32,7 +32,7 @@ import {
   printRecovery, projectRoot, promoteWithoutOverwrite, runPnpm, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
-import { ensurePrivateFile, ensurePrivateTree } from './lib/private-files.mjs';
+import { ensurePrivateFile, ensurePrivateTree, readPrivateFile } from './lib/private-files.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
@@ -97,7 +97,8 @@ async function pendingConfiguration() {
   if (pendingExists) {
     // Never inspect a pending configuration until its ACL has been restricted and verified.
     await ensurePrivateFile(pendingEnvPath, { create: false });
-    const existing = await readFile(pendingEnvPath, 'utf8');
+    const existing = await readPrivateFile(pendingEnvPath);
+    if (existing === null) throw new Error('The pending configuration changed during verification. / La configuración pendiente cambió durante la verificación.');
     await writePrivateFileAtomic(pendingEnvPath, existing);
     ok('Se retoma la preparación anterior (.env.pending, mismas claves)', 'Resuming the previous setup (.env.pending, same keys)');
     return parseEnv(existing);
@@ -306,7 +307,8 @@ async function main() {
   try {
     await access(envPath);
     await ensurePrivateFile(envPath, { create: false });
-    current = await readFile(envPath, 'utf8');
+    current = await readPrivateFile(envPath);
+    if (current === null) throw new Error('The environment file changed during verification. / El archivo de entorno cambió durante la verificación.');
   } catch (error) { if (error?.code !== 'ENOENT') throw error; }
   if (alternateEnv && current === null) throw new RecoveryError({
     es: `No existe ${envPath} (CAREER_ENV_FILE). Con CAREER_ENV_FILE solo se comprueba una instalación existente; no se crea ninguna.`,
