@@ -178,7 +178,12 @@ describe('activity timeline with a disposable database', { skip: !adminUrl, conc
       assert.deepEqual(found.json().items.map((item: { job: { id: string }; automatic: boolean }) => [item.job.id, item.automatic]).sort((a: [string, boolean], b: [string, boolean]) => a[0].localeCompare(b[0])), [[ids.autoFound!, true], [ids.manualFound!, false]].sort((a, b) => a[0].localeCompare(b[0])));
       const mine = await get('from=2026-10-01&to=2026-10-31&tz=Europe%2FMadrid&types=INTERVIEW,STAGE_CHANGED');
       assert.equal(mine.statusCode, 200);
-      assert.deepEqual(mine.json().items.map((item: { type: string; application: { id: string } }) => [item.type, item.application.id]), [['STAGE_CHANGED', ids.main], ['STAGE_CHANGED', ids.main], ['INTERVIEW', ids.main]]);
+      assert.deepEqual(mine.json().items.map((item: { id: string; type: string; application: { id: string } }) => [item.id, item.type, item.application.id]), [
+        [`STAGE_CHANGED:${ids.stage}`, 'STAGE_CHANGED', ids.main],
+        [`STAGE_CHANGED:${ids.emailStage}`, 'STAGE_CHANGED', ids.main],
+        [`STAGE_CHANGED:${ids.correction}`, 'STAGE_CHANGED', ids.main],
+        [`INTERVIEW:${ids.main}`, 'INTERVIEW', ids.main],
+      ]);
       const theirs = await get('from=2026-10-01&to=2026-10-31&tz=UTC', otherWorkspace);
       const theirIds = new Set(theirs.json().items.map((item: { application?: { id: string }; job?: { id: string } }) => item.application?.id ?? item.job?.id));
       assert.deepEqual([...theirIds].sort(), [ids.foreign, ids.foreignSaved, ids.foreignFound].sort());
