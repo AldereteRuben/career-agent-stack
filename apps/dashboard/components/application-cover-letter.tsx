@@ -97,7 +97,10 @@ export function ApplicationCoverLetter({ applicationId }: { applicationId: strin
     finally { setBusy(false); }
   };
 
-  const updateSentence = (sentenceId: string, text: string) => setSentences((current) => current.map((sentence) => sentence.sentenceId === sentenceId ? { ...sentence, text, origin: 'USER_EDITED' } : sentence));
+  const updateSentence = (sentenceId: string, text: string) => {
+    setConfirmIds((current) => current.filter((id) => id !== sentenceId));
+    setSentences((current) => current.map((sentence) => sentence.sentenceId === sentenceId ? { ...sentence, text, origin: 'USER_EDITED' } : sentence));
+  };
   const restore = () => { if (draft) { setSentences(draft.sentences); setConfirmIds([]); } };
 
   return <Card className={`${styles.card} application-resume`}>
