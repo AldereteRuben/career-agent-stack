@@ -10,6 +10,18 @@ export type BackupRunner = (directory: string, signal: AbortSignal) => Promise<v
 type Artifact = 'archive' | 'key' | 'checksum';
 type Job = { id: string; workspace: string; createdAt: string; state: 'running' | 'ready' | 'failed'; directory: string; artifacts?: Record<Artifact, string> };
 
+const diagnosticLimit = 4_000;
+
+/** Keeps the end of a child's output, where the reason a program stops usually is. */
+const tail = (text: string) => (text.length > diagnosticLimit ? `…${text.slice(-diagnosticLimit)}` : text).trim();
+
+/** Hides the values this API was configured with, so a reason written to the log never carries a credential. */
+export function redactSecrets(text: string, secrets: string[]): string {
+  let result = text;
+  for (const secret of secrets) if (secret.length >= 6) result = result.split(secret).join('[redacted]');
+  return result;
+}
+
 /** Run the already verified archive writer with this API's configuration, never the checkout's .env. */
 export function backupRunner(options: BackupOptions): BackupRunner {
   return async (directory, signal) => {
@@ -20,11 +32,18 @@ export function backupRunner(options: BackupOptions): BackupRunner {
       await writeFile(envFile, Object.entries(entries).map(([key, value]) => `${key}="${value}"`).join('\n'), { mode: 0o600, flag: 'wx' });
       await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, [join(options.root, 'scripts/backup.mjs'), '--env-file', envFile, '--out-dir', directory, '--key-dir', join(directory, 'keys')], {
-          cwd: options.root, shell: false, stdio: 'ignore', signal,
+          cwd: options.root, shell: false, stdio: ['ignore', 'pipe', 'pipe'], signal,
         });
-        let failed = false;
-        child.once('error', () => { failed = true; });
-        child.once('close', (code) => !failed && code === 0 ? resolve() : reject(new Error('Backup failed')));
+        // The writer's messages are the only way to learn why a backup failed, so keep the end of them for the log.
+        let output = '';
+        const collect = (chunk: Buffer) => { output = tail(output + chunk.toString('utf8')); };
+        child.stdout?.on('data', collect); child.stderr?.on('data', collect);
+        let startError: Error | undefined;
+        child.once('error', (error) => { startError = error; });
+        child.once('close', (code) => {
+          if (!startError && code === 0) return resolve();
+          reject(new Error(startError ? `Backup could not run: ${startError.message}` : `Backup writer exited with code ${code}${output ? `:\n${output}` : ''}`));
+        });
       });
     } finally { await rm(envFile, { force: true }); }
   };
@@ -53,8 +72,10 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
         await chmod(file, 0o600);
       }
       job.state = 'ready';
-    } catch {
+    } catch (error) {
       job.state = 'failed';
+      // Only the server's log learns why; the person is told nothing that could carry a path or a credential.
+      app.log.warn({ reason: redactSecrets(error instanceof Error ? error.message : String(error), [options.database, options.key]) }, 'Backup failed');
       // Failed archives are not recoverable. Completed copies are retained until the user removes them.
       await rm(job.directory, { recursive: true, force: true }).catch(() => undefined);
     }
