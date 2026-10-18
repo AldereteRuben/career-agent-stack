@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { clickWithResumeReplacement, eventually, goTo, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
 
 type Fact = { id: string; statement: string; approvalStatus: string };
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Fact[] };
@@ -107,6 +107,29 @@ export const patchScenarios: Scenario[] = [
       await page.waitForURL((url) => url.searchParams.get('id') === two.id);
       assert.equal(await note.inputValue(), 'Draft for second application');
       await page.screenshot({ path: join(artifacts, 'v031-note-drafts.png'), fullPage: true });
+    },
+  },
+  {
+    name: 'v031-application-detail-has-one-job-link-and-clear-refresh-action',
+    async run({ page, api, marker, artifacts }) {
+      const canonicalUrl = `https://example.test/jobs/${marker}/application-detail`;
+      const job = await api.post<{ id: string }>('/jobs/import', { company: `Fictional ${marker}`, title: `QA role ${marker}`, jobUrl: canonicalUrl });
+      const application = await api.post<{ id: string }>('/applications', { jobId: job.id, company: `Fictional ${marker}`, role: `QA role ${marker}`, canonicalUrl, state: 'DRAFT', notes: '' });
+
+      for (const locale of ['es', 'en'] as const) {
+        await setLocale(page, locale);
+        for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+          await page.setViewportSize(viewport);
+          await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+          await page.locator('.tracker-detail').getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
+          const detail = page.locator('.tracker-detail');
+          assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, `${locale} has one in-app job link at ${viewport.width}px`);
+          assert.equal(await detail.locator(`a[href="${canonicalUrl}"]`).count(), 1, `${locale} has one employer link at ${viewport.width}px`);
+          await detail.getByRole('button', { name: locale === 'es' ? 'Volver a comprobar CV y datos' : 'Re-check resume and details', exact: true }).waitFor();
+          assert.equal(await hasHorizontalOverflow(page), false, `${locale} application detail overflows at ${viewport.width}px`);
+          await page.screenshot({ path: join(artifacts, `v031-application-detail-${locale}-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
+        }
+      }
     },
   },
 ];
