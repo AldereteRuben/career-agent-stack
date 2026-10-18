@@ -148,6 +148,7 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     activeWorkspace = workspace;
     const target = (await client.query(`SELECT id FROM jobs WHERE workspace_id=$1 AND canonical_url='https://jobs.example.test/v080/12'`, [workspace])).rows[0].id as string;
     await client.query(`UPDATE jobs SET company='Mestsky',title='Rôle developer' WHERE workspace_id=$1 AND id=$2`, [workspace, target]);
+    await client.query('DELETE FROM job_filter_overrides WHERE workspace_id=$1 AND job_id=$2', [workspace, target]);
     const savePreferences = (preferences: { excludedCompanies: string[]; requiredTerms: string[]; excludedTerms: string[] }) =>
       app.inject({ method: 'PUT', url: '/api/v1/job-filters', payload: { preferences } });
     const filtered = async () => (await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`)).json().items as Array<{ id: string; canonicalUrl: string; preferenceReasons: { excludedCompany: string | null; missingRequiredTerms: string[]; matchedExcludedTerms: string[] } }>;
