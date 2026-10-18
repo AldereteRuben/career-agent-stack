@@ -6,9 +6,14 @@ const skillAliases: Array<[string, string[]]> = [
   ['java', ['java']], ['kotlin', ['kotlin']], ['python', ['python']], ['typescript', ['typescript']], ['javascript', ['javascript']],
   ['sql', ['sql', 'postgresql', 'mysql']], ['rest-assured', ['rest assured', 'rest-assured']], ['api-testing', ['api testing', 'api test']],
   ['playwright', ['playwright']], ['cypress', ['cypress']], ['selenium', ['selenium']], ['jenkins', ['jenkins']],
-  ['ci-cd', ['ci/cd', 'continuous integration', 'continuous delivery']], ['docker', ['docker']], ['kubernetes', ['kubernetes']],
+  ['ci-cd', ['ci/cd']],
+  ['continuous integration', ['continuous integration', 'integración continua']],
+  ['continuous delivery', ['continuous delivery', 'entrega continua']],
+  ['continuous deployment', ['continuous deployment', 'despliegue continuo']],
+  ['docker', ['docker']], ['kubernetes', ['kubernetes']],
   ['aws', ['aws', 'amazon web services']], ['azure', ['azure']], ['gcp', ['gcp', 'google cloud']], ['git', ['git']],
   ['agile', ['agile', 'scrum']], ['linux', ['linux']], ['graphql', ['graphql']], ['react', ['react']], ['node.js', ['node.js', 'nodejs']],
+  ['figma', ['figma']], ['terraform', ['terraform']],
 ];
 const aliasesBySkill = new Map(skillAliases.map(([skill, aliases]) => [normalize(skill), [skill, ...aliases].map(normalize)]));
 
