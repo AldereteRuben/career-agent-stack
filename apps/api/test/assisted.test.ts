@@ -33,6 +33,7 @@ describe('assisted routes with fictional data and a disposable database', { skip
   let admin: Client; let sql: Client; let directory: string; let app: FastifyInstance; let browser: FakeBrowser;
   let runtime: { stopAll(): Promise<void> };
   let pool: { end(): Promise<void> }; let register: typeof import('../src/assisted-routes.js').registerAssistedRoutes;
+  let registerEmailImport: typeof import('../src/application-email-import.js').registerApplicationEmailImportRoutes;
   let closePool: (() => Promise<void>) | undefined;
   let workspace = ''; const envBefore = { ...process.env };
   before(async () => {
@@ -47,8 +48,10 @@ describe('assisted routes with fictional data and a disposable database', { skip
     sql = new PgClient({ connectionString: url.toString() }); await sql.connect();
     for (const file of (await readdir(join(root,'packages/db/migrations'))).filter(n=>n.endsWith('.sql')).sort()) await sql.query(await readFile(join(root,'packages/db/migrations',file),'utf8'));
     register = (await import('../src/assisted-routes.js')).registerAssistedRoutes;
+    registerEmailImport = (await import('../src/application-email-import.js')).registerApplicationEmailImportRoutes;
     pool = (await import('@career/db')).pool; closePool = trackPgPoolCleanup(pool);
     browser = new FakeBrowser(); app = Fastify(); runtime = await register(app, () => workspace, browser);
+    registerEmailImport(app, () => workspace);
     (await import('../src/resume-journey.js')).registerResumeJourney(app, () => workspace);
   });
   after(async () => {
@@ -77,6 +80,35 @@ describe('assisted routes with fictional data and a disposable database', { skip
     const f=await fixture(); const count=browser.starts; const a=await prepare(f.application,f.doc); assert.equal(a.status,'PREPARED'); assert.equal(browser.starts,count);
     const duplicate=await post(`/applications/${f.application}/assist/prepare`,{documentId:f.doc}); assert.equal(duplicate.json().error,'ASSIST_ACTIVE_ATTEMPT');
     await post(`/assisted-attempts/${a.id}/cancel`,{});
+  });
+  test('email imports cannot change the stage while an assisted attempt is active', async () => {
+    const f = await fixture(); const attempt = await prepare(f.application, f.doc);
+    const preview = await post(`/applications/${f.application}/email-import/preview`, { source: 'PASTED_TEXT', text: 'We are pleased to offer you the role.' });
+    assert.equal(preview.statusCode, 200, preview.body);
+    assert.equal(preview.json().proposedStage, 'OFFER');
+    const confirmed = await post(`/applications/${f.application}/email-import/confirm`, { token: preview.json().token, applyStage: true });
+    assert.equal(confirmed.statusCode, 409);
+    assert.equal(confirmed.json().error, 'ASSIST_ACTIVE_ATTEMPT');
+    await post(`/assisted-attempts/${attempt.id}/cancel`, {});
+  });
+  test('the same email imported as EML and pasted text is deduplicated', async () => {
+    const f = await fixture();
+    const body = 'We would like to invite you to an interview next week.';
+    const eml = ['From: recruiter@example.test', 'Message-ID: <cross-source@example.test>', 'Content-Type: text/plain; charset="utf-8"', '', body, ''].join('\r\n');
+    const emlPreview = await post(`/applications/${f.application}/email-import/preview`, { source: 'EML', emlBase64: Buffer.from(eml, 'utf8').toString('base64') });
+    assert.equal(emlPreview.statusCode, 200, emlPreview.body);
+    const pastedPreview = await post(`/applications/${f.application}/email-import/preview`, { source: 'PASTED_TEXT', text: body });
+    assert.equal(pastedPreview.statusCode, 200, pastedPreview.body);
+    const first = await post(`/applications/${f.application}/email-import/confirm`, { token: emlPreview.json().token, applyStage: false });
+    assert.equal(first.statusCode, 201, first.body);
+    const duplicate = await post(`/applications/${f.application}/email-import/confirm`, { token: pastedPreview.json().token, applyStage: false });
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().error, 'EMAIL_ALREADY_IMPORTED');
+    const distinctEml = ['From: recruiter@example.test', 'Message-ID: <different-message@example.test>', 'Content-Type: text/plain; charset="utf-8"', '', body, ''].join('\r\n');
+    const distinctPreview = await post(`/applications/${f.application}/email-import/preview`, { source: 'EML', emlBase64: Buffer.from(distinctEml, 'utf8').toString('base64') });
+    assert.equal(distinctPreview.statusCode, 200, distinctPreview.body);
+    const distinct = await post(`/applications/${f.application}/email-import/confirm`, { token: distinctPreview.json().token, applyStage: false });
+    assert.equal(distinct.statusCode, 201, distinct.body, 'Distinct EML Message-IDs must remain importable even when their body text is identical');
   });
   test('job evidence lock serializes assisted start and resume linking before currentness checks', async () => {
     for (const operation of ['start', 'link'] as const) {

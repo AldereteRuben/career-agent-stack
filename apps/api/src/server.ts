@@ -31,6 +31,7 @@ import { registerJobFilterRoutes } from './job-filter-routes.js';
 import { registerJobMatchFeedbackRoutes } from './job-match-feedback.js';
 import { emptyJobFilterPreferences, evaluateJobFilters, jobFilterExclusionSql } from './job-filter-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
+import { registerApplicationEmailImportRoutes } from './application-email-import.js';
 import { registerJobReportRoutes } from './job-report-routes.js';
 import { registerApplicationPacketRoutes } from './application-packet-routes.js';
 import { startJobSearchWorker } from './job-search.js';
@@ -507,6 +508,7 @@ app.get('/api/v1/applications/:id/events', async (request, reply) => {
   const application = (await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, id))).limit(1))[0]; if (!application) return fail(reply, 404, 'NOT_FOUND');
   return db.select().from(applicationEvents).where(and(eq(applicationEvents.applicationId, applicationId), eq(applicationEvents.workspaceId, id))).orderBy(desc(applicationEvents.createdAt));
 });
+registerApplicationEmailImportRoutes(app, workspace);
 app.patch('/api/v1/applications/:id', async (request, reply) => {
   const parsed = parseBody(applicationUpdateSchema, request.body, reply); if (!parsed) return;
   if (parsed.state && ['READY', 'IN_PROGRESS', 'UNKNOWN'].includes(parsed.state)) return fail(reply, 409, 'CAPABILITY_NOT_AVAILABLE', 'Use the assisted application workflow for browser progress and reconciliation.');
