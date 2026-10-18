@@ -86,7 +86,7 @@ function SetupGuide() {
       </ol>
       {error && <Notice tone="error" actions={<Button variant="quiet" disabled={busy || loading} onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{error}</Notice>}
       {loading ? <Notice>{c('Preparando tu guía…', 'Preparing your guide…')}</Notice> : profile && jobId && step === 2 ? <ApplicationPreparationAction jobId={jobId} applicationId={applicationId ?? undefined} returnTo={returnTo}/> : profile && <Card className="form-card onboarding-card">
-        <h2 ref={stepHeading} tabIndex={-1} className="focus-heading">{step === 0 ? c('¿Cómo quieres aparecer en tu CV?', 'How should you appear on your resume?') : step === 1 ? c('Cuéntanos una experiencia', 'Tell us about one experience') : step === 2 ? pendingResume ? c('Tu CV está pendiente de revisión', 'Your resume is waiting for review') : c('Ya puedes preparar tu PDF', 'You are ready to prepare your PDF') : c('Tu primer CV está listo', 'Your first resume is ready')}</h2>
+        <h2 ref={stepHeading} tabIndex={-1} className="focus-heading">{step === 0 ? c('¿Cómo quieres aparecer en tu CV?', 'How should you appear on your resume?') : step === 1 ? c('Cuéntanos una experiencia', 'Tell us about one experience') : step === 2 ? pendingResume ? c('Tu CV está por revisar', 'Your resume needs review') : c('Ya puedes preparar tu PDF', 'You are ready to prepare your PDF') : c('Tu primer CV está listo', 'Your first resume is ready')}</h2>
         {step === 0 ? <>
           <p>{c('Solo necesitamos tu nombre y correo. Podrás añadir tus preferencias de empleo después.', 'We only need your name and email. You can add job preferences later.')}</p>
           <form className="form-stack" onSubmit={(event) => void save(event)} aria-busy={busy}>

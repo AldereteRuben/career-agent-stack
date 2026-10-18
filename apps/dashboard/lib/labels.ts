@@ -160,7 +160,7 @@ export const jobReportReasonLabels: LabelMap = {
   TITLE_NOT_COMPARED: { es: 'No comparamos el puesto porque aún no indicaste qué puestos buscas.', en: 'The role was not compared because you have not said which roles you are looking for.' },
   TITLE_NOT_TARGETED: { es: 'El puesto no coincide con los que buscas.', en: 'The role does not match the ones you are looking for.' },
   FEW_REQUIREMENTS_SUPPORTED: { es: 'Casi nada de lo que pide la oferta está respaldado por tu experiencia confirmada.', en: 'Almost nothing the job asks for is backed by your confirmed experience.' },
-  LOCATION_TO_CONFIRM: { es: 'Confirma desde dónde se puede trabajar antes de postular.', en: 'Confirm where the job can be done from before applying.' },
+  LOCATION_TO_CONFIRM: { es: 'Confirma desde dónde se puede trabajar antes de presentar la solicitud.', en: 'Confirm where the job can be done from before applying.' },
   LOCATION_INCOMPATIBLE: { es: 'La ubicación no es compatible con la tuya.', en: 'The location is not compatible with yours.' },
   WORK_MODE_DIFFERS: { es: 'La modalidad de trabajo no coincide con la que prefieres.', en: 'The work mode differs from the one you prefer.' },
 };

@@ -29,7 +29,7 @@ export function JobFitReport({ jobId, profileHref, assistantHref }: { jobId: str
   useEffect(() => { void load(); return () => { request.current += 1; }; }, [load]);
 
   return <Card className={styles.report} aria-labelledby="job-report-heading" data-testid="job-report">
-    <div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('INFORME DE EVALUACIÓN', 'EVALUATION REPORT')}</div><h2 id="job-report-heading" className="focus-heading" tabIndex={-1}>{c('¿Vale la pena postular?', 'Is it worth applying?')}</h2></div>{report && <Tag tone={verdictTone(report.verdict)}>{labelFor.reportVerdict(report.verdict, locale)}</Tag>}</div>
+    <div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('INFORME DE EVALUACIÓN', 'EVALUATION REPORT')}</div><h2 id="job-report-heading" className="focus-heading" tabIndex={-1}>{c('¿Vale la pena presentar la solicitud?', 'Is it worth applying?')}</h2></div>{report && <Tag tone={verdictTone(report.verdict)}>{labelFor.reportVerdict(report.verdict, locale)}</Tag>}</div>
     {state === 'loading' && !report && <p role="status">{c('Preparando el informe…', 'Preparing the report…')}</p>}
     {state === 'error' && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos preparar el informe.', 'We could not prepare the report.')} {error}</Notice>}
     {report && <>
@@ -54,7 +54,7 @@ export function JobFitReport({ jobId, profileHref, assistantHref }: { jobId: str
         </li>)}</ul><p><small>{c('Si tienes esa experiencia, añádela en tu perfil y confírmala; nunca la suponemos.', 'If you have that experience, add it to your profile and confirm it; we never assume it.')} <Link href={profileHref}>{c('Ir a mi perfil', 'Go to my profile')}</Link></small></p></> : <p>{report.supported.length ? c('Tienes confirmado todo lo que reconocimos en la oferta.', 'You have confirmed everything we recognised in the job.') : c('No reconocimos requisitos concretos que comparar.', 'We did not recognise specific requirements to compare.')}</p>}
       </section>
       <section aria-labelledby="job-report-checks" className={styles.reportSection}>
-        <h3 id="job-report-checks">{c('3. Revisa antes de postular', '3. Check before applying')}</h3>
+        <h3 id="job-report-checks">{c('3. Revisa antes de presentar la solicitud', '3. Check before applying')}</h3>
         <dl className={styles.reportChecks}>{report.checks.map((check) => <div key={check.kind}><dt>{labelFor.reportCheck(check.kind, locale)}</dt><dd><strong>{labelFor.reportCheckStatus(check.status, locale)}</strong>{check.value && <span>{check.value}</span>}</dd></div>)}</dl>
       </section>
       <section aria-labelledby="job-report-unknowns" className={styles.reportSection}>

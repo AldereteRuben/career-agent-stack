@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,34 @@ const dashboard = join(dirname(fileURLToPath(import.meta.url)), '..');
 test('no style capitalizes every word', () => {
   const css = readFileSync(join(dashboard, 'app/globals.css'), 'utf8');
   assert.equal(css.match(/text-transform:\s*capitalize/g)?.length ?? 0, 0, 'remove text-transform: capitalize; write the capital letter in the text instead');
+});
+
+const repository = join(dashboard, '../..');
+
+function textFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((name) => {
+    if (['node_modules', '.next', 'public', 'dist', 'e2e', 'test'].includes(name)) return [];
+    const path = join(directory, name);
+    if (statSync(path).isDirectory()) return textFiles(path);
+    return /\.(tsx?|mjs)$/.test(name) && !/\.test\./.test(name) ? [path] : [];
+  });
+}
+
+// Spanish says "solicitud" (never "candidatura"), "solicitar" (never "aplicar" or "postular") and "por revisar" for a
+// review state. "aplicar tus cambios" in Searches is about saving edits, not about jobs, so it stays.
+test('Spanish text keeps one wording for applications and review states', () => {
+  const always = [/candidatur/i, /\bpostul/i, /pendientes? de revisi[oó]n/i, /revisi[oó]n pendiente/i];
+  // The scripts "apply" database migrations, which has nothing to do with job applications.
+  const inApps = [...always, /\baplicar\b(?! tus cambios)/i, /\baplicando\b/i];
+  const found: string[] = [];
+  for (const [root, banned] of [['apps/dashboard', inApps], ['apps/api/src', inApps], ['scripts', always]] as const) {
+    for (const file of textFiles(join(repository, root))) {
+      readFileSync(file, 'utf8').split('\n').forEach((line, index) => {
+        for (const pattern of banned) if (pattern.test(line)) found.push(`${file.slice(repository.length + 1)}:${index + 1} ${pattern}`);
+      });
+    }
+  }
+  assert.deepEqual(found, [], 'use "solicitud", "solicitar" / "presentar la solicitud" and "por revisar" in Spanish text');
 });
 
 test('application history and fact kind labels start with a capital letter in both languages', () => {

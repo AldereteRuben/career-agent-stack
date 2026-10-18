@@ -23,7 +23,7 @@ const pageFingerprint = (result: JobPage) => JSON.stringify(result);
 /** Each list scope reads as its own destination: saved jobs and archived jobs are not just filters of the found list. */
 const scopeCopy = (scope: string, c: (es: string, en: string) => string) => scope === 'favorites' ? {
   eyebrow: c('GUARDADAS', 'SAVED JOBS'), title: c('Ofertas guardadas', 'Saved jobs'),
-  description: c('Las ofertas que guardaste para decidir con calma. Abre una y elige Preparar mi solicitud cuando quieras solicitar.', 'Jobs you saved to decide on calmly. Open one and choose Prepare my application when you want to apply.'),
+  description: c('Las ofertas que guardaste para decidir con calma. Abre una y elige Preparar mi solicitud cuando quieras presentar la solicitud.', 'Jobs you saved to decide on calmly. Open one and choose Prepare my application when you want to apply.'),
   count: (n: number) => n === 1 ? c('oferta guardada', 'saved job') : c('ofertas guardadas', 'saved jobs'),
 } : scope === 'archived' ? {
   eyebrow: c('ARCHIVADAS', 'ARCHIVED'), title: c('Ofertas archivadas', 'Archived jobs'),

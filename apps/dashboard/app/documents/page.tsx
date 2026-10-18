@@ -319,7 +319,7 @@ function DocumentsView() {
             <Button variant="quiet" disabled={busy !== null} onClick={() => reuse(doc)}>{c('Usar como base', 'Use as starting point')}</Button>
           </div>
         </div></Card>) : loadState === 'ready' && <Card className="jobs-empty"><Empty title={c('Aún no hay documentos', 'No documents yet')} detail={c('Cuando apruebes tus primeros datos de tu experiencia, podrás generar una versión para revisar.', 'Once you approve your first profile details, you can generate a version to review.')}/></Card>}
-        <div className="notice notice-info document-boundary">{c('Preparar un CV no lo envía a ninguna empresa. Después de revisarlo, continúa en Solicitudes o descárgalo para solicitar por tu cuenta.', 'Creating a resume does not send it to an employer. After reviewing it, continue in Applications or download it to apply yourself.')}</div>
+        <div className="notice notice-info document-boundary">{c('Preparar un CV no lo envía a ninguna empresa. Después de revisarlo, continúa en Solicitudes o descárgalo para presentar la solicitud por tu cuenta.', 'Creating a resume does not send it to an employer. After reviewing it, continue in Applications or download it to apply yourself.')}</div>
       </aside>
     </div>
   </>;

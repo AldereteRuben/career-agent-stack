@@ -214,9 +214,9 @@ try {
   await page.goto(new URL('/overview', ui).toString());
   await setLocale(page, 'es');
   await page.locator('.getting-started > .eyebrow').filter({ hasText: /^TU SIGUIENTE PASO$/i }).waitFor();
-  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV pendiente de revisión' });
+  const pendingResumeMetric = page.locator('.getting-started .overview-total').filter({ hasText: 'CV por revisar' });
   await pendingResumeMetric.waitFor();
-  assert.equal(await pendingResumeMetric.locator('strong').innerText(), '1', 'The overview shows one resume waiting for review');
+  assert.equal(await pendingResumeMetric.locator('strong').innerText(), '1', 'The overview shows one resume needing review');
   await page.getByRole('link', { name: /Review resumes|Revisar CV/i }).waitFor();
   await page.screenshot({ path: join(artifacts, 'home-inbox-es.png'), fullPage: true });
   await page.goto(new URL('/searches?search=all&view=new', ui).toString());

@@ -48,10 +48,10 @@ export const jobReportsScenario: Scenario = {
     await setLocale(page, 'es');
     await page.goto(new URL(`/jobs/${good}`, uiUrl).toString());
     const report = page.getByTestId('job-report');
-    await report.getByRole('heading', { name: '¿Vale la pena postular?' }).waitFor();
+    await report.getByRole('heading', { name: '¿Vale la pena presentar la solicitud?' }).waitFor();
     await eventually(() => report.innerText(), (text) => text.includes('Conclusión: Buena opción'), 'Spanish conclusion appears');
     const reportText = await report.innerText();
-    for (const expected of ['1. Lo que pide la oferta y tu experiencia confirmada lo respalda', 'La oferta dice:', `Built a Playwright suite for Example Shop ${marker}`, '3. Revisa antes de postular', 'Salary: 40.000 € gross per year.', '4. Lo que no sabemos', 'No es la probabilidad de que te contraten']) {
+    for (const expected of ['1. Lo que pide la oferta y tu experiencia confirmada lo respalda', 'La oferta dice:', `Built a Playwright suite for Example Shop ${marker}`, '3. Revisa antes de presentar la solicitud', 'Salary: 40.000 € gross per year.', '4. Lo que no sabemos', 'No es la probabilidad de que te contraten']) {
       assert.ok(reportText.includes(expected), `The report shows “${expected}”`);
     }
     assert.doesNotMatch(reportText, /\/\s?100|%/, 'The report never shows a score or a percentage');
