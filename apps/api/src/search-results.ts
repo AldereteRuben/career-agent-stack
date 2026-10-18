@@ -16,6 +16,7 @@ export async function searchResults(workspaceId: string, searchId: string | null
   const offset = Math.max(0, Math.min(1_000_000, Number.parseInt(query.offset ?? '0', 10) || 0));
   const view = ['new','all','saved','archived','filtered'].includes(query.view ?? '') ? query.view : 'all';
   const order = query.sort === 'recent' ? 'posted_at DESC NULLS LAST,score DESC' : 'score DESC,posted_at DESC NULLS LAST';
+  const normalizeWordsSql = (value: string) => `trim(regexp_replace(lower(regexp_replace(normalize(${value}, NFKD), U&'[\\0300-\\036f]', '', 'g')), '[^[:alnum:]]+', ' ', 'g'))`;
   const { rows } = await pool.query(`WITH selected AS MATERIALIZED (
     SELECT s.* FROM saved_job_searches s WHERE workspace_id=$1 AND ($2::uuid IS NULL OR id=$2)
   ), latest AS MATERIALIZED (
@@ -71,9 +72,9 @@ export async function searchResults(workspaceId: string, searchId: string | null
   ), classified AS MATERIALIZED (
     SELECT g.*,
       jsonb_strip_nulls(jsonb_build_object(
-        'excludedCompany', CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements_text(p.value->'excludedCompanies') term WHERE trim(regexp_replace(lower(translate(term,'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN')),'[^[:alnum:]]+',' ','g')) = trim(regexp_replace(lower(translate(j.company,'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN')),'[^[:alnum:]]+',' ','g'))) THEN j.company ELSE NULL END,
-        'missingRequiredTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'requiredTerms') term WHERE position(' '||trim(regexp_replace(lower(translate(term,'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ' IN ' '||trim(regexp_replace(lower(translate(concat_ws(' ',j.title,j.company,snap.description_text),'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ')=0), '[]'::jsonb),
-        'matchedExcludedTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'excludedTerms') term WHERE position(' '||trim(regexp_replace(lower(translate(term,'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ' IN ' '||trim(regexp_replace(lower(translate(concat_ws(' ',j.title,j.company,snap.description_text),'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ')>0), '[]'::jsonb)
+        'excludedCompany', CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements_text(p.value->'excludedCompanies') term WHERE ${normalizeWordsSql('term')} = ${normalizeWordsSql('j.company')}) THEN j.company ELSE NULL END,
+        'missingRequiredTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'requiredTerms') term WHERE position(' '||${normalizeWordsSql('term')}||' ' IN ' '||${normalizeWordsSql("concat_ws(' ',j.title,j.company,snap.description_text)")}||' ')=0), '[]'::jsonb),
+        'matchedExcludedTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'excludedTerms') term WHERE position(' '||${normalizeWordsSql('term')}||' ' IN ' '||${normalizeWordsSql("concat_ws(' ',j.title,j.company,snap.description_text)")}||' ')>0), '[]'::jsonb)
       )) AS preference_reasons,
       (o.job_id IS NOT NULL) AS preference_restored
     FROM grouped g JOIN jobs j ON j.workspace_id=$1 AND j.id=g.job_id CROSS JOIN preferences p
