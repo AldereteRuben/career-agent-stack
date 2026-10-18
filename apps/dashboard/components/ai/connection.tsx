@@ -245,7 +245,7 @@ export function AiConnectionPanel({ visible = true, onConnectionChange }: { visi
       <h2 id={headingId} tabIndex={-1} ref={heading}>{c('Ayuda con IA', 'AI assistance')}</h2>
       <Tag tone={connected && !unavailable ? 'green' : 'neutral'}>{connected && !unavailable ? c('Codex conectado', 'Codex connected') : c('Opcional', 'Optional')}</Tag>
     </div>
-    <p className={styles.intro}>{c('Usa tu cuenta de Codex cuando quieras ayuda con una búsqueda o una candidatura. Puedes seguir usando Career Stack sin conectarla.', 'Use your Codex account when you want help with a search or application. You can keep using Career Stack without connecting it.')}</p>
+    <p className={styles.intro}>{c('Usa tu cuenta de Codex cuando quieras ayuda con una búsqueda o una solicitud. Puedes seguir usando Career Stack sin conectarla.', 'Use your Codex account when you want help with a search or application. You can keep using Career Stack without connecting it.')}</p>
     {loading && <p className={styles.loading} role="status">{c('Consultando la conexión…', 'Checking the connection…')}</p>}
     {unavailable ? <>
       <p>{c('La ayuda con IA no está activa en esta instalación. Tus búsquedas automáticas y las demás funciones siguen disponibles.', 'AI assistance is not active on this installation. Your automatic searches and other features remain available.')}</p>
