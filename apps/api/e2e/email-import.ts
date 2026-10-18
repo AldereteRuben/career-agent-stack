@@ -36,7 +36,7 @@ export const emailImportScenario: Scenario = {
     await paste.fill(`We regret to inform you ${marker}; we decided not to proceed.`);
     await page.getByRole('button', { name: any('Revisar mensaje', 'Review message') }).click();
     await page.getByText(any('La etapa actual es Oferta', 'The current stage is Offer')).waitFor();
-    assert.equal(await page.getByRole('checkbox').count(), 0, 'An offer-stage downgrade is not offered for confirmation');
+    assert.equal(await page.locator('.application-email-import input[type="checkbox"]').count(), 0, 'An offer-stage downgrade is not offered for confirmation');
     await page.getByRole('button', { name: any('Guardar sin cambiar etapa', 'Save without changing stage') }).click();
     await eventually(applicationStage, (stage) => stage === 'OFFER', 'A later email cannot downgrade an offer');
 
