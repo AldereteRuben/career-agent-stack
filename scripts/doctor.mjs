@@ -29,10 +29,10 @@ async function main() {
   let envExists = true;
   try { await access(envPath); } catch (error) { if (error?.code === 'ENOENT') envExists = false; else throw error; }
   if (envExists && !(await isPrivate(envPath))) {
-    fail('.env no tiene permisos privados verificables', '.env does not have verifiable private permissions', 'pnpm start (restringe y comprueba los permisos antes de leer .env)', 'pnpm start (restricts and verifies permissions before reading .env)');
+    fail('No se pudo verificar la privacidad de .env; no se ha leído.', 'Could not verify the privacy of .env; it was not read.', 'pnpm start (restringe y verifica los permisos antes de leer .env)', 'pnpm start (restricts and verifies permissions before reading .env)');
     return;
   }
-  const env = await readLocalEnv();
+  const env = envExists ? await readLocalEnv() : null;
   if (!env && alternateEnv) return fail(`No existe ${envPath} (CAREER_ENV_FILE)`, `${envPath} (CAREER_ENV_FILE) does not exist`);
   if (alternateEnv) {
     const problem = alternateEnvProblem(env);
@@ -40,7 +40,14 @@ async function main() {
     else pass(`Configuración de CAREER_ENV_FILE: ${envPath}`, `CAREER_ENV_FILE configuration: ${envPath}`);
   }
   if (!env) {
-    const pending = await readLocalEnv(pendingEnvPath);
+    let pendingExists = true;
+    try { await access(pendingEnvPath); }
+    catch (error) { if (error?.code === 'ENOENT') pendingExists = false; else throw error; }
+    if (pendingExists && !(await isPrivate(pendingEnvPath))) {
+      fail('No se pudo verificar la privacidad de .env.pending; no se ha leído.', 'Could not verify the privacy of .env.pending; it was not read.', 'pnpm run bootstrap (restringe y verifica el archivo antes de retomarlo)', 'pnpm run bootstrap (restricts and verifies the file before resuming it)');
+      return;
+    }
+    const pending = pendingExists ? await readLocalEnv(pendingEnvPath) : null;
     if (pending) fail('La preparación inicial no terminó (.env.pending existe, .env todavía no)', 'Initial setup did not finish (.env.pending exists, .env does not yet)', 'pnpm run bootstrap (retoma con las mismas claves)', 'pnpm run bootstrap (resumes with the same keys)');
     else fail('Falta .env: este equipo aún no está preparado', '.env is missing: this machine is not set up yet', 'pnpm run bootstrap', 'pnpm run bootstrap');
     return;

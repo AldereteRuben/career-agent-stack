@@ -37,7 +37,6 @@ import { ensurePrivateFile, ensurePrivateTree } from './lib/private-files.mjs';
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
 const pnpm = (args, env = process.env) => runPnpm(args, { cwd: projectRoot, stdio: 'inherit', env });
-const readText = async (path) => { try { return await readFile(path, 'utf8'); } catch { return null; } };
 // Written on the role and database this script creates, so a re-run can tell them apart from anything else.
 const ownerMark = (id) => `career-agent-stack install ${id}`;
 const rerun = fix('Corrige lo indicado y vuelve a ejecutar: pnpm run bootstrap (retoma donde se quedó, con las mismas claves).', 'Fix the above and run again: pnpm run bootstrap (it resumes where it stopped, with the same keys).');
@@ -92,8 +91,13 @@ async function choosePorts() {
 
 /** Creates .env.pending on the first run; later runs resume from it unchanged (same keys, database and ports). */
 async function pendingConfiguration() {
-  const existing = await readText(pendingEnvPath);
-  if (existing !== null) {
+  let pendingExists = true;
+  try { await access(pendingEnvPath); }
+  catch (error) { if (error?.code === 'ENOENT') pendingExists = false; else throw error; }
+  if (pendingExists) {
+    // Never inspect a pending configuration until its ACL has been restricted and verified.
+    await ensurePrivateFile(pendingEnvPath, { create: false });
+    const existing = await readFile(pendingEnvPath, 'utf8');
     await writePrivateFileAtomic(pendingEnvPath, existing);
     ok('Se retoma la preparación anterior (.env.pending, mismas claves)', 'Resuming the previous setup (.env.pending, same keys)');
     return parseEnv(existing);
@@ -298,9 +302,12 @@ async function main() {
   checkTools();
   await ensureDependencies();
 
-  try { await access(envPath); await ensurePrivateFile(envPath, { create: false }); }
-  catch (error) { if (error?.code !== 'ENOENT') throw error; }
-  const current = await readText(envPath);
+  let current = null;
+  try {
+    await access(envPath);
+    await ensurePrivateFile(envPath, { create: false });
+    current = await readFile(envPath, 'utf8');
+  } catch (error) { if (error?.code !== 'ENOENT') throw error; }
   if (alternateEnv && current === null) throw new RecoveryError({
     es: `No existe ${envPath} (CAREER_ENV_FILE). Con CAREER_ENV_FILE solo se comprueba una instalación existente; no se crea ninguna.`,
     en: `${envPath} (CAREER_ENV_FILE) does not exist. CAREER_ENV_FILE only checks an existing installation; none is created.`,
@@ -314,7 +321,10 @@ async function main() {
       es: '.env existe pero está incompleto (DATABASE_URL o claves locales).', en: '.env exists but is incomplete (DATABASE_URL or local keys).',
       fixes: [fix('Revisa: pnpm run doctor. No borres .env: contiene la clave que protege tus datos.', 'Check: pnpm run doctor. Do not delete .env: it holds the key that protects your data.')],
     });
-    if (await readText(pendingEnvPath) !== null) warn('Hay un .env.pending de una preparación anterior; se ignora porque .env ya existe.', 'A .env.pending from an earlier setup is ignored because .env already exists.');
+    try {
+      await access(pendingEnvPath);
+      warn('Hay un .env.pending de una preparación anterior; se ignora porque .env ya existe.', 'A .env.pending from an earlier setup is ignored because .env already exists.');
+    } catch (error) { if (error?.code !== 'ENOENT') throw error; }
     await ensureServer(database);
     await checkCredentials(values, '.env');
     migrate(values);

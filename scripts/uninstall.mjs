@@ -12,7 +12,7 @@
 // inside the installation folder, away from reserved paths and the backup folder, with no symbolic links; and it
 // keeps a progress file, so a failed run resumes. The checkout's code, node_modules, the PostgreSQL server, the
 // Playwright browsers and the Codex or Claude configuration are never touched.
-import { lstat, readFile, readdir, rmdir } from 'node:fs/promises';
+import { access, lstat, readFile, readdir, rmdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import process from 'node:process';
 import { parseArgs } from 'node:util';
@@ -22,6 +22,7 @@ import {
   checkDeletablePath, deletePath, dropDatabase, dropRole, identityOf, inspectDatabase, inspectRole, markedObjects, measure, PROGRESS_FORMAT,
   progressPath, readProgress, writeProgress,
 } from './lib/uninstall-core.mjs';
+import { ensurePrivateFile } from './lib/private-files.mjs';
 
 const fix = (es, en) => ({ es, en });
 const folder = alternateEnv ? dirname(envPath) : projectRoot;
@@ -135,8 +136,19 @@ function printPlan(plan, sizes, confirmed) {
 async function main() {
   const flags = options();
   if (flags.help) { say('Uso: pnpm run uninstall [--confirm <id>] [--include-backups] [--skip-database]', 'Usage: pnpm run uninstall [--confirm <id>] [--include-backups] [--skip-database]'); return; }
-  let env = await readLocalEnv(envPath);
-  if (!env && !alternateEnv) env = await readLocalEnv(pendingEnvPath);
+  let env = null;
+  try {
+    await access(envPath);
+    await ensurePrivateFile(envPath, { create: false });
+    env = await readLocalEnv(envPath);
+  } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (!env && !alternateEnv) {
+    try {
+      await access(pendingEnvPath);
+      await ensurePrivateFile(pendingEnvPath, { create: false });
+      env = await readLocalEnv(pendingEnvPath);
+    } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  }
   const progress = await readProgress(folder);
   if (!env && !progress) { say(`No hay ninguna instalación que desinstalar en ${folder}.`, `There is no installation to uninstall in ${folder}.`); return; }
   const identity = env ? identityOf(env) : { kind: progress.kind, id: progress.id, mark: progress.kind === 'restore' ? `career-agent-stack restore ${progress.id}` : `career-agent-stack install ${progress.id}`, managed: true };
