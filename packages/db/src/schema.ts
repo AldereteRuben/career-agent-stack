@@ -53,6 +53,7 @@ export const boards = pgTable('boards', {
 
 export const jobs = pgTable('jobs', {
   companyResearch: jsonb('company_research').$type<CompanyResearchNotes>().notNull().default({ whatItDoes: '', howItMakesMoney: '', recentNews: '', culture: '', questionsToAsk: '' }),
+  companyResearchRevision: integer('company_research_revision').notNull().default(1),
   // The person closed this job; it stays CLOSED whatever sources report until they reopen it (ADR 021).
   closedByUser: boolean('closed_by_user').notNull().default(false),
   discoveredAt: timestamp('discovered_at', { withTimezone: true }),

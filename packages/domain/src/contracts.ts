@@ -15,6 +15,7 @@ export const companyResearchSchema = z.object({
   questionsToAsk: z.string().trim().max(3000),
 }).strict();
 export type CompanyResearchNotes = z.infer<typeof companyResearchSchema>;
+export const companyResearchSaveSchema = z.object({ expectedRevision: z.number().int().positive(), notes: companyResearchSchema }).strict();
 
 const employmentMonth = z.string().regex(/^[1-9][0-9]{3}-(0[1-9]|1[0-2])$/);
 export const employmentSchema = z.object({

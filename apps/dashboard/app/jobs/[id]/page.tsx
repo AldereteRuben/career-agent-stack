@@ -17,7 +17,7 @@ import styles from '../jobs.module.css';
 
 type Match = { titleAlignment: number | null; matchedTargetTitle: string | null; matchedSkills: string[]; missingSkills: string[]; approvedFactCount: number; targetTitles: string[]; profileRevision: number; notes: string[] };
 type CompanyResearchNotes = { whatItDoes: string; howItMakesMoney: string; recentNews: string; culture: string; questionsToAsk: string };
-type Job = { discoveredAt: string | null; seenAt: string | null; id: string; title: string; company: string; location: string | null; canonicalUrl: string | null; fitScore: number | null; evidenceCoverage: number | null; eligibility: string; reasons: string[]; shortlistDecision: string; availability: string; createdAt: string; companyResearch: CompanyResearchNotes; provisional?: boolean; match?: Match | null };
+type Job = { discoveredAt: string | null; seenAt: string | null; id: string; title: string; company: string; location: string | null; canonicalUrl: string | null; fitScore: number | null; evidenceCoverage: number | null; eligibility: string; reasons: string[]; shortlistDecision: string; availability: string; createdAt: string; companyResearch: CompanyResearchNotes; companyResearchRevision: number; provisional?: boolean; match?: Match | null };
 type Snapshot = { id: string; title: string; descriptionText: string | null; fetchedAt: string };
 type JobApplication = { id: string; state: string; recruitmentStage?: string; updatedAt?: string };
 type AvailabilityEvent = { fromState: string; toState: string; reason: string; createdAt: string };
@@ -120,9 +120,15 @@ export default function JobDetailPage() {
     if (!job || busy) return;
     setBusy('research'); setError(''); setMessage('');
     try {
-      await api(`/jobs/${job.id}/company-research`, { method: 'PUT', body: JSON.stringify(job.companyResearch) });
+      const saved = await api<{ companyResearch: CompanyResearchNotes; companyResearchRevision: number }>(`/jobs/${job.id}/company-research`, { method: 'PUT', body: JSON.stringify({ expectedRevision: job.companyResearchRevision, notes: job.companyResearch }) });
+      setData((current) => current?.job.id === job.id ? { ...current, job: { ...current.job, ...saved } } : current);
       setMessage(c('Notas guardadas en este equipo.', 'Notes saved on this computer.'));
-    } catch (err) { setError(errorMessage(err)); }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        await load();
+        setError(c('Las notas cambiaron en otra pestaña. Cargamos la versión más reciente; revisa los cambios antes de guardar otra vez.', 'These notes changed in another tab. The latest version is loaded; review it before saving again.'));
+      } else setError(errorMessage(err));
+    }
     finally { setBusy(null); }
   };
 

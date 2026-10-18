@@ -401,7 +401,7 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
   const now = new Date();
-  const scored = applyMatch({ companyResearch: { whatItDoes: '', howItMakesMoney: '', recentNews: '', culture: '', questionsToAsk: '' }, discoveredAt: null, seenAt: null, savedAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
+  const scored = applyMatch({ companyResearch: { whatItDoes: '', howItMakesMoney: '', recentNews: '', culture: '', questionsToAsk: '' }, companyResearchRevision: 1, discoveredAt: null, seenAt: null, savedAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
     await lockKey(tx, `discovery:${id}`);
     await lockJobIdentity(tx,id);

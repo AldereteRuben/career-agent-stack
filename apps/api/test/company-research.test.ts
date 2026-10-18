@@ -42,11 +42,13 @@ describe('company research notes (disposable database)', { skip: !adminUrl && 's
     await client.query('insert into workspaces(id) values ($1)', [workspace]);
     const job = await addJob(workspace); const instance = app();
     try {
-      const first = await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${job}/company-research`, payload: notes });
-      assert.equal(first.statusCode, 200); assert.deepEqual(first.json().companyResearch, notes);
+      const first = await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${job}/company-research`, payload: { expectedRevision: 1, notes } });
+      assert.equal(first.statusCode, 200); assert.deepEqual(first.json().companyResearch, notes); assert.equal(first.json().companyResearchRevision, 2);
+      const stale = await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${job}/company-research`, payload: { expectedRevision: 1, notes: { ...notes, culture: 'A stale edit.' } } });
+      assert.equal(stale.statusCode, 409, 'A stale tab must not overwrite newer notes');
       const edited = { ...notes, recentNews: 'Published an accessibility report.' };
-      const second = await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${job}/company-research`, payload: edited });
-      assert.equal(second.statusCode, 200); assert.deepEqual(second.json().companyResearch, edited);
+      const second = await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${job}/company-research`, payload: { expectedRevision: 2, notes: edited } });
+      assert.equal(second.statusCode, 200); assert.deepEqual(second.json().companyResearch, edited); assert.equal(second.json().companyResearchRevision, 3);
       const exportedJob = (await dbmod.db.select().from(dbmod.jobs).where(eq(dbmod.jobs.id, job)))[0];
       assert.deepEqual(exportedJob?.companyResearch, edited);
     } finally { await instance.close(); }
@@ -56,8 +58,8 @@ describe('company research notes (disposable database)', { skip: !adminUrl && 's
     await client.query('insert into workspaces(id) values ($1), ($2)', [workspace, otherWorkspace]);
     const foreignJob = await addJob(otherWorkspace); const instance = app();
     try {
-      assert.equal((await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${foreignJob}/company-research`, payload: notes })).statusCode, 404);
-      assert.equal((await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${foreignJob}/company-research`, payload: { ...notes, contact: 'private' } })).statusCode, 400);
+      assert.equal((await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${foreignJob}/company-research`, payload: { expectedRevision: 1, notes } })).statusCode, 404);
+      assert.equal((await instance.inject({ method: 'PUT', url: `/api/v1/jobs/${foreignJob}/company-research`, payload: { expectedRevision: 1, notes: { ...notes, contact: 'private' } } })).statusCode, 400);
     } finally { await instance.close(); }
   });
 
