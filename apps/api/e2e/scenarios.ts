@@ -18,8 +18,10 @@ import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
+import { applicationsCsvScenario } from './applications-csv.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
+import { trackingMetricsScenario } from './tracking-metrics.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -96,8 +98,10 @@ export const scenarios: Scenario[] = [
     },
   },
   phase1FollowUpScenario,
+  applicationsCsvScenario,
   jobReportsScenario,
   timelineScenario,
+  trackingMetricsScenario,
   {
     name: 'es-en-labels-on-every-page',
     async run({ page }) {
@@ -268,6 +272,16 @@ export const scenarios: Scenario[] = [
       await importedJob.getByRole('link', { name: any('Ver detalles', 'View details') }).click();
       await page.waitForURL(/\/jobs\/[^/?#]+/);
       await page.getByRole('heading', { name: title }).first().waitFor();
+      const feedbackPanel = page.locator('.job-match-feedback');
+      await feedbackPanel.getByRole('radio', { name: any('No es para mí', 'Not for me') }).check();
+      await feedbackPanel.getByLabel(any('Motivo opcional', 'Optional reason')).selectOption('LOCATION');
+      await feedbackPanel.getByRole('button', { name: any('Guardar opinión', 'Save feedback') }).click();
+      await eventually(() => api.get<{ total: number; notForMe: number }>('/job-feedback/summary'), (summary) => summary.total === 1 && summary.notForMe === 1, 'Explicit feedback appears in the private summary');
+      await feedbackPanel.getByRole('radio', { name: any('Me interesa', 'Interested') }).check();
+      await feedbackPanel.getByRole('button', { name: any('Actualizar opinión', 'Update feedback') }).click();
+      await eventually(() => api.get<{ total: number; interested: number }>('/job-feedback/summary'), (summary) => summary.total === 1 && summary.interested === 1, 'Editing feedback replaces the prior rating');
+      await feedbackPanel.getByRole('button', { name: any('Eliminar opinión', 'Delete feedback') }).click();
+      await eventually(() => api.get<{ total: number }>('/job-feedback/summary'), (summary) => summary.total === 0, 'Deleting feedback removes it from the summary');
       await page.screenshot({ path: join(artifacts, 'job-detail.png'), fullPage: true });
 
       await goTo(page, '/applications');
@@ -278,7 +292,7 @@ export const scenarios: Scenario[] = [
       await page.getByRole('heading', { name: title }).first().waitFor();
       const note = `Prepare technical examples ${marker}`;
       const noteForm = page.locator('.note-form');
-      const noteField = noteForm.getByLabel(any('Añadir nota', 'Add a note', 'Add note', 'Nota', 'Note')).first();
+      const noteField = noteForm.getByRole('textbox', { name: any('Añadir nota al historial', 'Add a note to the history') });
       await noteField.fill(note);
       const saveNote = noteForm.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first();
       await eventually(() => saveNote.isEnabled(), Boolean, 'The note button becomes enabled after entering a note');

@@ -62,6 +62,9 @@ try {
     const request = route.request(); const url = new URL(request.url()); const path = url.pathname.replace('/api/v1', ''); const method = request.method();
     if (path === '/session') return route.continue();
     if (path === '/capabilities') return response(route, { available: ['ai-processing'], unavailable: [] });
+    if (path === '/job-filters') return response(route, { excludedCompanies: [], requiredTerms: [], excludedTerms: [] });
+    if (path === '/job-feedback/summary') return response(route, { periodStart: now, periodEnd: now, windowDays: 90, total: 0, interested: 0, notForMe: 0, minimumSample: 5, patterns: [] });
+    if (/^\/jobs\/[^/]+\/feedback$/.test(path)) return response(route, null);
     if (path === '/summary') return response(route, { boards: [], recentJobs: [], recentApplications: [], pendingFacts: 0, unansweredItems: 0, applicationCounts: {}, savedSearchCount: 0, activeSearchCount: 0, totalJobs: 0, activeApplications: 0, profileCompletion: { percent: 100, completed: 6, total: 6, missing: [], approvedFactCount: 1, pendingFactCount: 0 } });
     if (path === '/profile') {
       if (method === 'PUT') { profile.profile = request.postDataJSON().profile; profile.revision++; ids.fact = randomUUID(); fact.id = ids.fact; }
@@ -70,9 +73,13 @@ try {
     const application = { id: ids.application, documentId: ids.document, documentApprovalStatus: state.documentApproval, jobId: ids.job, company: job.company, role: job.title, location: job.location, canonicalUrl: job.canonicalUrl, state: 'REVIEW_REQUIRED', recruitmentStage: 'NOT_CONTACTED', shortlistDecision: 'UNREVIEWED', notes: '', updatedAt: now, version: 1 };
     if (path === '/applications') return response(route, { items: [application], total: 1, offset: 0, limit: 25 });
     if (path === `/applications/${ids.application}`) return response(route, application);
+    if (path === `/applications/${ids.application}/cover-letter/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
+    if (path === `/applications/${ids.application}/cover-letter`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
     if (path === `/applications/${ids.application}/events` || path === '/preparations') return response(route, []);
     if (/^\/applications\/[0-9a-f-]+\/contacts$/.test(path)) return response(route, { links: [], contacts: [] });
     if (path === `/applications/${ids.application}/assist`) return response(route, { supported: false, url: job.canonicalUrl, identity: { fullName: 'Alex Example', email: 'alex@example.test' }, application, documents: [], attempts: [] });
+    if (path === `/applications/${ids.application}/materials` && method === 'GET') return response(route, { files: [] });
+    if (path === `/applications/${ids.application}/materials.zip` && method === 'POST') return route.fulfill({ status: 200, contentType: 'application/zip', body: Buffer.from('PK\u0005\u0006\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000') });
     if (path === '/documents') return response(route, []);
     if (path === '/jobs') return response(route, [job]);
     if (path === `/jobs/${ids.job}`) return response(route, { job, snapshots: [{ id: randomUUID(), title: job.title, descriptionText: posting, fetchedAt: now }], sources: [], applications: [], closedByUser: false, availabilityHistory: [], stillListedBySource: false });

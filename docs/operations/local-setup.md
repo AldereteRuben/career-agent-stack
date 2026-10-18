@@ -50,7 +50,7 @@ $env:CAREER_ADMIN_DATABASE_URL = "postgresql://postgres:YOUR_PASSWORD@127.0.0.1:
 pnpm run bootstrap
 ```
 
-Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. Windows does not provide POSIX file permission bits, so tests that assert those mode bits are skipped there; the backup archive format test still runs in Windows CI.
+Backups need `pg_dump` and `pg_restore`: add `C:\Program Files\PostgreSQL\17\bin` to your `PATH`. Windows does not provide POSIX file permission bits, so tests that assert those mode bits are skipped there. At startup, the launcher restricts `.env`, the configured data folder and its files to the current Windows user; if it cannot verify those ACLs, it stops before reading or writing private data. Windows CI checks the ACL rules and the backup archive format.
 
 **Español.** En Windows nativo se puede preparar una instalación, iniciarla con `pnpm start`, comprobarla con `pnpm run status`, detenerla con `pnpm run stop` y ejecutar las pruebas que necesitan base de datos. Comprobado a mano en Windows 11 con un servicio local de PostgreSQL 17. Diferencias con macOS y Linux: Windows no tiene grupos de procesos ni directorios de trabajo legibles, así que un proceso se reconoce por su hora de inicio exacta y la ruta absoluta de su archivo de entrada, y `pnpm run stop` cierra el árbol de procesos a la fuerza porque un programa de consola sin ventana no puede recibir una petición de cierre; `pnpm start --copy-token` copia el token con `clip.exe` y lo borra a los 2 minutos como en los demás sistemas (o léelo en `data\setup-token`). Sin verificar: Docker Desktop, WSL 2 y los lanzadores `.command` (solo macOS).
 
@@ -68,7 +68,7 @@ $env:CAREER_ADMIN_DATABASE_URL = "postgresql://postgres:TU_CONTRASEÑA@127.0.0.1
 pnpm run bootstrap
 ```
 
-Las copias de seguridad necesitan `pg_dump` y `pg_restore`: añade `C:\Program Files\PostgreSQL\17\bin` al `PATH`. Windows no proporciona bits de permisos POSIX, así que allí se omiten las pruebas que los afirman; la prueba del formato de la copia sí se ejecuta en CI de Windows.
+Las copias de seguridad necesitan `pg_dump` y `pg_restore`: añade `C:\Program Files\PostgreSQL\17\bin` al `PATH`. Windows no proporciona bits de permisos POSIX, así que allí se omiten las pruebas que los afirman. Al arrancar, el lanzador restringe `.env`, la carpeta de datos configurada y sus archivos a la cuenta actual de Windows; si no puede verificar esas ACL, se detiene antes de leer o escribir datos privados. CI de Windows comprueba las reglas de ACL y el formato de las copias.
 
 ## First run
 
@@ -145,6 +145,16 @@ CAREER_ENV_FILE=/path/to/restored/.env pnpm run stop
 Processes started by the launcher write logs to `data/logs/`. They are recorded in `data/run/` with their exact identity: PID, process group, start time, working directory, absolute entry point, and checkout. `pnpm run stop` checks that identity again right before each signal and signals only an exact match. A process whose PID was reused, or a record from an older launcher version, is **not** stopped. The command explains why, exits 1, and leaves the process running. `pnpm run stop --forget` then removes such records without signalling anything. Services you started yourself are left alone. PostgreSQL keeps running unless you pass `--database`. Stopping it keeps the data.
 
 `pnpm run status` gives the same report without starting, building, installing, or migrating anything. It exits `0` only when everything is ready and current. It exits `1` when a dependency or service is missing, or when a running service needs a restart to use the latest code. Scripts and CI can rely on this.
+
+### Start automatically at login / Inicio automático al iniciar sesión
+
+Autostart is off by default. On macOS and Linux, enable it from this configured checkout with `pnpm run autostart -- --enable`; disable it with `pnpm run autostart -- --disable`, and inspect it with `pnpm run autostart -- --status`. `pnpm run status` also reports whether it is enabled. The login task calls this checkout's existing launcher with `--no-open`; it does not open a browser. Disabling unloads the login task and stops only services recorded as started by the launcher. If the launcher cannot verify that those services stopped, it keeps the configuration and reports the problem rather than deleting evidence.
+
+El inicio automático está desactivado de forma predeterminada. En macOS y Linux, actívalo desde esta copia ya configurada con `pnpm run autostart -- --enable`; desactívalo con `pnpm run autostart -- --disable` y consúltalo con `pnpm run autostart -- --status`. `pnpm run status` también indica si está activado. La tarea de inicio usa el lanzador existente de esta copia con `--no-open`; no abre el navegador. Al desactivarlo se descarga la tarea y se detienen solo los servicios registrados como iniciados por el lanzador. Si no puede verificar que se detuvieron, conserva la configuración e informa del problema en vez de borrar la evidencia.
+
+The command is user-scoped and needs no `sudo`. It records the current Node executable and `PATH`, so repeat `--enable` after changing Node installations. Native Windows autostart is not available until its launcher is supported in [#19](https://github.com/AldereteRuben/career-agent-stack/issues/19). CI verifies generated configuration, mocked failure paths, and the enable/start/disable lifecycle against Ubuntu's real systemd user manager using a disposable no-op fixture.
+
+El comando afecta solo a tu usuario y no requiere `sudo`. Guarda la ruta actual de Node y `PATH`; vuelve a ejecutar `--enable` si cambias la instalación de Node. El inicio nativo en Windows no está disponible hasta que el lanzador sea compatible, según [#19](https://github.com/AldereteRuben/career-agent-stack/issues/19). CI verifica la configuración, los fallos simulados y el ciclo de activar/iniciar/desactivar con el gestor real de servicios de usuario de Ubuntu y un lanzador desechable que no hace nada.
 
 Messages are printed in Spanish and English. Spanish comes first when the system language is Spanish, or you can set `CAREER_LANG=es`. Every failure ends with the next concrete step and confirms that no data was deleted.
 

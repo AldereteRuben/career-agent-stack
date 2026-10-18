@@ -1,5 +1,5 @@
 {
-  "id": "c466fedb-be65-48f9-95ad-ade013bcdd0a",
+  "id": "f9313752-1304-448b-9bc8-51f977f8095a",
   "prevId": "818ac5b8-19f6-46b3-a824-037f306f892c",
   "version": "7",
   "dialect": "postgresql",
@@ -1637,160 +1637,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.application_contacts": {
-      "name": "application_contacts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "application_id": {
-          "name": "application_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "contact_id": {
-          "name": "contact_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "application_contacts_application_contact_uq": {
-          "name": "application_contacts_application_contact_uq",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "application_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "contact_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "application_contacts_workspace_application_idx": {
-          "name": "application_contacts_workspace_application_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "application_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "application_contacts_workspace_application_fk": {
-          "name": "application_contacts_workspace_application_fk",
-          "tableFrom": "application_contacts",
-          "tableTo": "applications",
-          "columnsFrom": [
-            "workspace_id",
-            "application_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "application_contacts_workspace_contact_fk": {
-          "name": "application_contacts_workspace_contact_fk",
-          "tableFrom": "application_contacts",
-          "tableTo": "workspace_contacts",
-          "columnsFrom": [
-            "workspace_id",
-            "contact_id"
-          ],
-          "columnsTo": [
-            "workspace_id",
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "application_contacts_workspace_id_uq": {
-          "name": "application_contacts_workspace_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.application_document_revisions": {
       "name": "application_document_revisions",
       "schema": "",
@@ -3398,6 +3244,109 @@
           "value": "\"job_availability_events\".\"reason\" in ('ABSENT_FROM_SOURCES', 'SEEN_AGAIN', 'CLOSED_BY_USER', 'REOPENED_BY_USER')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.job_filter_overrides": {
+      "name": "job_filter_overrides",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "job_filter_overrides_workspace_job_fk": {
+          "name": "job_filter_overrides_workspace_job_fk",
+          "tableFrom": "job_filter_overrides",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "workspace_id",
+            "job_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "job_filter_overrides_pkey": {
+          "name": "job_filter_overrides_pkey",
+          "columns": [
+            "workspace_id",
+            "job_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.job_filter_preferences": {
+      "name": "job_filter_preferences",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "preferences": {
+          "name": "preferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"excludedCompanies\":[],\"requiredTerms\":[],\"excludedTerms\":[]}'::jsonb"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "job_filter_preferences_workspace_id_workspaces_id_fk": {
+          "name": "job_filter_preferences_workspace_id_workspaces_id_fk",
+          "tableFrom": "job_filter_preferences",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.job_identity_members": {
@@ -6218,103 +6167,6 @@
           "value": "\"source_policy_reviews\".\"fixture_coverage\" between 0 and 100"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.workspace_contacts": {
-      "name": "workspace_contacts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(160)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "profile_url": {
-          "name": "profile_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "workspace_contacts_workspace_name_idx": {
-          "name": "workspace_contacts_workspace_name_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "workspace_contacts_workspace_id_workspaces_id_fk": {
-          "name": "workspace_contacts_workspace_id_workspaces_id_fk",
-          "tableFrom": "workspace_contacts",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "workspace_contacts_workspace_id_uq": {
-          "name": "workspace_contacts_workspace_id_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id",
-            "id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.workspaces": {
