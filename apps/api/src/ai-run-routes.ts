@@ -11,7 +11,7 @@ import { AI_QUEUE_LOCK, AiQueueError, type AiQueue } from './ai/queue.js';
 import { AiSourceError } from './ai/source-snapshot.js';
 import { lockKey, profileLockKey } from './workspace-data.js';
 
-export const AI_CONFIG_VERSION = 'codex-0.160.0-v1';
+export const AI_CONFIG_VERSION = 'codex-0.163.0-v1';
 export const AI_NOTICE_VERSION = 'career-sharing-v1';
 type Preview = { id: string; workspaceId: string; connectionId: string; connectionRevision: number; accountFingerprint: string; maskedIdentity: string | null; snapshot: AiSourceSnapshot; at: number; runId?: string; consent?: typeof aiConsents.$inferSelect; idempotencyKey?: string; task?: Promise<unknown> };
 const paramsSchema = z.object({ id: z.uuid() }).strict();
@@ -79,7 +79,12 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     if (!options.enabled) return reply.code(503).send({ error: 'AI_UNAVAILABLE' });
     const id = workspace(request);
     const connection = await activeConnection(id);
-    if (!connection) return reply.code(409).send({ error: 'AI_NOT_CONNECTED' });
+    if (!connection) {
+      // An authorized account whose last check did not find a signed-in session is not the same as no account:
+      // checking it again in Settings is enough, and the person need not authorize anything new.
+      const authorized = (await database.select({ id: aiConnections.id }).from(aiConnections).where(and(eq(aiConnections.workspaceId, id), eq(aiConnections.provider, 'codex'), eq(aiConnections.active, true))).limit(1))[0];
+      return reply.code(409).send({ error: authorized ? 'AI_SESSION_UNAVAILABLE' : 'AI_NOT_CONNECTED' });
+    }
     const snapshot = await createCurrentAiSnapshot(database, id, request.body);
     buildAiPrompt(snapshot, { workspaceId: id, operation: snapshot.operation, locale: snapshot.locale });
     for (const [key, value] of previews) if (Date.now() - value.at >= 300_000 && !value.task) previews.delete(key);

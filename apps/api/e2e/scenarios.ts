@@ -13,10 +13,13 @@ import { a11yScenarios } from './a11y.js';
 import { profileContractScenarios } from './profile-contract.js';
 import { securityHeaderScenarios } from './security-headers.js';
 import { factImportScenarios } from './fact-import.js';
+import { resumeImportScenarios } from './resume-import.js';
 import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
+import { jobReportsScenario } from './job-reports.js';
+import { timelineScenario } from './timeline.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -68,6 +71,7 @@ const expectedTitles: Record<string, { en: string; es: string }> = {
   '/jobs': { en: 'All jobs · Career Stack', es: 'Todas las ofertas · Career Stack' },
   '/jobs?scope=favorites': { en: 'Saved jobs · Career Stack', es: 'Ofertas guardadas · Career Stack' },
   '/applications': { en: 'Applications · Career Stack', es: 'Solicitudes · Career Stack' },
+  '/timeline': { en: 'Timeline · Career Stack', es: 'Cronología · Career Stack' },
   '/profile': { en: 'Profile · Career Stack', es: 'Perfil · Career Stack' },
   '/documents': { en: 'Resumes and documents · Career Stack', es: 'CV y documentos · Career Stack' },
   '/boards': { en: 'Companies · Career Stack', es: 'Empresas · Career Stack' },
@@ -92,6 +96,8 @@ export const scenarios: Scenario[] = [
     },
   },
   phase1FollowUpScenario,
+  jobReportsScenario,
+  timelineScenario,
   {
     name: 'es-en-labels-on-every-page',
     async run({ page }) {
@@ -506,6 +512,7 @@ scenarios.push(...profileContractScenarios);
 scenarios.push(...securityHeaderScenarios);
 
 scenarios.push(...factImportScenarios);
+scenarios.push(...resumeImportScenarios);
 
 scenarios.push(...v041Scenarios);
 

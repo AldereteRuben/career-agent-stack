@@ -11,8 +11,8 @@ import type { AiArtifact } from './result-view';
 import styles from './draft-action.module.css';
 
 /** Edits are a new PDF proposal. The existing PDF review remains the single approval step. */
-export function AiResumeReview({ artifact, name, printedContactFields, contextChanged = false, onGenerated, onCancel, onOriginals, onBusyChange }: {
-  artifact: AiArtifact; name: string; printedContactFields: string[]; contextChanged?: boolean; onGenerated: (documentId: string) => void; onCancel: () => void;
+export function AiResumeReview({ artifact, name, printedContactFields, paperSize, contextChanged = false, onGenerated, onCancel, onOriginals, onBusyChange }: {
+  artifact: AiArtifact; name: string; printedContactFields: string[]; paperSize: 'A4' | 'LETTER'; contextChanged?: boolean; onGenerated: (documentId: string) => void; onCancel: () => void;
   onOriginals: () => void; onBusyChange: (busy: boolean) => void;
 }) {
   const { locale } = useLocale(); const c = copy(locale);
@@ -40,7 +40,7 @@ export function AiResumeReview({ artifact, name, printedContactFields, contextCh
     try {
       const covered = new Set(selected.flatMap(item => item.sourceFactIds));
       const result = await api<{ id: string }>(`/ai/artifacts/${artifact.id}/resume`, { method: 'POST', body: JSON.stringify({
-        expectedRevision: artifact.revision, name: name.trim(), printedContactFields,
+        expectedRevision: artifact.revision, name: name.trim(), paperSize, printedContactFields,
         selections: selected.map(item => ({ proposalKey: item.proposalKey, text: edits[item.proposalKey]?.trim() })),
         includeOriginalFactIds: artifact.sources.facts.filter(fact => !covered.has(fact.factId)).map(fact => fact.factId),
       }) });

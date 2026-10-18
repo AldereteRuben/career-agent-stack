@@ -18,7 +18,7 @@ function fixture() {
     notify: async method => { methods.push(method); },
     onNotification: (callback: Parameters<AiRpcClient['onNotification']>[0]) => { listener = callback; return () => { listener = null; }; },
   });
-  const manager = createCodexLoginManager({ resolveBinary: async () => process.execPath, run: async () => ({ stdout: 'codex-cli 0.160.0\n', exitCode: 0 }), rpc });
+  const manager = createCodexLoginManager({ resolveBinary: async () => process.execPath, run: async () => ({ stdout: 'codex-cli 0.163.0\n', exitCode: 0 }), rpc });
   return { manager, methods, complete: (success = true) => listener?.('account/login/completed', { loginId: 'fixture-login', success }) };
 }
 test('login URL accepts only official HTTPS origins and hides terminal attempt URLs', async () => {

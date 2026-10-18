@@ -1,6 +1,6 @@
 # 018 — Importing an existing resume into the profile
 
-Status: **accepted**, implementation pending (tracking issue [#23](https://github.com/AldereteRuben/career-agent-stack/issues/23), task T0). Date: 2026-10-08.
+Status: **accepted**. The path without AI is implemented (T1–T5, T7, T10, T11: `packages/domain/src/resume-sections.ts`, `/profile/import`); the Codex path (T6) is still pending (tracking issue [#23](https://github.com/AldereteRuben/career-agent-stack/issues/23)). Date: 2026-10-08.
 
 ## Context
 

@@ -77,6 +77,11 @@ jobs:
           CAREER_V080_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_V090_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           CAREER_FACT_IMPORT_MIGRATION_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify job evaluation reports and batches with a disposable database
+        run: pnpm run test:job-reports
+        env:
+          CAREER_JOB_REPORT_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify resume import with a disposable database
         run: pnpm run test:fact-import
         env:
@@ -110,6 +115,11 @@ jobs:
         run: pnpm --filter @career/api exec playwright install --with-deps chromium
       - name: Install PDF text inspection
         run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+      - name: Verify application document test wiring
+        run: pnpm run test:application-documents
+        env:
+          CAREER_APPLICATION_DOCUMENTS_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+          CAREER_V090_PDF_TEST: 'true'
       - name: Verify reviewed assistant PDFs with fictional content
         run: pnpm --filter @career/api exec tsx --test test/ai-documents.test.ts
         env:
@@ -119,6 +129,10 @@ jobs:
         run: pnpm run test:preparation
         env:
           CAREER_PREPARATION_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify the activity timeline with a disposable workspace
+        run: pnpm run test:timeline
+        env:
+          CAREER_TIMELINE_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify assisted applications against fictional fixtures
         run: pnpm run test:assisted
         env:
@@ -176,8 +190,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: e2e
+          - id: e2e-1
             suite: test:e2e
+            shard: 1/4
+          - id: e2e-2
+            suite: test:e2e
+            shard: 2/4
+          - id: e2e-3
+            suite: test:e2e
+            shard: 3/4
+          - id: e2e-4
+            suite: test:e2e
+            shard: 4/4
           - id: edge-cases
             suite: test:edge-cases
           - id: search-ui
@@ -226,6 +250,7 @@ jobs:
         run: pnpm run ${{ matrix.suite }}
         env:
           E2E_PRODUCTION: '1'
+          E2E_SHARD: ${{ matrix.shard }}
           CAREER_PG_BIN: /usr/lib/postgresql/17/bin
           E2E_ADMIN_DATABASE_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
           NEXT_TELEMETRY_DISABLED: '1'

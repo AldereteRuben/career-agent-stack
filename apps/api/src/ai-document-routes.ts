@@ -14,6 +14,7 @@ import { checkAiSourceCurrent, type AiSourceRecords } from './ai/source-snapshot
 import { checkCurrentAiSnapshot, loadAiSourceRecords } from './ai/source-reader.js';
 
 export const aiResumeSelectionSchema=z.object({expectedRevision:z.number().int().positive(),name:z.string().trim().min(1).max(200),
+  paperSize:z.enum(['A4','LETTER']).default('A4'),
   printedContactFields:z.array(z.enum(['email','phone','city','links'])).max(4).default(['email']),
   selections:z.array(z.object({proposalKey:z.string().min(1).max(160),text:z.string().trim().min(1).max(4000)}).strict()).min(1).max(50),
   includeOriginalFactIds:z.array(z.uuid()).max(50).optional(),
@@ -72,12 +73,13 @@ export function registerAiDocumentRoutes(app:FastifyInstance,workspace:(request:
     const params=z.object({id:z.uuid()}).strict().safeParse(request.params),body=aiResumeSelectionSchema.safeParse(request.body);
     if(!params.success||!body.success)return reply.code(400).send({error:'INVALID_INPUT'});
     const workspaceId=workspace(request),artifactId=params.data.id,selection=body.data;
-    const requestHash=hash(JSON.stringify({name:selection.name,selections:selection.selections,printedContactFields:selection.printedContactFields,includeOriginalFactIds:selection.includeOriginalFactIds??null}));
+    const requestHash=hash(JSON.stringify({name:selection.name,paperSize:selection.paperSize,selections:selection.selections,printedContactFields:selection.printedContactFields,includeOriginalFactIds:selection.includeOriginalFactIds??null}));
+    const previousRequestHash=selection.paperSize==='A4'?hash(JSON.stringify({name:selection.name,selections:selection.selections,printedContactFields:selection.printedContactFields,includeOriginalFactIds:selection.includeOriginalFactIds??null})):null;
     const prepared=await database.transaction(async tx=>{
       await lockJobIdentity(tx,workspaceId);await lockKey(tx,profileLockKey(workspaceId));
       const artifact=(await tx.select().from(aiArtifacts).where(and(eq(aiArtifacts.workspaceId,workspaceId),eq(aiArtifacts.id,artifactId))).limit(1).for('update'))[0];
       if(!artifact)throw new AiDocumentError('AI_ARTIFACT_NOT_FOUND');
-      if(artifact.state==='ACCEPTED' && artifact.approvedHash===requestHash){const prior=await existingDocument(tx,workspaceId,artifactId);if(prior)return {prior};}
+      if(artifact.state==='ACCEPTED' && (artifact.approvedHash===requestHash || artifact.approvedHash===previousRequestHash)){const prior=await existingDocument(tx,workspaceId,artifactId);if(prior)return {prior};}
       if(artifact.state!=='PENDING_REVIEW'||artifact.revision!==selection.expectedRevision)throw new AiDocumentError('AI_REVIEW_CHANGED');
       const run=(await tx.select().from(aiRuns).where(and(eq(aiRuns.workspaceId,workspaceId),eq(aiRuns.id,artifact.runId))).limit(1))[0];
       const parsed=aiSourceSnapshotSchema.safeParse(run?.snapshot);
@@ -96,16 +98,16 @@ export function registerAiDocumentRoutes(app:FastifyInstance,workspace:(request:
     const cleanup=()=>unlink(filePath).catch(()=>undefined);
     let persisted=false;
     try{
-      const rendered=await (options.render??renderResume)({path:filePath,...prepared.identity,role:prepared.role,locale:prepared.basis.language,facts:prepared.basis.claims.map(claim=>({kind:claim.section,statement:claim.text,tags:[]}))});
+      const rendered=await (options.render??renderResume)({path:filePath,...prepared.identity,role:prepared.role,locale:prepared.basis.language,paperSize:selection.paperSize,facts:prepared.basis.claims.map(claim=>({kind:claim.section,statement:claim.text,tags:[]}))});
       const result=await database.transaction(async tx=>{
         await lockJobIdentity(tx,workspaceId);await lockKey(tx,profileLockKey(workspaceId));
         const artifact=(await tx.select().from(aiArtifacts).where(and(eq(aiArtifacts.workspaceId,workspaceId),eq(aiArtifacts.id,artifactId))).limit(1).for('update'))[0];
-        if(artifact?.state==='ACCEPTED'&&artifact.approvedHash===requestHash){const prior=await existingDocument(tx,workspaceId,artifactId);if(prior)return {row:prior,created:false};}
+        if(artifact?.state==='ACCEPTED'&&(artifact.approvedHash===requestHash||artifact.approvedHash===previousRequestHash)){const prior=await existingDocument(tx,workspaceId,artifactId);if(prior)return {row:prior,created:false};}
         if(!artifact||artifact.state!=='PENDING_REVIEW'||artifact.revision!==selection.expectedRevision)throw new AiDocumentError('AI_REVIEW_CHANGED');
         if(!(await checkCurrentAiSnapshot(tx,workspaceId,prepared.snapshot)).ok)throw new AiDocumentError('AI_SOURCE_CHANGED');
         await lockKey(tx,`document:${workspaceId}:${selection.name}`);
         const max=(await tx.select({revision:sql<number>`coalesce(max(${documentVersions.revision}),0)::int`}).from(documentVersions).where(and(eq(documentVersions.workspaceId,workspaceId),eq(documentVersions.name,selection.name))))[0]?.revision??0;
-        const row=(await tx.insert(documentVersions).values({id:docId,workspaceId,name:selection.name,revision:max+1,language:prepared.basis.language,printedContactFields:prepared.printedContactFields,profileRevisionId:prepared.profile.id,jobSnapshotId:prepared.posting.id,mediaType:'application/pdf',storagePath:relativePath,sha256:rendered.sha256,
+        const row=(await tx.insert(documentVersions).values({id:docId,workspaceId,name:selection.name,revision:max+1,language:prepared.basis.language,paperSize:selection.paperSize,printedContactFields:prepared.printedContactFields,profileRevisionId:prepared.profile.id,jobSnapshotId:prepared.posting.id,mediaType:'application/pdf',storagePath:relativePath,sha256:rendered.sha256,
           claims:prepared.basis.claims.map(claim=>({text:claim.text,sourceFactIds:claim.sourceFactIds,approvalStatus:'PENDING_REVIEW'})),claimsContractVersion:1,claimsBasis:prepared.basis,approvalStatus:'PENDING_REVIEW'}).returning())[0]!;
         await tx.update(aiArtifacts).set({state:'ACCEPTED',revision:artifact.revision+1,approvedAt:new Date(),approvedHash:requestHash}).where(and(eq(aiArtifacts.workspaceId,workspaceId),eq(aiArtifacts.id,artifactId)));
         return {row,created:true};
