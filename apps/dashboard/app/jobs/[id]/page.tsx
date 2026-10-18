@@ -124,7 +124,7 @@ export default function JobDetailPage() {
       setData((current) => current?.job.id === job.id ? { ...current, job: { ...current.job, ...saved } } : current);
       setMessage(c('Notas guardadas en este equipo.', 'Notes saved on this computer.'));
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.code === 'RESEARCH_CHANGED') {
         await load();
         setError(c('Las notas cambiaron en otra pestaña. Cargamos la versión más reciente; revisa los cambios antes de guardar otra vez.', 'These notes changed in another tab. The latest version is loaded; review it before saving again.'));
       } else setError(errorMessage(err));
