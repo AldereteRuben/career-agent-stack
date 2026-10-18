@@ -14,7 +14,7 @@ test('real systemd user manager enables, starts and removes a disposable launche
   const unitFile = join(home, '.config', 'systemd', 'user', serviceName);
   assert.equal(existsSync(unitFile), false, 'the disposable runner must not have an existing Career Stack user unit');
 
-  const root = mkdtempSync(join(tmpdir(), 'career-autostart-systemd-'));
+  const root = mkdtempSync(join(tmpdir(), 'career autostart systemd-'));
   const scripts = join(root, 'scripts');
   mkdirSync(scripts);
   writeFileSync(join(root, '.env'), 'FIXTURE_ONLY=1\n');

@@ -13,6 +13,7 @@ export const serviceName = 'career-agent-stack.service';
 
 const xml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 const systemdQuote = (value) => `"${String(value).replaceAll('%', '%%').replaceAll('$', '$$').replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n').replaceAll('\r', '\\r')}"`;
+const systemdPath = (value) => String(value).replaceAll('%', '%%').replaceAll('\\', '\\\\').replaceAll(' ', '\\x20').replaceAll('"', '\\x22').replaceAll('\n', '\\n').replaceAll('\r', '\\r');
 const say = (es, en) => {
   const spanish = /^es/i.test(process.env.CAREER_LANG || process.env.LC_ALL || process.env.LANG || '');
   process.stdout.write(`${spanish ? es : en}\n${spanish ? en : es}\n`);
@@ -24,7 +25,7 @@ export function launchAgent({ node = process.execPath, root = projectRoot, path 
 }
 
 export function systemdUnit({ node = process.execPath, root = projectRoot, path = process.env.PATH || '', home = homedir() } = {}) {
-  return `[Unit]\nDescription=Career Stack local launcher\nAfter=default.target\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nWorkingDirectory=${systemdQuote(root)}\nEnvironment=${systemdQuote(`HOME=${home}`)}\nEnvironment=${systemdQuote(`PATH=${path}`)}\nExecStart=${systemdQuote(node)} ${systemdQuote(join(root, 'scripts', 'launch.mjs'))} --no-open\nExecStop=${systemdQuote(node)} ${systemdQuote(join(root, 'scripts', 'stop.mjs'))}\n\n[Install]\nWantedBy=default.target\n`;
+  return `[Unit]\nDescription=Career Stack local launcher\nAfter=default.target\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nWorkingDirectory=${systemdPath(root)}\nEnvironment=${systemdQuote(`HOME=${home}`)}\nEnvironment=${systemdQuote(`PATH=${path}`)}\nExecStart=${systemdQuote(node)} ${systemdQuote(join(root, 'scripts', 'launch.mjs'))} --no-open\nExecStop=${systemdQuote(node)} ${systemdQuote(join(root, 'scripts', 'stop.mjs'))}\n\n[Install]\nWantedBy=default.target\n`;
 }
 
 function atomicPrivateWrite(file, contents) {
