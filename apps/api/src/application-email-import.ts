@@ -89,10 +89,16 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
         const activeAssist = await tx.select({ id: assistedAttempts.id }).from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, workspaceId), eq(assistedAttempts.applicationId, applicationId), inArray(assistedAttempts.status, ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN']))).limit(1);
         if (activeAssist.length) return { error: 'ASSIST_ACTIVE_ATTEMPT' as const };
       }
-      const messageRefs = [pending.messageRef, pending.messageIdRef].filter((value): value is string => Boolean(value));
+      const duplicateIdentity = pending.messageIdRef
+        ? sql`(
+            ${applicationEvents.evidence}->>'messageIdRef' = ${pending.messageIdRef}
+            OR (${applicationEvents.evidence}->>'messageIdRef' IS NULL AND ${applicationEvents.evidence}->>'source' = 'EML' AND ${applicationEvents.evidence}->>'messageRef' = ${pending.messageIdRef})
+            OR (${applicationEvents.evidence}->>'source' = 'PASTED_TEXT' AND ${applicationEvents.evidence}->>'messageRef' = ${pending.messageRef})
+          )`
+        : sql`${applicationEvents.evidence}->>'messageRef' = ${pending.messageRef}`;
       const duplicate = await tx.select({ id: applicationEvents.id }).from(applicationEvents).where(and(
         eq(applicationEvents.workspaceId, workspaceId), eq(applicationEvents.applicationId, applicationId),
-        sql`(${applicationEvents.evidence}->>'messageRef' = ANY(${messageRefs}::text[]) OR ${applicationEvents.evidence}->>'messageIdRef' = ANY(${messageRefs}::text[]))`,
+        duplicateIdentity,
       )).limit(1);
       if (duplicate.length) return { error: 'EMAIL_ALREADY_IMPORTED' as const };
       let version = current.version;

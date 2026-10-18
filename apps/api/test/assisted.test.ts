@@ -104,6 +104,11 @@ describe('assisted routes with fictional data and a disposable database', { skip
     const duplicate = await post(`/applications/${f.application}/email-import/confirm`, { token: pastedPreview.json().token, applyStage: false });
     assert.equal(duplicate.statusCode, 409, duplicate.body);
     assert.equal(duplicate.json().error, 'EMAIL_ALREADY_IMPORTED');
+    const distinctEml = ['From: recruiter@example.test', 'Message-ID: <different-message@example.test>', 'Content-Type: text/plain; charset="utf-8"', '', body, ''].join('\r\n');
+    const distinctPreview = await post(`/applications/${f.application}/email-import/preview`, { source: 'EML', emlBase64: Buffer.from(distinctEml, 'utf8').toString('base64') });
+    assert.equal(distinctPreview.statusCode, 200, distinctPreview.body);
+    const distinct = await post(`/applications/${f.application}/email-import/confirm`, { token: distinctPreview.json().token, applyStage: false });
+    assert.equal(distinct.statusCode, 201, distinct.body, 'Distinct EML Message-IDs must remain importable even when their body text is identical');
   });
   test('job evidence lock serializes assisted start and resume linking before currentness checks', async () => {
     for (const operation of ['start', 'link'] as const) {
