@@ -277,9 +277,10 @@ export const scenarios: Scenario[] = [
       await page.getByRole('button', { name: any('Guardar solicitud', 'Save application', 'Guardar', 'Save') }).first().click();
       await page.getByRole('heading', { name: title }).first().waitFor();
       const note = `Prepare technical examples ${marker}`;
-      const noteField = page.getByLabel(any('Añadir nota', 'Add a note', 'Add note', 'Nota', 'Note')).first();
+      const noteForm = page.locator('.note-form');
+      const noteField = noteForm.getByLabel(any('Añadir nota', 'Add a note', 'Add note', 'Nota', 'Note')).first();
       await noteField.fill(note);
-      const saveNote = page.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first();
+      const saveNote = noteForm.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first();
       await eventually(() => saveNote.isEnabled(), Boolean, 'The note button becomes enabled after entering a note');
       await saveNote.click();
       await page.locator('.timeline-item').getByText(note, { exact: true }).waitFor();
