@@ -22,6 +22,7 @@ import { applicationsCsvScenario } from './applications-csv.js';
 import { jobLinkLookupScenario } from './job-link-lookup.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
+import { emailImportScenario } from './email-import.js';
 import { trackingMetricsScenario } from './tracking-metrics.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
@@ -103,6 +104,7 @@ export const scenarios: Scenario[] = [
   jobLinkLookupScenario,
   jobReportsScenario,
   timelineScenario,
+  emailImportScenario,
   trackingMetricsScenario,
   {
     name: 'es-en-labels-on-every-page',
