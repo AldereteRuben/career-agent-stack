@@ -17,7 +17,7 @@ import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   RecoveryError, alternateEnv, alternateEnvProblem, describeDatabase, envPath, httpStatus, installEnv, listeningPid, localDataPath, logDir, markDependenciesCurrent, maskSecrets, mtimeOf, newestMtime, ok, parentArgs,
-  pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
+  dataRootReadProblem, pendingEnvPath, portIsOpen, printRecovery, processIdentity, projectRoot, readLocalEnv, recordStarted, runDir, say, startLocalPostgres, step,
   runPnpm, waitFor, warn, whoUsesPort, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { clipboardTools, missingClipboardAdvice } from './lib/clipboard.mjs';
@@ -460,6 +460,11 @@ async function main() {
 
 let releaseStartup;
 try {
+  if (dataRootReadProblem) throw new RecoveryError({
+    es: 'No se pudo verificar la privacidad del archivo .env al preparar las rutas locales; se detuvo el arranque.',
+    en: 'The privacy of .env could not be verified while preparing local paths; startup was stopped.',
+    fixes: [fix('Ejecuta pnpm run doctor para revisar permisos y vuelve a iniciar.', 'Run pnpm run doctor to inspect permissions, then start again.')],
+  });
   if (!checkOnly) releaseStartup = await lockStartup();
   await main();
 } catch (error) { printRecovery(error); process.exitCode = 1; }

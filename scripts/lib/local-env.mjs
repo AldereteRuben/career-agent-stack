@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { access, link, open, readFile, readdir, readlink, rename, stat, unlink, utimes } from 'node:fs/promises';
+import { access, link, open, readdir, readlink, rename, stat, unlink, utimes } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { connect, createServer } from 'node:net';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
 import { windowsListeningPid, windowsParentArgs, windowsProcessIdentity } from './windows-process.mjs';
-import { ensurePrivateDir, ensurePrivateFile } from './private-files.mjs';
+import { ensurePrivateDir, ensurePrivateFile, readPrivateFile, readPrivateFileSync } from './private-files.mjs';
 
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -38,12 +38,20 @@ const checkoutEnvPath = resolve(projectRoot, '.env');
 export const alternateEnv = Boolean(process.env.CAREER_ENV_FILE);
 export const envPath = alternateEnv ? resolve(process.env.CAREER_ENV_FILE) : checkoutEnvPath;
 
-function readEnvSync(path) {
-  try { return parseEnv(readFileSync(path, 'utf8')); } catch { return null; }
+let selectedEnvReadProblem = false;
+function readEnvSync(path, { privateFile = false, repairPrivateFile = false } = {}) {
+  try {
+    const text = privateFile ? readPrivateFileSync(path, { repair: repairPrivateFile }) : readFileSync(path, 'utf8');
+    return text === null ? null : parseEnv(text);
+  } catch {
+    if (repairPrivateFile && path === envPath) selectedEnvReadProblem = true;
+    return null;
+  }
 }
 
 /** Data folder of the selected installation: DATA_LOCAL_PATH resolved like the API does (relative to the checkout). */
-export const dataRoot = resolve(projectRoot, (alternateEnv && readEnvSync(envPath)?.DATA_LOCAL_PATH) || './data');
+export const dataRoot = resolve(projectRoot, (alternateEnv && readEnvSync(envPath, { privateFile: true, repairPrivateFile: true })?.DATA_LOCAL_PATH) || './data');
+export const dataRootReadProblem = selectedEnvReadProblem;
 export const runDir = resolve(dataRoot, 'run');
 export const logDir = resolve(dataRoot, 'logs');
 // Configuration of an installation whose bootstrap has not finished yet. It becomes .env (atomically) only
@@ -110,10 +118,8 @@ export function parseEnv(text) {
 
 /** Parses .env (or another env file of this checkout) without loading it into process.env and without echoing values. */
 export async function readLocalEnv(path = envPath) {
-  let text;
-  try { text = await readFile(path, 'utf8'); }
-  catch { return null; }
-  return parseEnv(text);
+  const text = await readPrivateFile(path);
+  return text === null ? null : parseEnv(text);
 }
 
 /** Directory holding the sign-in token (DATA_LOCAL_PATH, default ./data), resolved like the API does. */
@@ -138,7 +144,8 @@ export function installEnv(values, extra = {}) {
   const shield = {};
   if (alternateEnv && values) {
     const defaults = readEnvSync(resolve(projectRoot, '.env.example')) ?? {};
-    for (const key of Object.keys(readEnvSync(checkoutEnvPath) ?? {})) if (!(key in values)) shield[key] = defaults[key] ?? '';
+    const previousEnv = readPrivateFileSync(checkoutEnvPath);
+    for (const key of Object.keys(parseEnv(previousEnv ?? ''))) if (!(key in values)) shield[key] = defaults[key] ?? '';
   }
   return { ...env, ...shield, ...values, ...extra };
 }
