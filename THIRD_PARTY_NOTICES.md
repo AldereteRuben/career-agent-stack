@@ -2,14 +2,15 @@
 
 Project restrictions apply to project-authored material only. Dependencies retain their own licenses, including commercial-use rights where those licenses allow them.
 
-This inventory was generated from installed packages with `pnpm licenses list --json` on macOS arm64 on 2026-10-03. It includes development dependencies. Optional binaries on other platforms and separately downloaded browsers/system tools are not a complete part of this inventory. The lockfile fixes package versions.
+This inventory was generated from installed packages with `pnpm licenses list --json` on macOS arm64 on 2026-10-18. It includes development dependencies. Optional binaries on other platforms and separately downloaded browsers/system tools are not a complete part of this inventory. The lockfile fixes package versions.
 
 Collected upstream license/notice texts: [dependency license texts](docs/legal/dependency-license-texts.txt). Metadata is not a legal compatibility opinion. Source cloning installs dependencies from upstream; this repository does not ship node_modules, browser binaries or system libraries. Before distributing a bundled app or binary, inventory the actual artifact and meet its source, notice and relinking obligations.
 
-In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniuse-lite` is CC-BY-4.0. Their licenses are not replaced by the project license. Retain upstream notices; review the LGPL obligations before redistributing libvips binaries. `axe-core` (installed by `eslint-plugin-jsx-a11y`, which checks accessibility while linting) is MPL-2.0, a file-level copyleft: it is a development dependency, is not modified and is not shipped with Career Stack. `language-subtag-registry` (CC0-1.0, data) and `language-tags` (MIT) publish no license file in their package, so no text is collected for them.
+In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniuse-lite` is CC-BY-4.0. Their licenses are not replaced by the project license. Retain upstream notices; review the LGPL obligations before redistributing libvips binaries. `@axe-core/playwright` and its `axe-core` engine are MPL-2.0, a file-level copyleft: they are development-only accessibility-test dependencies, are not modified and are not shipped with Career Stack. The MPL text is included in [dependency license texts](docs/legal/dependency-license-texts.txt). `language-subtag-registry` (CC0-1.0, data) and `language-tags` (MIT) publish no license file in their package, so no text is collected for them.
 
 | Package | Installed versions | Declared license |
 | --- | --- | --- |
+| @axe-core/playwright | 4.13.0 | MPL-2.0 |
 | @cacheable/memory | 2.2.0 | MIT |
 | @cacheable/utils | 2.5.0 | MIT |
 | @drizzle-team/brocli | 0.10.2 | Apache-2.0 |

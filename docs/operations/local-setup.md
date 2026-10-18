@@ -146,6 +146,16 @@ Processes started by the launcher write logs to `data/logs/`. They are recorded 
 
 `pnpm run status` gives the same report without starting, building, installing, or migrating anything. It exits `0` only when everything is ready and current. It exits `1` when a dependency or service is missing, or when a running service needs a restart to use the latest code. Scripts and CI can rely on this.
 
+### Start automatically at login / Inicio automático al iniciar sesión
+
+Autostart is off by default. On macOS and Linux, enable it from this configured checkout with `pnpm run autostart -- --enable`; disable it with `pnpm run autostart -- --disable`, and inspect it with `pnpm run autostart -- --status`. `pnpm run status` also reports whether it is enabled. The login task calls this checkout's existing launcher with `--no-open`; it does not open a browser. Disabling unloads the login task and stops only services recorded as started by the launcher. If the launcher cannot verify that those services stopped, it keeps the configuration and reports the problem rather than deleting evidence.
+
+El inicio automático está desactivado de forma predeterminada. En macOS y Linux, actívalo desde esta copia ya configurada con `pnpm run autostart -- --enable`; desactívalo con `pnpm run autostart -- --disable` y consúltalo con `pnpm run autostart -- --status`. `pnpm run status` también indica si está activado. La tarea de inicio usa el lanzador existente de esta copia con `--no-open`; no abre el navegador. Al desactivarlo se descarga la tarea y se detienen solo los servicios registrados como iniciados por el lanzador. Si no puede verificar que se detuvieron, conserva la configuración e informa del problema en vez de borrar la evidencia.
+
+The command is user-scoped and needs no `sudo`. It records the current Node executable and `PATH`, so repeat `--enable` after changing Node installations. Native Windows autostart is not available until its launcher is supported in [#19](https://github.com/AldereteRuben/career-agent-stack/issues/19). CI verifies generated configuration, mocked failure paths, and the enable/start/disable lifecycle against Ubuntu's real systemd user manager using a disposable no-op fixture.
+
+El comando afecta solo a tu usuario y no requiere `sudo`. Guarda la ruta actual de Node y `PATH`; vuelve a ejecutar `--enable` si cambias la instalación de Node. El inicio nativo en Windows no está disponible hasta que el lanzador sea compatible, según [#19](https://github.com/AldereteRuben/career-agent-stack/issues/19). CI verifica la configuración, los fallos simulados y el ciclo de activar/iniciar/desactivar con el gestor real de servicios de usuario de Ubuntu y un lanzador desechable que no hace nada.
+
 Messages are printed in Spanish and English. Spanish comes first when the system language is Spanish, or you can set `CAREER_LANG=es`. Every failure ends with the next concrete step and confirms that no data was deleted.
 
 ### Known limits

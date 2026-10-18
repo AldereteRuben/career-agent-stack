@@ -22,6 +22,7 @@ import {
 } from './lib/local-env.mjs';
 import { clipboardTools, missingClipboardAdvice } from './lib/clipboard.mjs';
 import { ensurePrivateDir, ensurePrivateFile, ensurePrivateTree, isPrivate, isPrivateTree } from './lib/private-files.mjs';
+import { renderStatus as autostartStatus, statusMessage as autostartStatusMessage } from './autostart.mjs';
 
 const args = new Set(process.argv.slice(2));
 const checkOnly = args.has('--check');
@@ -429,6 +430,8 @@ async function signInHint() {
 
 async function main() {
   say(checkOnly ? 'Career Agent Stack · estado (solo lectura)' : 'Career Agent Stack · inicio local', checkOnly ? 'Career Agent Stack · status (read-only)' : 'Career Agent Stack · local start');
+  const automatic = autostartStatus();
+  say(...autostartStatusMessage(automatic));
   checkNode();
   await checkDependencies();
   const settings = await loadEnvironment();

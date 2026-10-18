@@ -49,6 +49,7 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `v053-linked-resume-review-and-change` | Review or change resume opens the linked PDF (reload, Back, close keep context), another approved resume can be linked from the library, and the unlinked case opens the builder. |
 | `v053-home-pending-review-lands-on-saved-list` | Pending-detail links from Home land on the saved list with focus after loading (390 px and desktop); saves do not move scroll or focus; `#experience` stays the add form. |
 | `v053-preferences-keep-approved-resume-ready` | Preferences changed in the profile form keep approved and pending PDFs ready; a printed name change blocks approval, linking and assisted preparation until restored; the PDF bytes never change. |
+| `applications-csv-download-neutralizes-formulas` | Downloading the application list as CSV (ES and EN): UTF-8 byte-order mark, localized headers, only the applications that match the search, values that start with `=` or `@` stored as text, commas and accents kept, and notes only when asked for. |
 
 The dashboard copy runs the dashboard's PDF.js asset step itself, so a fresh checkout or worktree needs no prior dashboard build.
 
