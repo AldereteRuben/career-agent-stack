@@ -22,6 +22,7 @@ import { applicationsCsvScenario } from './applications-csv.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
 import { emailImportScenario } from './email-import.js';
+import { trackingMetricsScenario } from './tracking-metrics.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -102,6 +103,7 @@ export const scenarios: Scenario[] = [
   jobReportsScenario,
   timelineScenario,
   emailImportScenario,
+  trackingMetricsScenario,
   {
     name: 'es-en-labels-on-every-page',
     async run({ page }) {
@@ -272,6 +274,16 @@ export const scenarios: Scenario[] = [
       await importedJob.getByRole('link', { name: any('Ver detalles', 'View details') }).click();
       await page.waitForURL(/\/jobs\/[^/?#]+/);
       await page.getByRole('heading', { name: title }).first().waitFor();
+      const feedbackPanel = page.locator('.job-match-feedback');
+      await feedbackPanel.getByRole('radio', { name: any('No es para mí', 'Not for me') }).check();
+      await feedbackPanel.getByLabel(any('Motivo opcional', 'Optional reason')).selectOption('LOCATION');
+      await feedbackPanel.getByRole('button', { name: any('Guardar opinión', 'Save feedback') }).click();
+      await eventually(() => api.get<{ total: number; notForMe: number }>('/job-feedback/summary'), (summary) => summary.total === 1 && summary.notForMe === 1, 'Explicit feedback appears in the private summary');
+      await feedbackPanel.getByRole('radio', { name: any('Me interesa', 'Interested') }).check();
+      await feedbackPanel.getByRole('button', { name: any('Actualizar opinión', 'Update feedback') }).click();
+      await eventually(() => api.get<{ total: number; interested: number }>('/job-feedback/summary'), (summary) => summary.total === 1 && summary.interested === 1, 'Editing feedback replaces the prior rating');
+      await feedbackPanel.getByRole('button', { name: any('Eliminar opinión', 'Delete feedback') }).click();
+      await eventually(() => api.get<{ total: number }>('/job-feedback/summary'), (summary) => summary.total === 0, 'Deleting feedback removes it from the summary');
       await page.screenshot({ path: join(artifacts, 'job-detail.png'), fullPage: true });
 
       await goTo(page, '/applications');

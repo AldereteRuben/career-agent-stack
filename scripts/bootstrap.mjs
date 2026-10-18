@@ -23,7 +23,7 @@
 //   CAREER_SKIP_BROWSER_INSTALL=1       skip the Chromium download (PDF export then fails until it is installed)
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
 import process from 'node:process';
@@ -32,11 +32,11 @@ import {
   printRecovery, projectRoot, promoteWithoutOverwrite, runPnpm, say, startLocalPostgres, step, waitFor, warn, writePrivateFileAtomic,
 } from './lib/local-env.mjs';
 import { allowAdminToUseRole, releaseAdminFromRole, runAsRole } from './lib/bootstrap-database.mjs';
+import { ensurePrivateFile, ensurePrivateTree, readPrivateFile } from './lib/private-files.mjs';
 
 const at = (path) => resolve(projectRoot, path);
 const fix = (es, en) => ({ es, en });
 const pnpm = (args, env = process.env) => runPnpm(args, { cwd: projectRoot, stdio: 'inherit', env });
-const readText = async (path) => { try { return await readFile(path, 'utf8'); } catch { return null; } };
 // Written on the role and database this script creates, so a re-run can tell them apart from anything else.
 const ownerMark = (id) => `career-agent-stack install ${id}`;
 const rerun = fix('Corrige lo indicado y vuelve a ejecutar: pnpm run bootstrap (retoma donde se quedó, con las mismas claves).', 'Fix the above and run again: pnpm run bootstrap (it resumes where it stopped, with the same keys).');
@@ -91,8 +91,14 @@ async function choosePorts() {
 
 /** Creates .env.pending on the first run; later runs resume from it unchanged (same keys, database and ports). */
 async function pendingConfiguration() {
-  const existing = await readText(pendingEnvPath);
-  if (existing !== null) {
+  let pendingExists = true;
+  try { await access(pendingEnvPath); }
+  catch (error) { if (error?.code === 'ENOENT') pendingExists = false; else throw error; }
+  if (pendingExists) {
+    // Never inspect a pending configuration until its ACL has been restricted and verified.
+    await ensurePrivateFile(pendingEnvPath, { create: false });
+    const existing = await readPrivateFile(pendingEnvPath);
+    if (existing === null) throw new Error('The pending configuration changed during verification. / La configuración pendiente cambió durante la verificación.');
     await writePrivateFileAtomic(pendingEnvPath, existing);
     ok('Se retoma la preparación anterior (.env.pending, mismas claves)', 'Resuming the previous setup (.env.pending, same keys)');
     return parseEnv(existing);
@@ -288,7 +294,7 @@ function installBrowser() {
 
 async function privateFolders(values) {
   for (const path of [values.DATA_LOCAL_PATH || './data', values.FILES_LOCAL_PATH || './data/files', ...(alternateEnv ? [] : ['backups'])]) {
-    await mkdir(resolve(projectRoot, path), { recursive: true, mode: 0o700 });
+    await ensurePrivateTree(resolve(projectRoot, path));
   }
 }
 
@@ -297,14 +303,19 @@ async function main() {
   checkTools();
   await ensureDependencies();
 
-  const current = await readText(envPath);
+  let current = null;
+  try {
+    await access(envPath);
+    await ensurePrivateFile(envPath, { create: false });
+    current = await readPrivateFile(envPath);
+    if (current === null) throw new Error('The environment file changed during verification. / El archivo de entorno cambió durante la verificación.');
+  } catch (error) { if (error?.code !== 'ENOENT') throw error; }
   if (alternateEnv && current === null) throw new RecoveryError({
     es: `No existe ${envPath} (CAREER_ENV_FILE). Con CAREER_ENV_FILE solo se comprueba una instalación existente; no se crea ninguna.`,
     en: `${envPath} (CAREER_ENV_FILE) does not exist. CAREER_ENV_FILE only checks an existing installation; none is created.`,
   });
   if (alternateEnv && alternateEnvProblem(parseEnv(current))) throw new RecoveryError(alternateEnvProblem(parseEnv(current)));
   if (current !== null) {
-    if (((await stat(envPath)).mode & 0o077) !== 0) warn('.env es legible por otros usuarios de este equipo; corrígelo con: chmod 600 .env', '.env is readable by other users of this machine; fix it with: chmod 600 .env');
     ok('.env ya existe; no se modifica', '.env already exists; left unchanged');
     const values = parseEnv(current);
     const database = describeDatabase(values.DATABASE_URL ?? '');
@@ -312,7 +323,10 @@ async function main() {
       es: '.env existe pero está incompleto (DATABASE_URL o claves locales).', en: '.env exists but is incomplete (DATABASE_URL or local keys).',
       fixes: [fix('Revisa: pnpm run doctor. No borres .env: contiene la clave que protege tus datos.', 'Check: pnpm run doctor. Do not delete .env: it holds the key that protects your data.')],
     });
-    if (await readText(pendingEnvPath) !== null) warn('Hay un .env.pending de una preparación anterior; se ignora porque .env ya existe.', 'A .env.pending from an earlier setup is ignored because .env already exists.');
+    try {
+      await access(pendingEnvPath);
+      warn('Hay un .env.pending de una preparación anterior; se ignora porque .env ya existe.', 'A .env.pending from an earlier setup is ignored because .env already exists.');
+    } catch (error) { if (error?.code !== 'ENOENT') throw error; }
     await ensureServer(database);
     await checkCredentials(values, '.env');
     migrate(values);

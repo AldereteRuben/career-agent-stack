@@ -10,11 +10,12 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
-import { db, pool, applications, applicationEvents, applicationDocumentRevisions, applicationDocuments, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources, jobFilterPreferences, jobFilterOverrides } from '@career/db';
+import { db, pool, applications, applicationEvents, applicationDocumentRevisions, applicationDocuments, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, jobMatchFeedback, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources, jobFilterPreferences, jobFilterOverrides } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { registerActivityTimelineRoutes } from './activity-timeline.js';
+import { calculateTrackingMetrics, parseTrackingPeriod } from './tracking-metrics.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
@@ -27,10 +28,12 @@ import { prepareApplication, registerPreparationRoutes } from './application-pre
 import { registerApplicationCoverLetterRoutes } from './application-cover-letter.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
 import { registerJobFilterRoutes } from './job-filter-routes.js';
+import { registerJobMatchFeedbackRoutes } from './job-match-feedback.js';
 import { emptyJobFilterPreferences, evaluateJobFilters, jobFilterExclusionSql } from './job-filter-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { registerApplicationEmailImportRoutes } from './application-email-import.js';
 import { registerJobReportRoutes } from './job-report-routes.js';
+import { registerApplicationPacketRoutes } from './application-packet-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
@@ -106,6 +109,21 @@ const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]): Omit
 app.get('/healthz', async (_request, reply) => {
   try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: true, version: RELEASE_VERSION }; }
   catch { return fail(reply, 503, 'DATABASE_UNAVAILABLE'); }
+});
+
+app.get('/api/v1/tracking-metrics', async (request, reply) => {
+  const period = parseTrackingPeriod((request.query as { period?: unknown }).period);
+  if (!period) return fail(reply, 400, 'INVALID_INPUT');
+  const id = workspace(request);
+  const events = await db.select({ applicationId: applicationEvents.applicationId, eventType: applicationEvents.eventType, priorState: applicationEvents.priorState, newState: applicationEvents.newState, createdAt: applicationEvents.createdAt })
+    .from(applicationEvents)
+    .where(and(eq(applicationEvents.workspaceId, id), inArray(applicationEvents.eventType, ['MANUAL_APPLICATION_RECORDED', 'APPLICATION_STATE_CHANGED', 'ASSIST_SUBMISSION_CONFIRMED', 'ASSIST_USER_RECONCILED', 'RECRUITMENT_STAGE_CHANGED', 'RECRUITMENT_STAGE_CORRECTED'])));
+  const applicationIds = [...new Set(events.filter((event) => event.newState === 'CONFIRMED').map((event) => event.applicationId))];
+  const trackedApplications = applicationIds.length
+    ? await db.select({ id: applications.id, state: applications.state, recruitmentStage: applications.recruitmentStage })
+      .from(applications).where(and(eq(applications.workspaceId, id), inArray(applications.id, applicationIds)))
+    : [];
+  return calculateTrackingMetrics({ period, now: new Date(), applications: trackedApplications, events });
 });
 
 app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: true, externalWrites: true, email: false, ai: aiEnabled } }));
@@ -433,6 +451,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 
 registerJobAvailabilityRoutes(app, workspace);
 registerJobReportRoutes(app, workspace);
+registerApplicationPacketRoutes(app, workspace, { filesRoot: config.FILES_LOCAL_PATH });
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
@@ -631,7 +650,7 @@ function scrubExport(value: unknown): unknown {
 }
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
-  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, search, assistRows, savedSearches, savedMatches, publicSources, filterPreferences, filterOverrides] = await Promise.all([
+  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, search, assistRows, savedSearches, savedMatches, publicSources, filterPreferences, filterOverrides, matchFeedback] = await Promise.all([
     db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)),
     db.select().from(applicationDocuments).where(eq(applicationDocuments.workspaceId, id)), db.select().from(applicationDocumentRevisions).where(eq(applicationDocumentRevisions.workspaceId, id)), db.select().from(aiDocumentRewordProposals).where(eq(aiDocumentRewordProposals.workspaceId, id)),
     db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
@@ -640,6 +659,7 @@ app.get('/api/v1/export', async (request, reply) => {
     db.select().from(jobSearchSources).where(eq(jobSearchSources.workspaceId, id)),
     db.select().from(jobFilterPreferences).where(eq(jobFilterPreferences.workspaceId, id)),
     db.select().from(jobFilterOverrides).where(eq(jobFilterOverrides.workspaceId, id)),
+    db.select().from(jobMatchFeedback).where(eq(jobMatchFeedback.workspaceId, id)),
   ]);
   const artifacts: Array<{ documentId: string; sha256: string; contentBase64: string }> = [];
   let totalArtifactBytes = 0;
@@ -676,7 +696,7 @@ app.get('/api/v1/export', async (request, reply) => {
         : rows;
   }
   const assistant = await exportAiData(db, id);
-  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), jobFilterPreferences: filterPreferences, jobFilterOverrides: filterOverrides, assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), jobFilterPreferences: filterPreferences, jobFilterOverrides: filterOverrides, jobMatchFeedback: matchFeedback, assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
@@ -698,6 +718,7 @@ registerActivityTimelineRoutes(app, workspace);
 const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
 registerJobSearchRoutes(app, workspace, prepareAutomatically);
 registerJobFilterRoutes(app, workspace);
+registerJobMatchFeedbackRoutes(app, workspace);
 const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
 let stopJobSearches = startJobSearches();
 app.addHook('onClose', () => stopJobSearches());

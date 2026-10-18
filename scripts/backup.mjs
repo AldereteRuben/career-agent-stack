@@ -16,16 +16,17 @@
 // without that file the backup can be neither read nor restored.
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readdir, rm, stat, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
-import { RecoveryError, describeDatabase, ok, printRecovery, projectRoot, say, step, warn } from './lib/local-env.mjs';
+import { RecoveryError, describeDatabase, ok, printRecovery, projectRoot, say, step } from './lib/local-env.mjs';
+import { ensurePrivateTree } from './lib/private-files.mjs';
 import { ArchiveError, assertSafeRelativePath, safeJoin, writeArchive, publishArchive } from './lib/backup-archive.mjs';
 import {
   BACKUP_FORMAT, BACKUP_FORMAT_VERSION, DUMP_NAME, FILES_PREFIX, MANIFEST_MAC_NAME, MANIFEST_NAME, appliedMigrations, canonicalPath, connect,
-  databaseLabel, documentRows, fix, hasTable, humanSize, keyFileContent, keyFingerprint, looseBits, manifestMac, projectPath, readEnvFile, readKeyFile,
+  databaseLabel, documentRows, fix, hasTable, humanSize, keyFileContent, keyFingerprint, manifestMac, projectPath, readEnvFile, readKeyFile,
   runPgTool, safeMessage, shown, tableCounts, toolVersion, writePrivateFile,
 } from './lib/backup-core.mjs';
 import { archiveRecovery, openArchive } from './lib/backup-verify.mjs';
@@ -49,10 +50,9 @@ function parseOptions() {
 }
 
 async function privateDir(path, label) {
-  await mkdir(path, { recursive: true, mode: 0o700 });
+  await ensurePrivateTree(path);
   const info = await lstat(path);
   if (!info.isDirectory()) throw new RecoveryError({ es: `${label.es} no es una carpeta: ${path}`, en: `${label.en} is not a folder: ${path}` });
-  if (await looseBits(path)) warn(`La carpeta ${shown(path)} es accesible por otros usuarios; considera: chmod 700 "${shown(path)}"`, `Folder ${shown(path)} is accessible to other users; consider: chmod 700 "${shown(path)}"`);
 }
 
 async function hashFile(path) {
@@ -228,7 +228,7 @@ async function main() {
     await writePrivateFile(`${archivePath}.sha256`, `${archiveHash}  ${archiveName}\n`);
 
     const keyPath = join(keyDir, manifest.encryption.keyFile);
-    let keyLine = ['creado (permisos 600)', 'created (permissions 600)'];
+    let keyLine = ['creado (permisos privados verificados)', 'created (private permissions verified)'];
     if (await lstat(keyPath).then(() => true, () => false)) {
       // readKeyFile rejects anything that is not a valid key file; an existing file is never overwritten.
       if ((await readKeyFile(keyPath)).fingerprint !== keyFingerprint(key)) throw new RecoveryError({ es: `${shown(keyPath)} contiene otra clave; no se sobrescribe.`, en: `${shown(keyPath)} contains a different key; it is not overwritten.` });

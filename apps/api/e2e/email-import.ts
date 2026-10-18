@@ -24,7 +24,9 @@ export const emailImportScenario: Scenario = {
 
     await paste.fill(`Another message ${marker}: We would like to invite you to an interview.`);
     await page.getByRole('button', { name: any('Revisar mensaje', 'Review message') }).click();
-    await page.getByRole('checkbox').check();
+    const applySuggestedStage = page.getByLabel(any('Usar la etapa sugerida', 'Apply suggested stage'));
+    await applySuggestedStage.check();
+    assert.equal(await applySuggestedStage.isChecked(), true, 'The suggested-stage checkbox, not the CSV option, is selected');
     await page.getByRole('button', { name: any('Guardar y cambiar etapa', 'Save and change stage') }).click();
     await eventually(applicationStage, (stage) => stage === 'INTERVIEW', 'An explicitly checked stage proposal advances the application');
 

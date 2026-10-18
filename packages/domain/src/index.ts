@@ -1,5 +1,6 @@
 export * from './matching.js';
 export * from './job-report.js';
+export * from './skill-gap-report.js';
 export * from './search-matching.js';
 export * from './states.js';
 export * from './job-availability.js';
