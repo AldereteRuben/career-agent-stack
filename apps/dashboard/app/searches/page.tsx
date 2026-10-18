@@ -10,6 +10,7 @@ import { SearchCard } from '@/components/search-card';
 import { SearchForm } from '@/components/search-form';
 import { SearchEmptyState, SearchStatus } from '@/components/search-progress';
 import { SearchResultCard } from '@/components/search-result-card';
+import { JobFilterEditor } from '@/components/job-filter-editor';
 import { type ProviderId, type Search, type SearchDraft, type SearchJob, type SearchSort, type SearchView } from '@/components/search-types';
 import { emptyKind, nextCheckLabel, searchName, summarize } from '@/components/lib/search-status';
 import { api, ApiError, errorMessage } from '@/lib/api';
@@ -48,7 +49,7 @@ function readForm(payload: string): FormState {
   } catch { /* Ignore malformed draft data. */ }
   return initialForm();
 }
-const views: SearchView[] = ['new', 'all', 'saved', 'archived'];
+const views: SearchView[] = ['new', 'all', 'saved', 'archived', 'filtered'];
 const sorts: SearchSort[] = ['relevance', 'recent'];
 const contextKey = 'career:draft:v1:saved-search-view';
 const pageOffset = (value: unknown) => { const n = Number(value); return Number.isFinite(n) ? Math.min(100_000, Math.max(0, Math.floor(n / 20) * 20)) : 0; };
@@ -329,13 +330,20 @@ export default function SearchesPage() {
       await afterCardAction(job, 'reviewed');
     } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
   };
+  const restoreFilteredJob = async (job: SearchJob) => {
+    setBusy(job.id); setError(''); setActionMessage('');
+    try {
+      await api(`/job-filters/${job.id}/restore`, { method: 'POST', body: '{}' });
+      await afterCardAction(job, 'restored');
+    } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
+  };
   const showArrivals = async () => { if (await loadResults(selectedId, view, sort, offset)) resultsTitle.current?.focus(); };
   // Filters and sort keep focus on the control that was used.
   const changeView = (next: SearchView) => { void choose(selectedId, next, sort, 0, true, false); };
   const changeSort = (next: SearchSort) => { void choose(selectedId, view, next, 0, true, false); };
 
   const filters: Array<{ id: SearchView; es: string; en: string }> = [
-    { id: 'new', es: 'Nuevas', en: 'New' }, { id: 'all', es: 'Todas', en: 'All' }, { id: 'saved', es: 'Guardadas', en: 'Saved' }, { id: 'archived', es: 'Archivadas', en: 'Archived' },
+    { id: 'new', es: 'Nuevas', en: 'New' }, { id: 'all', es: 'Todas', en: 'All' }, { id: 'saved', es: 'Guardadas', en: 'Saved' }, { id: 'archived', es: 'Archivadas', en: 'Archived' }, { id: 'filtered', es: 'Excluidas por preferencias', en: 'Filtered by preferences' },
   ];
   const scopeUnread = selectedSearch ? selectedSearch.lastNewCount : unreadTotal;
   const pageCount = Math.ceil(total / 20);
@@ -393,6 +401,7 @@ export default function SearchesPage() {
           <h2 className="sr-only">{t('Tus búsquedas', 'Your searches')}</h2>
           <ul className={styles.manageList}>{searches.map((search) => <SearchCard key={search.id} search={search} selected={selectedId === search.id} disabled={busy !== '' || resultLoading} locale={locale} onSelect={() => void choose(search.id, view, sort, 0)} onEdit={() => beginEdit(search)} onToggle={() => void runAction(search, 'toggle')} onRefresh={() => void runAction(search, 'refresh')} t={t} modeLabel={modeLabel} />)}</ul>
         </div>}
+        <JobFilterEditor onSaved={() => void loadResults(selectedId, view, sort, 0)} />
         <div className={styles.resultsHead}>
           <div className={styles.resultsTitleGroup}><h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{current ? searchName(current, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2><span className={styles.resultCount} role="status">{resultLoading ? t('Cargando ofertas…', 'Loading jobs…') : count(total, ['oferta', 'job'], ['ofertas', 'jobs'])}{!resultLoading && actionMessage ? ` · ${t(actionMessages[actionMessage][0], actionMessages[actionMessage][1])}` : ''}</span></div>
           <div className={styles.sortControl}><label htmlFor="search-sort">{t('Ordenar', 'Sort')}</label><select id="search-sort" value={sort} onChange={(event) => changeSort(event.target.value as SearchSort)}><option value="relevance">{t('Mejor coincidencia', 'Best match')}</option><option value="recent">{t('Más recientes', 'Most recent')}</option></select></div>
@@ -407,7 +416,7 @@ export default function SearchesPage() {
         {aiAvailable && <SearchAiHelp searchIds={scope.map(search => search.id)} jobs={results} returnTo={resultsReturn} />}
         {pendingArrivals && <Notice tone="info" actions={<Button variant="secondary" onClick={showArrivals}>{t('Mostrar nuevas ofertas', 'Show new jobs')}</Button>}>{t('Hay ofertas nuevas. Tu página y posición siguen como estaban.', 'New jobs are available. Your page and position are unchanged.')}</Notice>}
         <div id="search-result-list" ref={resultList} className={styles.resultList} aria-busy={resultLoading}>
-          {!resultLoading && results.map((job) => <SearchResultCard key={job.id} job={job} aiAvailable={aiAvailable} returnTo={resultsReturn} view={view} busy={busy !== ''} t={t} sourceName={sourceName} onSave={() => void updateReview(job, 'SHORTLISTED')} onUnsave={() => void updateReview(job, 'UNREVIEWED')} onArchive={() => void updateReview(job, job.shortlistDecision === 'ARCHIVED' ? 'UNREVIEWED' : 'ARCHIVED')} onReview={() => void markReviewed(job)} />)}
+          {!resultLoading && results.map((job) => <SearchResultCard key={job.id} job={job} aiAvailable={aiAvailable} returnTo={resultsReturn} view={view} busy={busy !== ''} t={t} sourceName={sourceName} onSave={() => void updateReview(job, 'SHORTLISTED')} onUnsave={() => void updateReview(job, 'UNREVIEWED')} onArchive={() => void updateReview(job, job.shortlistDecision === 'ARCHIVED' ? 'UNREVIEWED' : 'ARCHIVED')} onReview={() => void markReviewed(job)} onRestore={() => void restoreFilteredJob(job)} />)}
           {!resultLoading && results.length === 0 && <SearchEmptyState kind={emptyKind({ view, error: resultsError, scope, matchesTotal })} matchesTotal={matchesTotal} nextCheck={nextScope} busy={busy !== ''} t={t}
             onRetry={() => void loadResults(selectedId, view, sort, offset)} onShowAll={() => changeView('all')}
             onResume={selectedSearch ? () => void runAction(selectedSearch, 'toggle') : searches.length === 1 ? () => void runAction(searches[0], 'toggle') : undefined}

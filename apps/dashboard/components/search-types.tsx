@@ -50,6 +50,7 @@ export type SearchJob = {
   duplicateCount?: number;
   identityConflict?: boolean;
   searchIds?: string[];
+  preferenceReasons?: { excludedCompany: string | null; missingRequiredTerms: string[]; matchedExcludedTerms: string[] } | null;
   autoPreparedAt?: string | null;
   autoPrepareError?: string | null;
   sources: Array<{ provider: ProviderId | string; name?: string; url: string; postedAt: string | null; fetchedAt?: string | null }>;
@@ -60,7 +61,7 @@ export function searchInFlight(search?: Search | null): boolean {
   return ['QUEUED', 'RUNNING'].includes(status ?? '') || Boolean(search?.latestRun && status === 'PARTIAL' && !search.latestRun.finishedAt);
 }
 
-export type SearchView = 'new' | 'all' | 'saved' | 'archived';
+export type SearchView = 'new' | 'all' | 'saved' | 'archived' | 'filtered';
 export type SearchSort = 'relevance' | 'recent';
 export type SearchDraft = {
   role: string;

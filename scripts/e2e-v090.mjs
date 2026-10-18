@@ -62,6 +62,7 @@ try {
     const request = route.request(); const url = new URL(request.url()); const path = url.pathname.replace('/api/v1', ''); const method = request.method();
     if (path === '/session') return route.continue();
     if (path === '/capabilities') return response(route, { available: ['ai-processing'], unavailable: [] });
+    if (path === '/job-filters') return response(route, { excludedCompanies: [], requiredTerms: [], excludedTerms: [] });
     if (path === '/summary') return response(route, { boards: [], recentJobs: [], recentApplications: [], pendingFacts: 0, unansweredItems: 0, applicationCounts: {}, savedSearchCount: 0, activeSearchCount: 0, totalJobs: 0, activeApplications: 0, profileCompletion: { percent: 100, completed: 6, total: 6, missing: [], approvedFactCount: 1, pendingFactCount: 0 } });
     if (path === '/profile') {
       if (method === 'PUT') { profile.profile = request.postDataJSON().profile; profile.revision++; ids.fact = randomUUID(); fact.id = ids.fact; }
