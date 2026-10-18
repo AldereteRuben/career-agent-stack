@@ -7,6 +7,16 @@ export const boardSchema = z.object({
   id: z.string().uuid().optional(), provider: z.enum(['greenhouse', 'lever', 'ashby']), tenant: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/), region: z.enum(['global', 'eu']), companyName: z.string().min(1).max(200), companyDomain: z.string().min(1).max(253), careersUrl: z.string().url(), associationStatus: z.enum(['VERIFIED', 'UNVERIFIED']), permissionStatus: z.enum(boardPermission), enabled: z.boolean().default(false),
 }).strict().refine((board) => board.provider === 'lever' || board.region === 'global', { path: ['region'], message: 'This provider supports the global region only.' });
 
+export const companyResearchSchema = z.object({
+  whatItDoes: z.string().trim().max(3000),
+  howItMakesMoney: z.string().trim().max(3000),
+  recentNews: z.string().trim().max(3000),
+  culture: z.string().trim().max(3000),
+  questionsToAsk: z.string().trim().max(3000),
+}).strict();
+export type CompanyResearchNotes = z.infer<typeof companyResearchSchema>;
+export const companyResearchSaveSchema = z.object({ expectedRevision: z.number().int().positive(), notes: companyResearchSchema }).strict();
+
 const employmentMonth = z.string().regex(/^[1-9][0-9]{3}-(0[1-9]|1[0-2])$/);
 export const employmentSchema = z.object({
   role: z.string().trim().min(1).max(200), company: z.string().trim().min(1).max(200),

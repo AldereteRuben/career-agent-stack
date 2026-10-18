@@ -169,6 +169,20 @@
       "when": 1792347154393,
       "tag": "0023_application_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792348894753,
+      "tag": "0024_company_research_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792368000001,
+      "tag": "0025_reconcile_legacy_company_research",
+      "breakpoints": true
     }
   ]
 }
