@@ -23,7 +23,7 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
   const reasons = (job.searchReasons ?? []).map((reason) => shownReason(reason, spanish));
   const jobHref = `/jobs/${job.id}?returnTo=${encodeURIComponent(returnTo)}`;
   const applicationHref = job.applicationId ? `/applications?id=${encodeURIComponent(job.applicationId)}&returnTo=${encodeURIComponent(returnTo)}` : null;
-  const applicationLabel = ['UNKNOWN', 'IN_PROGRESS', 'CONFIRMED', 'CANCELLED'].includes(job.applicationState ?? '') ? t('Ver seguimiento', 'View application status') : t('Ver candidatura', 'View application');
+  const applicationLabel = ['UNKNOWN', 'IN_PROGRESS', 'CONFIRMED', 'CANCELLED'].includes(job.applicationState ?? '') ? t('Ver seguimiento', 'View application status') : t('Ver solicitud', 'View application');
   const unknownLocation = job.locationStatus?.toLowerCase() === 'unknown' || job.unknownLocation;
   const portals = [...new Map(job.sources.map((source) => [source.provider, source])).values()];
   const published = job.sources.filter((source) => source.postedAt).slice(0, 2);
@@ -36,9 +36,9 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
       <p className={styles.resultMeta}>{job.company} · {job.location || t('Ubicación sin indicar', 'Location not listed')}</p>
       <p className={styles.resultReason}>{reasons[0] ?? t('Coincide con tus criterios', 'Matches your criteria')}</p>
       {unknownLocation && <p className={styles.warning}>{t('Comprueba en el anuncio desde qué países se puede trabajar.', 'Check eligible countries in the original listing.')}</p>}
-      {job.identityConflict && <p className={styles.warning}>{t('Esta oferta tiene registros con decisiones o candidaturas diferentes. Los conservamos por separado.', 'This job has records with different decisions or applications. We kept them separate.')}</p>}
-      {job.autoPrepareError && job.autoPrepareError !== 'EXISTING_APPLICATION' && <p className={styles.warning}>{job.autoPrepareError === 'PREPARING' ? t('Preparando tu candidatura…', 'Preparing your application…') : t('La preparación necesita tu revisión. Abre la oferta para continuar.', 'Preparation needs your review. Open the job to continue.')}</p>}
-      {applicationHref && <p className={styles.applicationStatus}>{t('Candidatura existente', 'Existing application')} · {labelFor.applicationState(job.applicationState, spanish ? 'es' : 'en')}{job.documentApprovalStatus ? ` · ${labelFor.documentApproval(job.documentApprovalStatus, spanish ? 'es' : 'en')}` : ''} · <Link href={applicationHref} aria-describedby={titleId}>{applicationLabel}</Link></p>}
+      {job.identityConflict && <p className={styles.warning}>{t('Esta oferta tiene registros con decisiones o solicitudes diferentes. Los conservamos por separado.', 'This job has records with different decisions or applications. We kept them separate.')}</p>}
+      {job.autoPrepareError && job.autoPrepareError !== 'EXISTING_APPLICATION' && <p className={styles.warning}>{job.autoPrepareError === 'PREPARING' ? t('Preparando tu solicitud…', 'Preparing your application…') : t('La preparación necesita tu revisión. Abre la oferta para continuar.', 'Preparation needs your review. Open the job to continue.')}</p>}
+      {applicationHref && <p className={styles.applicationStatus}>{t('Solicitud existente', 'Existing application')} · {labelFor.applicationState(job.applicationState, spanish ? 'es' : 'en')}{job.documentApprovalStatus ? ` · ${labelFor.documentApproval(job.documentApprovalStatus, spanish ? 'es' : 'en')}` : ''} · <Link href={applicationHref} aria-describedby={titleId}>{applicationLabel}</Link></p>}
     </div>
     <div className={styles.resultActions}>
       <Link className="button button-primary" href={jobHref} aria-describedby={titleId}>{t('Ver oferta', 'View job')}</Link>

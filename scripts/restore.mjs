@@ -381,7 +381,7 @@ async function restore(options) {
       `New database: ${databaseLabel(restoredUrl)} · ${manifest.documents.length} document(s) verified · row counts identical to the backup.`);
     say(`  Tableros desactivados: ${sanitised.boardsDisabled} · permisos a UNKNOWN: ${sanitised.boardPermissionsReset + sanitised.reviewPermissionsReset} · búsquedas desactivadas: ${sanitised.searchProfilesDisabled}.`,
       `Boards disabled: ${sanitised.boardsDisabled} · permissions reset to UNKNOWN: ${sanitised.boardPermissionsReset + sanitised.reviewPermissionsReset} · searches disabled: ${sanitised.searchProfilesDisabled}.`);
-    if (unresolved) warn(`${unresolved} candidatura(s) en estado IN_PROGRESS/UNKNOWN: concílialas a mano; nada se reenvía.`, `${unresolved} application(s) in IN_PROGRESS/UNKNOWN: reconcile them by hand; nothing is resubmitted.`);
+    if (unresolved) warn(`${unresolved} solicitud(es) en estado IN_PROGRESS/UNKNOWN: concílialas a mano; nada se reenvía.`, `${unresolved} application(s) in IN_PROGRESS/UNKNOWN: reconcile them by hand; nothing is resubmitted.`);
     if (pendingMigrations) say(`  Al iniciar se aplicarán ${pendingMigrations} migración(es) nuevas de esta versión.`, `${pendingMigrations} newer migration(s) of this version will be applied on start.`);
     process.stdout.write('\n');
     say('  Para abrirla (la instalación activa sigue intacta):', 'To open it (the live installation is untouched):');
