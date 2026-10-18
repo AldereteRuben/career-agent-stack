@@ -210,7 +210,6 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     assert.equal((await app.inject({ method: 'DELETE', url: `/api/v1/jobs/${jobId}/feedback` })).json().ok, true);
     assert.equal((await app.inject('/api/v1/job-feedback/summary')).json().total, 0);
   });
-
   test('strong identity duplicates group, but conflicting saved/archive decisions stay separate', async () => {
     activeWorkspace = performanceWorkspace;
     const initialStarted = performance.now();

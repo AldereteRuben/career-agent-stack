@@ -11,6 +11,7 @@
     "start": "node scripts/launch.mjs",
     "stop": "node scripts/stop.mjs",
     "status": "node scripts/launch.mjs --check",
+    "autostart": "node scripts/autostart.mjs",
     "dev": "pnpm run build:shared && pnpm --parallel --filter @career/api --filter @career/dashboard dev",
     "build:shared": "pnpm --filter @career/domain build && pnpm --filter @career/db build",
     "build": "pnpm --recursive build",
@@ -46,6 +47,8 @@
     "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
     "test:windows-process": "node --test scripts/test/windows-process.test.mjs",
     "test:install-marker": "node --test scripts/test/install-marker.test.mjs",
+    "test:autostart": "node --test scripts/test/autostart.test.mjs",
+    "test:autostart:linux": "node --test scripts/test/autostart-linux.integration.test.mjs",
     "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
@@ -58,7 +61,7 @@
     "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
     "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts",
     "test:ai-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v090.mts",
-    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts ../dashboard/lib/resume-pdf-text.test.ts ../dashboard/lib/resume-import.test.ts ../dashboard/lib/timeline.test.ts"
+    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/applications-csv.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts ../dashboard/lib/resume-pdf-text.test.ts ../dashboard/lib/resume-import.test.ts ../dashboard/lib/timeline.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

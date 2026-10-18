@@ -250,7 +250,6 @@ export const jobMatchFeedback = pgTable('job_match_feedback', {
   check('job_match_feedback_rating_check', sql`${t.rating} in ('INTERESTED','NOT_FOR_ME')`),
   check('job_match_feedback_reason_check', sql`${t.reason} is null or ${t.reason} in ('LOCATION','SENIORITY','WORK_MODE','ROLE_TYPE','REQUIREMENT','OTHER')`),
   index('job_match_feedback_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
-
 /** Consent snapshots are one-use records; no browser cookies or session state is persisted. */
 export const assistedAttempts = pgTable('assisted_attempts', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

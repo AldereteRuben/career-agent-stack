@@ -148,6 +148,31 @@ test('new skills, numbers, dates, credentials and named entities are rejected wi
   }
 });
 
+test('unsupported qualitative claims require explicit confirmation even when they cite an unrelated approved fact', () => {
+  const text = 'I am highly motivated and collaborative.';
+  const editedClaim = claim({ text, origin: 'USER_EDITED', sourceFactIds: ['fact-supported'] });
+  assert.deepEqual(validateApplicationDocumentSentence({ sentence: editedClaim, workspaceId, facts, offer }), {
+    ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'collaborative' },
+  });
+  const original = claim({ text: 'Led payments at Acme Example and used React.' });
+  assert.deepEqual(saveApplicationDocumentSentenceEdit({
+    original, text, sourceFactIds: ['fact-supported'], workspaceId, facts, offer,
+  }), { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'collaborative' } });
+  const confirmed = saveApplicationDocumentSentenceEdit({
+    original, text, sourceFactIds: ['fact-supported'], confirmUnsupported: true, workspaceId, facts, offer,
+  });
+  assert.equal(confirmed.ok && confirmed.sentence.origin, 'USER_UNSUPPORTED');
+
+  const selfDescription = claim({ text: 'I am a fast learner.', origin: 'USER_EDITED', sourceFactIds: ['fact-supported'] });
+  assert.deepEqual(validateApplicationDocumentSentence({ sentence: selfDescription, workspaceId, facts, offer }), {
+    ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'claim-1', item: 'fast learner' },
+  });
+  const employerDescription = claim({ text: 'I feel excited to join your innovative team and bring React experience.', origin: 'USER_EDITED' });
+  assert.deepEqual(validateApplicationDocumentSentence({ sentence: employerDescription, workspaceId, facts, offer }), {
+    ok: true, sentence: employerDescription,
+  });
+});
+
 test('only equivalent skill aliases support each other in approved evidence', () => {
   const postgresFact: ApplicationDocumentFact = {
     id: 'fact-postgres', workspaceId, approval: 'USER_APPROVED', text: 'Built database systems with PostgreSQL.', tags: ['sql'],
@@ -326,7 +351,7 @@ test('plain reworded boilerplate stays boilerplate; adding facts requires suppor
   const editedClaim = saveApplicationDocumentSentenceEdit({
     original, text: 'I am passionate about fintech and led teams for years.', sourceFactIds: [], workspaceId, facts, offer,
   });
-  assert.deepEqual(editedClaim, { ok: false, issue: { code: 'NO_CITATION', sentenceId: 'closing' } });
+  assert.deepEqual(editedClaim, { ok: false, issue: { code: 'UNSUPPORTED_CONTENT', sentenceId: 'closing', item: 'passionate' } });
   const confirmed = saveApplicationDocumentSentenceEdit({ original, text: 'Best regards, with Python experience', sourceFactIds: [], confirmUnsupported: true, workspaceId, facts, offer });
   assert.equal(confirmed.ok && confirmed.sentence.kind, 'CANDIDATE_CLAIM');
   assert.equal(confirmed.ok && confirmed.sentence.origin, 'USER_UNSUPPORTED');

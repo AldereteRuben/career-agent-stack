@@ -11,7 +11,9 @@ type Resume = { id: string; name: string; claims: Array<{ text: string }>; appro
 export const v040Scenarios: Scenario[] = [
   {
     name: 'v040-structured-profile-to-linked-application',
-    async run({ page, api, marker, artifacts }) {
+    async run({ page, api, marker, artifacts, allowConsole }) {
+      // An application with no saved cover letter returns 404 for its empty history endpoint.
+      allowConsole(/Failed to load resource: the server responded with a status of 404 \(Not Found\)/);
       await page.goto(new URL('/profile', page.url()).toString()); await setLocale(page, 'es');
       const profile = await api.get<Profile>('/profile');
       await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Alex Example', email: 'alex@example.com' } } });
