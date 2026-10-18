@@ -60,7 +60,7 @@ export const applicationEvents: LabelMap = {
   ASSIST_USER_RECONCILED: { es: 'Resultado declarado por ti', en: 'Outcome reported by you' },
 
   APPLICATION_CREATED: { es: 'Solicitud creada', en: 'Application created' },
-  EMAIL_IMPORTED: { es: 'Mensaje de candidatura importado', en: 'Application email imported' },
+  EMAIL_IMPORTED: { es: 'Mensaje sobre la solicitud importado', en: 'Application email imported' },
   MANUAL_APPLICATION_RECORDED: { es: 'Solicitud registrada como enviada', en: 'Application recorded as sent' },
   APPLICATION_STATE_CHANGED: { es: 'Estado actualizado', en: 'Status updated' },
   FOLLOW_UP_UPDATED: { es: 'Próximo paso actualizado', en: 'Next step updated' },
