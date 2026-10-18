@@ -66,8 +66,9 @@ const shorten = (value: string, max: number) => {
 };
 /** Lines and sentences of a posting; bullets count as their own sentence. */
 const sentences = (description: string) => description.split(/\n+|(?<=[.!?;])\s+/u).map((part) => part.replace(/^[\s•*·-]+/u, '').trim()).filter(Boolean);
+const firstMatchingSentence = (parts: string[], accept: (sentence: string) => boolean) => parts.find(accept) ?? null;
 const firstSentence = (parts: string[], accept: (sentence: string) => boolean) => {
-  const found = parts.find(accept);
+  const found = firstMatchingSentence(parts, accept);
   return found ? shorten(found, EXCERPT_LENGTH) : null;
 };
 
@@ -120,9 +121,12 @@ export function buildJobReport(job: { title: string; location: string | null; de
   const parts = description ? sentences(description) : [];
   const requirements: JobReportRequirement[] = extractKnownSkills(description).map((requirement) => {
     const terms = requirementTerms(requirement);
-    const jobExcerpt = firstSentence(parts, (sentence) => terms.some((term) => containsTerm(sentence, term)));
+    // Keep the original posting sentence for classification. The display excerpt is normalized and may be shortened,
+    // so looking it up in `parts` can lose its heading context or turn a mandatory requirement into UNSPECIFIED.
+    const matchedSentence = firstMatchingSentence(parts, (sentence) => terms.some((term) => containsTerm(sentence, term)));
+    const jobExcerpt = matchedSentence ? shorten(matchedSentence, EXCERPT_LENGTH) : null;
     const facts = approved.filter((fact) => factCoversRequirement(fact, requirement)).slice(0, FACTS_PER_REQUIREMENT).map((fact) => ({ factId: fact.id, text: shorten(fact.text, FACT_LENGTH) }));
-    return { skill: requirement.text, level: requirementLevel(jobExcerpt, parts), jobExcerpt, facts };
+    return { skill: requirement.text, level: requirementLevel(matchedSentence, parts), jobExcerpt, facts };
   });
   const supported = requirements.filter((requirement) => requirement.facts.length);
   const unconfirmed = requirements.filter((requirement) => !requirement.facts.length);
@@ -179,7 +183,7 @@ function conclude(input: Evidence): { verdict: JobReportVerdict; reasons: JobRep
   else reasons.push(input.titleTargeted === null ? 'TITLE_NOT_COMPARED' : 'TITLE_NOT_TARGETED');
   if (input.location === 'TO_CONFIRM') reasons.push('LOCATION_TO_CONFIRM');
   if (input.workMode === 'DIFFERS_FROM_PREFERENCE') reasons.push('WORK_MODE_DIFFERS');
-  const good = share >= 2 / 3 && !input.requiredUnconfirmed && input.titleTargeted === true && input.location !== 'TO_CONFIRM' && input.workMode !== 'DIFFERS_FROM_PREFERENCE';
+  const good = share >= 2 / 3 && !input.requiredUnconfirmed && input.titleTargeted === true && input.location === 'MATCHES_PREFERENCE' && input.workMode !== 'DIFFERS_FROM_PREFERENCE';
   return { verdict: good ? 'GOOD_OPTION' : 'REVIEW', reasons };
 }
 
