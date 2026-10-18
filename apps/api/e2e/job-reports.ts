@@ -75,7 +75,15 @@ export const jobReportsScenario: Scenario = {
 
     // 2. Several saved jobs, chosen with the keyboard, evaluated after confirmation, paused and continued.
     await setLocale(page, 'es');
-    await page.goto(new URL(`/jobs?scope=favorites&q=${encodeURIComponent(marker)}`, uiUrl).toString());
+    const slowList = delayFirst(page, '**/api/v1/jobs?*', 1_500);
+    await slowList.install();
+    try {
+      await page.goto(new URL(`/jobs?scope=favorites&q=${encodeURIComponent(marker)}`, uiUrl).toString(), { waitUntil: 'commit' });
+      const coverage = page.locator('.coverage-line');
+      await eventually(() => coverage.innerText(), (text) => text.includes('Cargando…') && !/\b0 ofertas?\b/.test(text), 'The saved jobs counter says it is loading instead of showing 0');
+      await slowList.delayedResponse;
+      await eventually(() => coverage.innerText(), (text) => !text.includes('Cargando…') && /\d+ ofertas?/.test(text), 'The saved jobs counter shows the number once the list is ready');
+    } finally { await slowList.remove(); }
     const panel = page.getByTestId('job-report-batch');
     await panel.getByRole('heading', { name: 'Evaluar ofertas guardadas' }).waitFor();
     for (const title of [`QA ${marker} Engineer`, `QA ${marker} Analyst`, `Data Scientist ${marker}`, `QA ${marker} Archived`]) {
