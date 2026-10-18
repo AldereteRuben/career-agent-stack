@@ -93,6 +93,7 @@ jobs:
       - run: pnpm run test:clipboard
       - run: pnpm run test:contributors
       - run: pnpm run test:process
+      - run: pnpm run test:autostart
       - run: pnpm run test:install-marker
       - run: pnpm run test:backup
       # The official age tool must decrypt a backup with the key file's identity (ADR 019); the flag stops a skip.
