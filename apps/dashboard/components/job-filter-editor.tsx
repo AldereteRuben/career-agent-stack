@@ -25,7 +25,7 @@ export function JobFilterEditor({ onSaved }: { onSaved: () => void }) {
     finally { setBusy(false); }
   };
   const changed = (['excludedCompanies', 'requiredTerms', 'excludedTerms'] as const).some((key) => parseLines(draft[key]).join('\n') !== lines(value[key]));
-  return <details className="card" style={{ marginBlock: '1rem' }}>
+  return <details className="card">
     <summary>{t('Preferencias para filtrar ofertas', 'Job filtering preferences')}</summary>
     <p>{t('Las reglas solo ocultan ofertas de la lista normal; puedes encontrarlas y restaurarlas en «Excluidas por preferencias». No se infieren preferencias ni se borran ofertas.', 'Rules only hide jobs from the usual list; find and restore them in “Filtered by preferences”. Preferences are never inferred and jobs are never deleted.')}</p>
     <div className="form-grid">
