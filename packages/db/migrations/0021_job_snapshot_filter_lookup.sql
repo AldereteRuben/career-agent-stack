@@ -1,0 +1,1 @@
+CREATE INDEX "job_snapshots_workspace_job_fetched_idx" ON "job_snapshots" USING btree ("workspace_id","job_id","fetched_at","id");

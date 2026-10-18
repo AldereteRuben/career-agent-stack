@@ -6,7 +6,7 @@ import { compareTimelineItems, localToday, overdueFollowUpLimit, parseTimelineRa
 
 /** Application events that change the application state. Preparation runs and free-form notes are not milestones. */
 const statusEvents = ['APPLICATION_STATE_CHANGED', 'ASSIST_SUBMISSION_CONFIRMED', 'ASSIST_SUBMISSION_UNKNOWN', 'ASSIST_USER_RECONCILED'];
-const stageEvents = ['RECRUITMENT_STAGE_CHANGED', 'RECRUITMENT_STAGE_CORRECTED'];
+const stageEvents = ['RECRUITMENT_STAGE_CHANGED', 'RECRUITMENT_STAGE_CORRECTED', 'EMAIL_IMPORTED'];
 const iso = (value: Date | string) => (value instanceof Date ? value : new Date(value)).toISOString();
 /** Follow-ups only matter while the application is still open; closed ones are not pending. */
 const openApplication = () => and(ne(applications.state, 'CANCELLED'), notInArray(applications.recruitmentStage, [...terminalRecruitmentStages]));

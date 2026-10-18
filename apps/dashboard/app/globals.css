@@ -2201,6 +2201,51 @@ main:focus {
   padding: 14px 0;
 }
 
+.application-contacts {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.application-contact-list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.application-contact-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+.application-contact-item .tracker-controls,
+.application-contacts > form.tracker-controls {
+  grid-template-columns: 1fr;
+}
+
+.application-contacts > form.tracker-controls > h4 {
+  margin: 0;
+}
+
+.application-contact-saved ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.application-contact-saved li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+}
+
 .tracker-controls > .button {
   align-self: end;
   justify-self: start;
@@ -3494,6 +3539,13 @@ main:focus {
 
 .application-resume .button-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .application-resume .button-row > * { max-width: 100%; white-space: normal; }
+.application-material-list { display: grid; gap: 10px; border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+.application-material-list legend { font-weight: 650; margin-bottom: 4px; }
+.application-material-choice { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); cursor: pointer; }
+.application-material-choice input { width: 18px; height: 18px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--blue); }
+.application-material-choice > span { display: grid; gap: 4px; min-width: 0; }
+.application-material-choice strong { overflow-wrap: anywhere; }
+.application-material-choice small { color: var(--muted); }
 
 /* Not-found and error pages */
 .status-screen {
@@ -3537,3 +3589,4 @@ main:focus {
 
 .job-compensation { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .job-compensation small { color: var(--muted, #526171); }
+.tracker-export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 16px; }

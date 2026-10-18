@@ -49,6 +49,7 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `v053-linked-resume-review-and-change` | Review or change resume opens the linked PDF (reload, Back, close keep context), another approved resume can be linked from the library, and the unlinked case opens the builder. |
 | `v053-home-pending-review-lands-on-saved-list` | Pending-detail links from Home land on the saved list with focus after loading (390 px and desktop); saves do not move scroll or focus; `#experience` stays the add form. |
 | `v053-preferences-keep-approved-resume-ready` | Preferences changed in the profile form keep approved and pending PDFs ready; a printed name change blocks approval, linking and assisted preparation until restored; the PDF bytes never change. |
+| `applications-csv-download-neutralizes-formulas` | Downloading the application list as CSV (ES and EN): UTF-8 byte-order mark, localized headers, only the applications that match the search, values that start with `=` or `@` stored as text, commas and accents kept, and notes only when asked for. |
 
 The dashboard copy runs the dashboard's PDF.js asset step itself, so a fresh checkout or worktree needs no prior dashboard build.
 
@@ -82,7 +83,7 @@ With `E2E_KEEP=1`, remove the leftovers yourself afterwards: `dropdb career_e2e_
 
 | Suite | CI | Notes |
 |---|---|---|
-| `test:unit`, `test:evals`, `test:ai`, `test:ui-logic`, `test:backup-crypto` | Yes, on Ubuntu and Windows | No database. `test:evals` checks synthetic relevance and ranking cases. `test:backup-crypto` checks backup encryption and the private temporary folder (a user-only ACL on Windows); on Ubuntu it also decrypts with the official `age` tool (`CAREER_AGE_CLI_TEST=1`). |
+| `test:unit`, `test:evals`, `test:ai`, `test:ui-logic`, `test:backup-crypto` | Yes, on Ubuntu and Windows | No database. `test:evals` checks synthetic relevance and ranking cases. `test:backup-crypto` checks backup encryption, private-file handling and the private temporary folder (a user-only ACL on Windows); on Ubuntu it also decrypts with the official `age` tool (`CAREER_AGE_CLI_TEST=1`). |
 | `test:integration` | Yes, on Ubuntu | Backup and isolated restore plus the v0.4, v0.8, v0.9 and resume-import (0011) migrations, against the PostgreSQL 17 service with PostgreSQL 17 client tools (`CAREER_PG_BIN`). |
 | Sources, discovery, searches, bootstrap, backup, resume import (`test:fact-import`), preparation and assisted applications | Yes, on Ubuntu | Disposable databases on the PostgreSQL service. |
 | `test:clipboard`, `test:contributors`, `test:process`, reviewed assistant PDFs (`test/ai-documents.test.ts`) | Yes, on Ubuntu | The PDF check installs Playwright Chromium and `pdftotext` (poppler). |

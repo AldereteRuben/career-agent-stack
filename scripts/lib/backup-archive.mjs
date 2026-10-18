@@ -4,8 +4,9 @@
 // checksums, truncated data and trailing garbage are rejected before anything leaves the staging folder.
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { copyFile, link, mkdir, open } from 'node:fs/promises';
+import { copyFile, link, open } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { ensurePrivateDir, ensurePrivateFile } from './private-files.mjs';
 
 const BLOCK = 512;
 const CHUNK = 1024 * 1024;
@@ -98,6 +99,7 @@ export async function writeArchive(outPath, entries) {
   const written = [];
   const seen = new Set();
   try {
+    await ensurePrivateFile(outPath, { create: false });
     for (const entry of entries) {
       const name = `${ARCHIVE_ROOT}/${entry.name}`;
       assertSafeRelativePath(name);
@@ -196,10 +198,11 @@ export async function extractArchive(archivePath, destDir, { allowName = () => t
       if (dataStart + size + padding(size) > total) throw new ArchiveError('TRUNCATED', 'La copia está incompleta (datos cortados).', 'The backup is incomplete (data cut short).');
 
       const target = safeJoin(destDir, name);
-      await mkdir(join(target, '..'), { recursive: true, mode: 0o700 });
+      await ensurePrivateDir(join(target, '..'));
       const output = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
       const hash = createHash('sha256');
       try {
+        await ensurePrivateFile(target, { create: false });
         const buffer = Buffer.alloc(Math.min(CHUNK, Math.max(size, 1)));
         let copied = 0;
         while (copied < size) {

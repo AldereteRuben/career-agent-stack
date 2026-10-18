@@ -54,13 +54,22 @@ importers:
       fastify:
         specifier: ^5.12.7
         version: 5.12.7
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       playwright:
         specifier: 1.64.0
         version: 1.64.0
+      postal-mime:
+        specifier: 4.0.5
+        version: 4.0.5
       zod:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      '@axe-core/playwright':
+        specifier: 4.13.0
+        version: 4.13.0(playwright-core@1.64.0)
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
@@ -144,6 +153,11 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@axe-core/playwright@4.13.0':
+    resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@cacheable/memory@2.2.0':
     resolution: {integrity: sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==}
@@ -1407,6 +1421,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   file-entry-cache@11.1.5:
     resolution: {integrity: sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==}
 
@@ -1830,6 +1847,10 @@ packages:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
     engines: {node: '>= 0.4'}
 
+  postal-mime@4.0.5:
+    resolution: {integrity: sha512-fWu1Cmo2ef6LCwgHU1fVrqo55eyFP31F7hH0j/wMWkQYYdh+H8zz3nBf3EYRQelkmTfDrbDfTvPUQEBT8DS/jw==}
+    engines: {node: '>=20'}
+
   postcss@8.5.23:
     resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
     engines: {node: ^10 || ^12 || >=14}
@@ -2141,6 +2162,11 @@ packages:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
+
+  '@axe-core/playwright@4.13.0(playwright-core@1.64.0)':
+    dependencies:
+      axe-core: 4.13.0
+      playwright-core: 1.64.0
 
   '@cacheable/memory@2.2.0':
     dependencies:
@@ -3248,6 +3274,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
+  fflate@0.8.3: {}
+
   file-entry-cache@11.1.5:
     dependencies:
       flat-cache: 6.1.23
@@ -3700,6 +3728,8 @@ snapshots:
       playwright-core: 1.64.0
 
   possible-typed-array-names@1.1.0: {}
+
+  postal-mime@4.0.5: {}
 
   postcss@8.5.23:
     dependencies:
