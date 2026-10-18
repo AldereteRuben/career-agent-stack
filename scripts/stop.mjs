@@ -8,8 +8,8 @@
 // exact start time, working directory, and entry point (or Next's "next-server" title). Anything else,
 // including records written by older launcher versions, is left running (fail closed).
 import { spawnSync } from 'node:child_process';
-import { readFile, readdir, unlink } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
 import { ok, printRecovery, processIdentity, projectRoot, runDir, say, warn } from './lib/local-env.mjs';
@@ -19,6 +19,9 @@ const stopDatabase = process.argv.includes('--database');
 const forget = process.argv.includes('--forget');
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
+const isStopFile = (record) => typeof record.stopFile === 'string'
+  && dirname(resolve(record.stopFile)) === resolve(runDir)
+  && /^api-stop-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.signal$/i.test(basename(record.stopFile));
 
 /** Returns null when the running process is exactly the recorded one, otherwise the reason it is not. */
 async function mismatch(record) {
@@ -49,6 +52,20 @@ async function stopProcess(record) {
   if (!Number.isInteger(record.pid) || !alive(record.pid)) return { outcome: 'gone' };
   const reason = await mismatch(record);
   if (reason) return { outcome: 'refused', reason };
+  if (process.platform === 'win32' && record.name === 'api' && record.stopFile) {
+    if (!isStopFile(record)) return { outcome: 'refused', reason: 'invalid cooperative stop-file path' };
+    if (await mismatch(record)) return { outcome: 'refused', reason: 'process identity changed before stop request' };
+    try { await writeFile(record.stopFile, 'stop', { flag: 'wx', mode: 0o600 }); }
+    catch (error) {
+      if (error.code !== 'EEXIST') return { outcome: 'failed', reason: 'could not create cooperative stop file' };
+    }
+    for (let attempt = 0; attempt < 60 && alive(record.pid); attempt += 1) await delay(250);
+    if (!alive(record.pid)) return { outcome: 'stopped' };
+    warn('La API no respondió a la parada ordenada en 15 s; se usará taskkill como último recurso.', 'The API did not stop gracefully within 15 s; using taskkill as a last resort.');
+    if (await mismatch(record)) return { outcome: 'refused', reason: 'process identity changed before forced stop' };
+    if (!windowsStopTree(record.pid) && alive(record.pid)) return { outcome: 'failed', reason: 'taskkill could not stop the API process tree' };
+    return { outcome: 'forced' };
+  }
   await signal(record, 'SIGTERM');
   for (let attempt = 0; attempt < 40 && alive(record.pid); attempt += 1) await delay(250);
   if (alive(record.pid) && process.platform === 'win32') return { outcome: 'failed' }; // the first step was already forceful (taskkill /F), so there is nothing stronger to try
@@ -69,7 +86,10 @@ async function main() {
   let refused = 0;
   for (const file of files) {
     const path = resolve(runDir, file);
-    const record = JSON.parse(await readFile(path, 'utf8'));
+    let recordText;
+    try { recordText = await readFile(path, 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    const record = JSON.parse(recordText);
     if (record.name === 'postgres') {
       if (!stopDatabase) { say('PostgreSQL sigue en marcha (usa --database para detenerlo; los datos se conservan).', 'PostgreSQL keeps running (use --database to stop it; data is kept).'); continue; }
       const result = record.method === 'homebrew-pg_ctl'
@@ -97,8 +117,12 @@ async function main() {
       process.exitCode = 1;
       continue;
     }
-    ok(`${record.name}: ${outcome === 'stopped' ? 'detenido' : 'ya no estaba en marcha'}`, `${record.name}: ${outcome === 'stopped' ? 'stopped' : 'was not running'}`);
-    await unlink(path);
+    if (outcome === 'forced') warn('API detenida a la fuerza; revisa su registro si había trabajo en curso.', 'API was force-stopped; check its log if work was in progress.');
+    const stoppedText = outcome === 'forced' ? 'detenida a la fuerza' : outcome === 'stopped' ? 'detenido' : 'ya no estaba en marcha';
+    const stoppedTextEn = outcome === 'forced' ? 'force-stopped' : outcome === 'stopped' ? 'stopped' : 'was not running';
+    ok(`${record.name}: ${stoppedText}`, `${record.name}: ${stoppedTextEn}`);
+    if (isStopFile(record)) await unlink(record.stopFile).catch(() => {});
+    await unlink(path).catch((error) => { if (error.code !== 'ENOENT') throw error; });
   }
   if (refused) process.exitCode = 1;
 }

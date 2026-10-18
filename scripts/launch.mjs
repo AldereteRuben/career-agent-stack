@@ -9,7 +9,7 @@
 // It never seeds demo data or deletes workspace data, and never prints secrets.
 // --recover-session explicitly replaces the local one-time sign-in code; existing sessions remain valid.
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, openSync, unlinkSync, writeFileSync } from 'node:fs';
 import { access, open, readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
@@ -262,6 +262,7 @@ async function startDetached(name, command, commandArgs, { cwd, env, entry, titl
   await recordStarted(name, {
     version: 2, projectRoot, pid: child.pid, pgid: identity?.pgid ?? null, lstart: identity?.lstart ?? null,
     cwd: identity?.cwd ?? null, entry, titles, log: logPath,
+    ...(name === 'api' && process.platform === 'win32' && env.CAREER_STOP_FILE ? { stopFile: env.CAREER_STOP_FILE } : {}),
   });
   return logPath;
 }
@@ -334,7 +335,10 @@ async function ensureApi({ apiBase, apiPort, childEnv }) {
   }
   step('Iniciando la API…', 'Starting the API…');
   const entry = at('apps/api/dist/server.js');
-  const logPath = await startDetached('api', process.execPath, [entry], { cwd: at('apps/api'), env: childEnv, entry });
+  const stopFile = process.platform === 'win32' ? resolve(runDir, `api-stop-${randomUUID()}.signal`) : undefined;
+  if (stopFile) await ensurePrivateDir(runDir);
+  const apiEnv = stopFile ? { ...childEnv, CAREER_STOP_FILE: stopFile } : childEnv;
+  const logPath = await startDetached('api', process.execPath, [entry], { cwd: at('apps/api'), env: apiEnv, entry });
   if (!(await waitFor(() => apiHealthy(apiBase), { timeoutMs: 60_000 }))) {
     process.stderr.write(`${await tail(logPath)}\n`);
     throw new RecoveryError({
