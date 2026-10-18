@@ -1,5 +1,6 @@
 import { boolean, check, date, primaryKey, foreignKey, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { CompanyResearchNotes } from '@career/domain';
 
 export const providerEnum = pgEnum('provider_id', ['greenhouse', 'lever', 'ashby']);
 export const permissionEnum = pgEnum('permission_status', ['APPROVED_FOR_SCOPE', 'UNKNOWN', 'BLOCKED']);
@@ -51,6 +52,8 @@ export const boards = pgTable('boards', {
 }, (t) => [unique('boards_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('boards_workspace_provider_region_tenant_uq').on(t.workspaceId, t.provider, t.region, t.tenant), index('boards_workspace_enabled_idx').on(t.workspaceId, t.enabled)]);
 
 export const jobs = pgTable('jobs', {
+  companyResearch: jsonb('company_research').$type<CompanyResearchNotes>().notNull().default({ whatItDoes: '', howItMakesMoney: '', recentNews: '', culture: '', questionsToAsk: '' }),
+  companyResearchRevision: integer('company_research_revision').notNull().default(1),
   // The person closed this job; it stays CLOSED whatever sources report until they reopen it (ADR 021).
   closedByUser: boolean('closed_by_user').notNull().default(false),
   discoveredAt: timestamp('discovered_at', { withTimezone: true }),
