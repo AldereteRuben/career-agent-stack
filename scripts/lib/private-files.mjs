@@ -1,10 +1,17 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import process from 'node:process';
 
 const windows = process.platform === 'win32';
+const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+/**
+ * Windows system tools by absolute path. A bare "whoami" or "icacls" is looked up on PATH, and from Git Bash (or any shell
+ * that puts GNU coreutils first) that finds a different program: `whoami /user` then fails and no file can be verified as private.
+ * It also keeps a look-alike earlier on PATH from standing in for the tools that decide who may read the data.
+ */
+export const windowsTool = (name) => win32.join(systemRoot, 'System32', `${name}.exe`);
 const privateFailure = (path) => new Error(`No se pudo verificar que ${path} sea privado; se detuvo la operación. / Could not verify that ${path} is private; the operation was stopped.`);
 
 function sameRegularFile(opened, current) {
@@ -12,7 +19,7 @@ function sameRegularFile(opened, current) {
 }
 
 function windowsUser(run = execFileSync) {
-  const [name, sid] = run('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true }).trim().split('","').map((part) => part.replace(/"/g, ''));
+  const [name, sid] = run(windowsTool('whoami'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true }).trim().split('","').map((part) => part.replace(/"/g, ''));
   if (!name || !/^S-1-[\d-]+$/.test(sid ?? '')) throw new Error('Could not identify the current Windows user.');
   return { name, sid };
 }
@@ -31,7 +38,7 @@ export function parseIcacls(output, path) {
 
 export function restrictToCurrentUser(path, run = execFileSync, { file = false } = {}) {
   const user = windowsUser(run);
-  const icacls = (...args) => run('icacls', [path, ...args], { encoding: 'utf8', windowsHide: true });
+  const icacls = (...args) => run(windowsTool('icacls'), [path, ...args], { encoding: 'utf8', windowsHide: true });
   const others = (listing) => parseIcacls(listing, path).filter((name) => name.toLowerCase() !== user.name.toLowerCase());
   icacls('/inheritance:r', '/grant:r', `*${user.sid}:${file ? '' : '(OI)(CI)'}F`);
   for (const other of others(icacls())) icacls('/remove:g', other);
@@ -46,7 +53,7 @@ export function isPrivateSync(path, run = execFileSync) {
   try {
     if (windows) {
       const user = windowsUser(run);
-      const listing = run('icacls', [path], { encoding: 'utf8', windowsHide: true });
+      const listing = run(windowsTool('icacls'), [path], { encoding: 'utf8', windowsHide: true });
       const principals = parseIcacls(listing, path);
       const entries = icaclsEntries(listing, path);
       return principals.length === 1 && principals[0].toLowerCase() === user.name.toLowerCase()

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { test } from 'node:test';
-import { ensurePrivateDir, ensurePrivateFile, ensurePrivateTree, isPrivate, isPrivateTree, readPrivateFile, readPrivateFileSync } from '../lib/private-files.mjs';
+import { ensurePrivateDir, ensurePrivateFile, ensurePrivateTree, isPrivate, isPrivateTree, readPrivateFile, readPrivateFileSync, restrictToCurrentUser, windowsTool } from '../lib/private-files.mjs';
 import { writePrivateFileAtomic } from '../lib/local-env.mjs';
 
 test('private directories and files are restricted and verified on the current platform', async () => {
@@ -78,10 +78,26 @@ test('existing private trees are tightened recursively', async () => {
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+const isTool = (command, name) => win32.basename(command, '.exe').toLowerCase() === name;
+
+// From Git Bash, a bare `whoami` is GNU coreutils' and rejects `/user`, so no file could be verified as private.
+test('Windows system tools are called by absolute path and never looked up on PATH', () => {
+  const commands = [];
+  const path = 'C:\\Temp\\career-private';
+  restrictToCurrentUser(path, (command, args) => {
+    commands.push(command);
+    if (isTool(command, 'whoami')) return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
+    return args.length === 1 ? `${path} DESKTOP-1\\ana:(OI)(CI)(F)\r\n` : 'processed';
+  });
+  assert.ok(commands.length >= 3);
+  for (const command of commands) assert.match(command, /^[A-Za-z]:\\.+\\System32\\(whoami|icacls)\.exe$/i, command);
+  assert.equal(windowsTool('whoami').toLowerCase().endsWith('\\system32\\whoami.exe'), true);
+});
+
 test('a failed Windows ACL verification prevents secret content from being written', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'career-private-files-failure-'));
   const file = join(root, 'secret.txt');
-  const run = (command, args) => command === 'whoami'
+  const run = (command, args) => isTool(command, 'whoami')
     ? '"tester","S-1-5-21-123"'
     : `${args[0]}\n  Everyone:(F)\n`;
   try {
