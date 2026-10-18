@@ -21,7 +21,7 @@ test('systemd user unit runs the same launcher as a one-shot without a shell or 
   const unit = systemdUnit({ node: '/home/ruben/node 24/bin/node', root: '/home/ruben/Career Stack', path: '/home/ruben/.local/bin:/usr/bin', home: '/home/ruben' });
   assert.match(unit, /Type=oneshot/);
   assert.match(unit, /RemainAfterExit=yes/);
-  assert.match(unit, /WorkingDirectory=\/home\/ruben\/Career\\x20Stack\n/);
+  assert.match(unit, /WorkingDirectory=\/home\/ruben\/Career Stack\n/);
   assert.doesNotMatch(unit, /WorkingDirectory="/);
   assert.match(unit, /ExecStart="\/home\/ruben\/node 24\/bin\/node" "\/home\/ruben\/Career Stack\/scripts\/launch\.mjs" --no-open/);
   assert.match(unit, /ExecStop=.*scripts\/stop\.mjs/);
