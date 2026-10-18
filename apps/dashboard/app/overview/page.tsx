@@ -8,7 +8,7 @@ import { overviewDetailsOpen } from '@/lib/overview-details';
 import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage, formatDate } from '@/lib/api';
 import { copy, labelFor } from '@/lib/labels';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
@@ -29,6 +29,17 @@ type Summary = {
   totalJobs: number;
   activeApplications: number;
   profileCompletion: { percent: number; completed: number; total: number; missing: ProfileCheck[]; approvedFactCount: number; pendingFactCount: number };
+};
+type TrackingPeriod = '30d' | '90d' | 'all';
+type TrackingMetrics = {
+  period: TrackingPeriod;
+  periodStart: string | null;
+  confirmed: number;
+  interviewed: number;
+  interviewConversionPercent: number | null;
+  noResponseYet: number;
+  noResponseAfter14Days: number;
+  noResponseThresholdDays: number;
 };
 
 type ProfileCheck = 'fullName' | 'email' | 'country' | 'targetTitles' | 'workModes' | 'approvedFact';
@@ -57,7 +68,23 @@ export default function OverviewPage() {
   const { t, locale } = useLocale();
   const c = copy(locale);
   const [summary, setSummary] = useState<Summary | null>(null); const [error, setError] = useState('');
-  const load = useCallback(async () => { try { setSummary(await api<Summary>(`/summary?tz=${encodeURIComponent(viewerTimeZone())}`)); setError(''); } catch (err) { setError(errorMessage(err)); } }, []);
+  const [trackingPeriod, setTrackingPeriod] = useState<TrackingPeriod>('90d');
+  const [trackingMetrics, setTrackingMetrics] = useState<TrackingMetrics | null>(null); const [trackingError, setTrackingError] = useState(''); const [trackingLoading, setTrackingLoading] = useState(true);
+  const loadVersion = useRef(0);
+  const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    setTrackingLoading(true);
+    const [summaryResult, metricsResult] = await Promise.allSettled([
+      api<Summary>(`/summary?tz=${encodeURIComponent(viewerTimeZone())}`),
+      api<TrackingMetrics>(`/tracking-metrics?period=${trackingPeriod}`),
+    ]);
+    if (version !== loadVersion.current) return;
+    if (summaryResult.status === 'fulfilled') { setSummary(summaryResult.value); setError(''); }
+    else setError(errorMessage(summaryResult.reason));
+    if (metricsResult.status === 'fulfilled') { setTrackingMetrics(metricsResult.value); setTrackingError(''); }
+    else setTrackingError(errorMessage(metricsResult.reason));
+    setTrackingLoading(false);
+  }, [trackingPeriod]);
   const [inbox, setInbox] = useState<SearchInbox | null>(null); const [searches, setSearches] = useState<HomeSearch[]>([]); const [pendingResumes, setPendingResumes] = useState(0); const [inboxError, setInboxError] = useState('');
   const loadInbox = useCallback(async () => {
     const [results, searchList, documents] = await Promise.allSettled([
@@ -201,6 +228,24 @@ export default function OverviewPage() {
     </section>
 
     <DiscoveryPanel compact/>
+    <section className="card home-panel" aria-labelledby="tracking-metrics-heading" aria-busy={trackingLoading}>
+      <div className="panel-heading"><h2 id="tracking-metrics-heading">{c('Resultados de solicitudes', 'Application outcomes')}</h2>
+        <label className="field"><span>{c('Periodo', 'Period')}</span><select value={trackingPeriod} onChange={(event) => setTrackingPeriod(event.target.value as TrackingPeriod)}>
+          <option value="30d">{c('Últimos 30 días', 'Last 30 days')}</option>
+          <option value="90d">{c('Últimos 90 días', 'Last 90 days')}</option>
+          <option value="all">{c('Todo el historial', 'All time')}</option>
+        </select></label>
+      </div>
+      {trackingError ? <Notice tone="error">{trackingError}</Notice>
+        : trackingLoading || !trackingMetrics ? <p className="panel-status" role="status">{c('Cargando resultados…', 'Loading outcomes…')}</p>
+          : trackingMetrics.confirmed === 0 ? <p className="panel-status">{c('No hay solicitudes confirmadas en este periodo. Las cifras aparecerán cuando registres un envío.', 'No confirmed applications in this period. These figures will appear after you record a submission.')}</p>
+            : <ul className="metric-grid">
+              <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c('Envíos confirmados', 'Confirmed submissions')}</span><strong className="metric-value">{trackingMetrics.confirmed}</strong><span className="metric-label">{c('en el periodo elegido', 'in the selected period')}</span></Link></li>
+              <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c('Conversión a entrevista', 'Interview conversion')}</span><strong className="metric-value">{trackingMetrics.interviewConversionPercent === null ? '—' : `${trackingMetrics.interviewConversionPercent}%`}</strong><span className="metric-label">{trackingMetrics.interviewed} / {trackingMetrics.confirmed} {c('envíos confirmados', 'confirmed submissions')}</span></Link></li>
+              <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c('Sin respuesta todavía', 'No response yet')}</span><strong className="metric-value">{trackingMetrics.noResponseYet}</strong><span className="metric-label">{c(`menos de ${trackingMetrics.noResponseThresholdDays} días`, `under ${trackingMetrics.noResponseThresholdDays} days`)}</span></Link></li>
+              <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c(`Sin respuesta tras ${trackingMetrics.noResponseThresholdDays} días`, `No response after ${trackingMetrics.noResponseThresholdDays} days`)} </span><strong className="metric-value">{trackingMetrics.noResponseAfter14Days}</strong><span className="metric-label">{c('etapa actual: sin respuesta', 'current stage: no response')}</span></Link></li>
+            </ul>}
+    </section>
     <div className="home-grid">
       <Card className="home-panel">
         <div className="panel-heading"><h2>{c('Otros pendientes y opciones', 'Other tasks and options')}</h2></div>
