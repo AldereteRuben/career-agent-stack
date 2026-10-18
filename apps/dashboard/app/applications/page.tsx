@@ -10,6 +10,7 @@ import { useSessionDraft, stringDraft } from '@/lib/session-draft';
 import { ApplicationQueue, ApplicationPreparationAction } from '@/components/application-preparation';
 import { ApplicationSections } from '@/components/application-sections';
 import { ApplicationJourney } from '@/components/application-journey';
+import { ApplicationEmailImport } from '@/components/application-email-import';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
@@ -70,6 +71,9 @@ function eventDetail(event: AppEvent, locale: Locale) {
   if (event.eventType === 'PREPARATION_CREATED') return c('Se comprobaron los datos disponibles y los pasos pendientes. Preparar no envía la solicitud.', 'Available details and remaining steps were checked. Preparing does not submit the application.');
   if (event.eventType === 'APPLICATION_RESUME_SELECTED') return c('CV seleccionado para esta solicitud: ', 'Resume selected for this application: ') + (event.reason ?? '');
   if (event.eventType === 'APPLICATION_STATE_CHANGED') return `${labelFor.applicationState(event.priorState, locale)} → ${labelFor.applicationState(event.newState, locale)}`;
+  if (event.eventType === 'EMAIL_IMPORTED') return event.newState && event.newState !== event.priorState
+    ? `${c('Cambio confirmado desde un email: ', 'Change confirmed from an email: ')}${labelFor.recruitmentStage(event.priorState, locale)} → ${labelFor.recruitmentStage(event.newState, locale)}`
+    : c('Mensaje revisado y guardado; no se cambió la etapa.', 'Message reviewed and saved; the stage was not changed.');
   if (event.eventType.startsWith('ASSIST_') && event.eventType !== 'ASSIST_USER_RECONCILED') return c('Acción registrada para esta solicitud. Consulta el resultado y la evidencia del envío.', 'Action recorded for this application. Check the submission result and evidence.');
   if (event.reason === 'Manual user record') return c('Registro manual', 'Added manually');
   if (event.reason === 'User-attested confirmation') return c('Confirmación declarada por ti', 'Confirmation reported by you');
@@ -302,6 +306,7 @@ function ApplicationsView() {
 
           <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
+          <ApplicationEmailImport applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
           <div className="tracker-controls">
             <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
             <Field label={c('Recordatorio para', 'Follow-up date')} type="date" value={followUpDateDraft} disabled={busy !== null} onChange={(event) => setFollowUpDateDraft(event.target.value)}/>
