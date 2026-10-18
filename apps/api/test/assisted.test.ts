@@ -91,6 +91,20 @@ describe('assisted routes with fictional data and a disposable database', { skip
     assert.equal(confirmed.json().error, 'ASSIST_ACTIVE_ATTEMPT');
     await post(`/assisted-attempts/${attempt.id}/cancel`, {});
   });
+  test('the same email imported as EML and pasted text is deduplicated', async () => {
+    const f = await fixture();
+    const body = 'We would like to invite you to an interview next week.';
+    const eml = ['From: recruiter@example.test', 'Message-ID: <cross-source@example.test>', 'Content-Type: text/plain; charset="utf-8"', '', body, ''].join('\r\n');
+    const emlPreview = await post(`/applications/${f.application}/email-import/preview`, { source: 'EML', emlBase64: Buffer.from(eml, 'utf8').toString('base64') });
+    assert.equal(emlPreview.statusCode, 200, emlPreview.body);
+    const pastedPreview = await post(`/applications/${f.application}/email-import/preview`, { source: 'PASTED_TEXT', text: body });
+    assert.equal(pastedPreview.statusCode, 200, pastedPreview.body);
+    const first = await post(`/applications/${f.application}/email-import/confirm`, { token: emlPreview.json().token, applyStage: false });
+    assert.equal(first.statusCode, 201, first.body);
+    const duplicate = await post(`/applications/${f.application}/email-import/confirm`, { token: pastedPreview.json().token, applyStage: false });
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().error, 'EMAIL_ALREADY_IMPORTED');
+  });
   test('job evidence lock serializes assisted start and resume linking before currentness checks', async () => {
     for (const operation of ['start', 'link'] as const) {
       const f = await fixture(); const attempt = operation === 'start' ? await prepare(f.application, f.doc) : null;

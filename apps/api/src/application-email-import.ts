@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { applicationEvents, applications, assistedAttempts, db } from '@career/db';
 import { classifyRecruitmentStageChange, type RecruitmentStage } from '@career/domain';
@@ -13,6 +13,7 @@ type PendingImport = {
   workspaceId: string;
   source: Source;
   messageRef: string;
+  messageIdRef?: string;
   messageDate: string | null;
   proposedStage: RecruitmentStage | null;
   expectedVersion: number;
@@ -35,14 +36,12 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
     const workspaceId = workspace(request);
     const body = request.body as { source?: unknown; text?: unknown; emlBase64?: unknown } | null;
     if (body?.source !== 'PASTED_TEXT' && body?.source !== 'EML') return reply.code(400).send({ error: 'INVALID_EMAIL_IMPORT' });
-    let bytes: Buffer;
     let text: string;
     let messageId: string | undefined;
     let messageDate: string | null = null;
     if (body.source === 'EML') {
       const decoded = decodeBase64(body.emlBase64);
       if (!decoded) return reply.code(400).send({ error: 'INVALID_EMAIL_FILE' });
-      bytes = decoded;
       try {
         const parsed = await parseEml(decoded);
         text = parsed.text; messageId = parsed.messageId; messageDate = parsed.messageDate;
@@ -50,11 +49,12 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
     } else {
       if (typeof body.text !== 'string' || !body.text.trim() || Buffer.byteLength(body.text, 'utf8') > MAX_REVIEW_TEXT) return reply.code(400).send({ error: 'INVALID_EMAIL_TEXT' });
       text = body.text;
-      bytes = Buffer.from(text, 'utf8');
     }
     if (Buffer.byteLength(text, 'utf8') > MAX_REVIEW_TEXT) return reply.code(400).send({ error: 'EMAIL_TEXT_TOO_LARGE' });
     text = text.replace(/\0/g, '').trim();
     if (!text) return reply.code(400).send({ error: 'EMAIL_HAS_NO_READABLE_TEXT' });
+    const messageRef = digest(Buffer.from(text.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase(), 'utf8'));
+    const messageIdRef = messageId ? digest(Buffer.from(`message-id:${messageId.toLowerCase()}`)) : undefined;
     const application = (await db.select().from(applications).where(and(eq(applications.id, applicationId), eq(applications.workspaceId, workspaceId))).limit(1))[0];
     if (!application) return reply.code(404).send({ error: 'NOT_FOUND' });
     const suggestion = findStage(text);
@@ -64,8 +64,8 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
     const token = randomUUID();
     trimExpired();
     pendingImports.set(token, {
-      applicationId, workspaceId, source: body.source,
-      messageRef: digest(Buffer.from(messageId ? `message-id:${messageId.toLowerCase()}` : bytes)),
+      applicationId, workspaceId, source: body.source, messageRef,
+      ...(messageIdRef ? { messageIdRef } : {}),
       messageDate, proposedStage: nextStage,
       expectedVersion: application.version, expectedStage: application.recruitmentStage, expiresAt: Date.now() + PREVIEW_TTL_MS,
     });
@@ -89,7 +89,11 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
         const activeAssist = await tx.select({ id: assistedAttempts.id }).from(assistedAttempts).where(and(eq(assistedAttempts.workspaceId, workspaceId), eq(assistedAttempts.applicationId, applicationId), inArray(assistedAttempts.status, ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN']))).limit(1);
         if (activeAssist.length) return { error: 'ASSIST_ACTIVE_ATTEMPT' as const };
       }
-      const duplicate = await tx.select({ id: applicationEvents.id }).from(applicationEvents).where(and(eq(applicationEvents.workspaceId, workspaceId), eq(applicationEvents.applicationId, applicationId), sql`${applicationEvents.evidence}->>'messageRef' = ${pending.messageRef}`)).orderBy(desc(applicationEvents.createdAt)).limit(1);
+      const messageRefs = [pending.messageRef, pending.messageIdRef].filter((value): value is string => Boolean(value));
+      const duplicate = await tx.select({ id: applicationEvents.id }).from(applicationEvents).where(and(
+        eq(applicationEvents.workspaceId, workspaceId), eq(applicationEvents.applicationId, applicationId),
+        sql`(${applicationEvents.evidence}->>'messageRef' = ANY(${messageRefs}::text[]) OR ${applicationEvents.evidence}->>'messageIdRef' = ANY(${messageRefs}::text[]))`,
+      )).limit(1);
       if (duplicate.length) return { error: 'EMAIL_ALREADY_IMPORTED' as const };
       let version = current.version;
       let nextStage = current.recruitmentStage;
@@ -103,7 +107,7 @@ export function registerApplicationEmailImportRoutes(app: FastifyInstance, works
       const imported = (await tx.insert(applicationEvents).values({
         workspaceId, applicationId, eventType: 'EMAIL_IMPORTED', reason: body.applyStage ? 'Email import confirmed with stage change' : 'Email import confirmed without stage change',
         priorState: current.recruitmentStage, newState: nextStage,
-        evidence: { messageRef: pending.messageRef, source: pending.source, messageDate: pending.messageDate, ...(body.applyStage && pending.proposedStage ? { stageProposal: pending.proposedStage } : {}) }, aggregateVersion: version,
+        evidence: { messageRef: pending.messageRef, ...(pending.messageIdRef ? { messageIdRef: pending.messageIdRef } : {}), source: pending.source, messageDate: pending.messageDate, ...(body.applyStage && pending.proposedStage ? { stageProposal: pending.proposedStage } : {}) }, aggregateVersion: version,
       }).returning())[0]!;
       return { event: imported, applicationVersion: version, recruitmentStage: nextStage };
     });
