@@ -19,7 +19,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } fr
 import { AppShell, DetailTitle, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, ButtonLink, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
-import { applicationsCsv } from '@/lib/applications-csv';
+import { applicationsCsv, defaultCsvSeparator, type CsvSeparator } from '@/lib/applications-csv';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
 import type { Locale } from '@/lib/locale';
 
@@ -102,7 +102,9 @@ function ApplicationsView() {
   const note = selectedId ? notes.value[selectedId] ?? '' : '';
   const setNote = (text: string) => { if (selectedId) notes.update((drafts) => ({ ...drafts, [selectedId]: text })); }; const [pendingStage, setPendingStage] = useState<string | null>(null); const [confirmApplied, setConfirmApplied] = useState(false);
   const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
-  const [csvNotes, setCsvNotes] = useState(false); const [csvBusy, setCsvBusy] = useState(false);
+  const [csvNotes, setCsvNotes] = useState(false); const [csvBusy, setCsvBusy] = useState(false); const [csvSeparator, setCsvSeparator] = useState<CsvSeparator>(',');
+  // The server cannot know the regional format, so the separator is chosen once the page is in the browser.
+  useEffect(() => { setCsvSeparator(defaultCsvSeparator(navigator.language)); }, []);
   const errorFocus = useErrorFocus(error);
   const eventsRequest = useRef(0);
   // The selection as of now, not as of the render that started a request: async handlers compare against it after every await.
@@ -160,14 +162,19 @@ function ApplicationsView() {
   const downloadCsv = async () => {
     setCsvBusy(true); setError(''); setMessage('');
     try {
-      const all: Application[] = []; let total = 0;
+      // Pages are read by offset, so an application that changes during the export can move between pages: keep each id once,
+      // and stop when a page brings nothing new (the server answers an offset past the end with the last page).
+      const found = new Map<string, Application>(); let total = 0;
       do {
-        const params = new URLSearchParams({ offset: String(all.length), limit: '100', q: query, sort });
+        const params = new URLSearchParams({ offset: String(found.size), limit: '100', q: query, sort });
         const page = await api<{ items: Application[]; total: number }>(`/applications?${params}`);
-        total = page.total; all.push(...page.items);
-        if (!page.items.length) break;
-      } while (all.length < total && all.length < 5000);
-      const url = URL.createObjectURL(new Blob([applicationsCsv(all, locale, { includeNotes: csvNotes })], { type: 'text/csv;charset=utf-8' }));
+        total = page.total;
+        const before = found.size;
+        for (const item of page.items) if (!found.has(item.id)) found.set(item.id, item);
+        if (found.size === before) break;
+      } while (found.size < total && found.size < 5000);
+      const all = [...found.values()];
+      const url = URL.createObjectURL(new Blob([applicationsCsv(all, locale, { includeNotes: csvNotes, separator: csvSeparator })], { type: 'text/csv;charset=utf-8' }));
       const link = document.createElement('a');
       link.href = url; link.download = `${locale === 'es' ? 'solicitudes' : 'applications'}-${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(link); link.click(); link.remove();
@@ -301,6 +308,7 @@ function ApplicationsView() {
     </form>
     <div className="tracker-export">
       <Button type="button" variant="quiet" disabled={csvBusy || loadState !== 'ready' || !pagination.total} onClick={() => void downloadCsv()}>{csvBusy ? c('Preparando CSV…', 'Preparing CSV…') : c('Descargar CSV', 'Download CSV')}</Button>
+      <SelectField label={c('Separador de columnas', 'Column separator')} hint={c('Elegido según el formato regional de tu navegador. Si Excel muestra todo en una columna, prueba el otro.', 'Chosen from your browser’s regional format. If Excel shows everything in one column, try the other.')} value={csvSeparator} onChange={(event) => setCsvSeparator(event.target.value as CsvSeparator)}><option value=";">{c('Punto y coma (;): Excel de España o Argentina', 'Semicolon (;): Excel in Spain or Argentina')}</option><option value=",">{c('Coma (,): Excel de México o EE. UU., Google Sheets', 'Comma (,): Excel in Mexico or the US, Google Sheets')}</option></SelectField>
       <label className="checkbox-line"><input type="checkbox" checked={csvNotes} onChange={(event) => setCsvNotes(event.target.checked)}/><span>{c('Incluir mis notas', 'Include my notes')}<small>{c('Pueden contener datos personales. Comparte el archivo con cuidado.', 'They may contain personal data. Share the file with care.')}</small></span></label>
     </div>
     {loadState === 'loading' ? <Notice>{c('Cargando solicitudes…', 'Loading applications…')}</Notice>
