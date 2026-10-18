@@ -99,6 +99,7 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
       VALUES($1,$2,'Synthetic Company 76','QA Engineer 9996','IN_PROGRESS')`, [performanceWorkspace, metadataJob]);
     routes.registerJobSearchRoutes(app, () => activeWorkspace);
     const filters = await import('../src/job-filter-routes.js'); filters.registerJobFilterRoutes(app, () => activeWorkspace);
+    const feedback = await import('../src/job-match-feedback.js'); feedback.registerJobMatchFeedbackRoutes(app, () => activeWorkspace);
   });
 
   after(async () => {
@@ -188,6 +189,27 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     assert.equal(evaluated.excluded, false, 'in-memory search-result evaluation agrees with the discovered-job SQL');
   });
 
+  test('personal match feedback can be edited, summarized and deleted within one workspace', async () => {
+    activeWorkspace = workspace;
+    const jobId = (await client.query('SELECT id FROM jobs WHERE workspace_id=$1 LIMIT 1', [workspace])).rows[0].id as string;
+    assert.equal((await app.inject(`/api/v1/jobs/${jobId}/feedback`)).json(), null);
+    const invalid = await app.inject({ method: 'PUT', url: `/api/v1/jobs/${jobId}/feedback`, payload: { rating: 'SEEN', reason: null } });
+    assert.equal(invalid.statusCode, 400);
+    const saved = await app.inject({ method: 'PUT', url: `/api/v1/jobs/${jobId}/feedback`, payload: { rating: 'NOT_FOR_ME', reason: 'LOCATION' } });
+    assert.equal(saved.statusCode, 200, saved.body); assert.equal(saved.json().rating, 'NOT_FOR_ME');
+    const summary = await app.inject('/api/v1/job-feedback/summary');
+    assert.equal(summary.json().total, 1); assert.equal(summary.json().notForMe, 1); assert.deepEqual(summary.json().patterns, []);
+    await client.query(`UPDATE job_match_feedback SET created_at=now()-interval '120 days' WHERE workspace_id=$1 AND job_id=$2`, [workspace, jobId]);
+    const edited = await app.inject({ method: 'PUT', url: `/api/v1/jobs/${jobId}/feedback`, payload: { rating: 'INTERESTED', reason: null } });
+    assert.equal(edited.statusCode, 200, edited.body);
+    const afterEdit = await app.inject('/api/v1/job-feedback/summary');
+    assert.equal(afterEdit.json().total, 1); assert.equal(afterEdit.json().interested, 1, 'an old record edited today is included in the recent summary');
+    activeWorkspace = otherWorkspace;
+    assert.equal((await app.inject(`/api/v1/jobs/${jobId}/feedback`)).statusCode, 404, 'a different workspace cannot read or overwrite the feedback');
+    activeWorkspace = workspace;
+    assert.equal((await app.inject({ method: 'DELETE', url: `/api/v1/jobs/${jobId}/feedback` })).json().ok, true);
+    assert.equal((await app.inject('/api/v1/job-feedback/summary')).json().total, 0);
+  });
   test('strong identity duplicates group, but conflicting saved/archive decisions stay separate', async () => {
     activeWorkspace = performanceWorkspace;
     const initialStarted = performance.now();
