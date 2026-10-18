@@ -71,6 +71,7 @@ try {
     if (path === '/applications') return response(route, { items: [application], total: 1, offset: 0, limit: 25 });
     if (path === `/applications/${ids.application}`) return response(route, application);
     if (path === `/applications/${ids.application}/events` || path === '/preparations') return response(route, []);
+    if (/^\/applications\/[0-9a-f-]+\/contacts$/.test(path)) return response(route, { links: [], contacts: [] });
     if (path === `/applications/${ids.application}/assist`) return response(route, { supported: false, url: job.canonicalUrl, identity: { fullName: 'Alex Example', email: 'alex@example.test' }, application, documents: [], attempts: [] });
     if (path === '/documents') return response(route, []);
     if (path === '/jobs') return response(route, [job]);

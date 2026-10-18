@@ -279,7 +279,9 @@ export const scenarios: Scenario[] = [
       const note = `Prepare technical examples ${marker}`;
       const noteField = page.getByLabel(any('Añadir nota', 'Add a note', 'Add note', 'Nota', 'Note')).first();
       await noteField.fill(note);
-      await page.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first().click();
+      const saveNote = page.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first();
+      await eventually(() => saveNote.isEnabled(), Boolean, 'The note button becomes enabled after entering a note');
+      await saveNote.click();
       await page.locator('.timeline-item').getByText(note, { exact: true }).waitFor();
       await eventually(() => noteField.inputValue(), (value) => value === '', 'Note field should clear after a successful save');
       await page.screenshot({ path: join(artifacts, 'application-tracker.png'), fullPage: true });
