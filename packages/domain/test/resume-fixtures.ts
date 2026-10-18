@@ -85,3 +85,28 @@ Product Designer — Fictional Studio
 
 Idiomas / Languages
 English (native), Spanish (B2)`;
+
+/**
+ * A fictional two-column resume represented in column-major PDF text extraction order.
+ * Keeping the source columns explicit makes the fixture's layout verifiable while the
+ * importer receives the same plain text that PDF.js exposes to the section parser.
+ */
+export const twoColumnResumeColumns = [
+  [
+    'MORGAN EXAMPLE',
+    'EXPERIENCIA',
+    'Ingeniera de plataformas — Sistemas Imaginarios',
+    'Ene. 2022 – Actualidad',
+    '- Automaticé despliegues ficticios con TypeScript.',
+  ],
+  [
+    'FORMACIÓN',
+    'Grado en Informática',
+    'Universidad Inventada',
+    'Septiembre de 2018 - Junio de 2022',
+    'HABILIDADES',
+    'TypeScript, PostgreSQL',
+  ],
+] as const;
+
+export const twoColumnResume = twoColumnResumeColumns.flat().join('\n');
