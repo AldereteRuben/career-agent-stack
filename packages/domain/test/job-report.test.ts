@@ -74,6 +74,15 @@ test('requirements headings apply to each listed skill, including skills without
   assert.ok(report.reasons.includes('REQUIRED_SKILL_UNCONFIRMED'));
 });
 
+test('normalizing a displayed excerpt does not erase its required classification', () => {
+  const report = buildJobReport({
+    title: 'QA Engineer', location: 'Remote - Spain', description: 'Requirements:\nPlaywright\nTypeScript\nJava  development',
+  }, tester);
+  assert.equal(report.unconfirmed.find((item) => item.skill === 'java')?.level, 'REQUIRED');
+  assert.equal(report.verdict, 'REVIEW');
+  assert.ok(report.reasons.includes('REQUIRED_SKILL_UNCONFIRMED'));
+});
+
 test('a job without clear requirements stays in review and says what is unknown', () => {
   const report = buildJobReport({ title: 'QA Engineer', location: null, description: 'Join our friendly team and help customers every day.' }, tester);
   assert.equal(report.verdict, 'REVIEW');
@@ -100,6 +109,10 @@ test('a different role whose requirements you have not confirmed is probably not
 
 test('an unclear location or a different work mode keeps an otherwise strong job in review', () => {
   const description = 'Playwright and TypeScript are required.';
+  const unstated = buildJobReport({ title: 'QA Engineer', location: null, description }, tester);
+  assert.equal(unstated.checks.find((check) => check.kind === 'LOCATION')?.status, 'NOT_STATED');
+  assert.equal(unstated.verdict, 'REVIEW', 'Unknown location cannot support the most favourable conclusion');
+
   const unclear = buildJobReport({ title: 'QA Engineer', location: 'Remote - US only', description }, tester);
   assert.equal(unclear.verdict, 'REVIEW');
   assert.ok(unclear.reasons.includes('LOCATION_TO_CONFIRM'));

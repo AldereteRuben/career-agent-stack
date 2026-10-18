@@ -54,6 +54,12 @@ export const resumeImportScenarios: Scenario[] = [{
     const watch = (request: Request) => { if (request.url().includes('/api/v1/')) sent.push({ url: new URL(request.url()).pathname, body: `${request.headers()['content-type'] ?? ''}\n${request.postData() ?? ''}` }); };
     page.on('request', watch);
     try {
+      await page.goto(new URL('/start', page.url()).toString()); await setLocale(page, 'es');
+      await page.getByRole('link', { name: '¿Ya tienes un CV? Importa tus datos aquí.', exact: true }).waitFor();
+      await setLocale(page, 'en');
+      await page.getByRole('link', { name: 'Already have a resume? Import your details here.', exact: true }).click();
+      await page.waitForURL('**/profile/import');
+
       await page.goto(new URL('/profile', page.url()).toString()); await setLocale(page, 'es');
       await page.getByRole('navigation', { name: 'Secciones de tu perfil' }).getByRole('link', { name: 'Importar desde un CV', exact: true }).click();
       await page.waitForURL('**/profile/import');
