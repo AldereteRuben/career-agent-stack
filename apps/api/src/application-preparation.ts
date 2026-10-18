@@ -108,7 +108,7 @@ export async function prepareApplication(workspaceId: string, jobId: string, loc
         await mkdir(resolve(filePath, '..'), { recursive: true, mode: 0o700 });
         const renderFacts = selected.map((fact) => ({ kind: fact.kind, statement: printedStatement(fact, pdfLocale), tags: fact.tags }));
         const rendered = await renderResume({ path: filePath, fullName, email, role: job.title, locale: pdfLocale, facts: renderFacts });
-        const name = `${locale === 'es' ? 'Candidatura' : 'Application'} ${job.company} - ${job.title}`.slice(0, 200);
+        const name = `${locale === 'es' ? 'Solicitud' : 'Application'} ${job.company} - ${job.title}`.slice(0, 200);
         const latestRevision = await tx.select({ revision: sql<number>`coalesce(max(${documentVersions.revision}), 0)::int` }).from(documentVersions).where(and(eq(documentVersions.workspaceId, workspaceId), eq(documentVersions.name, name)));
         const revision = (latestRevision[0]?.revision ?? 0) + 1;
         const claims = selected.map((fact, index) => ({ text: renderFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
