@@ -15,6 +15,7 @@ import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicati
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { registerActivityTimelineRoutes } from './activity-timeline.js';
+import { calculateTrackingMetrics, parseTrackingPeriod } from './tracking-metrics.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
@@ -31,6 +32,7 @@ import { registerJobMatchFeedbackRoutes } from './job-match-feedback.js';
 import { emptyJobFilterPreferences, evaluateJobFilters, jobFilterExclusionSql } from './job-filter-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { registerJobReportRoutes } from './job-report-routes.js';
+import { registerApplicationPacketRoutes } from './application-packet-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
@@ -106,6 +108,21 @@ const omit = <T extends object, K extends keyof T>(value: T, ...keys: K[]): Omit
 app.get('/healthz', async (_request, reply) => {
   try { await pool.query('select 1'); return { status: 'ok', database: 'ready', externalWrites: true, version: RELEASE_VERSION }; }
   catch { return fail(reply, 503, 'DATABASE_UNAVAILABLE'); }
+});
+
+app.get('/api/v1/tracking-metrics', async (request, reply) => {
+  const period = parseTrackingPeriod((request.query as { period?: unknown }).period);
+  if (!period) return fail(reply, 400, 'INVALID_INPUT');
+  const id = workspace(request);
+  const events = await db.select({ applicationId: applicationEvents.applicationId, eventType: applicationEvents.eventType, priorState: applicationEvents.priorState, newState: applicationEvents.newState, createdAt: applicationEvents.createdAt })
+    .from(applicationEvents)
+    .where(and(eq(applicationEvents.workspaceId, id), inArray(applicationEvents.eventType, ['MANUAL_APPLICATION_RECORDED', 'APPLICATION_STATE_CHANGED', 'ASSIST_SUBMISSION_CONFIRMED', 'ASSIST_USER_RECONCILED', 'RECRUITMENT_STAGE_CHANGED', 'RECRUITMENT_STAGE_CORRECTED'])));
+  const applicationIds = [...new Set(events.filter((event) => event.newState === 'CONFIRMED').map((event) => event.applicationId))];
+  const trackedApplications = applicationIds.length
+    ? await db.select({ id: applications.id, state: applications.state, recruitmentStage: applications.recruitmentStage })
+      .from(applications).where(and(eq(applications.workspaceId, id), inArray(applications.id, applicationIds)))
+    : [];
+  return calculateTrackingMetrics({ period, now: new Date(), applications: trackedApplications, events });
 });
 
 app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: true, externalWrites: true, email: false, ai: aiEnabled } }));
@@ -433,6 +450,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 
 registerJobAvailabilityRoutes(app, workspace);
 registerJobReportRoutes(app, workspace);
+registerApplicationPacketRoutes(app, workspace, { filesRoot: config.FILES_LOCAL_PATH });
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
