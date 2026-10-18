@@ -229,7 +229,7 @@ export default function OverviewPage() {
 
     <DiscoveryPanel compact/>
     <section className="card home-panel" aria-labelledby="tracking-metrics-heading" aria-busy={trackingLoading}>
-      <div className="panel-heading"><h2 id="tracking-metrics-heading">{c('Resultados de candidaturas', 'Application outcomes')}</h2>
+      <div className="panel-heading"><h2 id="tracking-metrics-heading">{c('Resultados de solicitudes', 'Application outcomes')}</h2>
         <label className="field"><span>{c('Periodo', 'Period')}</span><select value={trackingPeriod} onChange={(event) => setTrackingPeriod(event.target.value as TrackingPeriod)}>
           <option value="30d">{c('Últimos 30 días', 'Last 30 days')}</option>
           <option value="90d">{c('Últimos 90 días', 'Last 90 days')}</option>
@@ -238,7 +238,7 @@ export default function OverviewPage() {
       </div>
       {trackingError ? <Notice tone="error">{trackingError}</Notice>
         : trackingLoading || !trackingMetrics ? <p className="panel-status" role="status">{c('Cargando resultados…', 'Loading outcomes…')}</p>
-          : trackingMetrics.confirmed === 0 ? <p className="panel-status">{c('No hay candidaturas confirmadas en este periodo. Las cifras aparecerán cuando registres un envío.', 'No confirmed applications in this period. These figures will appear after you record a submission.')}</p>
+          : trackingMetrics.confirmed === 0 ? <p className="panel-status">{c('No hay solicitudes confirmadas en este periodo. Las cifras aparecerán cuando registres un envío.', 'No confirmed applications in this period. These figures will appear after you record a submission.')}</p>
             : <ul className="metric-grid">
               <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c('Envíos confirmados', 'Confirmed submissions')}</span><strong className="metric-value">{trackingMetrics.confirmed}</strong><span className="metric-label">{c('en el periodo elegido', 'in the selected period')}</span></Link></li>
               <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c('Conversión a entrevista', 'Interview conversion')}</span><strong className="metric-value">{trackingMetrics.interviewConversionPercent === null ? '—' : `${trackingMetrics.interviewConversionPercent}%`}</strong><span className="metric-label">{trackingMetrics.interviewed} / {trackingMetrics.confirmed} {c('envíos confirmados', 'confirmed submissions')}</span></Link></li>
