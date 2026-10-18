@@ -7,6 +7,10 @@ export * from './contracts.js';
 export * from './profile.js';
 export * from './application-dates.js';
 export * from './documents.js';
+export * from './application-documents-builder.js';
+export * from './application-document-lifecycle.js';
+export * from './application-document-validation.js';
+export * from './application-documents-text.js';
 export * from './assisted.js';
 
 export * from './entries.js';
