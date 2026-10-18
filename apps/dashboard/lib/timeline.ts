@@ -71,7 +71,7 @@ export function typeLabel(type: TimelineType, locale: Locale): string {
   switch (type) {
     case 'JOB_FOUND': return c('Ofertas encontradas', 'Jobs found');
     case 'JOB_SAVED': return c('Ofertas guardadas', 'Saved jobs');
-    case 'APPLICATION_CREATED': return c('Candidaturas creadas', 'Applications created');
+    case 'APPLICATION_CREATED': return c('Solicitudes creadas', 'Applications created');
     case 'APPLICATION_STATUS_CHANGED': return c('Cambios de estado', 'Status changes');
     case 'STAGE_CHANGED': return c('Cambios de etapa', 'Stage changes');
     case 'INTERVIEW': return c('Entrevistas', 'Interviews');
@@ -95,7 +95,7 @@ export function describeItem(item: TimelineItem, locale: Locale): { label: strin
   switch (item.type) {
     case 'JOB_FOUND': return { label: item.automatic ? c('Oferta encontrada', 'Job found') : c('Oferta añadida por ti', 'Job you added'), title, detail: company, href };
     case 'JOB_SAVED': return { label: c('Oferta guardada', 'Job saved'), title, detail: company, href };
-    case 'APPLICATION_CREATED': return { label: c('Candidatura creada', 'Application created'), title, detail: company, href };
+    case 'APPLICATION_CREATED': return { label: c('Solicitud creada', 'Application created'), title, detail: company, href };
     case 'APPLICATION_STATUS_CHANGED': return { label: c('Estado', 'Status'), title, detail: `${company} · ${change(labelFor.applicationState(item.priorState, locale), labelFor.applicationState(item.newState, locale))}`, href };
     case 'STAGE_CHANGED': return { label: item.correction ? c('Etapa corregida', 'Stage corrected') : c('Etapa', 'Stage'), title, detail: `${company} · ${change(labelFor.recruitmentStage(item.priorState, locale), labelFor.recruitmentStage(item.newState, locale))}`, href };
     case 'INTERVIEW': return { label: c('Entrevista', 'Interview'), title, detail: company, href };

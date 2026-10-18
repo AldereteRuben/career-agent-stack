@@ -97,7 +97,7 @@ function preparationResult(state, jobId) {
   return null;
 }
 function identityDocument() {
-  return { id: ids.identityDoc, name: `Candidatura ${jobs[ids.identityJob].company} - ${jobs[ids.identityJob].title}`, revision: 1, sha256: '0'.repeat(64), mediaType: 'application/pdf', approvalStatus: 'PENDING_REVIEW', createdAt: ISO, language: 'es', jobId: ids.identityJob, jobSnapshotId: `${ids.identityJob.slice(0, -2)}5e`, reusableFactIds: [ids.fact], missingFactCount: 0, reviewReady: true, assistReady: false, claims: [{ text: approvedFact.statement, sourceFactIds: [ids.fact] }] };
+  return { id: ids.identityDoc, name: `Solicitud ${jobs[ids.identityJob].company} - ${jobs[ids.identityJob].title}`, revision: 1, sha256: '0'.repeat(64), mediaType: 'application/pdf', approvalStatus: 'PENDING_REVIEW', createdAt: ISO, language: 'es', jobId: ids.identityJob, jobSnapshotId: `${ids.identityJob.slice(0, -2)}5e`, reusableFactIds: [ids.fact], missingFactCount: 0, reviewReady: true, assistReady: false, claims: [{ text: approvedFact.statement, sourceFactIds: [ids.fact] }] };
 }
 function applicationFixture(state, applicationId) {
   const entry = Object.entries(jobs).find(([, job]) => job.applicationId === applicationId) ?? (applicationId === ids.identityApp ? [ids.identityJob, jobs[ids.identityJob]] : null);
@@ -402,7 +402,7 @@ export async function checkApplicationUsability({ browser, uiUrl, cookies, artif
       await useLocale('es');
       const page = await openPage('queue-es');
       await gotoApp(page, '/applications?view=review', 'es');
-      await page.getByRole('heading', { level: 1, name: 'Candidaturas' }).waitFor();
+      await page.getByRole('heading', { level: 1, name: 'Solicitudes' }).waitFor();
       const ready = queueCard(page, LONG_TITLE);
       await ready.waitFor();
       await ready.getByText('CV aprobado', { exact: true }).waitFor();

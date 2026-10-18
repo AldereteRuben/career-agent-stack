@@ -71,7 +71,7 @@ const expectedTitles: Record<string, { en: string; es: string }> = {
   '/overview': { en: 'Dashboard · Career Stack', es: 'Inicio · Career Stack' },
   '/jobs': { en: 'All jobs · Career Stack', es: 'Todas las ofertas · Career Stack' },
   '/jobs?scope=favorites': { en: 'Saved jobs · Career Stack', es: 'Ofertas guardadas · Career Stack' },
-  '/applications': { en: 'Applications · Career Stack', es: 'Candidaturas · Career Stack' },
+  '/applications': { en: 'Applications · Career Stack', es: 'Solicitudes · Career Stack' },
   '/timeline': { en: 'Timeline · Career Stack', es: 'Cronología · Career Stack' },
   '/profile': { en: 'Profile · Career Stack', es: 'Perfil · Career Stack' },
   '/documents': { en: 'Resumes and documents · Career Stack', es: 'CV y documentos · Career Stack' },
