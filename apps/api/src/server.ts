@@ -24,6 +24,7 @@ import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
+import { registerApplicationCoverLetterRoutes } from './application-cover-letter.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
 import { registerJobFilterRoutes } from './job-filter-routes.js';
 import { emptyJobFilterPreferences, evaluateJobFilters, jobFilterExclusionSql } from './job-filter-routes.js';
@@ -690,6 +691,7 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
+registerApplicationCoverLetterRoutes(app, workspace, { storageRoot: config.FILES_LOCAL_PATH });
 registerActivityTimelineRoutes(app, workspace);
 const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
 registerJobSearchRoutes(app, workspace, prepareAutomatically);
