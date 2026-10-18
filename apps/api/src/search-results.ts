@@ -16,7 +16,7 @@ export async function searchResults(workspaceId: string, searchId: string | null
   const offset = Math.max(0, Math.min(1_000_000, Number.parseInt(query.offset ?? '0', 10) || 0));
   const view = ['new','all','saved','archived','filtered'].includes(query.view ?? '') ? query.view : 'all';
   const order = query.sort === 'recent' ? 'posted_at DESC NULLS LAST,score DESC' : 'score DESC,posted_at DESC NULLS LAST';
-  const normalizeWordsSql = (value: string) => `trim(regexp_replace(lower(regexp_replace(normalize(${value}, NFKD), U&'[\\0300-\\036f]', '', 'g')), '[^[:alnum:]]+', ' ', 'g'))`;
+  const normalizeWordsSql = (value: string) => `trim(regexp_replace(regexp_replace(lower(normalize(${value}, NFKD)), U&'[\\0300-\\036f]', '', 'g'), '[^[:alnum:]]+', ' ', 'g'))`;
   const { rows } = await pool.query(`WITH selected AS MATERIALIZED (
     SELECT s.* FROM saved_job_searches s WHERE workspace_id=$1 AND ($2::uuid IS NULL OR id=$2)
   ), latest AS MATERIALIZED (
