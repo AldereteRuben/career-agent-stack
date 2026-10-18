@@ -9,7 +9,9 @@ import { z } from 'zod';
 import { db, applications, applicationDocumentRevisions, applicationDocuments, documentVersions } from '@career/db';
 
 export const APPLICATION_PACKET_LIMIT = 30_000_000;
+export const APPLICATION_PACKET_CONCURRENT_DOWNLOAD_LIMIT = 1;
 const APPLICATION_PACKET_FILE_LIMIT = 20;
+let activeApplicationPacketDownloads = 0;
 const idParams = z.object({ id: z.string().uuid() });
 const packetRequest = z.object({
   fileIds: z.array(z.string().regex(/^(resume|revision):[0-9a-f-]{36}$/i)).min(1).max(APPLICATION_PACKET_FILE_LIMIT),
@@ -31,6 +33,18 @@ export class ApplicationPacketError extends Error {
     super(code);
     this.name = 'ApplicationPacketError';
   }
+}
+
+/** Keep memory use bounded while PDF contents and the resulting ZIP coexist in memory. */
+export function tryAcquireApplicationPacketDownload(): (() => void) | null {
+  if (activeApplicationPacketDownloads >= APPLICATION_PACKET_CONCURRENT_DOWNLOAD_LIMIT) return null;
+  activeApplicationPacketDownloads += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeApplicationPacketDownloads -= 1;
+  };
 }
 
 function safeNamePart(value: string) {
@@ -222,17 +236,30 @@ export function registerApplicationPacketRoutes(
     const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
     const selected = body.data.fileIds.map((id) => byId.get(id));
     if (selected.some((candidate) => !candidate)) return reply.code(409).send({ error: 'MATERIAL_NOT_AVAILABLE' });
+    const releaseDownload = tryAcquireApplicationPacketDownload();
+    if (!releaseDownload) return reply.header('Retry-After', '2').code(503).send({ error: 'MATERIAL_PACKET_BUSY' });
 
+    let responseOwnsDownload = false;
     try {
       const archive = await buildApplicationMaterialsZip(options.filesRoot, (selected as PacketCandidate[]).map(({ fileName, storagePath, sha256 }) => ({ fileName, storagePath, sha256 })));
       reply
         .type('application/zip')
         .header('Content-Disposition', `attachment; filename="application-materials.zip"; filename*=UTF-8''${encodeURIComponent('application-materials.zip')}`)
         .header('Content-Length', archive.byteLength);
-      return reply.send(archive);
+      reply.raw.once('finish', releaseDownload);
+      reply.raw.once('close', releaseDownload);
+      const response = reply.send(archive);
+      responseOwnsDownload = true;
+      return response;
     } catch (error) {
       if (error instanceof ApplicationPacketError) return reply.code(error.statusCode).send({ error: error.code });
       return reply.code(500).send({ error: 'MATERIAL_PACKET_FAILED' });
+    } finally {
+      if (!responseOwnsDownload) {
+        reply.raw.off('finish', releaseDownload);
+        reply.raw.off('close', releaseDownload);
+        releaseDownload();
+      }
     }
   });
 }

@@ -5,9 +5,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { unzipSync } from 'fflate';
 import { test } from 'node:test';
-import { ApplicationPacketError, APPLICATION_PACKET_LIMIT, buildApplicationMaterialsZip, packetFileName } from '../src/application-packet-routes.js';
+import { ApplicationPacketError, APPLICATION_PACKET_LIMIT, buildApplicationMaterialsZip, packetFileName, tryAcquireApplicationPacketDownload } from '../src/application-packet-routes.js';
 
 const hash = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+
+test('application packet downloads have a process-wide concurrency limit and release idempotently', () => {
+  const release = tryAcquireApplicationPacketDownload();
+  assert.equal(typeof release, 'function');
+  assert.equal(tryAcquireApplicationPacketDownload(), null, 'a concurrent download is rejected before allocating packet buffers');
+  release!();
+  release!();
+  const nextRelease = tryAcquireApplicationPacketDownload();
+  assert.equal(typeof nextRelease, 'function', 'the slot is available after release');
+  nextRelease!();
+});
 
 test('application packet contains only the selected verified files and uses safe ZIP paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'career-application-packet-'));
