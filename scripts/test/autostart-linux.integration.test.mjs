@@ -4,11 +4,12 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { disable, enable, isEnabled, serviceName } from '../autostart.mjs';
 
 const optedIn = process.env.CAREER_AUTOSTART_LINUX_INTEGRATION === '1' && process.platform === 'linux';
 
-test('real systemd user manager enables, starts and removes a disposable launcher unit', { skip: !optedIn }, () => {
+test('real systemd user manager enables, starts and removes a disposable launcher unit', { skip: !optedIn }, async () => {
   const home = homedir();
   const unitFile = join(home, '.config', 'systemd', 'user', serviceName);
   assert.equal(existsSync(unitFile), false, 'the disposable runner must not have an existing Career Stack user unit');
@@ -31,7 +32,14 @@ test('real systemd user manager enables, starts and removes a disposable launche
     assert.equal(manager('systemctl', ['--user', 'show-environment']).status, 0, 'systemd user manager must be available');
     enable(options);
     assert.equal(isEnabled(options), true);
-    assert.equal(manager('systemctl', ['--user', 'is-active', serviceName]).status, 0);
+    const deadline = Date.now() + 10_000;
+    let active = manager('systemctl', ['--user', 'is-active', serviceName]);
+    while (active.status !== 0 && Date.now() < deadline) {
+      await delay(100);
+      active = manager('systemctl', ['--user', 'is-active', serviceName]);
+    }
+    const serviceStatus = manager('systemctl', ['--user', 'status', '--no-pager', '--full', serviceName]);
+    assert.equal(active.status, 0, `systemd did not keep the one-shot unit active: ${serviceStatus.stdout}\n${serviceStatus.stderr}`);
     assert.equal(existsSync(join(root, 'started.marker')), true, 'systemd must execute the fixture launcher');
 
     disable({ ...options, stopServices: stopFixture });
