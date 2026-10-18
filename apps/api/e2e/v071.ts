@@ -128,7 +128,7 @@ export const v071Scenarios: Scenario[] = [
       assert.equal(new URL(page.url()).searchParams.get('returnTo'), origin);
       await page.locator('.pdf-preview canvas:not([hidden])').waitFor({ state: 'visible' });
       await page.goto(new URL(href, page.url()).toString()); await setLocale(page, 'es');
-      await page.getByText('Preparación de la candidatura revisada', { exact: true }).waitFor();
+      await page.getByText('Preparación de la solicitud revisada', { exact: true }).waitFor();
       assert.equal(await page.getByText('Preparation Created', { exact: true }).count(), 0);
       await api.patch(`/applications/${application.id}`, { state: 'CANCELLED' });
       await page.reload();
