@@ -203,7 +203,7 @@ export default function JobDetailPage() {
               ['recentNews', c('¿Qué noticias recientes encontraste?', 'What recent news did you find?')],
               ['culture', c('¿Qué has averiguado sobre su cultura?', 'What did you learn about its culture?')],
               ['questionsToAsk', c('¿Qué te gustaría preguntar?', 'What would you like to ask?')],
-            ] as const).map(([key, label]) => <label className="field" key={key}><span>{label}</span><textarea rows={3} maxLength={3000} value={job.companyResearch?.[key] ?? ''} onChange={(event) => updateResearch(key, event.target.value)} /></label>)}
+            ] as const).map(([key, label]) => <label className="field" key={key}><span>{label}</span><textarea rows={3} maxLength={3000} disabled={busy === 'research'} value={job.companyResearch?.[key] ?? ''} onChange={(event) => updateResearch(key, event.target.value)} /></label>)}
           </div>
           <div className={styles.researchActions}><Button variant="secondary" disabled={busy !== null} onClick={() => void saveResearch()}>{busy === 'research' ? c('Guardando…', 'Saving…') : c('Guardar notas', 'Save notes')}</Button></div>
         </Card>
