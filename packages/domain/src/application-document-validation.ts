@@ -20,7 +20,7 @@ export type ApplicationDocumentValidationResult =
   | { ok: true; sentence: ApplicationDocumentSentence }
   | { ok: false; issue: ApplicationDocumentValidationIssue };
 
-type Mention = { item: string; category: 'skill' | 'number' | 'date' | 'credential' | 'entity'; requirement?: Requirement };
+type Mention = { item: string; category: 'skill' | 'number' | 'date' | 'credential' | 'entity' | 'qualitative'; requirement?: Requirement };
 
 function normalized(value: string) {
   return value.normalize('NFKD').replace(/\p{M}+/gu, '').toLocaleLowerCase('en').replace(/\s+/gu, ' ').trim();
@@ -76,6 +76,18 @@ const equivalentSkillAliases: Record<string, string[]> = {
   'continuous deployment': ['continuous deployment', 'despliegue continuo'],
   'despliegue continuo': ['continuous deployment', 'despliegue continuo'],
 };
+
+const qualitativeClaims = [
+  'adaptable', 'ambitious', 'analytical', 'collaborative', 'communicative', 'creative', 'curious', 'dedicated',
+  'detail-oriented', 'effective', 'empathetic', 'exceptional', 'hardworking', 'innovative', 'motivated', 'organized',
+  'passionate', 'proactive', 'reliable', 'resilient', 'strategic', 'versatile', 'motivado', 'motivada', 'colaborativo',
+  'colaborativa', 'comunicativo', 'comunicativa', 'creativo', 'creativa', 'dedicado', 'dedicada', 'detallista',
+  'eficaz', 'empatico', 'empatica', 'excepcional', 'innovador', 'innovadora', 'organizado', 'organizada', 'apasionado',
+  'apasionada', 'proactivo', 'proactiva', 'confiable', 'resiliente', 'estrategico', 'estrategica', 'versatil', 'curioso',
+  'curiosa', 'ambicioso', 'ambiciosa',
+];
+
+const firstPersonSelfDescriptions = ['fast learner', 'quick learner', 'lifelong learner', 'self-starter', 'natural leader', 'team player'];
 
 function plainBoilerplateLanguage(text: string): 'es' | 'en' | null {
   const fixedLanguage = fixedApplicationDocumentPhraseLanguage(text);
@@ -143,6 +155,21 @@ function cleanMention(value: string) {
 
 function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mention[] {
   const mentions: Mention[] = skillMentions(text);
+
+  for (const item of qualitativeClaims) {
+    const escaped = item.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+');
+    const firstPersonTrait = new RegExp(
+      `\\b(?:i am|i'm|i feel|i consider myself|i see myself as|soy|me siento|me considero)\\s+(?:(?:a|an|very|highly|deeply|extremely|really|incredibly|muy|altamente|bastante|sumamente|un|una)\\s+)*(?:[\\p{L}-]+\\s+(?:and|or|y|o)\\s+)?${escaped}(?![\\p{L}])`,
+      'iu',
+    );
+    if (firstPersonTrait.test(text)) mentions.push({ item, category: 'qualitative' });
+  }
+  for (const item of firstPersonSelfDescriptions) {
+    const escaped = item.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\s+/gu, '\\s+');
+    if (new RegExp(`\\b(?:i am|i'm|soy|me considero|me siento)\\s+(?:a|an|un|una)?\\s*${escaped}(?![\\p{L}])`, 'iu').test(text)) {
+      mentions.push({ item, category: 'qualitative' });
+    }
+  }
 
   const datePattern = /\b(?:\d{1,2}[./-]\d{1,2}[./-](?:19|20)?\d{2}|(?:19|20)\d{2}[./-]\d{1,2}(?:[./-]\d{1,2})?|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+de)?\s+(?:\d{1,2}(?:,)?\s+)?(?:19|20)\d{2})\b/giu;
   const dateSpans: Array<{ start: number; end: number }> = [];
@@ -232,7 +259,7 @@ function sentenceMentions(text: string, offer: ApplicationDocumentOffer): Mentio
 }
 
 function unsupportedMentions(text: string, citedFacts: ApplicationDocumentFact[], offer: ApplicationDocumentOffer) {
-  const categoryOrder: Record<Mention['category'], number> = { skill: 0, number: 1, date: 1, credential: 1, entity: 2 };
+  const categoryOrder: Record<Mention['category'], number> = { skill: 0, qualitative: 0, number: 1, date: 1, credential: 1, entity: 2 };
   return sentenceMentions(text, offer)
     .filter((mention) => !supportedByCitedFacts(mention, citedFacts))
     .map((mention, index) => ({ mention, index }))

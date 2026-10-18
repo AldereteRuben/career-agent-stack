@@ -10,7 +10,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
-import { db, pool, applications, applicationEvents, applicationDocumentRevisions, applicationDocuments, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
+import { db, pool, applications, applicationEvents, applicationDocumentRevisions, applicationDocuments, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources, jobFilterPreferences, jobFilterOverrides } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
@@ -24,7 +24,10 @@ import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
+import { registerApplicationCoverLetterRoutes } from './application-cover-letter.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
+import { registerJobFilterRoutes } from './job-filter-routes.js';
+import { emptyJobFilterPreferences, evaluateJobFilters, jobFilterExclusionSql } from './job-filter-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
 import { registerJobReportRoutes } from './job-report-routes.js';
 import { registerApplicationPacketRoutes } from './application-packet-routes.js';
@@ -354,12 +357,17 @@ app.post('/api/v1/boards/:id/refresh', async (request, reply) => {
 app.get('/api/v1/jobs', async (request) => {
   const query = request.query as { q?: string; availability?: string; scope?: string; page?: string; paged?: string };
   const id = workspace(request); const filters = [eq(jobs.workspaceId, id)];
+  const filterPreferences = (await db.select({ preferences: jobFilterPreferences.preferences }).from(jobFilterPreferences).where(eq(jobFilterPreferences.workspaceId, id)).limit(1))[0]?.preferences ?? emptyJobFilterPreferences;
+  const filterMatch = jobFilterExclusionSql(filterPreferences, id);
+  const restored = sql`EXISTS(SELECT 1 FROM job_filter_overrides WHERE workspace_id=${id} AND job_id=jobs.id)`;
   if (query.q) { const pattern = `%${query.q.slice(0, 80).replace(/[\\%_]/g, (char) => `\\${char}`)}%`; filters.push(or(ilike(jobs.title, pattern), ilike(jobs.company, pattern))!); }
   if (query.scope === 'favorites') filters.push(eq(jobs.shortlistDecision, 'SHORTLISTED'));
   else if (query.scope === 'archived') filters.push(eq(jobs.shortlistDecision, 'ARCHIVED'));
   // Same New definition as search inboxes and discovery counts (review-state.ts).
   else if (query.scope === 'new') filters.push(sql`${jobs.discoveredAt} is not null`, isNewJob(id));
   else if (query.scope === 'active') filters.push(ne(jobs.shortlistDecision, 'ARCHIVED'));
+  if (query.scope === 'filtered') filters.push(ne(jobs.shortlistDecision, 'ARCHIVED'), filterMatch, sql`NOT ${restored}`);
+  else if (query.scope !== 'archived') filters.push(sql`(NOT ${filterMatch} OR ${restored})`);
   if (['OPEN', 'POSSIBLY_CLOSED', 'CLOSED', 'UNKNOWN'].includes(query.availability ?? '')) filters.push(eq(jobs.availability, query.availability as 'OPEN' | 'POSSIBLY_CLOSED' | 'CLOSED' | 'UNKNOWN'));
   const paged = query.paged === 'true'; const page = Math.max(1, Math.min(100000, Number.parseInt(query.page ?? '1', 10) || 1));
   const [rows, count] = await Promise.all([
@@ -367,7 +375,9 @@ app.get('/api/v1/jobs', async (request) => {
     paged ? db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...filters)) : Promise.resolve([]),
   ]);
   const sourceRows = rows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, rows.map((row) => row.id)))) : [];
-  const items = (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, rows))).map((row) => ({ ...row, searchSources: sourceRows.filter((source, index, rows) => source.jobId === row.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) }));
+  const snapshots = rows.length && query.scope === 'filtered' ? await db.select({ jobId: jobSnapshots.jobId, descriptionText: jobSnapshots.descriptionText }).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), inArray(jobSnapshots.jobId, rows.map((row) => row.id)))).orderBy(desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)) : [];
+  const descriptions = new Map<string, string | null>(); for (const snapshot of snapshots) if (!descriptions.has(snapshot.jobId)) descriptions.set(snapshot.jobId, snapshot.descriptionText);
+  const items = (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, rows))).map((row) => ({ ...row, ...(query.scope === 'filtered' ? { preferenceReasons: evaluateJobFilters({ company: row.company, title: row.title, description: descriptions.get(row.id) ?? null }, filterPreferences).reasons } : {}), searchSources: sourceRows.filter((source, index, rows) => source.jobId === row.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })) }));
   return paged ? { items, total: count[0]?.total ?? 0, page, pageSize: 24 } : items;
 });
 app.get('/api/v1/jobs/:id', async (request, reply) => {
@@ -621,13 +631,15 @@ function scrubExport(value: unknown): unknown {
 }
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
-  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, search, assistRows, savedSearches, savedMatches, publicSources] = await Promise.all([
+  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, search, assistRows, savedSearches, savedMatches, publicSources, filterPreferences, filterOverrides] = await Promise.all([
     db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)),
     db.select().from(applicationDocuments).where(eq(applicationDocuments.workspaceId, id)), db.select().from(applicationDocumentRevisions).where(eq(applicationDocumentRevisions.workspaceId, id)), db.select().from(aiDocumentRewordProposals).where(eq(aiDocumentRewordProposals.workspaceId, id)),
     db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
     db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
     db.select().from(savedJobSearchMatches).where(eq(savedJobSearchMatches.workspaceId, id)),
     db.select().from(jobSearchSources).where(eq(jobSearchSources.workspaceId, id)),
+    db.select().from(jobFilterPreferences).where(eq(jobFilterPreferences.workspaceId, id)),
+    db.select().from(jobFilterOverrides).where(eq(jobFilterOverrides.workspaceId, id)),
   ]);
   const artifacts: Array<{ documentId: string; sha256: string; contentBase64: string }> = [];
   let totalArtifactBytes = 0;
@@ -664,7 +676,7 @@ app.get('/api/v1/export', async (request, reply) => {
         : rows;
   }
   const assistant = await exportAiData(db, id);
-  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), jobFilterPreferences: filterPreferences, jobFilterOverrides: filterOverrides, assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
@@ -681,9 +693,11 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
+registerApplicationCoverLetterRoutes(app, workspace, { storageRoot: config.FILES_LOCAL_PATH });
 registerActivityTimelineRoutes(app, workspace);
 const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
 registerJobSearchRoutes(app, workspace, prepareAutomatically);
+registerJobFilterRoutes(app, workspace);
 const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
 let stopJobSearches = startJobSearches();
 app.addHook('onClose', () => stopJobSearches());

@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
+import { AxeBuilder } from '@axe-core/playwright';
 import type { Scenario } from './scenarios.js';
 import { any, eventually, goTo, setLocale } from './ui.js';
+
+async function auditWithAxe(page: import('playwright').Page, flow: string) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'])
+    .analyze();
+  const violations = results.violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact,
+    help: violation.help,
+    nodes: violation.nodes.map((node) => node.target.join(' ')).slice(0, 6),
+  }));
+  assert.deepEqual(violations, [], `axe accessibility violations in ${flow}: ${JSON.stringify(violations)}`);
+}
 
 // Browser-level accessibility checks for issues #64 and #65: decorative symbols must stay out of the
 // accessibility tree and the saved-experience list must be exposed as a named region. The tree is
@@ -27,6 +41,7 @@ export const a11yScenarios: Scenario[] = [{
     // this page while its separate tab is still loading.
     const region = profilePage.getByRole('region', { name: 'Lo que has guardado' });
     await region.getByText(`A11y example ${marker}`).waitFor();
+    await auditWithAxe(profilePage, 'profile');
     const mode = profilePage.locator('.work-mode-field .tag-row button').first();
     await mode.waitFor();
     await eventually(() => mode.isEnabled(), (enabled) => enabled, 'The work-mode control should be ready after profile loading');
@@ -53,9 +68,15 @@ export const a11yScenarios: Scenario[] = [{
     await setLocale(page, 'es');
     await goTo(page, '/profile');
 
+    await goTo(page, '/searches');
+    await page.locator('main').waitFor();
+    await auditWithAxe(page, 'search creation and saved searches');
+
     await page.goto(new URL(`/jobs?q=${encodeURIComponent(company)}&scope=active`, page.url()).toString());
+    await page.locator('main').waitFor();
     const card = page.locator('.job-card').filter({ hasText: title });
     await card.waitFor();
+    await auditWithAxe(page, 'job search results');
     const metrics = card.locator('.job-card-metrics');
     await metrics.waitFor({ state: 'attached' });
     assert.ok((await metrics.textContent())?.includes('Porción evaluable del encaje:'), 'The job card should explain what the percentage measures');
@@ -65,6 +86,7 @@ export const a11yScenarios: Scenario[] = [{
     await card.getByRole('link', { name: title, exact: true }).click();
     const previewScore = page.locator('[class*="previewScore"]');
     await previewScore.waitFor();
+    await auditWithAxe(page, 'job detail');
     await previewScore.getByText('Porción evaluable del encaje:', { exact: false }).waitFor();
     assert.ok((await previewScore.locator('strong').innerText()).startsWith(scoreLabel), 'The preview should label a provisional fit as pending');
     const cardSnapshot = await card.ariaSnapshot();
@@ -81,10 +103,18 @@ export const a11yScenarios: Scenario[] = [{
     const jobsFormSnapshot = await page.locator('.import-card').ariaSnapshot();
     assert.ok(!jobsFormSnapshot.includes('＋'), 'The jobs step badge is still exposed to assistive technology');
 
+    const application = await api.post<{ id: string }>('/applications', { jobId: job.id, company, role: title, canonicalUrl: `https://example.com/${marker}/a11y`, state: 'DRAFT', notes: '' });
     await goTo(page, '/applications');
+    await auditWithAxe(page, 'application tracker');
     await page.getByRole('button', { name: any('Añadir solicitud', 'Add application', 'Registrar', 'Record') }).first().click();
+    await auditWithAxe(page, 'application form');
     const applicationsFormSnapshot = await page.locator('.import-card').ariaSnapshot();
     assert.ok(!applicationsFormSnapshot.includes('＋'), 'The applications step badge is still exposed to assistive technology');
+
+    await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+    await page.locator('.tracker-detail').getByRole('heading', { name: title, exact: true }).waitFor();
+    await page.locator('.assist-panel h3').waitFor();
+    await auditWithAxe(page, 'application preparation detail');
 
     // #64: the boards ＋ badge is hidden by CSS in the aside layout; check the attribute directly.
     await goTo(page, '/boards');

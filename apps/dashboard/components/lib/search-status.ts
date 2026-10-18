@@ -43,15 +43,16 @@ export function summarize(searches: Search[]): SearchSummary {
   return { active: by(['queued', 'running']), failed: by('failed'), limited: by('limited'), paused: by('paused'), pending: by('pending'), nextRunAt: next, allPaused: searches.length > 0 && searches.every((search) => !search.enabled) };
 }
 
-export type EmptyKind = 'loadError' | 'noSaved' | 'noArchived' | 'searching' | 'paused' | 'failed' | 'pending' | 'noMatches' | 'caughtUp' | 'unknown';
+export type EmptyKind = 'loadError' | 'noSaved' | 'noArchived' | 'noFiltered' | 'searching' | 'paused' | 'failed' | 'pending' | 'noMatches' | 'caughtUp' | 'unknown';
 
 /**
  * Explains an empty result list truthfully. `matchesTotal` is the number of current matches in the
  * same scope before the New filter (null when unknown), so a first search with zero matches is never
  * described as "you reviewed everything".
  */
-export function emptyKind({ view, error, scope, matchesTotal }: { view: 'new' | 'all' | 'saved' | 'archived'; error: boolean; scope: Search[]; matchesTotal: number | null }): EmptyKind {
+export function emptyKind({ view, error, scope, matchesTotal }: { view: 'new' | 'all' | 'saved' | 'archived' | 'filtered'; error: boolean; scope: Search[]; matchesTotal: number | null }): EmptyKind {
   if (error) return 'loadError';
+  if (view === 'filtered') return 'noFiltered';
   if (view === 'saved') return 'noSaved';
   if (view === 'archived') return 'noArchived';
   const states = scope.map((search) => searchHealth(search).state);
