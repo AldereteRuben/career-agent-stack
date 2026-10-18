@@ -9,6 +9,7 @@ const apps = [
   { id: 'recent', state: 'CONFIRMED', recruitmentStage: 'NO_RESPONSE' },
   { id: 'old', state: 'CONFIRMED', recruitmentStage: 'NO_RESPONSE' },
   { id: 'cancelled', state: 'CANCELLED', recruitmentStage: 'NO_RESPONSE' },
+  { id: 'review-required', state: 'REVIEW_REQUIRED', recruitmentStage: 'NO_RESPONSE' },
   { id: 'draft', state: 'DRAFT', recruitmentStage: 'NO_RESPONSE' },
 ];
 const events = [
@@ -22,6 +23,7 @@ const events = [
   { applicationId: 'recent', eventType: 'APPLICATION_STATE_CHANGED', newState: 'CONFIRMED', createdAt: '2026-10-15T12:00:00Z' },
   { applicationId: 'old', eventType: 'ASSIST_SUBMISSION_CONFIRMED', newState: 'CONFIRMED', createdAt: '2026-10-01T12:00:00Z' },
   { applicationId: 'cancelled', eventType: 'MANUAL_APPLICATION_RECORDED', newState: 'CONFIRMED', createdAt: '2026-10-10T12:00:00Z' },
+  { applicationId: 'review-required', eventType: 'APPLICATION_STATE_CHANGED', newState: 'CONFIRMED', createdAt: '2026-10-10T12:00:00Z' },
   { applicationId: 'draft', eventType: 'APPLICATION_CREATED', newState: 'DRAFT', createdAt: '2026-10-10T12:00:00Z' },
 ];
 
@@ -34,7 +36,7 @@ test('tracking metrics validate periods and use rolling UTC windows', () => {
   assert.equal(trackingMetricsStart('all', now), null);
 });
 
-test('tracking metrics require confirmation evidence, exclude cancellations, and respect corrected stages', () => {
+test('tracking metrics count only currently confirmed applications with evidence and respect corrected stages', () => {
   assert.deepEqual(calculateTrackingMetrics({ period: '30d', now, applications: apps, events }), {
     period: '30d', periodStart: '2026-09-18T12:00:00.000Z', confirmed: 4, interviewed: 1,
     interviewConversionPercent: 25, noResponseYet: 1, noResponseAfter14Days: 1, noResponseThresholdDays: 14,

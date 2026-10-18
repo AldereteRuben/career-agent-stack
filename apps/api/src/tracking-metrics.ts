@@ -57,7 +57,7 @@ export function calculateTrackingMetrics(input: {
   const cohort = [...earliestConfirmation]
     .filter(([id, at]) => {
       const application = applicationById.get(id);
-      return application && application.state !== 'CANCELLED' && at <= input.now && (!start || at >= start);
+      return application && application.state === 'CONFIRMED' && at <= input.now && (!start || at >= start);
     })
     .map(([id, confirmedAt]) => ({ application: applicationById.get(id)!, confirmedAt }));
 
