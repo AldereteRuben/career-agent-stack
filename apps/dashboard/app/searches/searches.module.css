@@ -164,7 +164,10 @@
   /* Equal-height cards in the scroll strip, with their text at the top instead of centred. */
   .scopeChoices button { flex: 0 0 auto; max-width: 260px; display: flex; flex-direction: column; justify-content: flex-start; }
   .scopeField { width: 100%; }
-  .scopeBar { gap: 12px; }
+  /* Keep the first result visible on a phone without shrinking touch targets. */
+  .results { gap: 12px; }
+  .scopeBar { gap: 8px; padding: 12px; }
+  .statusBar { padding: 10px 12px; }
   .scopeBar > .actions { padding-top: 0; }
 }
 

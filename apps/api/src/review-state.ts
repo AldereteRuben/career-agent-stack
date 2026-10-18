@@ -43,7 +43,11 @@ export async function reviewJob(workspaceId: string, jobId: string): Promise<boo
 export async function decideJob(workspaceId: string, jobId: string, decision: string) {
   return db.transaction(async (tx) => {
     await lockJobIdentity(tx, workspaceId);
-    await tx.execute(sql`UPDATE jobs SET shortlist_decision=${decision},updated_at=now() WHERE workspace_id=${workspaceId} AND id IN(${sameVacancySql(workspaceId, jobId)})`);
+    // saved_at dates the save for the activity timeline: set once on the job the person saved, kept while it stays saved,
+    // and cleared when the decision changes. Duplicates share the decision but not the date, so one save is one event.
+    await tx.execute(sql`UPDATE jobs SET shortlist_decision=${decision},updated_at=now(),
+      saved_at=CASE WHEN ${decision}<>'SHORTLISTED' THEN NULL WHEN shortlist_decision='SHORTLISTED' THEN saved_at WHEN id=${jobId}::uuid THEN now() ELSE NULL END
+      WHERE workspace_id=${workspaceId} AND id IN(${sameVacancySql(workspaceId, jobId)})`);
     await markJobReviewed(tx, workspaceId, jobId);
     return (await tx.select().from(jobs).where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId))))[0] ?? null;
   });

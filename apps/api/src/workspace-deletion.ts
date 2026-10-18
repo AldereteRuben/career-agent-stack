@@ -19,10 +19,11 @@ export type Pool = { connect(): Promise<PoolClient>; query(text: string, values?
  * CLEARED_CACHES or KEPT_TABLES: the proof test fails otherwise.
  */
 export const DELETION_ORDER = [
-  'ai_account_leases', 'ai_artifacts', 'llm_usage', 'ai_usage_snapshots', 'ai_runs', 'ai_run_tombstones', 'ai_daily_budgets',
+  'ai_account_leases', 'ai_artifacts', 'llm_usage', 'ai_usage_snapshots', 'ai_document_reword_proposals', 'ai_runs', 'ai_run_tombstones', 'ai_daily_budgets',
   'ai_automation_policies', 'ai_consents', 'ai_connections',
-  'assisted_attempts', 'application_events', 'applications', 'document_versions', 'answer_versions', 'profile_facts', 'profile_versions',
+  'assisted_attempts', 'application_events', 'application_document_revisions', 'application_documents', 'applications', 'document_versions', 'answer_versions', 'profile_facts', 'profile_versions',
   'search_run_results', 'search_run_sources', 'search_runs', 'saved_job_search_matches', 'search_job_reviews', 'saved_job_searches', 'search_preparation_budget',
+  'job_report_batch_items', 'job_report_batches',
   'job_search_sources', 'job_identity_members', 'job_occurrences', 'job_snapshots', 'job_availability_events', 'jobs', 'search_profiles',
   'source_policy_reviews', 'boards', 'deletion_jobs',
 ] as const;
@@ -129,4 +130,26 @@ export async function finishDeletionJob(pool: Pool, jobId: string, outcome: 'COM
 export async function pendingDeletionJobs(pool: Pool, workspaceId: string) {
   const { rows } = await pool.query(`select id from deletion_jobs where workspace_id = $1 and status in ('FILES_PENDING', 'FILES_FAILED') order by created_at`, [workspaceId]);
   return rows.map((row) => String(row.id));
+}
+
+/** Completes one deletion's file phase and leaves failures pending for the next API start. */
+export async function completeDeletionFiles(pool: Pool, jobId: string, options: { filesRoot: string; dataRoot: string }, onFailure?: (error: unknown, jobId: string) => void) {
+  try {
+    await deleteWorkspaceFiles(options);
+    await finishDeletionJob(pool, jobId, 'COMPLETED');
+    return true;
+  } catch (error) {
+    onFailure?.(error, jobId);
+    await finishDeletionJob(pool, jobId, 'FILES_FAILED').catch(() => undefined);
+    return false;
+  }
+}
+
+/** The startup path uses the same completion function as an in-request deletion. */
+export async function retryPendingDeletionFiles(pool: Pool, workspaceId: string, options: { filesRoot: string; dataRoot: string }, onFailure?: (error: unknown, jobId: string) => void) {
+  const results: Array<{ jobId: string; completed: boolean }> = [];
+  for (const jobId of await pendingDeletionJobs(pool, workspaceId)) {
+    results.push({ jobId, completed: await completeDeletionFiles(pool, jobId, options, onFailure) });
+  }
+  return results;
 }

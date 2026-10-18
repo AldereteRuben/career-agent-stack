@@ -10,26 +10,29 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
-import { db, pool, applications, applicationEvents, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
+import { db, pool, applications, applicationEvents, applicationDocumentRevisions, applicationDocuments, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
+import { registerActivityTimelineRoutes } from './activity-timeline.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
-import { deleteWorkspaceFiles, deleteWorkspaceRows, filesPathProblem, finishDeletionJob, pendingDeletionJobs } from './workspace-deletion.js';
+import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
 import { normalizeJobUrl } from './sources.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
-import { renderResume } from './document-renderer.js';
+import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerJobSearchRoutes } from './job-search-routes.js';
 import { availabilityDetail, registerJobAvailabilityRoutes } from './job-availability-routes.js';
+import { registerJobReportRoutes } from './job-report-routes.js';
 import { startJobSearchWorker } from './job-search.js';
 import { plainDescription } from './job-search-sources.js';
 import { registerAiRuntime } from './ai/runtime.js';
 import { setCodexTaskRoot } from './ai/codex.js';
 import { exportAiData } from './ai/export.js';
+import { ApplicationDocumentExportError, buildApplicationDocumentExport } from './application-document-export.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
@@ -394,7 +397,7 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
   const now = new Date();
-  const scored = applyMatch({ discoveredAt: null, seenAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
+  const scored = applyMatch({ discoveredAt: null, seenAt: null, savedAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
     await lockKey(tx, `discovery:${id}`);
     await lockJobIdentity(tx,id);
@@ -418,6 +421,7 @@ app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
 });
 
 registerJobAvailabilityRoutes(app, workspace);
+registerJobReportRoutes(app, workspace);
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
@@ -522,11 +526,13 @@ app.get('/api/v1/documents', async (request) => {
   return (await documentReadiness(db, id, documents)).map(documentView);
 });
 app.post('/api/v1/documents', async (request, reply) => {
-  const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown; printedContactFields?: unknown } | null;
+  const body = request.body as { name?: unknown; factIds?: unknown; jobId?: unknown; locale?: unknown; paperSize?: unknown; printedContactFields?: unknown } | null;
   if (typeof body?.name !== 'string' || !body.name.trim() || body.name.length > 200 || !Array.isArray(body.factIds) || body.factIds.length < 1 || body.factIds.length > 50 || !body.factIds.every((value) => typeof value === 'string')) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
   const allowedContactFields = ['email', 'phone', 'city', 'links'];
   const printedContactFields = body.printedContactFields === undefined ? ['email'] : body.printedContactFields;
   if (!Array.isArray(printedContactFields) || printedContactFields.length > allowedContactFields.length || !printedContactFields.every((field) => typeof field === 'string' && allowedContactFields.includes(field)) || new Set(printedContactFields).size !== printedContactFields.length) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
+  const paperSize = parseResumePaperSize(body.paperSize);
+  if (!paperSize) return fail(reply, 400, 'INVALID_DOCUMENT_REQUEST');
   const factIds = [...new Set(body.factIds as string[])]; if (factIds.length !== body.factIds.length) return fail(reply, 400, 'DUPLICATE_FACT_ID');
   const id = workspace(request);
   const profile = await latestProfile(db, id); if (!profile) return fail(reply, 409, 'PROFILE_NOT_CONFIGURED');
@@ -551,7 +557,7 @@ app.post('/api/v1/documents', async (request, reply) => {
   const pdfLocale = documentLanguage(body.locale, profile.locale);
   const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: printedStatement(fact, pdfLocale), tags: fact.tags }));
   let rendered: { sha256: string; size: number };
-  try { rendered = await renderResume({ path: filePath, ...identity, role, locale: pdfLocale, facts: renderedFacts }); }
+  try { rendered = await renderResume({ path: filePath, ...identity, role, locale: pdfLocale, paperSize, facts: renderedFacts }); }
   catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
   const claims = selected.map((fact, index) => ({ text: renderedFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
@@ -561,7 +567,7 @@ app.post('/api/v1/documents', async (request, reply) => {
       await lockKey(tx, `document:${id}:${name}`);
       const latestRevision = await tx.select({ revision: sql<number>`coalesce(max(${documentVersions.revision}), 0)::int` }).from(documentVersions).where(and(eq(documentVersions.workspaceId, id), eq(documentVersions.name, name)));
       const revision = (latestRevision[0]?.revision ?? 0) + 1;
-      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, printedContactFields: printedContactFields as string[], profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
+      return (await tx.insert(documentVersions).values({ id: docId, workspaceId: id, name, revision, language: pdfLocale, paperSize, printedContactFields: printedContactFields as string[], profileRevisionId: profile.id, jobSnapshotId: snapshotId, mediaType: 'application/pdf', storagePath: relativePath, sha256: rendered.sha256, claims, approvalStatus: 'PENDING_REVIEW' }).returning())[0]!;
     });
   } catch (error) { await removeFile(); throw error; }
   return reply.code(201).send({ ...documentView((await documentReadiness(db, id, [row]))[0]!), sizeBytes: rendered.size });
@@ -613,8 +619,10 @@ function scrubExport(value: unknown): unknown {
 }
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
-  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, search, assistRows, savedSearches, savedMatches, publicSources] = await Promise.all([
-    db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)), db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
+  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, search, assistRows, savedSearches, savedMatches, publicSources] = await Promise.all([
+    db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)),
+    db.select().from(applicationDocuments).where(eq(applicationDocuments.workspaceId, id)), db.select().from(applicationDocumentRevisions).where(eq(applicationDocumentRevisions.workspaceId, id)), db.select().from(aiDocumentRewordProposals).where(eq(aiDocumentRewordProposals.workspaceId, id)),
+    db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
     db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
     db.select().from(savedJobSearchMatches).where(eq(savedJobSearchMatches.workspaceId, id)),
     db.select().from(jobSearchSources).where(eq(jobSearchSources.workspaceId, id)),
@@ -631,8 +639,21 @@ app.get('/api/v1/export', async (request, reply) => {
     if (totalArtifactBytes > 30_000_000) return fail(reply, 413, 'EXPORT_ARTIFACT_LIMIT', 'Export the PDF files separately, then create a new workspace export.');
     artifacts.push({ documentId: document.id, sha256: digest, contentBase64: content.toString('base64') });
   }
+  let applicationDocumentExport;
+  try {
+    applicationDocumentExport = await buildApplicationDocumentExport({
+      documents: applicationDocumentRows,
+      revisions: applicationDocumentRevisionRows,
+      proposals: applicationDocumentProposals,
+      filesRoot: config.FILES_LOCAL_PATH,
+      artifactBytesAlreadyIncluded: totalArtifactBytes,
+    });
+  } catch (error) {
+    if (error instanceof ApplicationDocumentExportError) return fail(reply, error.statusCode, error.code, error.detail ?? error.message);
+    throw error;
+  }
   const searchState: Record<string,unknown> = {};
-  for (const table of ['search_job_reviews','job_identity_members','search_run_results','search_run_sources','search_runs']) {
+  for (const table of ['search_job_reviews','job_identity_members','search_run_results','search_run_sources','search_runs','job_report_batches','job_report_batch_items']) {
     const rows=(await pool.query(`SELECT * FROM ${table} WHERE workspace_id=$1`,[id])).rows;
     searchState[table]=table==='search_runs'
       ? rows.map((row) => ({...omit(row,'owner','lease_until'),status:row.finished_at?row.status:'CANCELLED',finished_at:row.finished_at ?? new Date().toISOString(),manual:false}))
@@ -641,7 +662,7 @@ app.get('/api/v1/export', async (request, reply) => {
         : rows;
   }
   const assistant = await exportAiData(db, id);
-  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
@@ -658,6 +679,7 @@ app.setErrorHandler((error, _request, reply) => {
 });
 
 registerPreparationRoutes(app, workspace);
+registerActivityTimelineRoutes(app, workspace);
 const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
 registerJobSearchRoutes(app, workspace, prepareAutomatically);
 const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
@@ -676,17 +698,9 @@ const aiRuntime = await registerAiRuntime(app, workspace, { enabled: aiEnabled, 
 // ---- Delete all my data (ADR 020, point 2) ----------------------------------------------------------------------
 const deletionPhrases = new Set(['BORRAR TODOS MIS DATOS', 'DELETE ALL MY DATA']);
 /** Deletes the files of a deletion job and records the outcome. Returns whether every file is gone. */
-async function completeDeletionFiles(jobId: string) {
-  try {
-    await deleteWorkspaceFiles({ filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData });
-    await finishDeletionJob(pool, jobId, 'COMPLETED');
-    return true;
-  } catch (error) {
-    app.log.error({ err: error, jobId }, 'Deleting the files of a deleted workspace failed; it is retried when the API starts');
-    await finishDeletionJob(pool, jobId, 'FILES_FAILED').catch(() => undefined);
-    return false;
-  }
-}
+const completeDeletionFiles = (jobId: string) => finishWorkspaceDeletionFiles(pool, jobId, { filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData }, (error, failedJobId) => {
+  app.log.error({ err: error, jobId: failedJobId }, 'Deleting the files of a deleted workspace failed; it is retried when the API starts');
+});
 app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   const confirmation = (request.body as { confirmation?: unknown } | null)?.confirmation;
   if (typeof confirmation !== 'string' || !deletionPhrases.has(confirmation.trim())) return fail(reply, 400, 'CONFIRMATION_REQUIRED');
@@ -715,7 +729,9 @@ app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   }
 });
 // A deletion whose files were interrupted or failed is finished before the API serves anything.
-for (const jobId of await pendingDeletionJobs(pool, workspaceId)) await completeDeletionFiles(jobId);
+await retryPendingDeletionFiles(pool, workspaceId, { filesRoot: config.FILES_LOCAL_PATH, dataRoot: localData }, (error, jobId) => {
+  app.log.error({ err: error, jobId }, 'Retrying deletion files at startup failed; the job stays pending');
+});
 
 await app.listen({ host: config.API_HOST, port: config.API_PORT });
 app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);

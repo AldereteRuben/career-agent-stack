@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findCodexExecutable, initializeCodexRpc, CODEX_PROTOCOL_VERSION } from './codex-account.js';
+import { findCodexExecutable, initializeCodexRpc, CODEX_SUPPORTED_PROTOCOL_VERSIONS } from './codex-account.js';
 import { runAiProcess } from './process.js';
 import { isAiRecord, withAiRpcProcess, type AiRpcClient } from './rpc.js';
 
@@ -64,7 +64,7 @@ export function createCodexLoginManager(dependencies: Partial<Dependencies> = {}
         try {
           const common = { executable, cwd: directory, signal: attempt.controller.signal, maxOutputBytes: 1024 * 1024 };
           const version = await (dependencies.run ?? runAiProcess)({ ...common, args: ['--version'], timeoutMs: 15_000 });
-          if (version.stdout.trim() !== `codex-cli ${CODEX_PROTOCOL_VERSION}`) throw new CodexLoginError('LOGIN_UNAVAILABLE');
+          if (!CODEX_SUPPORTED_PROTOCOL_VERSIONS.some(supported => version.stdout.trim() === `codex-cli ${supported}`)) throw new CodexLoginError('LOGIN_UNAVAILABLE');
           await (dependencies.rpc ?? withAiRpcProcess)({ ...common, args: ['--no-daemon', 'app-server', '--stdio'], timeoutMs: 300_000 }, async (rpc: AiRpcClient) => {
             await initializeCodexRpc(rpc);
             let loginId: string | null = null;

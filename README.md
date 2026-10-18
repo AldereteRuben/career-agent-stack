@@ -16,10 +16,11 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 ## What you can do
 
 - Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
+- Import an existing resume PDF (or its pasted text) in **Profile → Import from a resume**. The browser reads it and proposes entries; nothing is used until you confirm it, and the PDF and its text are never uploaded or stored. Scanned PDFs, DOCX and AI-assisted import are not supported yet.
 - Keep reusable answers with their question and country context.
 - Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter saved jobs and availability, archive or restore offers, and see explainable matching.
-- Generate versioned resumes with English or Spanish headings, zoom the PDF preview, and reuse earlier content without altering previous PDFs.
+- Generate versioned resumes on A4 or US Letter paper, with English or Spanish headings; automatic preparation stays A4. Zoom the PDF preview and reuse earlier content without altering previous PDFs.
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
@@ -35,7 +36,7 @@ In **Profile and tools → Settings and privacy → Assistant**, connect the off
 - Draft an answer from confirmed facts; personal or legal details require your input.
 - After a manual job analysis, optionally authorize analysis of future jobs from selected searches. It starts off, processes at most five per pass and ten per UTC day, and can be paused without stopping job searches.
 
-Native AI execution is currently supported only on **macOS with Codex CLI 0.160.0** and ChatGPT plan authentication. Other versions or systems keep ordinary app features; this integration is not certified there. Disconnecting revokes Career Stack's access without signing you out of Codex elsewhere. Claude is deferred. [Setup, privacy and limits](docs/operations/assistant.md).
+Native AI execution is currently supported only on **macOS with Codex CLI 0.160.0 or 0.163.0** and ChatGPT plan authentication. Other versions or systems keep ordinary app features; this integration is not certified there. Disconnecting revokes Career Stack's access without signing you out of Codex elsewhere. Claude is deferred. [Setup, privacy and limits](docs/operations/assistant.md).
 
 ## Automatic job search
 
@@ -54,6 +55,18 @@ Existing searches retain their sources and matching rules until you opt into enh
 Open **My applications → To review** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 ## Start here
+
+These screenshots use fictional demo data. The numbered steps below remain complete without them.
+
+![Starting an automatic search for a fictional QA Automation Engineer role.](docs/images/find-jobs-en.webp)
+
+![A fictional QA Automation Engineer job found by search.](docs/images/jobs-en.webp)
+
+![Mobile view of a fictional job's details.](docs/images/job-detail-en-mobile.webp)
+
+![Resume preparation for a fictional job, with US Letter paper selected.](docs/images/resume-builder-en.webp)
+
+![Tracking a fictional application and its next steps.](docs/images/tracker-en.webp)
 
 ### 1. Install the prerequisites
 

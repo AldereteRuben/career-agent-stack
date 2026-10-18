@@ -1,0 +1,128 @@
+.importFlow {
+  display: grid;
+  gap: 16px;
+}
+
+.fileField {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.fileField label {
+  font-weight: 600;
+}
+
+.fileField input {
+  max-width: 100%;
+  min-height: 44px;
+}
+
+.fileField small {
+  color: #616b73;
+  font-size: var(--text-sm);
+}
+
+.paste,
+.pending {
+  margin-top: 12px;
+}
+
+.pending ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+}
+
+.group legend {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.bulk,
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #eff0ed;
+}
+
+.item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-bottom: 1px solid #eff0ed;
+}
+
+.itemLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.itemLabel input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: #4667bc;
+}
+
+.itemBody {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dates {
+  color: #626c76;
+  font-size: var(--text-sm);
+}
+
+.description {
+  color: #465466;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.excerpt {
+  margin-left: 30px;
+  font-size: var(--text-sm);
+}
+
+.excerpt pre {
+  max-height: 220px;
+  margin: 6px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #f6f7f5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
+@media (max-width: 590px) {
+  .excerpt {
+    margin-left: 0;
+  }
+}

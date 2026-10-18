@@ -6,12 +6,24 @@ import { resumeLabels, resumeSectionName } from '@career/domain';
 
 const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
-export async function renderResume(input: { path: string; fullName: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }>; role: string; locale?: 'es' | 'en'; facts: Array<{ kind: string; statement: string; tags: string[] }> }) {
+export type ResumePaperSize = 'A4' | 'LETTER';
+
+export function parseResumePaperSize(value: unknown): ResumePaperSize | null {
+  if (value === undefined || value === 'A4') return 'A4';
+  return value === 'LETTER' ? 'LETTER' : null;
+}
+
+export async function renderResume(input: { path: string; fullName: string; email?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }>; role: string; locale?: 'es' | 'en'; paperSize?: ResumePaperSize; facts: Array<{ kind: string; statement: string; tags: string[] }> }) {
   if (!input.facts.length || input.facts.length > 50) throw new Error('DOCUMENT_FACT_LIMIT');
   if (input.facts.reduce((size, fact) => size + fact.statement.length, 0) > 40_000) throw new Error('DOCUMENT_SIZE_LIMIT');
   const grouped = new Map<string, typeof input.facts>();
   for (const fact of input.facts) grouped.set(fact.kind, [...(grouped.get(fact.kind) ?? []), fact]);
   const locale = input.locale === 'es' ? 'es' : 'en';
+  const paperSize = input.paperSize === 'LETTER' ? 'LETTER' : 'A4';
+  const pageSize = paperSize === 'LETTER' ? 'Letter' : 'A4';
+  const pageMargins = paperSize === 'LETTER'
+    ? { top: '17.78mm', right: '19.05mm', bottom: '19.05mm', left: '19.05mm' }
+    : { top: '19mm', right: '20mm', bottom: '21mm', left: '20mm' };
   const labels = resumeLabels(locale);
   const sectionOrder = ['summary', 'experience', 'current_employment', 'achievement', 'project', 'skill_evidence', 'skill', 'education', 'certification', 'language'];
   const sections = [...grouped].sort(([a], [b]) => {
@@ -21,7 +33,7 @@ export async function renderResume(input: { path: string; fullName: string; emai
   const contactItems: Array<{ text: string } | { link: { label: string; url: string } }> = [input.email, input.phone, input.city].filter((value): value is string => Boolean(value?.trim())).map((text) => ({ text }));
   for (const link of input.links ?? []) contactItems.push({ link });
   const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
-    @page { size: A4; margin: 19mm 20mm 21mm; }
+    @page { size: ${pageSize}; margin: ${pageMargins.top} ${pageMargins.right} ${pageMargins.bottom} ${pageMargins.left}; }
     * { box-sizing: border-box; }
     body { margin: 0; color: #263344; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.58; }
     header { border-top: 4px solid #244d64; padding-top: 20px; padding-bottom: 22px; margin-bottom: 25px; border-bottom: 1px solid #ccd6dd; break-inside: avoid; }
@@ -35,7 +47,7 @@ export async function renderResume(input: { path: string; fullName: string; emai
     li:last-child { margin-bottom: 0; }
     li::marker { color: #527489; font-size: 8pt; }
     </style></head><body><header><h1>${escapeHtml(input.fullName || labels.defaultName)}</h1><p class="role">${escapeHtml(input.role || labels.defaultRole)}</p>${contactItems.length ? `<p class="contact">${contactItems.map((item) => 'text' in item ? escapeHtml(item.text) : `<a href="${escapeHtml(item.link.url)}">${escapeHtml(item.link.label)}</a>`).join(' · ')}</p>` : ''}</header><main>${sections}</main></body></html>`;
-  const footer = `<div style="width:100%;margin:0 20mm;padding-top:7px;border-top:1px solid #dce3e8;font-family:Arial,Helvetica,sans-serif;font-size:7px;color:#526171;display:flex;justify-content:flex-end;gap:12px"><span style="white-space:nowrap"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
+  const footer = `<div style="width:100%;margin:0 ${pageMargins.right};padding-top:7px;border-top:1px solid #dce3e8;font-family:Arial,Helvetica,sans-serif;font-size:7px;color:#526171;display:flex;justify-content:flex-end;gap:12px"><span style="white-space:nowrap"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
   const absolutePath = resolve(input.path);
   await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });
   const browser = await chromium.launch({ headless: true });
@@ -46,7 +58,7 @@ export async function renderResume(input: { path: string; fullName: string; emai
     await page.setContent(html, { waitUntil: 'load', timeout: 10_000 });
     const extractedText = await page.locator('body').innerText();
     for (const fact of input.facts) if (!extractedText.includes(fact.statement)) throw new Error('DOCUMENT_TEXT_CHECK_FAILED');
-    await page.pdf({ path: absolutePath, format: 'A4', printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: { top: '19mm', right: '20mm', bottom: '21mm', left: '20mm' } });
+    await page.pdf({ path: absolutePath, format: pageSize, printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: pageMargins });
   } finally { await browser.close(); }
   const bytes = await readFile(absolutePath);
   if (bytes.byteLength < 1_000 || bytes.byteLength > 20_000_000 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('PDF_OUTPUT_INVALID');

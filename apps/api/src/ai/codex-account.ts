@@ -8,7 +8,8 @@ import { runAiProcess, type AiProcessOptions } from './process.js';
 import { isAiRecord, withAiRpcProcess, type AiRpcClient } from './rpc.js';
 
 /** This is an inspected protocol candidate, not a declaration that inference passed G0. */
-export const CODEX_PROTOCOL_VERSION = '0.160.0';
+export const CODEX_PROTOCOL_VERSION = '0.163.0';
+export const CODEX_SUPPORTED_PROTOCOL_VERSIONS = ['0.160.0', CODEX_PROTOCOL_VERSION] as const;
 export type CodexAccountObservation = {
   status: 'NOT_INSTALLED' | 'SIGNED_OUT' | 'SIGNED_IN' | 'UNSUPPORTED' | 'UNAVAILABLE';
   version: string | null;
@@ -93,7 +94,7 @@ export async function inspectCodexAccount(identitySalt: string, signal?: AbortSi
     const common: Omit<AiProcessOptions, 'args'> = { executable, cwd: directory, timeoutMs: 15_000, maxOutputBytes: 1024 * 1024, ...(signal ? { signal } : {}) };
     const observed = await (dependencies.run ?? runAiProcess)({ ...common, args: ['--version'] });
     version = /^codex-cli (\d+\.\d+\.\d+)\s*$/.exec(observed.stdout)?.[1] ?? null;
-    if (version !== CODEX_PROTOCOL_VERSION) return emptyObservation('UNSUPPORTED', now(), version);
+    if (!CODEX_SUPPORTED_PROTOCOL_VERSIONS.includes(version as (typeof CODEX_SUPPORTED_PROTOCOL_VERSIONS)[number])) return emptyObservation('UNSUPPORTED', now(), version);
     return await (dependencies.rpc ?? withAiRpcProcess)({ ...common, args: ['--no-daemon', 'app-server', '--stdio'] }, async rpc => {
       await initializeCodexRpc(rpc);
       const observation = normalizeCodexAccount(await rpc.request('account/read', { refreshToken: false }), identitySalt, now());

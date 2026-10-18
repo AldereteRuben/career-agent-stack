@@ -1,4 +1,5 @@
 export * from './matching.js';
+export * from './job-report.js';
 export * from './search-matching.js';
 export * from './states.js';
 export * from './job-availability.js';
@@ -6,6 +7,10 @@ export * from './contracts.js';
 export * from './profile.js';
 export * from './application-dates.js';
 export * from './documents.js';
+export * from './application-documents-builder.js';
+export * from './application-document-lifecycle.js';
+export * from './application-document-validation.js';
+export * from './application-documents-text.js';
 export * from './assisted.js';
 
 export * from './entries.js';
@@ -16,3 +21,4 @@ export * from './ai-budget.js';
 export * from './security-headers.js';
 export * from './fact-import.js';
 export * from './profile-import.js';
+export * from './resume-sections.js';
