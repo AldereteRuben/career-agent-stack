@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { after, before, describe, test } from 'node:test';
 import { performance } from 'node:perf_hooks';
 import Fastify from 'fastify';
+import { and, eq, not } from 'drizzle-orm';
 import { trackPgPoolCleanup } from './helpers/pg-pool-cleanup.js';
 
 const root = new URL('../../../', import.meta.url);
@@ -97,6 +98,7 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     await client.query(`INSERT INTO applications(workspace_id,job_id,company,role,state)
       VALUES($1,$2,'Synthetic Company 76','QA Engineer 9996','IN_PROGRESS')`, [performanceWorkspace, metadataJob]);
     routes.registerJobSearchRoutes(app, () => activeWorkspace);
+    const filters = await import('../src/job-filter-routes.js'); filters.registerJobFilterRoutes(app, () => activeWorkspace);
   });
 
   after(async () => {
@@ -122,6 +124,37 @@ describe('search result SQL and local performance (disposable PostgreSQL)', { sk
     const inaccessible = await app.inject(`/api/v1/job-searches/${resultSearch}/results?view=all`);
     assert.equal(inaccessible.statusCode, 404, 'another workspace cannot open the synthetic result search');
     assert.equal((await service.searchResults(otherWorkspace, null, { limit: '20' })).total, 1);
+  });
+
+  test('workspace filters hide matching jobs, explain the rule, and restore only the selected job', async () => {
+    activeWorkspace = workspace;
+    const saved = await app.inject({ method: 'PUT', url: '/api/v1/job-filters', payload: { preferences: { excludedCompanies: ['Legacy Co'], requiredTerms: [], excludedTerms: [] } } });
+    assert.equal(saved.statusCode, 200, saved.body);
+    const normal = await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all&limit=20`);
+    assert.equal(normal.json().total, 0);
+    const filtered = await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`);
+    assert.equal(filtered.json().total, 4, 'archived listings stay in Archived; only active matches appear in this view');
+    const first = filtered.json().items[0];
+    assert.deepEqual(first.preferenceReasons, { excludedCompany: 'Legacy Co', missingRequiredTerms: [], matchedExcludedTerms: [] });
+    const restore = await app.inject({ method: 'POST', url: `/api/v1/job-filters/${first.id}/restore`, payload: {} });
+    assert.equal(restore.statusCode, 200, restore.body);
+    assert.equal((await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=all&limit=20`)).json().total, 1);
+    assert.equal((await app.inject(`/api/v1/job-searches/${legacySearch}/results?view=filtered&limit=20`)).json().total, 3);
+    activeWorkspace = otherWorkspace;
+    assert.equal((await app.inject('/api/v1/job-searches/results?view=filtered&limit=20')).json().total, 0, 'another workspace does not inherit preferences or exceptions');
+  });
+
+  test('discovered-job SQL uses the same Unicode normalization as search results', async () => {
+    activeWorkspace = workspace;
+    const id = randomUUID();
+    await client.query(`INSERT INTO jobs(id,workspace_id,company,title,availability) VALUES($1,$2,'Acme','Rôle developer','OPEN')`, [id, workspace]);
+    const preferences = { excludedCompanies: [], requiredTerms: ['role'], excludedTerms: [] };
+    const service = await import('../src/job-filter-routes.js');
+    const matched = await database.db.select({ id: database.jobs.id }).from(database.jobs)
+      .where(and(eq(database.jobs.workspaceId, workspace), not(service.jobFilterExclusionSql(preferences, workspace))));
+    assert.ok(matched.some((row) => row.id === id), 'NFKD accent folding should keep Rôle when role is required');
+    const evaluated = service.evaluateJobFilters({ company: 'Acme', title: 'Rôle developer' }, preferences);
+    assert.equal(evaluated.excluded, false, 'in-memory search-result evaluation agrees with the discovered-job SQL');
   });
 
   test('strong identity duplicates group, but conflicting saved/archive decisions stay separate', async () => {

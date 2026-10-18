@@ -6,7 +6,7 @@ import { labelFor } from '@/lib/labels';
 import type { SearchJob, SearchView } from '@/components/search-types';
 import styles from '@/app/searches/searches.module.css';
 
-type Props = { aiAvailable?: boolean; job: SearchJob; returnTo: string; view: SearchView; busy: boolean; t: (es: string, en: string) => string; sourceName: (provider: string) => string; onSave: () => void; onUnsave: () => void; onArchive: () => void; onReview: () => void };
+type Props = { aiAvailable?: boolean; job: SearchJob; returnTo: string; view: SearchView; busy: boolean; t: (es: string, en: string) => string; sourceName: (provider: string) => string; onSave: () => void; onUnsave: () => void; onArchive: () => void; onReview: () => void; onRestore: () => void };
 const reasonText: Record<string, [string, string]> = {
   ROLE_EXACT: ['Título de puesto coincidente', 'Job title matches'], ROLE_EQUIVALENT: ['Puesto equivalente', 'Equivalent role'], ROLE_RELATED: ['Puesto relacionado', 'Related role'], ROLE_NONE: ['El puesto no coincide claramente', 'Role is not a clear match'],
   COMPANY_MATCH: ['Empresa coincidente', 'Company matches'], COMPANY_MISMATCH: ['La empresa no coincide', 'Company does not match'], WORK_MODE_MATCH: ['Modalidad coincidente', 'Work mode matches'], WORK_MODE_UNKNOWN: ['Modalidad sin confirmar', 'Work mode is unknown'], WORK_MODE_MISMATCH: ['Modalidad distinta', 'Work mode differs'],
@@ -17,7 +17,7 @@ function shownReason(reason: string, spanish: boolean) { return reasonText[reaso
 function formatDate(value: string, spanish: boolean) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? '' : new Intl.DateTimeFormat(spanish ? 'es-ES' : 'en-GB', { dateStyle: 'medium' }).format(date); }
 
 /** Role, company, location and the main reason first; the same main decisions on every card (an existing application is linked from its status line); everything else on demand. */
-export function SearchResultCard({ aiAvailable = false, job, returnTo, view, busy, t, sourceName, onSave, onUnsave, onArchive, onReview }: Props) {
+export function SearchResultCard({ aiAvailable = false, job, returnTo, view, busy, t, sourceName, onSave, onUnsave, onArchive, onReview, onRestore }: Props) {
   const saved = job.shortlistDecision === 'SHORTLISTED'; const archived = job.shortlistDecision === 'ARCHIVED';
   const spanish = t('es', 'en') === 'es';
   const reasons = (job.searchReasons ?? []).map((reason) => shownReason(reason, spanish));
@@ -30,10 +30,13 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
   const checked = job.sources.filter((source) => source.fetchedAt && Number.isFinite(Date.parse(source.fetchedAt)));
   const canReview = view === 'new' && !job.seenAt;
   const titleId = `result-title-${job.id}`;
+  const filterReasons = job.preferenceReasons;
+  const filterText = [filterReasons?.excludedCompany ? t(`Empresa excluida: ${filterReasons.excludedCompany}`, `Excluded company: ${filterReasons.excludedCompany}`) : '', ...(filterReasons?.missingRequiredTerms ?? []).map((term) => t(`Falta el término requerido: ${term}`, `Missing required term: ${term}`)), ...(filterReasons?.matchedExcludedTerms ?? []).map((term) => t(`Término excluido: ${term}`, `Excluded term: ${term}`))].filter(Boolean);
   return <Card className={styles.resultCard}>
     <div className={styles.resultMain}>
       <h3 id={titleId}><Link href={jobHref} data-result-id={job.id}>{job.title}</Link></h3>
       <p className={styles.resultMeta}>{job.company} · {job.location || t('Ubicación sin indicar', 'Location not listed')}</p>
+      {view === 'filtered' && <p className={styles.warning}>{t('Excluida por tus preferencias', 'Filtered by your preferences')}: {filterText.join('; ')}</p>}
       <p className={styles.resultReason}>{reasons[0] ?? t('Coincide con tus criterios', 'Matches your criteria')}</p>
       {unknownLocation && <p className={styles.warning}>{t('Comprueba en el anuncio desde qué países se puede trabajar.', 'Check eligible countries in the original listing.')}</p>}
       {job.identityConflict && <p className={styles.warning}>{t('Esta oferta tiene registros con decisiones o candidaturas diferentes. Los conservamos por separado.', 'This job has records with different decisions or applications. We kept them separate.')}</p>}
@@ -42,6 +45,7 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
     </div>
     <div className={styles.resultActions}>
       <Link className="button button-primary" href={jobHref} aria-describedby={titleId}>{t('Ver oferta', 'View job')}</Link>
+      {view === 'filtered' && <Button variant="secondary" disabled={busy} aria-describedby={titleId} onClick={onRestore}>{t('Restaurar esta oferta', 'Restore this job')}</Button>}
       {aiAvailable && <Link className="button button-secondary" href={`${jobHref}#job-ai-assistance`} aria-describedby={titleId}>{['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(job.aiSummaryStates?.[spanish ? 'es' : 'en'] ?? '') ? t('Resumen en preparación', 'Summary in progress') : job.aiSummaryStates?.[spanish ? 'es' : 'en'] === 'SAVED' ? t('Ver resumen guardado', 'View saved summary') : t('Resumir esta oferta', 'Summarize this job')}</Link>}
       {!archived && <Button variant="secondary" disabled={busy} aria-pressed={saved} aria-describedby={titleId} onClick={saved ? onUnsave : onSave}>{saved ? t('Quitar de guardadas', 'Unsave job') : t('Guardar oferta', 'Save job')}</Button>}
       <Button variant="quiet" disabled={busy} aria-describedby={titleId} onClick={onArchive}>{archived ? t('Recuperar', 'Restore') : t('Archivar', 'Archive')}</Button>

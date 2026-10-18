@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { lockJobIdentity } from './job-identity.js';
 import { effectiveSeenAtSql, isNewJobSql, markJobReviewed, reviewedJobsCte, sameVacancySql } from './review-state.js';
 type Source = {provider:string;name?:string;url:string;postedAt:string|null;fetchedAt?:string|null};
-type ResultRow = {aiSummaryStates?: Record<string,string>;job:{id:string;title:string;company:string;location:string|null;canonical_url:string|null;availability:string;shortlist_decision:string};archived:boolean;saved:boolean;seen_at:string|null;matched_at:string;search_ids:string[];group_id:string;duplicate_count:number;identity_conflict:boolean;score:number;reasons:string[];location_status:string;unknown_location:boolean;source_lists:Source[][];autoPreparedAt:string|null;autoPrepareError:string|null;applicationId:string|null;documentId:string|null;applicationState:string|null;documentApprovalStatus:string|null};
+type ResultRow = {aiSummaryStates?: Record<string,string>;preference_reasons?: {excludedCompany:string|null;missingRequiredTerms:string[];matchedExcludedTerms:string[]};job:{id:string;title:string;company:string;location:string|null;canonical_url:string|null;availability:string;shortlist_decision:string};archived:boolean;saved:boolean;seen_at:string|null;matched_at:string;search_ids:string[];group_id:string;duplicate_count:number;identity_conflict:boolean;score:number;reasons:string[];location_status:string;unknown_location:boolean;source_lists:Source[][];autoPreparedAt:string|null;autoPrepareError:string|null;applicationId:string|null;documentId:string|null;applicationState:string|null;documentApprovalStatus:string|null};
 export type ResultQuery = { limit?: string; offset?: string; view?: string; sort?: string };
 import { latestSearchRun } from './search-execution.js';
 
@@ -14,7 +14,7 @@ import { latestSearchRun } from './search-execution.js';
 export async function searchResults(workspaceId: string, searchId: string | null, query: ResultQuery) {
   const limit = Math.max(1, Math.min(100, Number.parseInt(query.limit ?? '20', 10) || 20));
   const offset = Math.max(0, Math.min(1_000_000, Number.parseInt(query.offset ?? '0', 10) || 0));
-  const view = ['new','all','saved','archived'].includes(query.view ?? '') ? query.view : 'all';
+  const view = ['new','all','saved','archived','filtered'].includes(query.view ?? '') ? query.view : 'all';
   const order = query.sort === 'recent' ? 'posted_at DESC NULLS LAST,score DESC' : 'score DESC,posted_at DESC NULLS LAST';
   const { rows } = await pool.query(`WITH selected AS MATERIALIZED (
     SELECT s.* FROM saved_job_searches s WHERE workspace_id=$1 AND ($2::uuid IS NULL OR id=$2)
@@ -66,9 +66,26 @@ export async function searchResults(workspaceId: string, searchId: string | null
       WHERE identity.workspace_id=$1 AND identity.identity_key=im.identity_key
     ) ci ON true
     GROUP BY CASE WHEN ci.conflicted THEN j.id::text ELSE coalesce(im.identity_key,j.id::text) END
+  ), preferences AS MATERIALIZED (
+    SELECT coalesce((SELECT preferences FROM job_filter_preferences WHERE workspace_id=$1), '{"excludedCompanies":[],"requiredTerms":[],"excludedTerms":[]}'::jsonb) AS value
+  ), classified AS MATERIALIZED (
+    SELECT g.*,
+      jsonb_strip_nulls(jsonb_build_object(
+        'excludedCompany', CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements_text(p.value->'excludedCompanies') term WHERE trim(regexp_replace(lower(translate(term,'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN')),'[^[:alnum:]]+',' ','g')) = trim(regexp_replace(lower(translate(j.company,'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN')),'[^[:alnum:]]+',' ','g'))) THEN j.company ELSE NULL END,
+        'missingRequiredTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'requiredTerms') term WHERE position(' '||trim(regexp_replace(lower(translate(term,'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ' IN ' '||trim(regexp_replace(lower(translate(concat_ws(' ',j.title,j.company,snap.description_text),'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ')=0), '[]'::jsonb),
+        'matchedExcludedTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'excludedTerms') term WHERE position(' '||trim(regexp_replace(lower(translate(term,'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ' IN ' '||trim(regexp_replace(lower(translate(concat_ws(' ',j.title,j.company,snap.description_text),'áéíóúüñ','aeiouun')),'[^[:alnum:]]+',' ','g'))||' ')>0), '[]'::jsonb)
+      )) AS preference_reasons,
+      (o.job_id IS NOT NULL) AS preference_restored
+    FROM grouped g JOIN jobs j ON j.workspace_id=$1 AND j.id=g.job_id CROSS JOIN preferences p
+    LEFT JOIN LATERAL (SELECT description_text FROM job_snapshots WHERE workspace_id=$1 AND job_id=j.id ORDER BY fetched_at DESC,id DESC LIMIT 1) snap
+      ON jsonb_array_length(p.value->'requiredTerms')>0 OR jsonb_array_length(p.value->'excludedTerms')>0
+    LEFT JOIN job_filter_overrides o ON o.workspace_id=$1 AND o.job_id=j.id
   ), filtered AS MATERIALIZED (
-    SELECT * FROM grouped WHERE CASE $3 WHEN 'archived' THEN archived WHEN 'saved' THEN saved AND NOT archived
-      WHEN 'new' THEN seen_at IS NULL AND NOT archived AND NOT saved AND NOT skipped ELSE NOT archived END
+    SELECT * FROM classified WHERE CASE $3 WHEN 'archived' THEN archived WHEN 'saved' THEN saved AND NOT archived
+      WHEN 'new' THEN seen_at IS NULL AND NOT archived AND NOT saved AND NOT skipped
+      WHEN 'filtered' THEN NOT archived AND NOT preference_restored AND (preference_reasons->>'excludedCompany' IS NOT NULL OR jsonb_array_length(preference_reasons->'missingRequiredTerms')>0 OR jsonb_array_length(preference_reasons->'matchedExcludedTerms')>0)
+      ELSE NOT archived END
+      AND ($3='filtered' OR preference_restored OR (preference_reasons->>'excludedCompany' IS NULL AND jsonb_array_length(preference_reasons->'missingRequiredTerms')=0 AND jsonb_array_length(preference_reasons->'matchedExcludedTerms')=0))
   ), page AS MATERIALIZED (SELECT * FROM filtered ORDER BY ${order},group_id LIMIT $4 OFFSET $5)
   SELECT (SELECT count(*)::int FROM filtered) AS total,
     coalesce((SELECT jsonb_agg(to_jsonb(page)||jsonb_build_object('job',to_jsonb(j),'autoPreparedAt',m.auto_prepared_at,'autoPrepareError',m.auto_prepare_error,'applicationId',a.id,'documentId',a.document_id,'applicationState',a.state,'documentApprovalStatus',a.approval_status,'aiSummaryStates',ai.states) ORDER BY ${order},group_id)
@@ -98,6 +115,7 @@ export async function searchResults(workspaceId: string, searchId: string | null
       for (const list of r.source_lists) for (const source of list) sources.set(`${source.provider}:${source.url}`,source);
       return { id:j.id,title:j.title,company:j.company,location:j.location,canonicalUrl:j.canonical_url,availability:j.availability,
         shortlistDecision:r.archived ? 'ARCHIVED' : r.saved ? 'SHORTLISTED' : j.shortlist_decision,
+        preferenceReasons:r.preference_reasons ?? null,
         seenAt:r.seen_at,matchedAt:r.matched_at,searchIds:r.search_ids,groupId:r.group_id,duplicateCount:r.duplicate_count,identityConflict:r.identity_conflict,
         searchScore:r.score,searchReasons:r.reasons,locationStatus:r.location_status,unknownLocation:r.unknown_location,
         aiSummaryStates:r.aiSummaryStates ?? {},sources:[...sources.values()],autoPreparedAt:r.autoPreparedAt,autoPrepareError:r.autoPrepareError,applicationId:r.applicationId,documentId:r.documentId,applicationState:r.applicationState,documentApprovalStatus:r.documentApprovalStatus };
