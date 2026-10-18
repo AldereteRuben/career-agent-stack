@@ -2,7 +2,7 @@
 
 ## Connect / Conectar
 
-Career Stack v0.9.0 supports the official **Codex CLI 0.160.0 on macOS**, authenticated with a ChatGPT plan. Install Codex through the [official instructions](https://developers.openai.com/codex/cli/). Check `codex --version` when troubleshooting. A different version is rejected until its isolation and protocol are verified; installing a newer CLI does not automatically certify compatibility. Career Stack never installs it on page load.
+Career Stack v0.9.2 supports the official **Codex CLI 0.160.0 and 0.163.0 on macOS**, authenticated with a ChatGPT plan. Install Codex through the [official instructions](https://developers.openai.com/codex/cli/). Check `codex --version` when troubleshooting. Any other version is rejected until its isolation and protocol are verified; installing a newer CLI does not automatically certify compatibility. Career Stack never installs it on page load.
 
 Open **Profile and tools → Settings and privacy → Assistant**, then explicitly check the account. If signed out, continue through the official sign-in page. Confirm the masked account with **Use this account**. The same connection flow appears beside contextual assistant actions and preserves the text you were editing.
 
@@ -15,6 +15,12 @@ Each action previews the request, job description, selected approved experience 
 Optional remembered permission applies to that action and data categories for the connected account. Automatic analysis has its own permission for selected searches. Revoke either in Settings. Revocation stops pending work and requests cancellation of active work; it cannot retract text already sent.
 
 ES: revisa los datos antes de continuar. La aplicación excluye los campos de nombre y contacto, pero debes revisar cualquier dato personal escrito dentro de un texto libre. Guardar localmente y procesar con OpenAI son cosas distintas. Puedes recordar el permiso por acción o revocarlo en Ajustes. El análisis automático tiene un permiso separado para las búsquedas elegidas.
+
+## Resume import / Importar un CV
+
+Importing a resume (**Profile → Import from a resume**) never uses the assistant. The browser reads the PDF or pasted text, splits it into sections and proposes entries; only the entries you tick are saved, as suggestions waiting for your confirmation. The PDF and its text are not sent to the API, to Codex or to OpenAI, and are not kept in the database, browser storage or logs. A Codex-assisted import (ADR 018, task T6) is not available yet.
+
+ES: importar un CV (**Perfil → Importar desde un CV**) no usa el asistente. El navegador lee el PDF o el texto pegado, lo separa por secciones y propone entradas; solo se guardan las que marques, pendientes de tu confirmación. Ni el PDF ni su texto se envían a la API, a Codex ni a OpenAI, y no se guardan en la base de datos, el almacenamiento del navegador ni los registros. La importación con Codex (ADR 018, tarea T6) aún no está disponible.
 
 ## Review results / Revisar resultados
 

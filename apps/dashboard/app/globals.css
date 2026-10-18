@@ -617,6 +617,7 @@ main:focus {
   justify-content: flex-end;
   gap: 8px;
   flex: none;
+  flex-wrap: wrap;
 }
 
 /* 5. Shared primitives ------------------------------------------------------- */

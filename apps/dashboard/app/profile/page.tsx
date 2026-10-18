@@ -18,7 +18,7 @@ import { Button, Card, Empty, Field, Notice, SelectField, Tag, TextareaField } f
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { copy, countryName, countryOptions, humanizeKey, labelFor, normalizeWorkMode, workModes as workModeLabels } from '@/lib/labels';
 
-type Fact = ProfileEntry & { approvalStatus: string };
+type Fact = ProfileEntry & { approvalStatus: string; importId?: string | null };
 type Answer = { id: string; semanticKey: string; questionText?: string | null; jurisdiction: string; questionScope: string; value: unknown; approvalStatus: string; strategy: string; revision?: number; reviewExpired?: boolean };
 type Profile = { revision: number; locale?: string; profile: { identity?: { fullName?: string; email?: string; country?: string; phone?: string; city?: string; links?: Array<{ label: string; url: string }> }; preferences?: { targetTitles?: string[]; workModes?: string[] } }; facts: Fact[]; answers: Answer[] };
 type ProfileForm = { name: string; email: string; phone: string; city: string; links: string; country: string; titles: string; modes: string[] };
@@ -224,6 +224,7 @@ function ProfileView() {
   };
 
   const pendingFacts = data?.facts.filter((f) => f.approvalStatus === 'SUGGESTED').length ?? 0;
+  const importedPending = data?.facts.find((f) => f.approvalStatus === 'SUGGESTED' && f.importId)?.importId ?? null;
   const approvedFacts = data?.facts.filter((item) => item.approvalStatus === 'USER_APPROVED').length ?? 0;
   const canPrepareCv = Boolean(data?.profile.identity?.fullName?.trim() && data?.profile.identity?.email?.trim() && approvedFacts);
   const knownModes = Object.keys(workModeLabels); const extraModes = form.modes.filter((mode) => !knownModes.includes(mode));
@@ -234,7 +235,7 @@ function ProfileView() {
     <PageHeader eyebrow={c('PREPARA TU INFORMACIÓN', 'PREPARE YOUR DETAILS')} title={c('Perfil', 'Profile')} description={c('Empieza por tu nombre y correo. Después añade una experiencia que quieras incluir en tu CV.', 'Start with your name and email. Then add an experience you want to include in your resume.')}/>
     <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile" returnTo={returnTo}/>
     {loadState === 'ready' && <nav className="profile-shortcuts" aria-label={c('Secciones de tu perfil', 'Profile sections')}>
-      <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a>
+      <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a><Link href="/profile/import">{c('Importar desde un CV', 'Import from a resume')}</Link>
       {canPrepareCv && !jobId && <Link className="button button-primary" href={resumeHref}>{c('Continuar con mi CV', 'Continue to my resume')}</Link>}
     </nav>}
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error" actions={conflict && <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button>}>{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
@@ -280,6 +281,7 @@ function ProfileView() {
           {savedEntry.approvalStatus !== 'USER_APPROVED' ? <><p>{c('Comprueba el puesto, las fechas y el texto. Confírmalo si es correcto.', 'Check the role, dates, and text. Confirm it if it is accurate.')}</p><div className="detail-actions"><Button disabled={locked || conflict} onClick={() => void confirmSavedEntry()}>{c('Confirmar experiencia', 'Confirm experience')}</Button><Button variant="secondary" disabled={locked || !data} onClick={() => { if (data) { setEditing({ ...savedEntry, revision: data.revision }); setSavedEntry(null); } }}>{c('Corregir texto', 'Edit entry')}</Button><Button variant="quiet" disabled={locked} onClick={() => setSavedEntry(null)}>{c('Revisar después', 'Review later')}</Button></div></> : <><p>{c('Usaremos esta información cuando prepares tu CV.', 'This information can now be used when preparing your resume.')}</p><div className="detail-actions">{canPrepareCv && !jobId && <Link className="button button-primary" href={resumeHref}>{c('Preparar mi CV', 'Prepare my resume')}</Link>}<Button variant="secondary" onClick={() => setSavedEntry(null)}>{c('Añadir otra experiencia', 'Add another experience')}</Button></div></>}
           {savedEntry.approvalStatus === 'USER_APPROVED' && jobId && canPrepareCv && <ApplicationPreparationAction disabled={hasDrafts || locked} jobId={jobId} applicationId={applicationId ?? undefined} returnTo={returnTo}/>}
         </section>}
+        {!editing && !savedEntry && <Notice role={null} actions={<Link className="button button-secondary" href={importedPending ? `/profile/import?importId=${importedPending}` : '/profile/import'}>{importedPending ? c('Revisar lo importado', 'Review imported entries') : c('Importar desde un CV', 'Import from a resume')}</Link>}>{importedPending ? c('Tienes entradas importadas de un CV pendientes de confirmar.', 'You have entries imported from a resume waiting for confirmation.') : c('¿Ya tienes un CV en PDF? Te proponemos entradas a partir de él y tú decides cuáles confirmar.', 'Already have a resume as a PDF? We propose entries from it and you decide which to confirm.')}</Notice>}
         {!editing && !savedEntry && <ProfileEntryForm busy={locked} onSave={addFact} onDirtyChange={setEntryDirty}/>}
         {editing && <div className="fact-edit"><h3 ref={editHeading} tabIndex={-1}>{c('Editar dato del CV', 'Edit resume detail')}</h3>
           {data?.revision !== editing.revision && <Notice tone="warning">{c('El perfil cambió mientras editabas. Conserva tu corrección y vuelve a abrir la entrada actual antes de guardar.', 'Your profile changed while editing. Keep your correction and reopen the current entry before saving.')}</Notice>}

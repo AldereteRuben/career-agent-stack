@@ -485,3 +485,209 @@
 .fitBody :global(.detail-score) {
   flex-wrap: wrap;
 }
+
+/* Job evaluation report (#109) and evaluation of several saved jobs (#110). */
+.report {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+  margin-bottom: var(--space-5);
+  padding: clamp(20px, 3vw, 30px);
+  overflow-wrap: anywhere;
+}
+
+.report > :global(.panel-heading) {
+  margin-bottom: 0;
+}
+
+.reportVerdict {
+  display: grid;
+  gap: var(--space-2);
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--amber);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+
+.reportVerdict[data-verdict='GOOD_OPTION'] { border-left-color: var(--green); }
+.reportVerdict[data-verdict='PROBABLY_NOT_A_FIT'] { border-left-color: var(--red); }
+
+.reportVerdict p,
+.reportVerdict ul {
+  margin: 0;
+}
+
+.reportVerdict ul {
+  padding-inline-start: 20px;
+}
+
+.reportVerdict small,
+.reportFoot small {
+  color: var(--muted);
+}
+
+.reportSection {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.reportSection h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.reportSection > ul:not(.reportList) {
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.reportList,
+.reportFacts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reportList > li {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.reportList p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.reportQuote,
+.reportFacts li {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink-2);
+}
+
+.reportQuote span,
+.reportFacts span {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.reportChecks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.reportChecks > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.reportChecks dt {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.reportChecks dd {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.reportChecks dd span {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.reportFoot {
+  margin: 0;
+}
+
+.batch {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  margin-bottom: var(--space-5);
+  padding: clamp(18px, 3vw, 26px);
+  overflow-wrap: anywhere;
+}
+
+.batch h2,
+.batch h3 {
+  margin: 0;
+}
+
+.batchActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.batchProgress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--blue);
+}
+
+.batchResults {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batchResults li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.batchResults li small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+
+.batchSelect {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.batchSelect input {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 720px) {
+  .reportChecks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .batchResults li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

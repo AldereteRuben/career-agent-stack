@@ -15,7 +15,7 @@ import { aiResumeSelectionSchema, buildAiResumeClaims, registerAiDocumentRoutes 
 import { approveDerivedDocument, documentReadiness } from '../src/document-reuse.js';
 import { buildAiSourceSnapshot, type AiSourceRecords } from '../src/ai/source-snapshot.js';
 import { latestReusableAnswers } from '../src/ai/answer-current.js';
-import { renderResume } from '../src/document-renderer.js';
+import { parseResumePaperSize, renderResume } from '../src/document-renderer.js';
 
 const root=new URL('../../../',import.meta.url),hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const {Client,Pool}=createRequire(new URL('packages/db/package.json',root))('pg');
@@ -49,7 +49,10 @@ test('AI rewritten professional summaries remain in the summary section',()=>{
   assert.equal(basis.claims.length,1);assert.equal(basis.claims[0]!.section,'summary');assert.equal(basis.claims[0]!.origin,'AI');
 });
 test('AI resume contact selection is unique and uses only the fields selected by the person',()=>{
+  assert.equal(parseResumePaperSize(undefined),'A4');assert.equal(parseResumePaperSize('A4'),'A4');assert.equal(parseResumePaperSize('LETTER'),'LETTER');assert.equal(parseResumePaperSize('Legal'),null);assert.equal(parseResumePaperSize('letter'),null);
   assert.throws(()=>aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',printedContactFields:['phone','phone'],selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]}));
+  assert.equal(aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]}).paperSize,'A4');
+  assert.throws(()=>aiResumeSelectionSchema.parse({expectedRevision:1,name:'Synthetic CV',paperSize:'Legal',selections:[{proposalKey:'experience-1',text:'Built reliable tests'}]}));
   const f=fixture();
   f.records.profile!.profile.identity={fullName:'Synthetic Person',email:'synthetic@example.test',phone:'+34 600 000 000',city:'Madrid',links:[{label:'Portfolio',url:'https://example.test/portfolio'}]};
   const body={...f.body,printedContactFields:['phone','links'] as Array<'email'|'phone'|'city'|'links'>};
@@ -94,6 +97,11 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
       if(process.env.CAREER_V090_PDF_TEST==='true'){try{
         const rendered=await renderResume(input);
         const text=execFileSync('pdftotext',[input.path,'-'],{encoding:'utf8'}).replace(/\s+/g,' ');
+        const pageSize=execFileSync('pdfinfo',[input.path],{encoding:'utf8'}).match(/Page size:\s*([\d.]+) x ([\d.]+) pts/);
+        assert.ok(pageSize,'pdfinfo reports a page size');
+        const expectedSize: [number,number]=input.paperSize==='LETTER'?[612,792]:[595.28,841.89];
+        const actualWidth=Number(pageSize?.[1]),actualHeight=Number(pageSize?.[2]);
+        assert.ok(Math.abs(actualWidth-expectedSize[0])<1&&Math.abs(actualHeight-expectedSize[1])<1,`PDF uses ${input.paperSize??'A4'} paper dimensions`);
         for(const fact of input.facts)assert.ok(text.includes(fact.statement.replace(/\s+/g,' ')),`Real PDF preserves each reviewed claim`);
         assert.ok(text.includes(input.fullName));assert.ok(text.includes(input.email??''));assert.ok(text.includes('01/2020 - Present'));
         assert.ok(text.includes(input.phone??''));assert.ok(text.includes(input.city??''));
@@ -119,9 +127,12 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
     };
     await t.test('renders once, creates a pending PDF, exact retry reuses it and CAS rejects different edits',async()=>{
       const f=await seed();const response=await app.inject({method:'POST',url:`/api/v1/ai/artifacts/${f.artifact}/resume`,payload:f.body});if(renderFailure)throw renderFailure;assert.equal(response.statusCode,201,response.body);
-      const doc=response.json();assert.equal(doc.approvalStatus,'PENDING_REVIEW');assert.equal(doc.claimsContractVersion,1);assert.equal(doc.reviewReady,true);assert.equal(doc.assistReady,false);assert.equal(doc.claimsBasis.approval,null);
+      const doc=response.json();assert.equal(doc.paperSize,'A4');assert.equal(doc.approvalStatus,'PENDING_REVIEW');assert.equal(doc.claimsContractVersion,1);assert.equal(doc.reviewReady,true);assert.equal(doc.assistReady,false);assert.equal(doc.claimsBasis.approval,null);
       const bytes=await readFile(join(directory,doc.storagePath));assert.equal(createHash('sha256').update(bytes).digest('hex'),doc.sha256);assert.equal(bytes.subarray(0,5).toString(),'%PDF-');
-      const count=renderCount;const repeat=await app.inject({method:'POST',url:`/api/v1/ai/artifacts/${f.artifact}/resume`,payload:f.body});assert.equal(repeat.statusCode,200,repeat.body);assert.equal(repeat.json().id,doc.id);assert.equal(renderCount,count);
+      const legacyApprovedHash=hash(JSON.stringify({name:f.body.name,selections:f.body.selections,printedContactFields:f.body.printedContactFields,includeOriginalFactIds:f.body.includeOriginalFactIds??null}));
+      await client.query('UPDATE ai_artifacts SET approved_hash=$2 WHERE id=$1',[f.artifact,legacyApprovedHash]);
+      const count=renderCount;const repeat=await app.inject({method:'POST',url:`/api/v1/ai/artifacts/${f.artifact}/resume`,payload:{expectedRevision:f.body.expectedRevision,name:f.body.name,selections:f.body.selections,printedContactFields:f.body.printedContactFields,includeOriginalFactIds:f.body.includeOriginalFactIds}});assert.equal(repeat.statusCode,200,repeat.body);assert.equal(repeat.json().id,doc.id);assert.equal(renderCount,count);
+      assert.equal((await client.query('SELECT paper_size FROM document_versions WHERE id=$1',[doc.id])).rows[0].paper_size,'A4');
       const changed=await app.inject({method:'POST',url:`/api/v1/ai/artifacts/${f.artifact}/resume`,payload:{...f.body,name:'Different'}});assert.equal(changed.statusCode,409);
       const row=(await database.select().from(schema.documentVersions))[0]!;
       const missing=await approveDerivedDocument(database,f.workspaceId,row,{});assert.deepEqual(missing,{error:'DOCUMENT_REVIEW_CHANGED'});
@@ -140,6 +151,14 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
       assert.equal(staleTarget.assistReady,false);assert.equal('derivedStatus'in staleTarget?staleTarget.derivedStatus:null,'NEEDS_ADAPTATION_REVIEW');
       await client.query(`UPDATE profile_facts SET approval_status='REJECTED' WHERE workspace_id=$1 AND profile_version_id=$2 AND kind='experience'`,[f.workspaceId,nextProfile]);
       await client.query(`UPDATE profile_facts SET approval_status='REJECTED' WHERE id=$1`,[f.factId]);assert.equal((await documentReadiness(database,f.workspaceId,[approved]))[0]!.assistReady,false);
+    });
+    await t.test('stores Letter paper size, uses Letter PDF dimensions and enforces the database constraint',async()=>{
+      const f=await seed(),payload={...f.body,paperSize:'LETTER' as const};
+      const response=await app.inject({method:'POST',url:`/api/v1/ai/artifacts/${f.artifact}/resume`,payload});if(renderFailure)throw renderFailure;
+      assert.equal(response.statusCode,201,response.body);assert.equal(response.json().paperSize,'LETTER');
+      const id=response.json().id;
+      assert.equal((await client.query('SELECT paper_size FROM document_versions WHERE id=$1',[id])).rows[0].paper_size,'LETTER');
+      await assert.rejects(client.query("UPDATE document_versions SET paper_size='Legal' WHERE id=$1",[id]));
     });
     await t.test('source changed during PDF render rolls back document and removes its file',async()=>{
       const f=await seed();mutation=()=>client.query(`UPDATE profile_facts SET approval_status='REJECTED' WHERE id=$1`,[f.factId]);

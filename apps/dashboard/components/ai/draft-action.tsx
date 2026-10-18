@@ -35,6 +35,7 @@ function draftError(code: string, locale: Locale): string {
   const messages: Record<string, string> = {
     NOT_CONNECTED: c('Conecta tu cuenta de Codex en Ajustes para usar esta ayuda.', 'Connect your Codex account in Settings to use this help.'),
     AI_NOT_CONNECTED: c('Conecta tu cuenta de Codex en Ajustes para usar esta ayuda.', 'Connect your Codex account in Settings to use this help.'),
+    AI_SESSION_UNAVAILABLE: c('Tu cuenta de Codex está autorizada, pero en la última comprobación no tenía la sesión iniciada. Comprueba la cuenta en Ajustes; no hace falta autorizarla de nuevo.', 'Your Codex account is authorized, but it was not signed in at the last check. Check the account in Settings; you do not need to authorize it again.'),
     AI_UNAVAILABLE: c('La ayuda con IA no está disponible ahora. Puedes seguir usando la app y revisar la conexión en Ajustes.', 'AI assistance is unavailable right now. You can keep using the app and check the connection in Settings.'),
     AI_DISABLED: c('La ayuda con IA no está activa en esta instalación.', 'AI assistance is not active on this installation.'),
     ACCOUNT_CHANGED: c('La cuenta de Codex cambió. Vuelve a conectarla en Ajustes antes de continuar.', 'The Codex account changed. Reconnect it in Settings before continuing.'),
@@ -67,7 +68,7 @@ function draftError(code: string, locale: Locale): string {
   };
   return messages[code] ?? localizedError(code, locale);
 }
-const needsSettings = (code: string | null | undefined) => !!code && ['NOT_CONNECTED', 'AI_NOT_CONNECTED', 'AI_UNAVAILABLE', 'AI_DISABLED', 'ACCOUNT_CHANGED', 'AI_ACCOUNT_CHANGED', 'AI_CONSENT_INVALID', 'UNSUPPORTED_VERSION', 'PROVIDER_LIMIT_REACHED'].includes(code);
+const needsSettings = (code: string | null | undefined) => !!code && ['NOT_CONNECTED', 'AI_NOT_CONNECTED', 'AI_SESSION_UNAVAILABLE', 'AI_UNAVAILABLE', 'AI_DISABLED', 'ACCOUNT_CHANGED', 'AI_ACCOUNT_CHANGED', 'AI_CONSENT_INVALID', 'UNSUPPORTED_VERSION', 'PROVIDER_LIMIT_REACHED'].includes(code);
 
 /** Local capability read only; it never inspects a provider account or starts an AI task. */
 export function useAiStatus() {

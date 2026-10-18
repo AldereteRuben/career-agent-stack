@@ -19,7 +19,7 @@ type PublicState = { enabled: boolean; connection: AiStoredConnection | null; ob
 
 function account(now: number, fingerprint = 'a'.repeat(64)): CodexAccountObservation {
   return {
-    status: 'SIGNED_IN', version: '0.160.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint,
+    status: 'SIGNED_IN', version: '0.163.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint,
     maskedIdentity: 'f***@example.test', plan: 'plus',
     usage: normalizeAiUsage({ provider: 'codex', source: 'PROVIDER_REPORTED', observedAt: new Date(now).toISOString(), windows: [{ windowId: 'primary', usedPercent: 35 }], costUsd: null }, now),
   };

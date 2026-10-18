@@ -23,9 +23,9 @@ const makeRun = (): AiQueueRun => {
 };
 const makeResult = (run: AiQueueRun): CodexExecutionResult => ({
   output: { schemaVersion: 1, operation: 'SEARCH_DRAFT', locale: 'en', criteria: { role: 'QA', company: null, location: null, workMode: 'remote' }, unsupportedConstraints: [], clarifications: [] },
-  inputContentHash: hashAiInputContent(run.snapshot), model: CODEX_DEFAULT_MODEL, cliVersion: '0.160.0',
+  inputContentHash: hashAiInputContent(run.snapshot), model: CODEX_DEFAULT_MODEL, cliVersion: '0.163.0',
   usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 20 },
-  account: { status: 'SIGNED_IN', version: '0.160.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint,
+  account: { status: 'SIGNED_IN', version: '0.163.0', billing: 'CHATGPT_PLAN', accountFingerprint: fingerprint,
     maskedIdentity: 's***@example.test', plan: 'plus', usage: normalizeAiUsage({ provider: 'codex', source: 'NONE', observedAt: null, windows: [], costUsd: null }, Date.now()) },
 });
 const deferred = <T>() => {

@@ -4,7 +4,7 @@ import type { StructuredEntry } from '@career/domain';
 import type { Scenario } from './scenarios.js';
 import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
 
-type Fact = { id: string; statement: string; approvalStatus: string; details: StructuredEntry | null };
+type Fact = { id: string; kind: string; statement: string; approvalStatus: string; details: StructuredEntry | null };
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Fact[] };
 type Resume = { id: string; name: string; claims: Array<{ text: string }>; approvalStatus: string };
 
@@ -45,9 +45,37 @@ export const v040Scenarios: Scenario[] = [
       await page.getByLabel('Actualmente estudio aquí', { exact: true }).check();
       await page.getByRole('button', { name: 'Añadir para revisar', exact: true }).click();
       await page.locator('.fact-row').filter({ hasText: `School ${marker}` }).getByRole('button', { name: 'Confirmar', exact: true }).click();
-      const saved = await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.details?.organization === `School ${marker}` && fact.approvalStatus === 'USER_APPROVED'), 'Education confirmed');
+      await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.details?.organization === `School ${marker}` && fact.approvalStatus === 'USER_APPROVED'), 'Education confirmed');
+
+      const certification = `Certificate ${marker}`;
+      await page.getByLabel('Qué quieres añadir', { exact: true }).selectOption('certification');
+      await page.getByLabel('Nombre de la certificación y detalles que puedas confirmar', { exact: true }).fill(certification);
+      await page.getByRole('button', { name: 'Añadir para revisar', exact: true }).click();
+      await page.locator('.fact-row').filter({ hasText: certification }).getByRole('button', { name: 'Confirmar', exact: true }).click();
+      await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.kind === 'certification' && fact.statement === certification && fact.approvalStatus === 'USER_APPROVED'), 'Certification confirmed');
+      await page.locator('.fact-row').filter({ hasText: certification }).getByRole('button', { name: 'Editar', exact: true }).click();
+      const editedCertification = `${certification} verified`;
+      await page.getByLabel('Nombre de la certificación y detalles que puedas confirmar', { exact: true }).fill(editedCertification);
+      await page.getByRole('button', { name: 'Guardar corrección para revisar', exact: true }).click();
+      await page.locator('.fact-row').filter({ hasText: editedCertification }).getByRole('button', { name: 'Confirmar', exact: true }).click();
+      await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.kind === 'certification' && fact.statement === editedCertification && fact.approvalStatus === 'USER_APPROVED'), 'Edited certification confirmed');
+
+      const language = `English C1 ${marker}`;
+      await page.getByLabel('Qué quieres añadir', { exact: true }).selectOption('language');
+      await page.getByLabel('Idioma y nivel', { exact: true }).fill(language);
+      await page.getByRole('button', { name: 'Añadir para revisar', exact: true }).click();
+      await page.locator('.fact-row').filter({ hasText: language }).getByRole('button', { name: 'Confirmar', exact: true }).click();
+      await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.kind === 'language' && fact.statement === language && fact.approvalStatus === 'USER_APPROVED'), 'Language confirmed');
+      await page.locator('.fact-row').filter({ hasText: language }).getByRole('button', { name: 'Editar', exact: true }).click();
+      const editedLanguage = `${language} fluent`;
+      await page.getByLabel('Idioma y nivel', { exact: true }).fill(editedLanguage);
+      await page.getByRole('button', { name: 'Guardar corrección para revisar', exact: true }).click();
+      await page.locator('.fact-row').filter({ hasText: editedLanguage }).getByRole('button', { name: 'Confirmar', exact: true }).click();
+      const saved = await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.kind === 'language' && fact.statement === editedLanguage && fact.approvalStatus === 'USER_APPROVED'), 'Edited language confirmed');
       const entries = saved.facts.filter((fact) => fact.details?.organization.endsWith(marker));
       assert.equal(entries.length, 2); assert.equal(entries.find((fact) => fact.details?.type === 'employment')?.details?.title, 'Senior designer');
+      assert.ok(saved.facts.some((fact) => fact.kind === 'certification' && fact.statement === editedCertification && fact.approvalStatus === 'USER_APPROVED'));
+      assert.ok(saved.facts.some((fact) => fact.kind === 'language' && fact.statement === editedLanguage && fact.approvalStatus === 'USER_APPROVED'));
       await page.getByRole('button', { name: 'Añadir para revisar', exact: true }).waitFor();
       await page.setViewportSize({ width: 390, height: 844 });
       await page.locator('.sidebar').waitFor({ state: 'hidden' });
@@ -60,6 +88,8 @@ export const v040Scenarios: Scenario[] = [
       const name = `Journey CV ${marker}`;
       await page.getByLabel('Nombre de la versión', { exact: true }).fill(name);
       for (const entry of entries) await page.locator('.fact-pick').filter({ hasText: entry.details!.organization }).locator('input').check();
+      await page.locator('.fact-pick').filter({ hasText: editedCertification }).locator('input').check();
+      await page.locator('.fact-pick').filter({ hasText: editedLanguage }).locator('input').check();
       await page.getByRole('button', { name: 'Generar y revisar', exact: true }).click();
       await page.locator('.pdf-preview canvas').waitFor({ state: 'visible' });
       await page.getByRole('button', { name: 'Ampliar', exact: true }).click();
@@ -71,6 +101,8 @@ export const v040Scenarios: Scenario[] = [
       const resume = (await api.get<Resume[]>('/documents')).find((doc) => doc.name === name)!;
       assert.ok(resume.claims.some((claim) => claim.text.includes('Present') && claim.text.includes(`Texto original ${marker}`)));
       assert.ok(resume.claims.some((claim) => claim.text.includes('In progress')));
+      assert.ok(resume.claims.some((claim) => claim.text.includes(editedCertification)));
+      assert.ok(resume.claims.some((claim) => claim.text.includes(editedLanguage)));
       await page.getByRole('checkbox', { name: /He leído el documento completo/ }).check();
       await page.getByRole('button', { name: 'Aprobar esta versión', exact: true }).click();
       await page.getByRole('button', { name: 'Continuar con esta solicitud', exact: true }).click();

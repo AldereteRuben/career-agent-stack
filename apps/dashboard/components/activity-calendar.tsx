@@ -99,6 +99,7 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
       <span><i className={styles.applicationsMark}/> {c('Candidaturas', 'Applications')}</span>
       <span><i className={styles.bothMark}/> {c('Ambas', 'Both')}</span>
     </div>
+    <p className={styles.hint}><Link href="/timeline">{c('Ver la cronología con entrevistas, recordatorios y cambios de etapa', 'Open the timeline with interviews, follow-ups and stage changes')}</Link></p>
     <section className={styles.dayDetails} aria-live="polite" aria-busy={detailsLoading}>
       {!selectedDay ? <p className={styles.hint}>{c('Selecciona un día para ver qué registraste.', 'Select a day to see what you logged.')}</p>
         : detailsLoading ? <p className={styles.hint}>{c('Cargando actividad…', 'Loading activity…')}</p>
