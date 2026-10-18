@@ -72,9 +72,9 @@ export async function searchResults(workspaceId: string, searchId: string | null
   ), classified AS MATERIALIZED (
     SELECT g.*,
       jsonb_strip_nulls(jsonb_build_object(
-        'excludedCompany', CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements_text(p.value->'excludedCompanies') term WHERE ${normalizeWordsSql('term')} = ${normalizeWordsSql('j.company')}) THEN j.company ELSE NULL END,
-        'missingRequiredTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'requiredTerms') term WHERE position(' '||${normalizeWordsSql('term')}||' ' IN ' '||${normalizeWordsSql("concat_ws(' ',j.title,j.company,snap.description_text)")}||' ')=0), '[]'::jsonb),
-        'matchedExcludedTerms', coalesce((SELECT jsonb_agg(term) FROM jsonb_array_elements_text(p.value->'excludedTerms') term WHERE position(' '||${normalizeWordsSql('term')}||' ' IN ' '||${normalizeWordsSql("concat_ws(' ',j.title,j.company,snap.description_text)")}||' ')>0), '[]'::jsonb)
+        'excludedCompany', CASE WHEN EXISTS(SELECT 1 FROM jsonb_array_elements_text(p.value->'excludedCompanies') AS terms(value) WHERE ${normalizeWordsSql('terms.value')} = ${normalizeWordsSql('j.company')}) THEN j.company ELSE NULL END,
+        'missingRequiredTerms', coalesce((SELECT jsonb_agg(terms.value) FROM jsonb_array_elements_text(p.value->'requiredTerms') AS terms(value) WHERE position(' '||${normalizeWordsSql('terms.value')}||' ' IN ' '||${normalizeWordsSql("concat_ws(' ',j.title,j.company,snap.description_text)")}||' ')=0), '[]'::jsonb),
+        'matchedExcludedTerms', coalesce((SELECT jsonb_agg(terms.value) FROM jsonb_array_elements_text(p.value->'excludedTerms') AS terms(value) WHERE position(' '||${normalizeWordsSql('terms.value')}||' ' IN ' '||${normalizeWordsSql("concat_ws(' ',j.title,j.company,snap.description_text)")}||' ')>0), '[]'::jsonb)
       )) AS preference_reasons,
       (o.job_id IS NOT NULL) AS preference_restored
     FROM grouped g JOIN jobs j ON j.workspace_id=$1 AND j.id=g.job_id CROSS JOIN preferences p
