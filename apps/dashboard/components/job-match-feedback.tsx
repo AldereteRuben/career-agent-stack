@@ -53,7 +53,7 @@ export function JobMatchFeedback({ jobId }: { jobId: string }) {
 
   return <section className="job-match-feedback" aria-labelledby={`job-feedback-${jobId}`}>
     <h2 id={`job-feedback-${jobId}`}>{c('¿Te interesa esta oferta?', 'Is this job relevant to you?')}</h2>
-    <p>{c('Tu opinión queda separada del encaje calculado y del estado de tu candidatura. No cambia la puntuación ni tus filtros.', 'Your feedback stays separate from calculated fit and application status. It does not change the score or your filters.')}</p>
+    <p>{c('Tu opinión queda separada del encaje calculado y del estado de tu solicitud. No cambia la puntuación ni tus filtros.', 'Your feedback stays separate from calculated fit and application status. It does not change the score or your filters.')}</p>
     {error && <Notice tone="warning">{error}</Notice>}{message && <Notice tone="info" role="status">{message}</Notice>}
     <fieldset disabled={busy}>
       <legend>{c('Elige una opción', 'Choose one')}</legend>
