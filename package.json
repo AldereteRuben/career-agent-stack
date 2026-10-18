@@ -49,7 +49,7 @@
     "test:spawn-tool": "node --test scripts/test/spawn-tool.test.mjs",
     "test:assisted": "pnpm --filter @career/api exec tsx --test test/assisted-browser.test.ts test/assisted.test.ts",
     "test:discovery": "pnpm --filter @career/api exec tsx --test test/discovery.test.ts",
-    "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts test/himalayas-source.test.ts test/search-execution.test.ts test/search-results.test.ts test/job-identity.test.ts test/job-availability-feeds.test.ts test/job-availability-routes.test.ts",
+    "test:searches": "pnpm --filter @career/api exec tsx --test test/job-search*.test.ts test/himalayas-source.test.ts test/search-execution.test.ts test/search-results.test.ts test/job-identity.test.ts test/job-availability-feeds.test.ts test/job-availability-routes.test.ts test/job-research-routes.test.ts",
     "test:fact-import": "pnpm --filter @career/api exec tsx --test test/fact-import.test.ts",
     "test:job-reports": "pnpm --filter @career/api exec tsx --test test/job-reports.test.ts",
     "test:timeline": "pnpm --filter @career/api exec tsx --test test/activity-days.test.ts test/activity-timeline.integration.test.ts",

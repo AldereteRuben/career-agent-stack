@@ -60,6 +60,13 @@ export const jobs = pgTable('jobs', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), company: varchar('company', { length: 200 }).notNull(), title: varchar('title', { length: 300 }).notNull(), location: varchar('location', { length: 300 }), canonicalUrl: text('canonical_url'), availability: availabilityEnum('availability').notNull().default('UNKNOWN'), shortlistDecision: shortlistEnum('shortlist_decision').notNull().default('UNREVIEWED'), fitScore: integer('fit_score'), evidenceCoverage: integer('evidence_coverage'), eligibility: varchar('eligibility', { length: 20 }).notNull().default('NEEDS_REVIEW'), reasons: jsonb('reasons').$type<string[]>().notNull().default([]), createdAt: created(), updatedAt: changed(),
 }, (t) => [unique('jobs_workspace_id_uq').on(t.workspaceId, t.id), index('jobs_workspace_availability_idx').on(t.workspaceId, t.availability), index('jobs_workspace_created_idx').on(t.workspaceId, t.createdAt), index('jobs_workspace_saved_idx').on(t.workspaceId, t.savedAt).where(sql`${t.savedAt} is not null`)]);
 
+export const jobResearchNotes = pgTable('job_research_notes', {
+  workspaceId: uuid('workspace_id').notNull(), jobId: uuid('job_id').notNull(),
+  notes: jsonb('notes').$type<{ business?: string; model?: string; news?: string; culture?: string; questions?: string }>().notNull().default({}),
+  revision: integer('revision').notNull().default(1),
+  updatedAt: changed(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.jobId] }), foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_research_notes_workspace_job_fk' }).onDelete('cascade')]);
+
 export const jobOccurrences = pgTable('job_occurrences', {
   // Consecutive complete board refreshes that did not list this job (ADR 021).
   missedCompleteReads: integer('missed_complete_reads').notNull().default(0),

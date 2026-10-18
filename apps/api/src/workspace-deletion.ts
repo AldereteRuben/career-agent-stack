@@ -24,7 +24,7 @@ export const DELETION_ORDER = [
   'assisted_attempts', 'application_events', 'application_document_revisions', 'application_documents', 'applications', 'document_versions', 'answer_versions', 'profile_facts', 'profile_versions',
   'search_run_results', 'search_run_sources', 'search_runs', 'saved_job_search_matches', 'search_job_reviews', 'saved_job_searches', 'search_preparation_budget',
   'job_report_batch_items', 'job_report_batches',
-  'job_search_sources', 'job_identity_members', 'job_occurrences', 'job_snapshots', 'job_availability_events', 'jobs', 'search_profiles',
+  'job_search_sources', 'job_identity_members', 'job_occurrences', 'job_snapshots', 'job_availability_events', 'job_research_notes', 'jobs', 'search_profiles',
   'source_policy_reviews', 'boards', 'deletion_jobs',
 ] as const;
 
