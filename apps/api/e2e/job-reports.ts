@@ -73,9 +73,25 @@ export const jobReportsScenario: Scenario = {
       assert.equal(await hasHorizontalOverflow(page), false, 'The report fits a phone screen');
     } finally { await page.setViewportSize({ width: 1440, height: 1000 }); }
 
-    // 2. Several saved jobs, chosen with the keyboard, evaluated after confirmation, paused and continued.
+    // 2. The saved-job skill-gap summary is localized and its disclosure works with the keyboard.
     await setLocale(page, 'es');
     await page.goto(new URL(`/jobs?scope=favorites&q=${encodeURIComponent(marker)}`, uiUrl).toString());
+    const gapsPanel = page.getByTestId('skill-gap-report');
+    await gapsPanel.getByRole('heading', { name: 'Habilidades que piden con frecuencia' }).waitFor();
+    const gaps = await api.get<{ savedJobCount: number; analyzedJobCount: number; groups: Array<{ skill: string }> }>('/skill-gap-report');
+    assert.ok(gaps.savedJobCount >= 4, 'The aggregate includes the saved jobs, not just the current page');
+    assert.ok(gaps.analyzedJobCount <= gaps.savedJobCount);
+    const details = gapsPanel.locator('details').first();
+    if (await details.count()) {
+      const summary = details.locator('summary');
+      await summary.focus(); await page.keyboard.press('Enter');
+      assert.equal(await details.evaluate((element) => (element as HTMLDetailsElement).open), true, 'A skill group expands from the keyboard');
+    }
+    await setLocale(page, 'en');
+    await gapsPanel.getByRole('heading', { name: 'Skills frequently requested' }).waitFor();
+
+    // 3. Several saved jobs, chosen with the keyboard, evaluated after confirmation, paused and continued.
+    await setLocale(page, 'es');
     const panel = page.getByTestId('job-report-batch');
     await panel.getByRole('heading', { name: 'Evaluar ofertas guardadas' }).waitFor();
     for (const title of [`QA ${marker} Engineer`, `QA ${marker} Analyst`, `Data Scientist ${marker}`, `QA ${marker} Archived`]) {
@@ -115,7 +131,7 @@ export const jobReportsScenario: Scenario = {
     await setLocale(page, 'en');
     await eventually(() => panel.innerText(), (text) => text.includes('Evaluate saved jobs') && text.includes('Results, most favourable first') && text.includes('Good option') && text.includes('Skipped: the job is archived.'), 'English batch results');
 
-    // 3. Cancelling keeps what was evaluated and needs confirmation.
+    // 4. Cancelling keeps what was evaluated and needs confirmation.
     for (const title of [`QA ${marker} Engineer`, `QA ${marker} Analyst`]) await page.getByRole('checkbox', { name: `Evaluate: ${title}` }).check();
     const slowCancel = delayFirst(page, '**/api/v1/job-report-batches/*/advance', 4_000);
     await slowCancel.install();
