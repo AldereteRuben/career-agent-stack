@@ -4,6 +4,7 @@ import { ApplicationPreparationAction } from '@/components/application-preparati
 import { AiDraftAction, useAiAvailable } from '@/components/ai/draft-action';
 import { AiAutomationPanel } from '@/components/ai/automation';
 import { JobFitReport } from '@/components/job-report';
+import { JobMatchFeedback } from '@/components/job-match-feedback';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
@@ -16,7 +17,8 @@ import { copy, applicationStage, labelFor } from '@/lib/labels';
 import styles from '../jobs.module.css';
 
 type Match = { titleAlignment: number | null; matchedTargetTitle: string | null; matchedSkills: string[]; missingSkills: string[]; approvedFactCount: number; targetTitles: string[]; profileRevision: number; notes: string[] };
-type Job = { discoveredAt: string | null; seenAt: string | null; id: string; title: string; company: string; location: string | null; canonicalUrl: string | null; fitScore: number | null; evidenceCoverage: number | null; eligibility: string; reasons: string[]; shortlistDecision: string; availability: string; createdAt: string; provisional?: boolean; match?: Match | null };
+type CompanyResearchNotes = { whatItDoes: string; howItMakesMoney: string; recentNews: string; culture: string; questionsToAsk: string };
+type Job = { discoveredAt: string | null; seenAt: string | null; id: string; title: string; company: string; location: string | null; canonicalUrl: string | null; fitScore: number | null; evidenceCoverage: number | null; eligibility: string; reasons: string[]; shortlistDecision: string; availability: string; createdAt: string; companyResearch: CompanyResearchNotes; companyResearchRevision: number; provisional?: boolean; match?: Match | null };
 type Snapshot = { id: string; title: string; descriptionText: string | null; fetchedAt: string };
 type JobApplication = { id: string; state: string; recruitmentStage?: string; updatedAt?: string };
 type AvailabilityEvent = { fromState: string; toState: string; reason: string; createdAt: string };
@@ -114,6 +116,23 @@ export default function JobDetailPage() {
     } finally { setBusy(null); }
   };
 
+  const updateResearch = (key: keyof CompanyResearchNotes, value: string) => setData((current) => current ? { ...current, job: { ...current.job, companyResearch: { ...current.job.companyResearch, [key]: value } } } : current);
+  const saveResearch = async () => {
+    if (!job || busy) return;
+    setBusy('research'); setError(''); setMessage('');
+    try {
+      const saved = await api<{ companyResearch: CompanyResearchNotes; companyResearchRevision: number }>(`/jobs/${job.id}/company-research`, { method: 'PUT', body: JSON.stringify({ expectedRevision: job.companyResearchRevision, notes: job.companyResearch }) });
+      setData((current) => current?.job.id === job.id ? { ...current, job: { ...current.job, ...saved } } : current);
+      setMessage(c('Notas guardadas en este equipo.', 'Notes saved on this computer.'));
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'RESEARCH_CHANGED') {
+        await load();
+        setError(c('Las notas cambiaron en otra pestaña. Cargamos la versión más reciente; revisa los cambios antes de guardar otra vez.', 'These notes changed in another tab. The latest version is loaded; review it before saving again.'));
+      } else setError(errorMessage(err));
+    }
+    finally { setBusy(null); }
+  };
+
   const archive = async () => {
     if (!job) return;
     const restoring = job.shortlistDecision === 'ARCHIVED';
@@ -170,6 +189,26 @@ export default function JobDetailPage() {
         {aiAvailable && snapshot?.descriptionText && <Card className="form-card"><h2 id="job-ai-assistance" ref={focusHelp} className="focus-heading" tabIndex={-1}>{c('Entender esta oferta', 'Understand this job')}</h2><p>{c('Pide un resumen y revisa los requisitos con sus fuentes. Si lo pides desde aquí, se comparte solo el texto de la oferta.', 'Get a summary and review requirements with their sources. Requesting one here shares only the job posting text.')}</p>{searchParams.get('aiSetup') === 'automatic' && <Notice>{c('Paso 1: pide y lee este resumen. Paso 2: debajo del resultado podrás elegir las búsquedas y revisar el permiso para resumir ofertas nuevas automáticamente.', 'Step 1: request and read this summary. Step 2: below the result, choose searches and review permission to summarize new jobs automatically.')}</Notice>}<AiDraftAction key={job.id} initiallyOpen={helpRequested} request={{ operation: 'JOB_ANALYSIS', locale, jobId: job.id, selectedFactIds: [] }} label={c('Resumir y explicar con Codex', 'Summarize and explain with Codex')} renderResultActions={(_artifact, runId) => <AiAutomationPanel sourceRunId={runId} initiallyOpen={searchParams.get('aiSetup') === 'automatic'}/>}/></Card>}
         <Card className="detail-description"><div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('EL PUESTO', 'THE JOB')}</div><h2 id="job-description" className="focus-heading" tabIndex={-1}>{c('Descripción guardada', 'Saved description')}</h2></div>{source && <Tag tone="blue">{source.provider.toUpperCase()}</Tag>}</div>{snapshot?.descriptionText ? <div className="description-text">{snapshot.descriptionText}</div> : <div className="notice notice-warning">{c('Esta fuente no incluyó descripción. No suponemos requisitos que no aparecen en los datos.', 'This source did not include a description. We do not assume requirements that are not in the data.')}</div>}</Card>
         <JobFitReport jobId={job.id} profileHref={withSearchOrigin(`/profile?jobId=${job.id}${existing ? `&applicationId=${existing.id}` : ''}`, returnTo)} assistantHref={aiAvailable && snapshot?.descriptionText ? '#job-ai-assistance' : null}/>
+        <Card className={styles.companyResearch}>
+          <div className="panel-heading"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('PREPARACIÓN', 'PREPARATION')}</div><h2>{c('Investigar la empresa', 'Research the company')}</h2></div></div>
+          <p>{c('Estas preguntas te ayudan a preparar una solicitud o entrevista. La app no consulta ni guarda información externa: abre las búsquedas y anota aquí lo que tú compruebes.', 'Use these prompts before applying or interviewing. The app does not visit sites or save external information: open a search and note what you verify here.')}</p>
+          <div className={styles.researchLinks} aria-label={c('Búsquedas externas de la empresa', 'External company searches')}>
+            <a href={`https://www.google.com/search?q=${encodeURIComponent(`${job.company} company`)}`} target="_blank" rel="noopener noreferrer">{c('Qué hace la empresa', 'What the company does')} <span className="sr-only">{c('(se abre en una pestaña nueva)', '(opens in a new tab)')}</span></a>
+            <a href={`https://www.google.com/search?q=${encodeURIComponent(`${job.company} news`)}`} target="_blank" rel="noopener noreferrer">{c('Noticias recientes', 'Recent news')} <span className="sr-only">{c('(se abre en una pestaña nueva)', '(opens in a new tab)')}</span></a>
+            <a href={`https://www.google.com/search?q=${encodeURIComponent(`${job.company} culture reviews`)}`} target="_blank" rel="noopener noreferrer">{c('Cultura y opiniones', 'Culture and reviews')} <span className="sr-only">{c('(se abre en una pestaña nueva)', '(opens in a new tab)')}</span></a>
+          </div>
+          <div className="form-stack">
+            {([
+              ['whatItDoes', c('¿Qué hace la empresa?', 'What does the company do?')],
+              ['howItMakesMoney', c('¿Cómo obtiene ingresos?', 'How does it make money?')],
+              ['recentNews', c('¿Qué noticias recientes encontraste?', 'What recent news did you find?')],
+              ['culture', c('¿Qué has averiguado sobre su cultura?', 'What did you learn about its culture?')],
+              ['questionsToAsk', c('¿Qué te gustaría preguntar?', 'What would you like to ask?')],
+            ] as const).map(([key, label]) => <label className="field" key={key}><span>{label}</span><textarea rows={3} maxLength={3000} disabled={busy === 'research'} value={job.companyResearch?.[key] ?? ''} onChange={(event) => updateResearch(key, event.target.value)} /></label>)}
+          </div>
+          <div className={styles.researchActions}><Button variant="secondary" disabled={busy !== null} onClick={() => void saveResearch()}>{busy === 'research' ? c('Guardando…', 'Saving…') : c('Guardar notas', 'Save notes')}</Button></div>
+        </Card>
+        <JobMatchFeedback jobId={job.id}/>
         <details className={`card ${styles.fit}`}><summary>{c('Encaje con tu perfil (opcional)', 'Fit with your profile (optional)')} <small>{fitPending ? c('Faltan datos para valorarlo', 'Not enough information yet') : `${job.fitScore} / 100`}</small></summary><div className={styles.fitBody}>
           <p>{c('No necesitas revisarlo para preparar tu solicitud. Comparamos la oferta con tus datos que confirmaste y los puestos que buscas. No es la probabilidad de que te contraten.', 'You do not need to review this to prepare your application. We compare the job with your confirmed profile details and the roles you are looking for. It is not the probability of being hired.')}</p>
           <div className="detail-score"><div><span className="eyebrow"><span className="eyebrow-mark"/> {c('LECTURA BASADA EN EVIDENCIA', 'EVIDENCE-BASED READING')}</span><h2>{fitPending ? c('Faltan datos para valorar el encaje', 'More information needed to assess fit') : `${job.fitScore} / 100`}</h2><p>{job.provisional ? c('La información disponible es limitada. Revisa los requisitos de la oferta y confirma experiencia relacionada en tu perfil.', 'Available information is limited. Review the job requirements and confirm related experience in your profile.') : c('El encaje compara tus datos confirmados con la oferta; no predice una contratación.', 'The match compares your confirmed details with the job; it does not predict hiring.')}</p></div><div className="score-ring" aria-hidden="true" style={{ ['--score' as string]: `${job.provisional ? 0 : job.fitScore ?? 0}%` }}><div><strong>{job.provisional ? '—' : job.fitScore ?? '—'}</strong><small>{c('encaje', 'match')}</small></div></div></div>

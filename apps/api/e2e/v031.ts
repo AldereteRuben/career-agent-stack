@@ -114,6 +114,8 @@ export const patchScenarios: Scenario[] = [
     name: 'v031-application-detail-has-one-job-link-and-clear-refresh-action',
     async run({ page, api, marker, artifacts, allowConsole }) {
       const canonicalUrl = `https://example.test/jobs/${marker}/application-detail`;
+      // An application without a cover letter answers 404, which is how the cover-letter panel learns there is none yet.
+      allowConsole(/status of 404/);
       const job = await api.post<{ id: string }>('/jobs/import', { company: `Fictional ${marker}`, title: `QA role ${marker}`, jobUrl: canonicalUrl });
       const application = await api.post<{ id: string }>('/applications', { jobId: job.id, company: `Fictional ${marker}`, role: `QA role ${marker}`, canonicalUrl, state: 'DRAFT', notes: '' });
 
@@ -165,6 +167,8 @@ export const patchScenarios: Scenario[] = [
       await detail.getByRole('link', { name: /Abrir oferta original/ }).waitFor();
       assert.equal(await employerLinks(), 1, 'A closed application links once to the original post');
       assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, 'A closed application keeps one in-app job link');
+      // Let the panels finish their requests (the expected 404 above) before the next scenario starts listening for errors.
+      await page.waitForLoadState('networkidle');
     },
   },
 ];

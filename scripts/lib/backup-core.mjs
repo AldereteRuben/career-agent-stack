@@ -4,12 +4,13 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { constants, existsSync } from 'node:fs';
-import { lstat, open, readFile, realpath, stat } from 'node:fs/promises';
+import { access, lstat, open, readFile, realpath, stat, unlink } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { RecoveryError, describeDatabase, loopbackHosts, projectRoot } from './local-env.mjs';
 import { ArchiveError, assertSafeRelativePath } from './backup-archive.mjs';
+import { ensurePrivateFile, isPrivate } from './private-files.mjs';
 
 export const BACKUP_FORMAT = 'career-agent-stack-backup';
 export const BACKUP_FORMAT_VERSION = 1;
@@ -26,6 +27,8 @@ export const fix = (es, en) => ({ es, en });
 /** Parses a .env file without loading it into process.env and without echoing values. Null when missing. */
 export async function readEnvFile(path) {
   let text;
+  try { await access(path); } catch { return null; }
+  await ensurePrivateFile(path, { create: false });
   try { text = await readFile(path, 'utf8'); } catch { return null; }
   const values = {};
   for (const line of text.split(/\r?\n/)) {
@@ -153,7 +156,7 @@ export async function assertRegularFile(path, what) {
 
 /** Group/other permission bits set on a file or folder (0 when private). */
 export async function looseBits(path) {
-  try { return (await stat(path)).mode & 0o077; } catch { return 0; }
+  try { await stat(path); return (await isPrivate(path)) ? 0 : 0o077; } catch { return 0; }
 }
 
 /** Resolves symlinks of the longest existing ancestor, so a not-yet-created path can be compared safely. */
@@ -216,6 +219,7 @@ export function keyFileContent(key, ageIdentity) {
 /** Reads and validates a key file; returns { key, fingerprint }. */
 export async function readKeyFile(path) {
   await assertRegularFile(path, 'El archivo de clave / The key file');
+  await ensurePrivateFile(path, { create: false });
   let parsed;
   try { parsed = JSON.parse(await readFile(path, 'utf8')); } catch { parsed = null; }
   const key = parsed?.APP_ENCRYPTION_KEY;
@@ -313,7 +317,16 @@ export async function documentRows(client) {
 /** Opens a file for exclusive creation with private permissions and writes text to it. */
 export async function writePrivateFile(path, text) {
   const handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600);
-  try { await handle.writeFile(text); await handle.sync(); } finally { await handle.close(); }
+  try {
+    await ensurePrivateFile(path, { create: false });
+    await handle.writeFile(text);
+    await handle.sync();
+  } catch (error) {
+    await handle.close().catch(() => {});
+    await unlink(path).catch(() => {});
+    throw error;
+  }
+  await handle.close();
 }
 
 export const humanSize = (bytes) => (bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / 1024 ** 2).toFixed(1)} MiB`);

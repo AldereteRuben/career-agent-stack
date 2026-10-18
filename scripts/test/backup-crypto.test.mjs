@@ -84,6 +84,7 @@ test('key file version 2 carries the age identity; versions 1 and 2 are read, ot
 test('icacls output is parsed into the principals that have access', () => {
   const path = 'C:\\Users\\Ana\\AppData\\Local\\Temp\\career-restore-abc';
   assert.deepEqual(parseIcacls(`${path} DESKTOP-1\\Ana:(OI)(CI)(F)\n\nSuccessfully processed 1 files; Failed processing 0 files\n`, path), ['DESKTOP-1\\Ana']);
+  assert.deepEqual(parseIcacls(`${path} DESKTOP-1\\Ana:(OI)(CI)(F)\n\n1 Datei(en) erfolgreich verarbeitet; 0 Datei(en) konnten nicht verarbeitet werden\n`, path), ['DESKTOP-1\\Ana']);
   assert.deepEqual(parseIcacls(`${path} DESKTOP-1\\Ana:(OI)(CI)(F)\n          BUILTIN\\Administrators:(OI)(CI)(F)\n\nSuccessfully processed 1 files; Failed processing 0 files\n`, path), ['DESKTOP-1\\Ana', 'BUILTIN\\Administrators']);
   assert.deepEqual(parseIcacls('Some other path NOBODY:(F)\n', path), []);
 });

@@ -42,6 +42,21 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm --filter @career/api exec tsc --noEmit --project e2e/tsconfig.json
       - run: pnpm run test:unit
+      - name: Start the disposable Linux user service manager
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          sudo systemctl start "user@$(id -u).service"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+          systemctl --user show-environment
+      - name: Verify autostart with the real Linux user service manager
+        if: runner.os == 'Linux'
+        run: pnpm run test:autostart:linux
+        env:
+          CAREER_AUTOSTART_LINUX_INTEGRATION: '1'
       - name: Verify search relevance and ranking with synthetic cases
         run: pnpm run test:evals
       - name: Verify AI foundations with synthetic processes (no provider account)
@@ -86,6 +101,10 @@ jobs:
         run: pnpm run test:fact-import
         env:
           CAREER_FACT_IMPORT_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
+      - name: Verify company research notes with a disposable database
+        run: pnpm run test:company-research
+        env:
+          CAREER_COMPANY_RESEARCH_TEST_ADMIN_URL: postgresql://postgres:career_ci_only@127.0.0.1:5432/postgres
       - name: Verify bootstrap database creation with a non-superuser administrator
         run: pnpm run test:bootstrap-db
         env:
@@ -93,6 +112,7 @@ jobs:
       - run: pnpm run test:clipboard
       - run: pnpm run test:contributors
       - run: pnpm run test:process
+      - run: pnpm run test:autostart
       - run: pnpm run test:install-marker
       - run: pnpm run test:backup
       # The official age tool must decrypt a backup with the key file's identity (ADR 019); the flag stops a skip.
