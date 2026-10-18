@@ -63,7 +63,7 @@ export function ActivityTimeline() {
   return <div className={styles.timeline}>
     {overdue && overdue.total > 0 && <Card className={styles.overdue} aria-labelledby="overdue-heading">
       <h2 id="overdue-heading">{c(`Recordatorios vencidos (${overdue.total})`, `Overdue follow-ups (${overdue.total})`)}</h2>
-      <p>{c('Candidaturas abiertas cuya fecha de seguimiento ya pasó. Cambia o quita la fecha en la candidatura cuando lo resuelvas.', 'Open applications whose follow-up date has passed. Change or clear the date on the application once it is handled.')}</p>
+      <p>{c('Solicitudes abiertas cuya fecha de seguimiento ya pasó. Cambia o quita la fecha en la solicitud cuando lo resuelvas.', 'Open applications whose follow-up date has passed. Change or clear the date on the application once it is handled.')}</p>
       <ul>{overdue.items.map((item) => { const text = describeItem(item, locale); return <li key={item.id}><span className={styles.time}>{formatDay(item.day, locale, 'medium')}</span><span className={styles.body}><Link href={text.href}>{text.title}</Link><small>{text.detail}</small></span></li>; })}</ul>
       {overdue.total > overdue.items.length && <p className={styles.hint}>{c(`Se muestran ${overdue.items.length} de ${overdue.total}.`, `Showing ${overdue.items.length} of ${overdue.total}.`)}</p>}
     </Card>}
@@ -90,7 +90,7 @@ export function ActivityTimeline() {
         {!selected.length ? <Empty title={c('Ningún tipo seleccionado', 'No type selected')} detail={c('Elige al menos un tipo de actividad para verla.', 'Choose at least one kind of activity to see it.')}/>
           : state === 'error' ? <Notice tone="error" role="alert" actions={<Button variant="secondary" onClick={() => void load()}>{c('Reintentar', 'Try again')}</Button>}>{error}</Notice>
             : state === 'loading' && !timeline ? <p className={styles.hint}>{c('Cargando actividad…', 'Loading activity…')}</p>
-              : !groups.length ? <Empty title={c('Sin actividad este mes', 'No activity this month')} detail={c('Aquí aparecen las ofertas que encuentras y guardas, tus candidaturas, sus cambios, entrevistas y recordatorios con fecha.', 'Jobs you find and save, your applications and their changes, interviews and dated follow-ups appear here.')}/>
+              : !groups.length ? <Empty title={c('Sin actividad este mes', 'No activity this month')} detail={c('Aquí aparecen las ofertas que encuentras y guardas, tus solicitudes, sus cambios, entrevistas y recordatorios con fecha.', 'Jobs you find and save, your applications and their changes, interviews and dated follow-ups appear here.')}/>
                 : <ol className={styles.days}>
                   {groups.map((group) => <li key={group.day} className={styles.day}>
                     <h3>{formatDay(group.day, locale)}{group.day === timeline?.today && <> <Tag tone="blue">{c('Hoy', 'Today')}</Tag></>}</h3>

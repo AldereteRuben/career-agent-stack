@@ -34,7 +34,7 @@ export const timelineScenario: Scenario = {
 
       const entries = page.locator('ol li li').filter({ hasText: marker });
       const labels = async () => (await entries.allInnerTexts()).join('\n');
-      for (const label of [c('Oferta encontrada', 'Job found'), c('Oferta guardada', 'Job saved'), c('Candidatura creada', 'Application created'), c('Estado', 'Status'), c('Etapa', 'Stage'), c('Entrevista', 'Interview')]) {
+      for (const label of [c('Oferta encontrada', 'Job found'), c('Oferta guardada', 'Job saved'), c('Solicitud creada', 'Application created'), c('Estado', 'Status'), c('Etapa', 'Stage'), c('Entrevista', 'Interview')]) {
         await eventually(labels, (text) => text.includes(label), `${locale}: timeline shows "${label}"`);
       }
       assert.match(await labels(), /12:30/, 'the interview shows its local time');

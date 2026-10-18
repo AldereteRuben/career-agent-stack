@@ -64,7 +64,7 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
 
   return <Card className={styles.card}>
     <div className={styles.heading}>
-      <div><h2>{c('Calendario de actividad', 'Activity calendar')}</h2><p>{c('Tu actividad real en ofertas y candidaturas.', 'Your actual activity across jobs and applications.')}</p></div>
+      <div><h2>{c('Calendario de actividad', 'Activity calendar')}</h2><p>{c('Tu actividad real en ofertas y solicitudes.', 'Your actual activity across jobs and applications.')}</p></div>
       <div className={styles.monthControls} aria-label={c('Cambiar mes', 'Change month')}>
         <Button variant="secondary" disabled={!canBack} aria-label={c('Mes anterior', 'Previous month')} onClick={() => move(-1)}>‹</Button>
         <span aria-live="polite">{monthLabel}</span>
@@ -78,7 +78,7 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
         const active = cell.jobs + cell.applications > 0;
         const date = new Date(month.getFullYear(), month.getMonth(), cell.number);
         const dayLabel = new Intl.DateTimeFormat(localeTag, { dateStyle: 'full' }).format(date);
-        const description = c(`${cell.jobs} ofertas encontradas, ${cell.applications} candidaturas creadas`, `${cell.jobs} jobs found, ${cell.applications} applications created`);
+        const description = c(`${cell.jobs} ofertas encontradas, ${cell.applications} solicitudes creadas`, `${cell.jobs} jobs found, ${cell.applications} applications created`);
         return <button type="button" key={cell.key} aria-label={`${dayLabel}: ${description}`} aria-pressed={selectedDay === cell.key} aria-current={dayKey(date) === dayKey(today) ? 'date' : undefined}
           onClick={() => void selectDay(cell.key)}
           className={`${styles.day} ${active ? styles.active : ''} ${selectedDay === cell.key ? styles.selected : ''} ${cell.jobs && cell.applications ? styles.both : cell.jobs ? styles.jobs : cell.applications ? styles.applications : ''}`} title={`${dayLabel}: ${description}`}>
@@ -92,11 +92,11 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
     </div>
     <div className={styles.summary} aria-live="polite">
       <span><strong>{totals.jobs}</strong> {c('ofertas encontradas', 'jobs found')}</span>
-      <span><strong>{totals.applications}</strong> {c('candidaturas creadas', 'applications created')}</span>
+      <span><strong>{totals.applications}</strong> {c('solicitudes creadas', 'applications created')}</span>
     </div>
     <div className={styles.legend} aria-label={c('Leyenda', 'Legend')}>
       <span><i className={styles.jobsMark}/> {c('Ofertas encontradas', 'Jobs found')}</span>
-      <span><i className={styles.applicationsMark}/> {c('Candidaturas', 'Applications')}</span>
+      <span><i className={styles.applicationsMark}/> {c('Solicitudes', 'Applications')}</span>
       <span><i className={styles.bothMark}/> {c('Ambas', 'Both')}</span>
     </div>
     <p className={styles.hint}><Link href="/timeline">{c('Ver la cronología con entrevistas, recordatorios y cambios de etapa', 'Open the timeline with interviews, follow-ups and stage changes')}</Link></p>
@@ -110,10 +110,10 @@ export function ActivityCalendar({ activity }: { activity: DailyActivity[] }) {
                 return label.charAt(0).toLocaleUpperCase(localeTag) + label.slice(1);
               })()}</h3>
               {details.jobs.length === 0 && details.applications.length === 0
-                ? <p className={styles.hint}>{c('No hay ofertas ni candidaturas registradas ese día.', 'No jobs or applications were logged on this day.')}</p>
+                ? <p className={styles.hint}>{c('No hay ofertas ni solicitudes registradas ese día.', 'No jobs or applications were logged on this day.')}</p>
                 : <>
                   {details.jobs.length > 0 && <div className={styles.detailGroup}><h4>{c(`Ofertas encontradas (${details.jobsTotal})`, `Jobs found (${details.jobsTotal})`)}</h4><ul>{details.jobs.map((job) => <li key={job.id}><Link href={`/jobs/${job.id}`}>{job.title}</Link><span>{job.company}</span></li>)}</ul>{details.jobsTotal > details.jobs.length && <p className={styles.hint}>{c(`Se muestran ${details.jobs.length} de ${details.jobsTotal}.`, `Showing ${details.jobs.length} of ${details.jobsTotal}.`)}</p>}</div>}
-                  {details.applications.length > 0 && <div className={styles.detailGroup}><h4>{c(`Candidaturas creadas (${details.applicationsTotal})`, `Applications created (${details.applicationsTotal})`)}</h4><ul>{details.applications.map((application) => <li key={application.id}><Link href={`/applications?id=${application.id}`}>{application.role}</Link><span>{application.company}</span></li>)}</ul>{details.applicationsTotal > details.applications.length && <p className={styles.hint}>{c(`Se muestran ${details.applications.length} de ${details.applicationsTotal}.`, `Showing ${details.applications.length} of ${details.applicationsTotal}.`)}</p>}</div>}
+                  {details.applications.length > 0 && <div className={styles.detailGroup}><h4>{c(`Solicitudes creadas (${details.applicationsTotal})`, `Applications created (${details.applicationsTotal})`)}</h4><ul>{details.applications.map((application) => <li key={application.id}><Link href={`/applications?id=${application.id}`}>{application.role}</Link><span>{application.company}</span></li>)}</ul>{details.applicationsTotal > details.applications.length && <p className={styles.hint}>{c(`Se muestran ${details.applications.length} de ${details.applicationsTotal}.`, `Showing ${details.applications.length} of ${details.applicationsTotal}.`)}</p>}</div>}
                 </>}
             </>}
     </section>

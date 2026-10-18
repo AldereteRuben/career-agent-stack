@@ -20,7 +20,7 @@ const primaryLinks: NavLink[] = [
   { key: 'overview', href: '/overview', label: { es: 'Inicio', en: 'Dashboard' }, icon: 'home', hint: { es: 'Tu siguiente paso', en: 'Your next step' } },
   { key: 'searches', href: '/searches', label: { es: 'Buscar ofertas', en: 'Find jobs' }, icon: 'search', hint: { es: 'Búsquedas automáticas', en: 'Automatic searches' } },
   { key: 'saved', href: '/jobs?scope=favorites', label: { es: 'Ofertas guardadas', en: 'Saved jobs' }, icon: 'check', hint: { es: 'Ofertas que te interesan', en: 'Jobs you want to keep' } },
-  { key: 'applications', href: '/applications', label: { es: 'Candidaturas', en: 'Applications' }, icon: 'briefcase', hint: { es: 'Preparar, enviar y dar seguimiento', en: 'Prepare, apply, and track' } },
+  { key: 'applications', href: '/applications', label: { es: 'Solicitudes', en: 'Applications' }, icon: 'briefcase', hint: { es: 'Preparar, enviar y dar seguimiento', en: 'Prepare, apply, and track' } },
 ];
 
 const secondaryLinks: NavLink[] = [
@@ -62,7 +62,7 @@ function resolveRoute(pathname: string, search: URLSearchParams | null): Route {
   if (pathname === '/jobs' && !search) return { active: null, crumbs: [{ es: 'Ofertas', en: 'Jobs' }] };
   if (pathname === '/jobs') { const key = jobsListKey(search); return { active: key, crumbs: [linkLabel(key)] }; }
   if (pathname.startsWith('/jobs/')) { const origin = jobOrigin(search); return { active: origin, crumbs: origin ? [linkLabel(origin), jobDetailLabel] : [jobDetailLabel] }; }
-  if (pathname === '/preparations') return { active: null, crumbs: [{ es: 'Candidaturas preparadas', en: 'Prepared applications' }] };
+  if (pathname === '/preparations') return { active: null, crumbs: [{ es: 'Solicitudes preparadas', en: 'Prepared applications' }] };
   // The timeline belongs to Applications, so the first menu keeps its four destinations.
   if (pathname === '/timeline') return { active: 'applications', crumbs: [linkLabel('applications'), timelineLabel] };
   if (pathname === '/start') return { active: null, crumbs: [{ es: 'Primeros pasos', en: 'Getting started' }] };
