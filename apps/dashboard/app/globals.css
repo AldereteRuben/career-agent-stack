@@ -2201,6 +2201,51 @@ main:focus {
   padding: 14px 0;
 }
 
+.application-contacts {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+
+.application-contact-list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.application-contact-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+.application-contact-item .tracker-controls,
+.application-contacts > form.tracker-controls {
+  grid-template-columns: 1fr;
+}
+
+.application-contacts > form.tracker-controls > h4 {
+  margin: 0;
+}
+
+.application-contact-saved ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.application-contact-saved li {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+}
+
 .tracker-controls > .button {
   align-self: end;
   justify-self: start;

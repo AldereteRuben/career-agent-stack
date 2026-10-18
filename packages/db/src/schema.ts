@@ -80,6 +80,22 @@ export const applicationEvents = pgTable('application_events', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), applicationId: uuid('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }), actor: varchar('actor', { length: 80 }).notNull().default('USER'), eventType: varchar('event_type', { length: 100 }).notNull(), reason: text('reason'), priorState: varchar('prior_state', { length: 40 }), newState: varchar('new_state', { length: 40 }), evidence: jsonb('evidence').$type<Record<string, unknown>>(), aggregateVersion: integer('aggregate_version').notNull(), createdAt: created(),
 }, (t) => [foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_events_workspace_application_fk' }).onDelete('cascade'), index('application_events_workspace_application_idx').on(t.workspaceId, t.applicationId, t.createdAt), index('application_events_workspace_created_idx').on(t.workspaceId, t.createdAt)]);
 
+export const workspaceContacts = pgTable('workspace_contacts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 160 }).notNull(), profileUrl: text('profile_url'), createdAt: created(), updatedAt: changed(),
+}, (t) => [unique('workspace_contacts_workspace_id_uq').on(t.workspaceId, t.id), index('workspace_contacts_workspace_name_idx').on(t.workspaceId, t.name)]);
+
+export const applicationContacts = pgTable('application_contacts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), applicationId: uuid('application_id').notNull(), contactId: uuid('contact_id').notNull(),
+  role: varchar('role', { length: 120 }).notNull(), note: text('note').notNull().default(''), createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  unique('application_contacts_workspace_id_uq').on(t.workspaceId, t.id),
+  uniqueIndex('application_contacts_application_contact_uq').on(t.workspaceId, t.applicationId, t.contactId),
+  foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_contacts_workspace_application_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.contactId], foreignColumns: [workspaceContacts.workspaceId, workspaceContacts.id], name: 'application_contacts_workspace_contact_fk' }).onDelete('cascade'),
+  index('application_contacts_workspace_application_idx').on(t.workspaceId, t.applicationId),
+]);
+
 export const documentVersions = pgTable('document_versions', {
   paperSize: varchar('paper_size', { length: 6 }).notNull().default('A4'),
   language: varchar('language', { length: 2 }),
