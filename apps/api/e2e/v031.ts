@@ -147,6 +147,18 @@ export const patchScenarios: Scenario[] = [
         assert.equal(await employerLinks(), 1, 'An open application whose next step cannot load still links to the original post');
       } finally { await page.unroute('**/api/v1/applications/*/assist', failAssist); }
 
+      // An assisted Lever application has no "Continue on the original job page" button, so the header link must stay.
+      const assistedLever = async (route: Route) => { const response = await route.fetch(); const body = await response.json() as Record<string, unknown>; await route.fulfill({ response, json: { ...body, supported: true } }); };
+      await page.route('**/api/v1/applications/*/assist', assistedLever);
+      try {
+        await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+        await detail.getByText('SOLICITUD ASISTIDA · LEVER').waitFor();
+        await detail.getByRole('button', { name: 'Actualizar', exact: true }).waitFor();
+        assert.equal(await detail.getByRole('button', { name: 'Volver a comprobar CV y datos' }).count(), 0, 'An assisted application keeps the Refresh label');
+        assert.equal(await employerLinks(), 1, 'An assisted Lever application links once to the original post, from the header');
+        assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, 'An assisted Lever application keeps one in-app job link');
+      } finally { await page.unroute('**/api/v1/applications/*/assist', assistedLever); }
+
       await api.patch(`/applications/${application.id}`, { state: 'CANCELLED' });
       await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
       await detail.getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
