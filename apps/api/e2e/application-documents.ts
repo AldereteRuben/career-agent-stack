@@ -43,7 +43,9 @@ async function claimTextarea(panel: import('playwright').Locator, claimText: str
 
 export const applicationDocumentsScenario: Scenario = {
   name: 'application-documents-lifecycle-and-deletion',
-  async run({ page, api, db, filesDir, uiUrl, marker, note }) {
+  async run({ page, api, db, filesDir, uiUrl, marker, allowConsole, note }) {
+    // Expected API rejections: absent documents (including after workspace deletion), an unsupported claim, and a superseded ZIP item.
+    allowConsole(/Failed to load resource: the server responded with a status of (404 \(Not Found\)|409 \(Conflict\)|422 \(Unprocessable Entity\))/u);
     const claimSentinel = `DOCUMENT_E2E_${marker}`;
     const profile = await api.get<Profile>('/profile');
     await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Fictional Candidate', email: 'candidate@example.test', country: 'ES' } } });
