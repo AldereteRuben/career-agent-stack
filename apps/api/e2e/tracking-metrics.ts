@@ -82,7 +82,8 @@ export const trackingMetricsScenario: Scenario = {
       await source.getByText('Remotive', { exact: true }).waitFor();
       await source.getByText(`${remotive.confirmed} ${c('solicitudes', 'applications')} · ${remotive.interviewed} ${c('entrevistas', 'interviews')}`, { exact: true }).waitFor();
       await role.getByText(`Tracked role ${marker}`, { exact: true }).waitFor();
-      await role.getByText(c('Muestra pequeña', 'Small sample'), { exact: true }).waitFor();
+      const trackedRole = role.getByRole('listitem').filter({ hasText: `Tracked role ${marker}` });
+      await trackedRole.getByText(c('Muestra pequeña', 'Small sample'), { exact: true }).waitFor();
       await country.getByText(c('País no identificado', 'Country not identified'), { exact: true }).waitFor();
       await country.getByText(c('La ubicación se guarda como texto libre; no inferimos el país.', 'Location is stored as free text, so we do not infer a country.'), { exact: true }).waitFor();
 
