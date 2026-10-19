@@ -131,7 +131,7 @@ test('a failed backup is explained in the server log without any credential, and
     assert.deepEqual(Object.keys(job).sort(), ['createdAt', 'id', 'state'], 'the response carries no reason');
     const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
     assert.ok(entry, 'the failure is logged');
-    assert.match(entry.reason, /pg_dump: connection to \[redacted\] failed; key \[redacted\]; input \[redacted\]; output \[redacted\]; env \[redacted\]/);
+    assert.match(entry.reason, /pg_dump: connection to \[redacted\] failed; key \[redacted\]; input \[redacted\]/);
     assert.ok(!logs.join('').includes('hunter2-pw') && !logs.join('').includes(key), 'no credential reaches the log');
     assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes(outputDirectory), 'no private filesystem path reaches the log');
     assert.ok(!logs.join('').includes('private-resume.pdf') && !logs.join('').includes('.backup-env'), 'no private path suffix reaches the log');
@@ -141,11 +141,11 @@ test('a failed backup redacts canonical paths behind symlinked data folders', as
   const logs: string[] = [];
   const f = await fixture(async (directory) => {
     const canonicalDirectory = await realpath(directory);
-    throw new Error(`Could not verify that ${canonicalDirectory} is private`);
+    throw new Error(`Could not verify that '${canonicalDirectory}/Taylor's (private) folder)/resume.pdf' is private`);
   }, {
     logs,
     paths: async (data) => {
-      const target = join(data, 'private-target'); const link = join(data, 'data-link');
+      const target = join(data, "Taylor's (private) folder"); const link = join(data, 'data-link');
       await mkdir(target); await symlink(target, link);
       return { root: data, data: link, files: join(link, 'files') };
     },
@@ -155,8 +155,8 @@ test('a failed backup redacts canonical paths behind symlinked data folders', as
     assert.equal(job.state, 'failed');
     const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
     assert.ok(entry, 'the failure is logged');
-    assert.match(entry.reason, /Could not verify that \[redacted\] is private/);
-    assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes('private-target') && !logs.join('').includes('data-link'), 'neither the symlink path nor its target reaches the log');
+    assert.match(entry.reason, /Could not verify that '\[redacted\]/);
+    assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes("Taylor's (private) folder") && !logs.join('').includes('data-link') && !logs.join('').includes('resume.pdf'), 'neither the symlink path nor its target reaches the log');
   } finally { await f.close(); }
 });
 test('redactSecrets hides every configured value and ignores trivially short ones', () => {

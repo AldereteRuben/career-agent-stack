@@ -25,12 +25,12 @@ export function redactSecrets(text: string, secrets: string[]): string {
 }
 
 function redactPrivatePaths(text: string, roots: string[]): string {
-  let result = text;
+  let firstPathStart = -1;
   for (const root of [...new Set(roots)].filter((value) => value.length >= 6).sort((a, b) => b.length - a.length)) {
-    const escapedRoot = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    result = result.replace(new RegExp(`${escapedRoot}(?:[/\\\\][^\\r\\n\\"'\\x60;,)]*)?`, 'g'), '[redacted]');
+    const pathStart = text.indexOf(root);
+    if (pathStart >= 0 && (firstPathStart < 0 || pathStart < firstPathStart)) firstPathStart = pathStart;
   }
-  return result;
+  return firstPathStart < 0 ? text : `${text.slice(0, firstPathStart)}[redacted]`;
 }
 
 /** Resolves symlinked ancestors too, matching the backup writer's path diagnostics. */
@@ -99,7 +99,6 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
       }
       job.state = 'ready';
     } catch (error) {
-      job.state = 'failed';
       // Keep the diagnostic useful while hiding credentials and private filesystem locations from server logs.
       const privatePaths = [join(job.directory, 'keys'), job.directory, join(job.directory, '.backup-env'), options.files, options.data, options.root];
       const message = error instanceof Error ? error.message : String(error);
@@ -107,6 +106,7 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
       app.log.warn({ reason: redactPrivatePaths(redactSecrets(message, [options.database, options.key]), [...privatePaths, ...canonicalPrivatePaths]) }, 'Backup failed');
       // Failed archives are not recoverable. Completed copies are retained until the user removes them.
       await rm(job.directory, { recursive: true, force: true }).catch(() => undefined);
+      job.state = 'failed';
     }
   };
   app.get('/api/v1/backups/current', async (request, reply) => {
