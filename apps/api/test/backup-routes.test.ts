@@ -119,15 +119,21 @@ test('closing the API cancels the writer and cleans the unfinished backup', asyn
 test('a failed backup is explained in the server log without any credential, and not to the person', async () => {
   const logs: string[] = [];
   const database = 'postgres://career:hunter2-pw@127.0.0.1:5432/career'; const key = 'k'.repeat(40);
-  const f = await fixture(async () => { throw new Error(`pg_dump: connection to ${database} failed; key ${key}`); }, { logs, database, key });
+  let outputDirectory = '';
+  const f = await fixture(async (directory) => {
+    outputDirectory = directory;
+    throw new Error(`pg_dump: connection to ${database} failed; key ${key}; input ${join(f.data, 'files', 'private-resume.pdf')}; output ${join(directory, 'keys')}; env ${join(directory, '.backup-env')}`);
+  }, { logs, database, key });
   try {
     await f.request('POST', '/api/v1/backups'); const job = await f.wait();
     assert.equal(job.state, 'failed');
     assert.deepEqual(Object.keys(job).sort(), ['createdAt', 'id', 'state'], 'the response carries no reason');
     const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
     assert.ok(entry, 'the failure is logged');
-    assert.match(entry.reason, /pg_dump: connection to \[redacted\] failed; key \[redacted\]/);
+    assert.match(entry.reason, /pg_dump: connection to \[redacted\] failed; key \[redacted\]; input \[redacted\]; output \[redacted\]; env \[redacted\]/);
     assert.ok(!logs.join('').includes('hunter2-pw') && !logs.join('').includes(key), 'no credential reaches the log');
+    assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes(outputDirectory), 'no private filesystem path reaches the log');
+    assert.ok(!logs.join('').includes('private-resume.pdf') && !logs.join('').includes('.backup-env'), 'no private path suffix reaches the log');
   } finally { await f.close(); }
 });
 test('redactSecrets hides every configured value and ignores trivially short ones', () => {

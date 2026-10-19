@@ -18,7 +18,18 @@ const tail = (text: string) => (text.length > diagnosticLimit ? `…${text.slice
 /** Hides the values this API was configured with, so a reason written to the log never carries a credential. */
 export function redactSecrets(text: string, secrets: string[]): string {
   let result = text;
-  for (const secret of secrets) if (secret.length >= 6) result = result.split(secret).join('[redacted]');
+  for (const secret of [...secrets].filter((value) => value.length >= 6).sort((a, b) => b.length - a.length)) {
+    result = result.split(secret).join('[redacted]');
+  }
+  return result;
+}
+
+function redactPrivatePaths(text: string, roots: string[]): string {
+  let result = text;
+  for (const root of [...new Set(roots)].filter((value) => value.length >= 6).sort((a, b) => b.length - a.length)) {
+    const escapedRoot = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(`${escapedRoot}(?:[/\\\\][^\\r\\n\\"'\\x60;,)]*)?`, 'g'), '[redacted]');
+  }
   return result;
 }
 
@@ -74,8 +85,10 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
       job.state = 'ready';
     } catch (error) {
       job.state = 'failed';
-      // Only the server's log learns why; the person is told nothing that could carry a path or a credential.
-      app.log.warn({ reason: redactSecrets(error instanceof Error ? error.message : String(error), [options.database, options.key]) }, 'Backup failed');
+      // Keep the diagnostic useful while hiding credentials and private filesystem locations from server logs.
+      const privatePaths = [join(job.directory, 'keys'), job.directory, join(job.directory, '.backup-env'), options.files, options.data, options.root];
+      const message = error instanceof Error ? error.message : String(error);
+      app.log.warn({ reason: redactPrivatePaths(redactSecrets(message, [options.database, options.key]), privatePaths) }, 'Backup failed');
       // Failed archives are not recoverable. Completed copies are retained until the user removes them.
       await rm(job.directory, { recursive: true, force: true }).catch(() => undefined);
     }
