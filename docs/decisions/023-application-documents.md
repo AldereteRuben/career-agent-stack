@@ -48,7 +48,7 @@ New rows reference applications in one direction; the existing application-to-re
 
 ### 7. Deliver follow-up drafts separately
 
-The follow-up email draft for [#115](https://github.com/AldereteRuben/career-agent-stack/issues/115) is a later, separate pull request. It is plain text, editable and copy-only, with fixed bilingual templates and no AI, sending, mailbox access or scheduling. Its migration is created only after the base application-document migration is merged and backup support is merged; no migration is developed in parallel with the base migration.
+The follow-up email draft for [#115](https://github.com/AldereteRuben/career-agent-stack/issues/115) is a later, separate pull request. It is plain text, editable and copy-only, with fixed bilingual templates and no AI, sending, mailbox access or scheduling. Its migration is created only after the base application-document migration is merged and backup support is merged; no migration is developed in parallel with the base migration. The complete workspace JSON export and encrypted backup include the subject and body so the person can recover their editable draft. The application-material ZIP and application-tracker CSV intentionally omit them: the ZIP is limited to reviewed materials intended for an employer, and the CSV remains a tracking summary.
 
 ## Consequences
 

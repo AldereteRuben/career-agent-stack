@@ -122,6 +122,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
       await q(`insert into document_versions (id, workspace_id, name, revision, media_type, storage_path, sha256, profile_revision_id, job_snapshot_id) values ($1, $2, 'Resume', 1, 'application/pdf', $3, $4, $5, $6)`, [doc, ws, `${ws}/resume.pdf`, 'c'.repeat(64), pv2, snapshot]);
       await q(`insert into applications (id, workspace_id, company, role, job_id, document_id) values ($1, $2, 'Fictional Co', 'Designer', $3, $4)`, [app, ws, job, doc]);
       await q(`insert into application_events (workspace_id, application_id, event_type, aggregate_version) values ($1, $2, 'CREATED', 1)`, [ws, app]);
+      await q(`insert into application_follow_up_drafts (workspace_id, application_id, language, subject, body) values ($1, $2, 'en', 'Fictional follow-up', 'Synthetic draft only.')`, [ws, app]);
       await q(`insert into assisted_attempts (workspace_id, application_id, plan, digest, expires_at) values ($1, $2, '{}', $3, now())`, [ws, app, 'd'.repeat(64)]);
       await q(`insert into boards (id, workspace_id, provider, tenant, region, company_name, company_domain, careers_url) values ($1, $2, 'greenhouse', 'fictional', 'us', 'Fictional Co', 'example.test', 'https://example.test/careers')`, [board, ws]);
       await q(`insert into source_policy_reviews (workspace_id, board_id, capability, access_class, permission_status, api_host, adapter_version, reviewed_at) values ($1, $2, 'PUBLIC_JOB_READ', 'DOCUMENTED_PUBLIC_READ', 'APPROVED_FOR_SCOPE', 'boards-api.greenhouse.io', '0.2.0', now())`, [ws, board]);
@@ -208,6 +209,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     assert.equal(Number((await q('select count(*) from search_provider_budget')).rows[0].count), 1, 'Provider limits are kept');
     assert.equal(Number((await q('select count(*) from application_documents where workspace_id = $1', [deleted])).rows[0].count), 0);
     assert.equal(Number((await q('select count(*) from application_document_revisions where workspace_id = $1', [deleted])).rows[0].count), 0);
+    assert.equal(Number((await q('select count(*) from application_follow_up_drafts where workspace_id = $1', [deleted])).rows[0].count), 0);
     assert.equal(Number((await q('select count(*) from ai_document_reword_proposals where workspace_id = $1', [deleted])).rows[0].count), 0);
 
     assert.deepEqual(await counts(other), otherBefore, 'The other workspace is untouched');

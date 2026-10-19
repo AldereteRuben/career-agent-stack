@@ -80,6 +80,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   let applicationDocumentFactId;
   let applicationDocumentRevisionId;
   let applicationDocumentId;
+  let followUpDraftId;
   let documentRewordRunId;
   let profileVersionId;
   let applicationDocumentCurrentness;
@@ -249,6 +250,9 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       id: applicationDocumentRevisionId, workspaceId: ws, documentId: applicationDocumentId, revision: 1,
       textStoragePath, textSha256: sha(revisionText), pdfStoragePath, pdfSha256: sha(revisionPdf),
     });
+    followUpDraftId = randomUUID();
+    await client.query(`insert into application_follow_up_drafts (id, workspace_id, application_id, language, subject, body)
+      values ($1, $2, $3, 'en', 'Follow-up about Example Engineer', 'Hello. Synthetic follow-up draft for backup testing.')`, [followUpDraftId, ws, application]);
     await writeFile(join(filesDir, ws, 'orphan-render.pdf'), pdf('orphan, not referenced')); // must not be backed up
     await client.query(`insert into assisted_attempts(workspace_id, application_id, status, plan, digest, expires_at, consented_at) values ($1,$2,'HANDED_OFF','{}','test-digest',now()+interval '10 minutes',now())`,[ws,application]);
     // Synthetic AI records prove restored backups cannot restart provider work or retain live grants.
@@ -468,9 +472,12 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(sourceDb, 'select count(*)::int as n from boards where enabled')).rows[0].n, sourceBefore);
     assert.equal(sourceBefore, 1);
     // Same data, safe defaults.
-    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'application_documents', 'application_document_revisions', 'ai_document_reword_proposals', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
+    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'application_documents', 'application_document_revisions', 'application_follow_up_drafts', 'ai_document_reword_proposals', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
       assert.deepEqual((await query(database, `select count(*)::int as n from ${table}`)).rows, (await query(sourceDb, `select count(*)::int as n from ${table}`)).rows, table);
     }
+    assert.deepEqual((await query(database, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
+      (await query(sourceDb, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
+      'follow-up draft text round-trips with its application');
     const restoredProposal = (await query(database, `select p.proposal_sha256, r.status, r.operation from ai_document_reword_proposals p join ai_runs r on r.workspace_id=p.workspace_id and r.id=p.run_id where p.workspace_id=$1 and p.run_id=$2`, [workspaceId, documentRewordRunId])).rows[0];
     assert.deepEqual(restoredProposal, { proposal_sha256: sha('fictional-proposal-hash'), status: 'SUCCEEDED', operation: 'DOCUMENT_REWORD' }, 'proposal hashes restore with their parent run for future accept, while restored AI stays disabled');
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);

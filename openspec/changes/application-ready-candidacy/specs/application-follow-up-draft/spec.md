@@ -28,7 +28,15 @@ The interface SHALL offer copy to clipboard (and select-all for manual copy). Th
 - **THEN** the text is copied, a status message is announced and nothing is sent
 
 ### Requirement: Lifecycle, isolation and accessibility
-The draft SHALL be included in export, encrypted backup and restore and workspace deletion, SHALL be scoped to its workspace and application, and SHALL be bilingual, keyboard operable and usable at 390 px.
+The draft SHALL be included in the complete workspace JSON export, encrypted backup and restore and workspace deletion. The application-material ZIP and application-tracker CSV SHALL NOT include the draft. The draft SHALL be scoped to its workspace and application, and SHALL be bilingual, keyboard operable and usable at 390 px.
+
+#### Scenario: Complete workspace export
+- **WHEN** the person exports the complete workspace as JSON
+- **THEN** the saved subject and body are included with the draft's application and workspace identifiers
+
+#### Scenario: Application materials and tracker exports
+- **WHEN** the person downloads an application-material ZIP or application-tracker CSV
+- **THEN** the follow-up subject and body are not included
 
 #### Scenario: Timing and migration order
 - **WHEN** the follow-up draft work is scheduled
