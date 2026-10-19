@@ -31,7 +31,7 @@ const ACTIVE_STATES = new Set<AiRunState>(['QUEUED', 'RUNNING', 'CANCEL_REQUESTE
 function failureCode(failure: unknown): string {
   return failure instanceof ApiError ? failure.code : failure instanceof TypeError ? 'NETWORK_UNAVAILABLE' : 'UNKNOWN';
 }
-function draftError(code: string, locale: Locale): string {
+function draftError(code: string, locale: Locale, providerLabel: string): string {
   const c = copy(locale);
   const messages: Record<string, string> = {
     NOT_CONNECTED: c('Conecta el proveedor elegido en Ajustes para usar esta ayuda.', 'Connect the selected provider in Settings to use this help.'),
@@ -61,9 +61,9 @@ function draftError(code: string, locale: Locale): string {
     AI_IDEMPOTENCY_CONFLICT: c('Esta tarea ya se solicitó con otros datos. Consulta el resultado antes de preparar otra.', 'This task was already requested with different details. Check the result before preparing another.'),
     AI_TOO_MANY_PREVIEWS: c('Has revisado muchas tareas seguidas. Espera unos minutos antes de preparar otra.', 'You have previewed many tasks in a short time. Wait a few minutes before preparing another.'),
     AI_RUN_NOT_FOUND: c('Esta tarea ya no está disponible. No se iniciará otra automáticamente.', 'This task is no longer available. Another task will not start automatically.'),
-    TIMEOUT: c('El proveedor tardó más de lo esperado. No hay una nueva sugerencia disponible.', 'The provider took longer than expected. No new suggestion is available.'),
+    TIMEOUT: c(`${providerLabel} tardó más de lo esperado. No hay una nueva sugerencia disponible.`, `${providerLabel} took longer than expected. No new suggestion is available.`),
     INVALID_OUTPUT: c('La respuesta no pasó las comprobaciones de la app. No se ha usado su contenido.', 'The response did not pass the app’s checks. Its content has not been used.'),
-    PROVIDER_ERROR: c('El proveedor no pudo completar la tarea. Puedes intentarlo de nuevo cuando quieras.', 'The provider could not complete the task. You can try again when you are ready.'),
+    PROVIDER_ERROR: c(`${providerLabel} no pudo completar la tarea. Puedes intentarlo de nuevo cuando quieras.`, `${providerLabel} could not complete the task. You can try again when you are ready.`),
     UNSUPPORTED_VERSION: c('La configuración de Codex necesita una revisión. Consulta la conexión en Ajustes.', 'Your Codex setup needs checking. Review the connection in Settings.'),
     AI_RESULT_UNAVAILABLE: c('La tarea terminó, pero no pudimos abrir su resultado. Consulta el resultado otra vez; no generaremos otra tarea.', 'The task finished, but we could not open its result. Check the result again; this will not generate another task.'),
   };
@@ -287,7 +287,7 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
     {open && <section id={regionId} className={styles.panel} aria-labelledby={headingId}>
       <div className={styles.heading}><h3 ref={heading} tabIndex={-1} id={headingId}>{c(`Ayuda de ${providerLabel}`, `Help from ${providerLabel}`)}</h3><Button type="button" variant="quiet" disabled={work !== null} onClick={() => setOpen(false)}>{c('Ocultar', 'Hide')}</Button></div>
       {work === 'preview' && <p role="status">{c(`Preparando la vista de los datos que compartirás con ${providerLabel}. Todavía no se envían.`, `Preparing a preview of the data you will share with ${providerLabel}. Nothing has been sent yet.`)}</p>}
-      {error && <Notice tone="error">{draftError(error, locale)}</Notice>}
+      {error && <Notice tone="error">{draftError(error, locale, providerLabel)}</Notice>}
       {connectionProblem && <div className={styles.actions}><Button type="button" variant="secondary" aria-expanded={connectionOpen} aria-controls={`${regionId}-connection`} onClick={() => setConnectionOpen(value => !value)}>{connectionOpen ? c('Ocultar la conexión', 'Hide connection') : c('Revisar la conexión aquí', 'Check the connection here')}</Button></div>}
       {connectionOpen && <div id={`${regionId}-connection`} className={styles.section}>
         {selectedProvider === 'ollama' ? <OllamaConnectionPanel/> : <AiConnectionPanel visible={visible && open} onConnectionChange={state => {
@@ -312,8 +312,8 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
         <div className={styles.actions}>{previewExpired || previewChanged ? <Button type="button" disabled={work !== null} onClick={() => void prepare()}>{c('Actualizar los datos', 'Refresh the data')}</Button> : <Button type="button" disabled={work !== null} onClick={() => void start()}>{work === 'start' ? c('Iniciando…', 'Starting…') : c('Permitir esta tarea', 'Allow this task')}</Button>}</div>
       </>}
       {needsResult && <div className={styles.progress}><p role="status">{progress}</p><p className={styles.hint}>{c('Puedes seguir usando la app. Ocultar esta sección no cancela la tarea.', 'You can keep using the app. Hiding this section does not cancel the task.')}</p>{running && <><div className={styles.actions}><Button type="button" variant="secondary" disabled={work !== null || run?.state === 'CANCEL_REQUESTED'} onClick={() => void cancel()}>{work === 'cancel' || run?.state === 'CANCEL_REQUESTED' ? c('Cancelando…', 'Cancelling…') : c('Cancelar tarea', 'Cancel task')}</Button></div><p className={styles.hint}>{c('Si Codex ya empezó, cancelar puede consumir cuota igualmente.', 'If Codex has already started, cancelling may still use quota.')}</p></>}</div>}
-      {pollError && <Notice tone="warning" actions={<Button type="button" variant="secondary" disabled={work !== null} onClick={() => { setPollError(null); setPollRetry(value => value + 1); }}>{c('Consultar el estado otra vez', 'Check the status again')}</Button>}>{draftError(pollError, locale)}</Notice>}
-      {run?.state === 'FAILED' && <Notice tone="error"><div className={styles.section}><p>{draftError(run.error?.code ?? 'PROVIDER_ERROR', locale)}</p>{run.error?.dispatched !== 'NO' && <p className={styles.hint}>{c('La tarea puede haber consumido cuota aunque no haya un resultado.', 'The task may have used quota even though there is no result.')}</p>}</div></Notice>}
+      {pollError && <Notice tone="warning" actions={<Button type="button" variant="secondary" disabled={work !== null} onClick={() => { setPollError(null); setPollRetry(value => value + 1); }}>{c('Consultar el estado otra vez', 'Check the status again')}</Button>}>{draftError(pollError, locale, providerLabel)}</Notice>}
+      {run?.state === 'FAILED' && <Notice tone="error"><div className={styles.section}><p>{draftError(run.error?.code ?? 'PROVIDER_ERROR', locale, providerLabel)}</p>{run.error?.dispatched !== 'NO' && <p className={styles.hint}>{c('La tarea puede haber consumido cuota aunque no haya un resultado.', 'The task may have used quota even though there is no result.')}</p>}</div></Notice>}
       {run?.state === 'INTERRUPTED' && <Notice tone="warning">{c('La tarea se interrumpió. No se repetirá sola y puede haber consumido cuota. Puedes preparar otra cuando quieras.', 'The task was interrupted. It will not repeat on its own and may have used quota. You can prepare another when you are ready.')}</Notice>}
       {run?.state === 'CANCELLED' && <Notice>{c('Tarea cancelada. No se ha añadido una nueva sugerencia.', 'Task cancelled. No new suggestion has been added.')}</Notice>}
       {artifact && <>{oldResult && <p className={styles.hint}>{c('Se conserva la sugerencia anterior. Sus datos pueden ser distintos de los que acabas de elegir.', 'The previous suggestion is preserved. Its source details may differ from your current selection.')}</p>}{!oldResult && run?.origin === 'AUTOMATIC' && <p className={styles.hint}>{c('Resumen preparado automáticamente para una búsqueda que autorizaste. Puedes consultar sus datos de origen debajo.', 'Summary prepared automatically for a search you authorized. You can check its supporting details below.')}</p>}<AiResultView artifact={artifact.value} {...(!oldResult && onReview ? { onReview } : {})}/>{!oldResult && run?.origin === 'MANUAL' && artifact.value.state !== 'STALE' && renderResultActions?.(artifact.value, artifact.runId)}</>}
