@@ -17,6 +17,15 @@ type ProfileFacts = { facts: Array<{ id: string; statement: string; approvalStat
 
 type DocumentKind = 'resume' | 'cover-letter';
 
+function documentFileUrl(applicationId: string, kind: DocumentKind, revisionId: string, language: 'es' | 'en', format: 'pdf' | 'text') {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  if (!uuid.test(applicationId) || !uuid.test(revisionId)) return null;
+  const url = new URL(`/api/v1/applications/${encodeURIComponent(applicationId)}/${kind}/revisions/${encodeURIComponent(revisionId)}/file`, 'https://career-stack.invalid');
+  url.searchParams.set('language', language);
+  url.searchParams.set('format', format);
+  return `${url.pathname}${url.search}`;
+}
+
 export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMessage = false }: { applicationId: string; kind: DocumentKind; hideNoOfferMessage?: boolean }) {
   const { locale } = useLocale();
   const [language, setLanguage] = useState<'es' | 'en'>(locale === 'es' ? 'es' : 'en');
@@ -148,7 +157,8 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
   };
   const restore = () => { if (draft) { setSentences(draft.sentences); setConfirmIds([]); } };
 
-  const fileBase = `/api/v1${basePath}/revisions/${stored?.revision.id ?? ''}/file?language=${language}`;
+  const pdfUrl = stored ? documentFileUrl(applicationId, kind, stored.revision.id, language, 'pdf') : null;
+  const textUrl = stored ? documentFileUrl(applicationId, kind, stored.revision.id, language, 'text') : null;
 
   return <Card className={`${styles.card} application-resume`}>
     <div className={styles.heading}><h3>{title}</h3><label>{copy('Idioma del documento', 'Document language')} <select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label></div>
@@ -181,8 +191,8 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         {(stale || stored.revision.currentness?.status === 'NEEDS_REVIEW') && <ul>{(stored.revision.currentness?.reasons ?? []).map((reason) => <li key={reason}>{labelFor.applicationDocumentCurrentnessReason(reason, locale)}</li>)}</ul>}
         <dl className={styles.hashes}>{[[copy('Contenido', 'Content'), stored.revision.contentHash], [copy('Perfil', 'Profile'), stored.revision.factsHash], [copy('Oferta', 'Job'), stored.revision.offerHash], [copy('Texto', 'Text'), stored.revision.textSha256], ['PDF', stored.revision.pdfSha256]].map(([label, hash]) => <div key={label}><dt>{label}</dt><dd><code>{hash}</code></dd></div>)}</dl>
         <p>{copy('Estos hashes muestran qué fuentes y archivos se comprobarán al aprobar. Si algo cambia, la aprobación se bloquea.', 'These hashes show which sources and files will be checked on approval. If anything changes, approval is blocked.')}</p>
-        <iframe title={copy(`Vista previa de ${title} en PDF`, `${title} PDF preview`)} src={`${fileBase}&format=pdf`} />
-        <a className="button button-quiet" href={`${fileBase}&format=text`}>{copy('Descargar texto', 'Download text')}</a>
+        {pdfUrl && <iframe title={copy(`Vista previa de ${title} en PDF`, `${title} PDF preview`)} src={pdfUrl} />}
+        {textUrl && <a className="button button-quiet" href={textUrl}>{copy('Descargar texto', 'Download text')}</a>}
         {!stored.revision.approvedAt && stored.revision.confirmedUnsupportedIds.length > 0 && <label className={styles.confirm}><input type="checkbox" checked={approveUnsupported} disabled={busy} onChange={(event) => setApproveUnsupported(event.target.checked)}/>{copy('Confirmo que revisé las afirmaciones marcadas como no respaldadas.', 'I confirm that I reviewed the claims marked as unsupported.')}</label>}
         {!stored.revision.approvedAt && <Button disabled={busy || confirmIds.length > 0 || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW' || (stored.revision.confirmedUnsupportedIds.length > 0 && !approveUnsupported)} onClick={() => void approve()}>{copy('Aprobar esta versión', 'Approve this version')}</Button>}
       </section>}
