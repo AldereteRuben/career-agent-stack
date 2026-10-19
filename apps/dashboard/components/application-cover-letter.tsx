@@ -111,6 +111,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
       }
       await response.json() as Stored;
       await load();
+      window.dispatchEvent(new Event('career:application-documents-updated'));
       setMessage(copy('Versión guardada. Revisa el PDF antes de aprobarla.', 'Version saved. Review the PDF before approving it.'));
       return true;
     } catch (reason) { setError(errorMessage(reason)); return false; }
@@ -142,6 +143,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
       });
       setMessage(copy('Versión aprobada. Ya puedes descargarla.', 'Version approved. You can download it now.'));
       await load();
+      window.dispatchEvent(new Event('career:application-documents-updated'));
     } catch (reason) { if (reason instanceof ApiError && reason.code === 'APPROVAL_STALE') setStale(true); setError(errorMessage(reason)); }
     finally { setBusy(false); }
   };
@@ -211,7 +213,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         facts={facts}
         disabled={busy || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW'}
         onActiveChange={setAssistantActive}
-        onAccepted={async () => { await load(); setMessage(copy('Propuesta de Codex aceptada y guardada como una nueva versión por revisar.', 'Codex proposal accepted and saved as a new revision awaiting review.')); }}
+        onAccepted={async () => { await load(); window.dispatchEvent(new Event('career:application-documents-updated')); setMessage(copy('Propuesta de Codex aceptada y guardada como una nueva versión por revisar.', 'Codex proposal accepted and saved as a new revision awaiting review.')); }}
         onSaveEdited={async (nextClaims) => { setSentences(nextClaims); return save(nextClaims); }}
       />}
     </>}

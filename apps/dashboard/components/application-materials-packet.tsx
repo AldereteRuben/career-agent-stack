@@ -23,15 +23,21 @@ export function ApplicationMaterialsPacket({ applicationId }: { applicationId: s
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError('');
-    setFiles([]);
-    setSelectedIds([]);
-    void api<PacketFilesResponse>(`/applications/${applicationId}/materials`)
-      .then((response) => { if (active) setFiles(response.files); })
-      .catch((reason: unknown) => { if (active) setError(errorMessage(reason)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    const refresh = () => {
+      setLoading(true);
+      setError('');
+      void api<PacketFilesResponse>(`/applications/${applicationId}/materials`)
+        .then((response) => {
+          if (!active) return;
+          setFiles(response.files);
+          setSelectedIds((current) => current.filter((id) => response.files.some((file) => file.id === id && file.selectable)));
+        })
+        .catch((reason: unknown) => { if (active) setError(errorMessage(reason)); })
+        .finally(() => { if (active) setLoading(false); });
+    };
+    refresh();
+    window.addEventListener('career:application-documents-updated', refresh);
+    return () => { active = false; window.removeEventListener('career:application-documents-updated', refresh); };
   }, [applicationId]);
 
   const download = async () => {
