@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { renderApplicationDocumentText, type ApplicationDocumentSentence } from '@career/domain';
-import { renderApplicationCoverLetter, renderResume, type ResumePaperSize } from '../src/document-renderer.js';
+import { renderApplicationCoverLetter, renderApplicationResume, renderResume, type ResumePaperSize } from '../src/document-renderer.js';
 
 const enabled = process.env.CAREER_V090_PDF_TEST === 'true';
 
@@ -67,5 +67,34 @@ test('application resume and cover-letter PDFs preserve reviewed wording, accent
     assert.ok(resumeText.includes(locale === 'es' ? 'EXPERIENCIA' : 'EXPERIENCE'), `${locale} resume uses the localized experience heading`);
     for (const statement of languageText) assert.ok(resumeText.includes(statement), `${locale} resume preserves “${statement}”`);
     assertPageSize(resumePath, paperSize);
+
+    const applicationResumeSentences: ApplicationDocumentSentence[] = [
+      {
+        sentenceId: 'offer-reference',
+        text: locale === 'es' ? 'Candidatura para Ingeniero de calidad en Ficticia.' : 'Application for Quality engineer at Fictional Co.',
+        kind: 'OFFER_REFERENCE',
+        origin: 'BUILDER',
+        sourceFactIds: [],
+        language: locale,
+      },
+      ...sentences,
+    ];
+    const applicationResumePath = join(directory, `application-resume-${locale}-${paperSize}.pdf`);
+    const applicationResume = await renderApplicationResume({
+      path: applicationResumePath,
+      fullName: locale === 'es' ? 'Rubén Álvarez' : 'Ruben Alvarez',
+      role: locale === 'es' ? 'Ingeniero de calidad' : 'Quality engineer',
+      locale,
+      paperSize,
+      sentences: applicationResumeSentences,
+    });
+    const applicationResumeText = normalizedPdfText(applicationResumePath);
+    assert.ok(applicationResume.size > 1_000);
+    assert.match(applicationResume.sha256, /^[a-f0-9]{64}$/u);
+    assert.ok(applicationResumeText.includes(locale === 'es' ? 'Rubén Álvarez' : 'Ruben Alvarez'));
+    assert.ok(applicationResumeText.includes(locale === 'es' ? 'Ingeniero de calidad' : 'Quality engineer'));
+    const expectedStoredClaims = renderApplicationDocumentText(applicationResumeSentences).replace(/\s+/gu, ' ').trim();
+    assert.ok(applicationResumeText.includes(expectedStoredClaims), `${locale} application resume preserves the exact stored claim order and wording`);
+    assertPageSize(applicationResumePath, paperSize);
   }
 });
