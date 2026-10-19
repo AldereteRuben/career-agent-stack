@@ -1,0 +1,98 @@
+.card {
+  min-width: 0;
+  margin-block: 1rem;
+}
+
+.heading,
+.actions,
+.languageRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.heading h3,
+.heading p {
+  margin: 0;
+}
+
+.heading p {
+  margin-top: 0.35rem;
+}
+
+.languageRow label {
+  font-weight: 650;
+}
+
+.languageRow select,
+.field input,
+.field textarea,
+.manualCopy textarea {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--border, #d7dde5);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+}
+
+.field {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+  font-weight: 650;
+}
+
+.field textarea,
+.manualCopy textarea {
+  width: 100%;
+  resize: vertical;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.actions {
+  justify-content: flex-start;
+  margin-top: 0.9rem;
+}
+
+.manualCopy {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+.manualCopy summary {
+  width: fit-content;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.status {
+  margin-block: 0.75rem 0;
+}
+
+.error {
+  color: var(--danger-foreground, #8d2020);
+}
+
+@media (max-width: 520px) {
+  .languageRow {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .languageRow select {
+    flex: 1 1 8rem;
+  }
+
+  .actions > button {
+    flex: 1 1 100%;
+  }
+}

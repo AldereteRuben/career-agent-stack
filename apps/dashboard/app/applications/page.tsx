@@ -14,6 +14,7 @@ import { ApplicationContacts } from '@/components/application-contacts';
 import { ApplicationEmailImport } from '@/components/application-email-import';
 import { ApplicationMaterialsPacket } from '@/components/application-materials-packet';
 import { ApplicationCoverLetter } from '@/components/application-cover-letter';
+import { ApplicationFollowUpDraft } from '@/components/application-follow-up-draft';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
@@ -343,10 +344,11 @@ function ApplicationsView() {
             </div>
           </div>}
 
-          <ApplicationMaterialsPacket key={selected.id} applicationId={selected.id}/>
+          <ApplicationMaterialsPacket key={`materials:${selected.id}`} applicationId={selected.id}/>
           {selected.jobId && <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id}/>}
-          <AssistedApplication key={selected.id} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
+          <AssistedApplication key={`assisted:${selected.id}`} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
+          <ApplicationFollowUpDraft key={`follow-up-draft:${selected.id}`} applicationId={selected.id} company={selected.company} role={selected.role}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
           <ApplicationEmailImport key={selected.id} applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
           <div className="tracker-controls">
