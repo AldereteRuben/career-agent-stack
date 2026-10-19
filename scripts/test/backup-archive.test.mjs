@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { ARCHIVE_ROOT, ArchiveError, assertSafeRelativePath, buildHeader, extractArchive, safeJoin, writeArchive } from '../lib/backup-archive.mjs';
-import { allowedArchiveName, keyFingerprint, manifestMac, validateManifest, verifyManifestMac } from '../lib/backup-core.mjs';
+import { allowedArchiveName, keyFingerprint, manifestMac, runPgTool, validateManifest, verifyManifestMac } from '../lib/backup-core.mjs';
 
 let work;
 before(async () => { work = await mkdtemp(join(tmpdir(), 'career-archive-test-')); });
@@ -34,6 +34,21 @@ async function expectRejected(bytes, code, allowName) {
   await assert.rejects(extractArchive(file, dest, { allowName }), (error) => error instanceof ArchiveError && error.code === code);
   return dest;
 }
+
+test('a PostgreSQL spawn error reports its code without exposing the configured executable path', () => {
+  const original = process.env.CAREER_PG_BIN;
+  const privateBinaryPath = join(work, 'Private Ruben', 'postgres tools');
+  process.env.CAREER_PG_BIN = privateBinaryPath;
+  try {
+    const result = runPgTool('pg_dump', [], 'postgres://user:secret@127.0.0.1/career');
+    assert.equal(result.ok, false);
+    assert.equal(result.stderr, 'Could not start pg_dump (ENOENT)');
+    assert.ok(!result.stderr.includes(privateBinaryPath), 'the executable path stays private');
+  } finally {
+    if (original === undefined) delete process.env.CAREER_PG_BIN;
+    else process.env.CAREER_PG_BIN = original;
+  }
+});
 
 describe('path guards', () => {
   for (const name of ['../evil', 'a/../../evil', '/etc/passwd', 'C:/x', 'a\\b', '', 'a//b', './a', 'a/.', '.hidden', 'a/b\0c', 'ä/b', `${'a'.repeat(300)}`]) {

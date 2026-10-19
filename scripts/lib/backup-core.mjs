@@ -141,7 +141,8 @@ export function toolVersion(name) {
 /** Runs a PostgreSQL client tool with credentials in the environment only. stdout/stderr are captured, never echoed raw. */
 export function runPgTool(name, args, rawUrl, { envOverrides = {} } = {}) {
   const result = spawnSync(pgTool(name), args, { env: libpqEnv(rawUrl, envOverrides), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return { ok: !result.error && result.status === 0, stdout: result.stdout ?? '', stderr: safeMessage(result.stderr || result.error?.message || '') };
+  const stderr = result.stderr || (result.error ? `Could not start ${name} (${result.error.code ?? 'unknown error'})` : '');
+  return { ok: !result.error && result.status === 0, stdout: result.stdout ?? '', stderr: safeMessage(stderr) };
 }
 
 /** Throws unless the path is a regular file (not a symlink) readable by this user. */
