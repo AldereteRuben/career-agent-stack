@@ -21,6 +21,7 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 - Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter saved jobs and availability, archive or restore offers, and see explainable matching.
 - Generate versioned resumes on A4 or US Letter paper, with English or Spanish headings; automatic preparation stays A4. Zoom the PDF preview and reuse earlier content without altering previous PDFs.
+- Create offer-specific resumes and cover letters from approved profile facts. Review the evidence, edit each version and approve it explicitly; documents require a saved offer, and legacy attached resumes are not converted automatically.
 - Follow Profile → Resume → Application with the job context preserved. Link the reviewed resume to the application and track progress with history.
 - Export your workspace as JSON or create a verified database-and-PDF backup with isolated restoration.
 
@@ -54,6 +55,8 @@ Existing searches retain their sources and matching rules until you opt into enh
 ## Assisted applications
 
 Open **My applications → To review** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
+
+Application documents remain linked to their application. A materials ZIP is unencrypted (up to 20 selected documents and 30 MB); deleting a single application is not available, and deleting the workspace removes its documents and empties the local files folder. See [backup, export and restore details](docs/operations/backup-restore.md).
 
 ## Start here
 

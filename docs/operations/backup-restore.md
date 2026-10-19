@@ -35,6 +35,20 @@ The command reports success only after it decrypts the written archive again and
 | Excluded | `.env`, the database password, `APP_SESSION_SECRET`, sign-in tokens, logs, process records and browser state. `APP_ENCRYPTION_KEY` goes only into the separate key file (0600). That file is reused when the key is the same. |
 | Permissions | The folders are 0700. The archive, `.sha256` and key file are 0600. The plain tar only exists in a private temporary folder (0700; on Windows, a folder restricted to the current user by ACL), which is removed afterwards, also on failure. |
 
+## Application documents and exports / Documentos de candidatura y exportaciones
+
+Offer-specific resumes and cover letters are stored with the application and included in workspace JSON export and verified backups. Importing an older, attached resume does **not** convert it into an offer-specific document. Create a new application document from a saved offer instead; a job-less application reports `APPLICATION_HAS_NO_OFFER` and cannot generate one.
+
+The application materials ZIP is a convenience download, **not an encrypted backup**. It contains at most 20 selected documents and is limited to 30 MB. Store it as carefully as the unencrypted documents inside it.
+
+Workspace JSON export includes the text and metadata for every document revision. It embeds PDF bytes only for approved revisions and the newest pending revision of each logical document; other revisions keep their text and `pdf_sha256` without PDF bytes. Approved historical PDFs remain available because each explicitly approved revision is retained. A materials ZIP selection is temporary and is not stored in the export.
+
+Los CV y las cartas de presentación específicos de una oferta quedan vinculados a la solicitud y se incluyen en la exportación JSON del espacio y en las copias verificadas. Un CV adjunto antiguo **no** se convierte en un documento específico de una oferta. Crea uno nuevo desde una oferta guardada; si la solicitud no tiene oferta, aparece `APPLICATION_HAS_NO_OFFER` y no se puede generar.
+
+El ZIP de documentos de una candidatura es una descarga práctica, **no una copia cifrada**. Admite hasta 20 documentos seleccionados y un máximo de 30 MB. Protege el archivo igual que los documentos sin cifrar que contiene.
+
+La exportación JSON del espacio incluye el texto y los metadatos de todas las revisiones. Solo incorpora los PDF de las revisiones aprobadas y de la revisión pendiente más reciente de cada documento lógico; las demás revisiones conservan texto y `pdf_sha256`, pero no bytes PDF. Los PDF históricos aprobados se mantienen porque cada aprobación explícita conserva su revisión. La selección de un ZIP es temporal y no se guarda en la exportación.
+
 **The archive is encrypted; the key file is what opens it.** Keep the key file **separately** from the backups, for example in a password manager: anyone with both can read your data, and without the key file nobody can read or restore the backup, including you. There is no way to recover a lost key file.
 
 Backups made before encryption (plain `.tar`) were never protected. They can still be restored with `--allow-unencrypted`, after a warning; make a new backup and delete the old ones.
