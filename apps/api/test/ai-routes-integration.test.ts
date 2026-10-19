@@ -52,6 +52,24 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     const connection = await app.inject({ method: 'POST', url: '/api/v1/ai/connections/codex/authorize', payload: { observationId: observed.observation.id } });
     assert.equal(connection.statusCode, 200); assert.equal(connection.json().connection.authorized, true);
     assert.ok(!connection.body.includes(fingerprint), 'account fingerprint stays server-side');
+    const resumeRequest = { operation: 'RESUME_IMPORT', locale: 'en', resumeText: 'Fictional Applicant\nfictional@example.test\n+1 202 555 0100\n42 Main Street\nSenior Product Designer at Fictional Co, 2019-2021.' };
+    const unsupportedResume = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: { ...resumeRequest, provider: 'ollama' } });
+    assert.equal(unsupportedResume.statusCode, 400, 'resume imports cannot route to Ollama');
+    const resumePreviewResponse = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: resumeRequest });
+    assert.equal(resumePreviewResponse.statusCode, 200, resumePreviewResponse.body);
+    const resumePreview = resumePreviewResponse.json();
+    assert.deepEqual(resumePreview.categories, ['RESUME_TEXT']); assert.equal(resumePreview.rememberedPermission, false);
+    assert.ok(resumePreview.sources.resumeText.includes('[redacted name]'));
+    assert.ok(resumePreview.sources.resumeText.includes('[redacted email]'));
+    assert.ok(resumePreview.sources.resumeText.includes('[redacted phone]'));
+    assert.ok(resumePreview.sources.resumeText.includes('[redacted address]'));
+    for (const privateValue of ['Fictional Applicant', 'fictional@example.test', '+1 202 555 0100', '42 Main Street']) assert.ok(!resumePreview.sources.resumeText.includes(privateValue));
+    const resumeRunResponse = await app.inject({ method: 'POST', url: '/api/v1/ai/runs', payload: { previewId: resumePreview.previewId, idempotencyKey: randomUUID(), rememberPermission: true } });
+    assert.equal(resumeRunResponse.statusCode, 202, resumeRunResponse.body);
+    const resumeConsent = (await database.select().from(schema.aiConsents)).find(row => row.operation === 'RESUME_IMPORT');
+    assert.equal(resumeConsent?.remembered, false, 'resume source permission must be one-time even if requested otherwise');
+    assert.equal(resumeConsent?.noticeVersion, 'career-sharing-v2');
+    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/ai/runs/${resumeRunResponse.json().id}/cancel` })).statusCode, 200);
     // An authorized account whose last check found no signed-in session asks for a new check, not a new authorization.
     await fixturePool.query(`UPDATE ai_connections SET state = 'UNAVAILABLE' WHERE workspace_id = $1`, [owner]);
     const signedOut = await app.inject({ method: 'POST', url: '/api/v1/ai/runs/preview', payload: request });
@@ -102,6 +120,8 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
     assert.equal(exported.connections[0]!.active, false); assert.ok(exported.consents[0]!.revokedAt);
     assert.ok(!exportText.includes(fingerprint)); assert.ok(!exportText.includes('officialContextRef'));
     assert.ok(!exportText.includes('leaseToken')); assert.equal(exported.artifacts.length, 1);
+    const exportedResumeRun = exported.runs.find(run => run.operation === 'RESUME_IMPORT');
+    assert.ok(exportedResumeRun && JSON.stringify(exportedResumeRun.snapshot).includes('[redacted email]'));
     const historyService = createAiHistoryService({ pool: fixturePool });
     try {
       const deletion = await historyService.preview(owner);
@@ -110,6 +130,8 @@ test('assistant HTTP lifecycle stays scoped, idempotent, cancellable and recover
       assert.equal(retryDeleted.statusCode, 409, retryDeleted.body);
       assert.equal(retryDeleted.json().error, 'AI_PREVIEW_EXPIRED');
       assert.equal((await fixturePool.query('SELECT count(*)::int AS n FROM ai_runs WHERE id=$1', [firstId])).rows[0].n, 0);
+      const afterClear = await exportAiData(database, owner);
+      assert.ok(!JSON.stringify(afterClear).includes('[redacted email]'), 'clearing AI history removes resume snapshots from subsequent exports');
     } finally { await historyService.close(); }
     const profileId = randomUUID(); const factId = randomUUID(); const questionId = randomUUID();
     await database.insert(schema.profileVersions).values({ id: profileId, workspaceId: owner, revision: 1, profile: { identity: { fullName: 'Fictional Applicant', email: 'fictional@example.test' } } });

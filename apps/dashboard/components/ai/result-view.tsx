@@ -12,6 +12,7 @@ export type AiPreviewSources = {
   job?: string;
   facts: Array<{ factId: string; kind: string; text: string }>;
   question?: string;
+  resumeText?: string;
 };
 export type AiArtifact = { id: string; revision: number; state: AiArtifactState; operation: AiOperation; output: AiOutput; sources: AiPreviewSources };
 
@@ -44,11 +45,11 @@ export function AiResultView({ artifact, onReview }: { artifact: AiArtifact; onR
   const requiresConstraintReview = output.operation === 'SEARCH_DRAFT' && output.unsupportedConstraints.length > 0;
   const titles: Record<AiOperation, string> = {
     SEARCH_DRAFT: c('Tu búsqueda propuesta', 'Your suggested search'), JOB_ANALYSIS: c('La oferta, en pocas palabras', 'The job, at a glance'),
-    RESUME_DRAFT: c('Sugerencias para tu CV', 'Suggestions for your resume'), ANSWER_DRAFT: c('Ayuda con esta respuesta', 'Help with this answer'),
+    RESUME_DRAFT: c('Sugerencias para tu CV', 'Suggestions for your resume'), ANSWER_DRAFT: c('Ayuda con esta respuesta', 'Help with this answer'), RESUME_IMPORT: c('Propuestas extraídas del CV', 'Suggestions extracted from your resume'),
   };
   const reviewLabels: Record<AiOperation, string> = {
     SEARCH_DRAFT: c('Revisar y editar la búsqueda', 'Review and edit the search'), JOB_ANALYSIS: c('Continuar con esta oferta', 'Continue with this job'),
-    RESUME_DRAFT: c('Revisar las sugerencias para mi CV', 'Review my resume suggestions'), ANSWER_DRAFT: c('Revisar y editar mi respuesta', 'Review and edit my answer'),
+    RESUME_DRAFT: c('Revisar las sugerencias para mi CV', 'Review my resume suggestions'), ANSWER_DRAFT: c('Revisar y editar mi respuesta', 'Review and edit my answer'), RESUME_IMPORT: c('Revisar propuestas para el perfil', 'Review profile suggestions'),
   };
   const status = artifact.state === 'STALE' ? c('Datos cambiados', 'Source details changed') : artifact.state === 'DISMISSED' ? c('Descartado', 'Dismissed') : artifact.state === 'ACCEPTED' ? c('Revisado', 'Reviewed') : c('Por revisar', 'Needs review');
   if (artifact.operation !== output.operation) return <Notice tone="error">{c('No se pudo mostrar esta sugerencia. Vuelve a consultar el resultado.', 'This suggestion could not be displayed. Check the result again.')}</Notice>;
@@ -79,6 +80,14 @@ export function AiResultView({ artifact, onReview }: { artifact: AiArtifact; onR
         <Warnings warnings={output.warnings} locale={locale}/>
         <ol className={styles.list}>{output.proposals.map((proposal, index) => <li className={styles.resultItem} key={proposal.proposalKey}><h4>{c(`Sugerencia ${index + 1}`, `Suggestion ${index + 1}`)}</h4><p className={styles.suggestion}>{proposal.text}</p><p className={styles.hint}>{proposal.changeExplanation}</p><Evidence factIds={proposal.sourceFactIds} sources={sources} locale={locale}/><Warnings warnings={proposal.warnings} locale={locale}/></li>)}</ol>
         <p className={styles.hint}>{c('Estos textos aún no forman parte de tu CV. Revísalos antes de incluirlos.', 'These texts are not part of your resume yet. Review them before including them.')}</p>
+      </>}
+      {output.operation === 'RESUME_IMPORT' && <>
+        <Warnings warnings={output.warnings} locale={locale}/>
+        <ol className={styles.list}>{output.proposals.map((proposal, index) => <li className={styles.resultItem} key={proposal.key}>
+          <h4>{c(`Propuesta ${index + 1} · ${labelFor.factKind(proposal.kind, locale)}`, `Suggestion ${index + 1} · ${labelFor.factKind(proposal.kind, locale)}`)}</h4><p className={styles.suggestion}>{proposal.statement}</p>
+          <div className={styles.section}><strong>{c('Fragmento exacto del CV', 'Exact resume excerpt')}</strong><blockquote className={styles.source}>{proposal.sourceQuote}</blockquote></div>
+        </li>)}</ol>
+        <p className={styles.hint}>{c('Estas entradas no se guardan ni se usan en el matching hasta que las selecciones, guardes y confirmes en tu perfil.', 'These entries are not saved or used for matching until you select, save, and confirm them in your profile.')}</p>
       </>}
       {output.operation === 'ANSWER_DRAFT' && <>
         {sources.question && <div className={styles.section}><h4>{c('Pregunta', 'Question')}</h4><p className={styles.source}>{sources.question}</p></div>}

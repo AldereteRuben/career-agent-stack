@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   AI_SCHEMA_VERSION, aiIdSchema, aiSourceSnapshotSchema, educationSchema, employmentSchema,
-  printedResumeIdentity, printedStatement, type AiLocale, type AiSourceSnapshot, type StructuredEntry,
+  printedResumeIdentity, printedStatement, redactResumeContactDetails, type AiLocale, type AiSourceSnapshot, type StructuredEntry,
 } from '@career/domain';
 import { decodeEntities, htmlToText } from '../sources.js';
 import { hashAiInputContent } from './prompts.js';
@@ -16,6 +16,7 @@ export const aiSourceRequestSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('JOB_ANALYSIS'), locale, jobId: id, selectedFactIds: selectedFacts.default([]) }).strict(),
   z.object({ operation: z.literal('RESUME_DRAFT'), locale, jobId: id, selectedFactIds: selectedFacts.refine((ids) => ids.length > 0) }).strict(),
   z.object({ operation: z.literal('ANSWER_DRAFT'), locale, questionId: id, jobId: id.optional(), selectedFactIds: selectedFacts.default([]) }).strict(),
+  z.object({ operation: z.literal('RESUME_IMPORT'), locale, resumeText: z.string().trim().min(1).max(50_000) }).strict(),
 ]);
 export type AiSourceRequest = z.infer<typeof aiSourceRequestSchema>;
 
@@ -156,10 +157,13 @@ function constructSnapshot(workspaceId: string, requestInput: unknown, records: 
   const searchRequest = request.operation === 'SEARCH_DRAFT' ? { text: request.searchRequest, contentHash: hash(request.searchRequest) } : null;
   const job = 'jobId' in request && request.jobId ? jobEvidence(workspaceId, request.jobId, records) : null;
   const question = request.operation === 'ANSWER_DRAFT' ? questionEvidence(workspaceId, request.questionId, records) : null;
+  const resumeText = request.operation === 'RESUME_IMPORT' ? redactResumeContactDetails(request.resumeText).trim() : null;
+  if (request.operation === 'RESUME_IMPORT' && !resumeText) throw new AiSourceError('AI_SOURCE_INVALID');
   const parsed = aiSourceSnapshotSchema.safeParse({
     schemaVersion: AI_SCHEMA_VERSION, snapshotId: randomUUID(), workspaceId, operation: request.operation, locale: request.locale,
     snapshotHash: placeholderHash, searchRequest, job, question, facts, profileRevision: profile?.revision ?? null,
     identityFingerprint: request.operation === 'RESUME_DRAFT' ? identityHash(profile!) : null,
+    ...(resumeText ? { resume: { text: resumeText, contentHash: hash(resumeText) } } : {}),
   });
   if (!parsed.success) {
     const tooLarge = parsed.error.issues.some((issue) => issue.code === 'too_big' || (issue.code === 'custom' && issue.path.length === 0));
@@ -189,6 +193,7 @@ export function checkAiSourceCurrent(snapshotInput: unknown, workspaceId: string
     if (!parsed.success) return { ok: false, code: 'AI_SOURCE_INVALID' };
     const snapshot = parsed.data;
     if (snapshot.workspaceId !== workspaceId || snapshot.snapshotHash !== hashAiInputContent(snapshot)) return { ok: false, code: 'AI_SOURCE_CHANGED' };
+    if (snapshot.resume && snapshot.resume.contentHash !== hash(snapshot.resume.text)) return { ok: false, code: 'AI_SOURCE_CHANGED' };
     if (snapshot.searchRequest && snapshot.searchRequest.contentHash !== hash(snapshot.searchRequest.text)) return { ok: false, code: 'AI_SOURCE_CHANGED' };
     if (snapshot.job) {
       const current = jobEvidence(workspaceId, snapshot.job.jobId, records);

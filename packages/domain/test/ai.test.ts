@@ -245,3 +245,18 @@ test('individually valid facts cannot bypass the composed input size limit', () 
   assert.equal(aiSourceSnapshotSchema.safeParse(oversized).success, false);
   assert.equal(aiSourceSnapshotSchema.safeParse(base).success, true);
 });
+
+test('resume import accepts only quoted statements grounded in contact-redacted resume text', () => {
+  const input = snapshot({ operation: 'RESUME_IMPORT', searchRequest: null, job: null, question: null, facts: [], profileRevision: null, identityFingerprint: null,
+    resume: { text: 'Senior designer at Fictional Studio, 2019-2021. Led a design system for 40 engineers.', contentHash: h('e') } });
+  const output = { schemaVersion: 1, operation: 'RESUME_IMPORT', locale: 'en', warnings: [], proposals: [
+    { key: 'resume-1', kind: 'experience', statement: 'Senior designer at Fictional Studio from 2019 to 2021.', sourceQuote: 'Senior designer at Fictional Studio, 2019-2021.' },
+  ] };
+  const result = validateAiOutput(output, input, { workspaceId: 'ws-a', operation: 'RESUME_IMPORT', locale: 'en' });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const unsupported = validateAiOutput({ ...output, proposals: [{ ...output.proposals[0], sourceQuote: 'Owned global product strategy.' }] }, input,
+    { workspaceId: 'ws-a', operation: 'RESUME_IMPORT', locale: 'en' });
+  assert.ok(!unsupported.ok && unsupported.issues.some(issue => issue.code === 'QUOTE_NOT_IN_SOURCE'));
+  assert.equal(aiSourceSnapshotSchema.safeParse({ ...input, resume: undefined }).success, false);
+  assert.equal(aiSnapshotDataCategories(input).join(','), 'RESUME_TEXT');
+});

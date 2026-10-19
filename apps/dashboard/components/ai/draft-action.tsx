@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import type { AiError, AiLocale, AiOperation, AiRunState } from '@career/domain';
+import { redactResumeContactDetails, type AiError, type AiLocale, type AiOperation, type AiRunState } from '@career/domain';
 import { Button, Notice, Tag } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { localizedError, useLocale, type Locale } from '@/lib/i18n';
@@ -16,6 +16,7 @@ export type AiDraftRequest =
   | { operation: 'SEARCH_DRAFT'; locale: AiLocale; searchRequest: string; provider?: 'codex' | 'ollama' }
   | { operation: 'JOB_ANALYSIS'; locale: AiLocale; jobId: string; selectedFactIds?: string[]; provider?: 'codex' | 'ollama' }
   | { operation: 'RESUME_DRAFT'; locale: AiLocale; jobId: string; selectedFactIds: string[] }
+  | { operation: 'RESUME_IMPORT'; locale: AiLocale; resumeText: string }
   | { operation: 'ANSWER_DRAFT'; locale: AiLocale; questionId: string; selectedFactIds?: string[]; jobId?: string };
 export type AiRunPreview = {
   previewId: string; provider: 'codex' | 'ollama'; model: string; operation: AiOperation; locale: AiLocale; expiresAt: string; categories: string[];
@@ -144,6 +145,11 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
           if (sourceRequest.operation === 'SEARCH_DRAFT') {
             const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(sourceRequest.searchRequest.trim())));
             query.set('searchRequestHash', [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''));
+          }
+          if (sourceRequest.operation === 'RESUME_IMPORT') {
+            const safeResumeText = redactResumeContactDetails(sourceRequest.resumeText).trim();
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(safeResumeText)));
+            query.set('resumeTextHash', [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join(''));
           }
           const response = await api<{ runs: RecoveredRun[] }>(`/ai/runs?${query}`, { signal: controller.signal });
           if (controller.signal.aborted || generation.current !== ticket) return;
@@ -274,7 +280,7 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
 
   const previewExpired = !!preview && (!Number.isFinite(Date.parse(preview.value.expiresAt)) || Date.parse(preview.value.expiresAt) <= clock);
   const previewChanged = !!preview && preview.requestKey !== requestKey;
-  const categories: Record<string, string> = { SEARCH_REQUEST: c('Lo que buscas', 'Your search request'), JOB_POSTING: c('Texto de la oferta', 'Job posting text'), APPROVED_FACTS: c('Datos confirmados de tu perfil', 'Confirmed profile details'), APPLICATION_QUESTION: c('Pregunta de la solicitud', 'Application question') };
+  const categories: Record<string, string> = { SEARCH_REQUEST: c('Lo que buscas', 'Your search request'), JOB_POSTING: c('Texto de la oferta', 'Job posting text'), APPROVED_FACTS: c('Datos confirmados de tu perfil', 'Confirmed profile details'), APPLICATION_QUESTION: c('Pregunta de la solicitud', 'Application question'), RESUME_TEXT: c('Texto del CV con contactos ocultos', 'Resume text with contacts redacted') };
   const selectedProvider = 'provider' in request ? request.provider ?? 'codex' : 'codex';
   const providerLabel = selectedProvider === 'ollama' ? 'Ollama' : 'Codex';
   const progress = run?.state === 'QUEUED' ? c('En espera. La tarea empezará cuando el proveedor esté disponible.', 'Waiting. The task will start when the provider is available.') : run?.state === 'CANCEL_REQUESTED' ? c('Deteniendo la tarea…', 'Stopping the task…') : run?.state === 'SUCCEEDED' ? c('La sugerencia está lista. Consultando el resultado…', 'The suggestion is ready. Opening the result…') : c(`${providerLabel} está preparando la sugerencia…`, `${providerLabel} is preparing the suggestion…`);
@@ -304,10 +310,11 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
           {preview.value.sources.searchRequest && <div className={styles.section}><h4>{c('Lo que buscas', 'Your search request')}</h4><p className={styles.source}>{preview.value.sources.searchRequest}</p></div>}
           {preview.value.sources.job && <div className={styles.section}><h4>{c('Texto de la oferta', 'Job posting text')}</h4><p className={styles.source}>{preview.value.sources.job}</p></div>}
           {preview.value.sources.question && <div className={styles.section}><h4>{c('Pregunta', 'Question')}</h4><p className={styles.source}>{preview.value.sources.question}</p></div>}
+          {preview.value.sources.resumeText && <div className={styles.section}><h4>{c('Texto del CV con datos de contacto eliminados', 'Resume text with contact details removed')}</h4><p className={styles.source}>{preview.value.sources.resumeText}</p></div>}
           {preview.value.sources.facts.length > 0 && <div className={styles.section}><h4>{c('Datos confirmados que se usarán', 'Confirmed details that will be used')}</h4><ul className={styles.facts}>{preview.value.sources.facts.map(fact => <li key={fact.factId}><div className={styles.fact}><span className={styles.hint}>{labelFor.factKind(fact.kind, locale)}</span><p className={styles.source}>{fact.text}</p></div></li>)}</ul></div>}
         </div></details>
         {selectedProvider === 'codex' ? <p className={styles.hint}>{c('Al permitir esta tarea, estos datos se envían a OpenAI. Puede consumir cuota de tu plan de Codex.', 'Allowing this task sends these details to OpenAI. It may use your Codex plan’s quota.')}</p> : <p className={styles.hint}>{c(`Al permitir esta tarea, los datos se envían al servidor local de Ollama y al modelo ${preview.value.model}. La app no puede verificar si el servidor tiene desactivadas las funciones en la nube.`, `Allowing this task sends the data to the local Ollama server and model ${preview.value.model}. The app cannot verify whether the server has cloud features disabled.`)}</p>}
-        {preview.value.rememberedPermission ? <p className={styles.hint}>{c('Ya guardaste permiso para este tipo de ayuda. Esta tarea solo empieza cuando tú lo eliges.', 'You have already saved permission for this type of help. This task only starts when you choose.')}</p> : <label className={styles.check}><input type="checkbox" checked={remember} disabled={work !== null} onChange={event => setRemember(event.target.checked)}/><span>{c('Recordar este permiso para este tipo de ayuda', 'Remember this permission for this type of help')}<small>{c('No activa tareas automáticas. Podrás revisar los datos antes de cada tarea.', 'This does not turn on automatic tasks. You can review the data before each task.')}</small></span></label>}
+        {request.operation === 'RESUME_IMPORT' ? <Notice tone="warning" role={null}>{c('Esta instalación local primero procesa el texto para ocultar el nombre detectado en la cabecera, el correo, el teléfono, las direcciones y los enlaces. Solo el texto redactado que ves arriba se enviará a OpenAI si autorizas esta tarea. Se conserva en el historial local de IA hasta 30 días y también puede aparecer en exportaciones y copias de seguridad; borrar el historial no modifica copias ya creadas. Este permiso es solo para esta tarea y no se puede recordar.', 'This local installation first processes the text to redact the name detected in its header, email, phone, addresses and links. Only the redacted text shown above is sent to OpenAI if you allow this task. It stays in local AI history for up to 30 days and may also appear in exports and backups; clearing history does not change backups already created. Permission applies to this task only and cannot be remembered.')}</Notice> : preview.value.rememberedPermission ? <p className={styles.hint}>{c('Ya guardaste permiso para este tipo de ayuda. Esta tarea solo empieza cuando tú lo eliges.', 'You have already saved permission for this type of help. This task only starts when you choose.')}</p> : <label className={styles.check}><input type="checkbox" checked={remember} disabled={work !== null} onChange={event => setRemember(event.target.checked)}/><span>{c('Recordar este permiso para este tipo de ayuda', 'Remember this permission for this type of help')}<small>{c('No activa tareas automáticas. Podrás revisar los datos antes de cada tarea.', 'This does not turn on automatic tasks. You can review the data before each task.')}</small></span></label>}
         {(previewExpired || previewChanged) && <Notice tone="warning">{previewChanged ? c('Cambiaste lo que quieres preparar. Actualiza los datos antes de continuar.', 'You changed what you want to prepare. Refresh the data before continuing.') : c('Esta vista de los datos ha caducado. Actualízala antes de continuar.', 'This data preview has expired. Refresh it before continuing.')}</Notice>}
         <div className={styles.actions}>{previewExpired || previewChanged ? <Button type="button" disabled={work !== null} onClick={() => void prepare()}>{c('Actualizar los datos', 'Refresh the data')}</Button> : <Button type="button" disabled={work !== null} onClick={() => void start()}>{work === 'start' ? c('Iniciando…', 'Starting…') : c('Permitir esta tarea', 'Allow this task')}</Button>}</div>
       </>}
