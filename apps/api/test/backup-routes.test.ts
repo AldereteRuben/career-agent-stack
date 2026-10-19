@@ -174,3 +174,15 @@ test('the real runner reports the message of the writer and exit code when it fa
     assert.deepEqual(await readdir(directory), [], 'the temporary environment file is removed');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+test('a runner startup error reports its code without exposing the executable path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-backup-runner-'));
+  const directory = join(root, 'out'); const missingExecutable = join(root, 'private-node-binary');
+  const originalExecutable = process.execPath;
+  try {
+    await mkdir(directory);
+    process.execPath = missingExecutable;
+    const run = backupRunner({ root, data: root, files: join(root, 'files'), database: 'postgres://u:p@h/d', key: 'k'.repeat(40) });
+    await assert.rejects(run(directory, new AbortController().signal), (error: Error) => error.message === 'Backup could not run (ENOENT)' && !error.message.includes(missingExecutable));
+    assert.deepEqual(await readdir(directory), [], 'the temporary environment file is removed');
+  } finally { process.execPath = originalExecutable; await rm(root, { recursive: true, force: true }); }
+});

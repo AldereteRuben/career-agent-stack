@@ -68,7 +68,8 @@ export function backupRunner(options: BackupOptions): BackupRunner {
         child.once('error', (error) => { startError = error; });
         child.once('close', (code) => {
           if (!startError && code === 0) return resolve();
-          reject(new Error(startError ? `Backup could not run: ${startError.message}` : `Backup writer exited with code ${code}${output ? `:\n${output}` : ''}`));
+          const startCode = startError && (startError as NodeJS.ErrnoException).code;
+          reject(new Error(startError ? `Backup could not run${startCode ? ` (${startCode})` : ''}` : `Backup writer exited with code ${code}${output ? `:\n${output}` : ''}`));
         });
       });
     } finally { await rm(envFile, { force: true }); }
