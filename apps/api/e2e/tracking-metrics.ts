@@ -55,14 +55,14 @@ export const trackingMetricsScenario: Scenario = {
       company: `Tracked source ${marker}`, title: `Tracked role ${marker}`, jobUrl: `https://jobs.example.test/${marker}`, description: 'Synthetic tracked source.',
     });
     await db.query('insert into job_search_sources (workspace_id, job_id, provider, external_id, source_url) values ($1, $2, $3, $4, $5)', [
-      trackedJob.workspaceId, trackedJob.id, 'e2e-test', marker, `https://jobs.example.test/${marker}`,
+      trackedJob.workspaceId, trackedJob.id, 'remotive', marker, `https://jobs.example.test/${marker}`,
     ]);
     const attributed = await api.post<Application>('/applications', { jobId: trackedJob.id, company: `Tracked source ${marker}`, role: `Tracked role ${marker}`, state: 'DRAFT', notes: '' });
     await api.patch(`/applications/${attributed.id}`, { state: 'CONFIRMED', confirmationEvidence: 'USER_ATTESTATION' });
     await api.patch(`/applications/${attributed.id}`, { recruitmentStage: 'INTERVIEW' });
     const grouped = await api.get<Metrics>('/tracking-metrics?period=30d');
-    assert.deepEqual(grouped.breakdowns.source.find((group) => group.key === 'e2e-test'), {
-      key: 'e2e-test', label: 'e2e-test', confirmed: 1, interviewed: 1, interviewConversionPercent: null, smallSample: true,
+    assert.deepEqual(grouped.breakdowns.source.find((group) => group.key === 'remotive'), {
+      key: 'remotive', label: 'remotive', confirmed: 1, interviewed: 1, interviewConversionPercent: null, smallSample: true,
     }, 'the API attributes only the explicitly linked provider and suppresses the one-application percentage');
     assert.equal(grouped.breakdowns.role.find((group) => group.key === `tracked role ${marker}`)?.confirmed, 1);
     assert.equal(grouped.breakdowns.country.find((group) => group.key === 'unidentified')?.confirmed, 1);
@@ -75,7 +75,7 @@ export const trackingMetricsScenario: Scenario = {
       const source = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por fuente', 'By source'), exact: true }) });
       const role = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por puesto', 'By role'), exact: true }) });
       const country = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por país', 'By country'), exact: true }) });
-      await source.getByText(c('e2e-test', 'e2e-test'), { exact: true }).waitFor();
+      await source.getByText(c('remotive', 'remotive'), { exact: true }).waitFor();
       await source.getByText(`1 ${c('solicitudes', 'applications')} · 1 ${c('entrevistas', 'interviews')}`, { exact: true }).waitFor();
       await role.getByText(`Tracked role ${marker}`, { exact: true }).waitFor();
       await country.getByText(c('País no identificado', 'Country not identified'), { exact: true }).waitFor();
