@@ -110,3 +110,19 @@ No jobs were skipped on any live feed. All job URLs were on the provider's hoste
 - New boards reject unsupported provider/region combinations at creation. A legacy Greenhouse or Ashby board saved with region `eu` fails at refresh with `BOARD_REGION_UNSUPPORTED` instead of being read from the global host.
 - Board refresh uses `readBoardWithReport` and reports `coverage: 'PARTIAL'` with a `skipped` count when per-job validation drops jobs.
 - Changing description formatting changes snapshot hashes, so the first v0.2 refresh of an existing board stores one new snapshot per job.
+
+## Reading one posting from a pasted link (issue #47)
+
+`POST /api/v1/jobs/lookup` pre-fills the manual job form from a posting link. It saves nothing; the person reviews the form and saves it.
+
+| Provider | Links recognised (HTTPS, no port or credentials) | Request made |
+| --- | --- | --- |
+| Greenhouse | `boards.greenhouse.io` and `job-boards.greenhouse.io`, `/{board}/jobs/{id}` | `GET https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{id}` |
+| Lever | `jobs.lever.co` and `jobs.eu.lever.co`, `/{site}/{id}`, optional `/apply` | `GET https://api.lever.co/v0/postings/{site}/{id}?mode=json` (EU: `api.eu.lever.co`) |
+| Ashby | `jobs.ashbyhq.com`, `/{board}/{id}`, optional `/application` | The board feed (Ashby documents no single-posting endpoint); only the matching posting is kept |
+
+Any other link, including LinkedIn, is not recognised and causes no request. The request uses the same protections as a board read: fixed host, HTTPS, no redirects, bounded time and size. A 404 (Greenhouse and Lever answer it for a closed posting) or a posting absent from the Ashby feed gives `JOB_POSTING_NOT_FOUND`; an Ashby posting that is not public gives `JOB_POSTING_CLOSED`.
+
+Greenhouse names the company in the posting. Lever and Ashby do not, so the board name in the link stands in for it and the form asks the person to check it. Greenhouse's EU board hosts are not recognised because its API documents no EU read host.
+
+The saved job takes the posting's own URL, so it matches the same job if a search or a followed company finds it later. It is not linked to the source as an occurrence, so availability tracking does not apply to it.

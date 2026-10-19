@@ -19,6 +19,7 @@ import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
 import { applicationsCsvScenario } from './applications-csv.js';
+import { jobLinkLookupScenario } from './job-link-lookup.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
 import { emailImportScenario } from './email-import.js';
@@ -139,6 +140,7 @@ export const scenarios: Scenario[] = [
   },
   phase1FollowUpScenario,
   applicationsCsvScenario,
+  jobLinkLookupScenario,
   jobReportsScenario,
   timelineScenario,
   emailImportScenario,
