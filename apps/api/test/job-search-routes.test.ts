@@ -17,8 +17,14 @@ describe('saved job searches with a disposable database and cached fictional fee
   let workspace: string; let module: typeof import('../src/job-search-routes.js'); let notifications: typeof import('../src/desktop-notification-routes.js'); let sources: typeof import('../src/job-search.js'); let worker: typeof import('../src/desktop-notification-worker.js'); let dbmod: typeof import('@career/db');
   let calls: Array<{ workspaceId: string; jobId: string; locale: string }>; let sentNotifications: string[]; let failPrepare = false;
   const originalDatabase = process.env.DATABASE_URL;
+  const originalEncryptionKey = process.env.APP_ENCRYPTION_KEY;
+  const originalSessionSecret = process.env.APP_SESSION_SECRET;
 
   before(async () => {
+    // Route dependencies validate the application configuration on first import.
+    // These disposable-test values keep the isolated route suite independent of a developer's .env file.
+    process.env.APP_ENCRYPTION_KEY ??= randomBytes(32).toString('hex');
+    process.env.APP_SESSION_SECRET ??= randomBytes(32).toString('hex');
     const url = new URL(adminUrl!);
     assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname));
     assert.ok(['postgres', 'template1'].includes(url.pathname.slice(1)), 'maintenance database required');
@@ -33,6 +39,8 @@ describe('saved job searches with a disposable database and cached fictional fee
     await closePool?.(); await client?.end();
     if (admin) { await admin.query(`drop database if exists "${name}" with (force)`); await admin.end(); }
     if (originalDatabase === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabase;
+    if (originalEncryptionKey === undefined) delete process.env.APP_ENCRYPTION_KEY; else process.env.APP_ENCRYPTION_KEY = originalEncryptionKey;
+    if (originalSessionSecret === undefined) delete process.env.APP_SESSION_SECRET; else process.env.APP_SESSION_SECRET = originalSessionSecret;
   });
   beforeEach(async () => {
     await client.query('delete from workspaces'); await client.query('delete from job_search_provider_cache'); workspace = randomUUID(); calls = []; sentNotifications = []; failPrepare = false;
