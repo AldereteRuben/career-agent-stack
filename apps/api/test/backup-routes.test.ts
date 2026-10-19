@@ -5,15 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import Fastify from 'fastify';
-import { registerBackupRoutes, backupRunner, type BackupRunner } from '../src/backup-routes.js';
+import { registerBackupRoutes, backupRunner, redactSecrets, type BackupRunner } from '../src/backup-routes.js';
 
-async function fixture(run: BackupRunner) {
+async function fixture(run: BackupRunner, extra: { logs?: string[]; database?: string; key?: string } = {}) {
   const data = await mkdtemp(join(tmpdir(), 'career-backup-api-'));
-  const app = Fastify();
+  const app = Fastify(extra.logs ? { logger: { level: 'warn', stream: { write: (line: string) => { extra.logs!.push(line); } } } } : {});
   app.addHook('onRequest', async (request, reply) => {
     if (!request.headers.authorization) return reply.code(401).send({ error: 'SESSION_REQUIRED' });
   });
-  registerBackupRoutes(app, (request) => request.headers.authorization!, { root: data, data, files: join(data, 'files'), database: 'unused', key: 'unused' }, run);
+  registerBackupRoutes(app, (request) => request.headers.authorization!, { root: data, data, files: join(data, 'files'), database: extra.database ?? 'unused', key: extra.key ?? 'unused' }, run);
   const request = (method: 'GET' | 'POST', url: string, workspace = 'one') => app.inject({ method, url, headers: { authorization: workspace } });
   const wait = async () => {
     for (let i = 0; i < 100; i++) {
@@ -114,4 +114,34 @@ test('closing the API cancels the writer and cleans the unfinished backup', asyn
     await f.request('POST', '/api/v1/backups'); await ready;
     await f.app.close(); assert.deepEqual(await readdir(join(f.data, 'backups')), []);
   } finally { await f.close(); }
+});
+
+test('a failed backup is explained in the server log without any credential, and not to the person', async () => {
+  const logs: string[] = [];
+  const database = 'postgres://career:hunter2-pw@127.0.0.1:5432/career'; const key = 'k'.repeat(40);
+  const f = await fixture(async () => { throw new Error(`pg_dump: connection to ${database} failed; key ${key}`); }, { logs, database, key });
+  try {
+    await f.request('POST', '/api/v1/backups'); const job = await f.wait();
+    assert.equal(job.state, 'failed');
+    assert.deepEqual(Object.keys(job).sort(), ['createdAt', 'id', 'state'], 'the response carries no reason');
+    const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
+    assert.ok(entry, 'the failure is logged');
+    assert.match(entry.reason, /pg_dump: connection to \[redacted\] failed; key \[redacted\]/);
+    assert.ok(!logs.join('').includes('hunter2-pw') && !logs.join('').includes(key), 'no credential reaches the log');
+  } finally { await f.close(); }
+});
+test('redactSecrets hides every configured value and ignores trivially short ones', () => {
+  assert.equal(redactSecrets('a SECRETVALUE b SECRETVALUE', ['SECRETVALUE']), 'a [redacted] b [redacted]');
+  assert.equal(redactSecrets('abc', ['abc']), 'abc');
+});
+test('the real runner reports the message of the writer and exit code when it fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-backup-runner-'));
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/backup.mjs'), "console.error('Could not verify that the folder is private'); process.exit(3);");
+    const directory = join(root, 'out'); await mkdir(directory);
+    const run = backupRunner({ root, data: root, files: join(root, 'files'), database: 'postgres://u:p@h/d', key: 'k'.repeat(40) });
+    await assert.rejects(run(directory, new AbortController().signal), (error: Error) => /exited with code 3/.test(error.message) && /Could not verify that the folder is private/.test(error.message));
+    assert.deepEqual(await readdir(directory), [], 'the temporary environment file is removed');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
