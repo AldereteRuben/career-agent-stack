@@ -3382,6 +3382,10 @@ main:focus {
 .backup-panel { gap: 12px; }
 .backup-panel p { margin: 0; }
 .backup-downloads { display: grid; gap: 10px; margin: 0; }
+.restore-panel, .restore-panel .form-stack { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.restore-panel .form-stack > * { min-width: 0; max-width: 100%; }
+.restore-panel input[type="file"] { width: 100%; min-width: 0; max-width: 100%; }
+.restore-panel .button { max-width: 100%; white-space: normal; }
 @media (max-width: 600px) {
   .onboarding-progress li { padding: 8px 12px; }
   .onboarding-progress small { display: inline; margin-left: 8px; }

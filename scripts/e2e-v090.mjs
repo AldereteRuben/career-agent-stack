@@ -47,7 +47,22 @@ const goto = path => page.goto(new URL(path, ui).toString(), { waitUntil: 'domco
 const visible = async locator => { await locator.waitFor({ state: 'visible' }); return locator; };
 const click = async name => (await visible(page.getByRole('button', { name, exact: true }))).click();
 const locale = async value => { if (!(await page.locator('html').getAttribute('lang')).startsWith(value)) await click(value === 'es' ? 'Español' : 'English'); };
-const overflow = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true, 'No horizontal page overflow');
+const overflow = async () => {
+  const dimensions = await page.evaluate(() => {
+    const root = document.documentElement;
+    const elements = [...document.querySelectorAll('body *')];
+    const candidates = elements.filter(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.right > root.clientWidth + 1 || rect.left < -1;
+    });
+    const offenders = candidates.filter(element => ![...element.children].some(child => candidates.includes(child)))
+      .map(element => ({ tag: element.tagName.toLowerCase(), className: typeof element.className === 'string' ? element.className : '', text: element.textContent?.trim().slice(0, 80), left: Math.round(element.getBoundingClientRect().left), right: Math.round(element.getBoundingClientRect().right), width: Math.round(element.getBoundingClientRect().width) }))
+      .sort((a, b) => b.right - a.right)
+      .slice(0, 5);
+    return { innerWidth: globalThis.innerWidth, screenWidth: globalThis.screen.width, scrollWidth: root.scrollWidth, clientWidth: root.clientWidth, bodyWidth: document.body.getBoundingClientRect().width, pageWrapWidth: document.querySelector('.page-wrap')?.getBoundingClientRect().width, settingsGridWidth: document.querySelector('.settings-grid')?.getBoundingClientRect().width, settingsMainWidth: document.querySelector('.settings-main')?.getBoundingClientRect().width, offenders };
+  });
+  assert.ok(dimensions.scrollWidth <= dimensions.clientWidth + 1, `No horizontal page overflow: ${JSON.stringify(dimensions)}`);
+};
 const screenshot = async name => {
   await page.evaluate(() => document.scrollingElement?.scrollTo(0, 0));
   await page.screenshot({ path: join(artifacts, name), fullPage: true, animations: 'disabled' });
@@ -91,6 +106,7 @@ try {
     if (path.endsWith('/approve') && path.startsWith('/answers/')) return response(route, { ok: true });
     if (path === '/settings' || path === '/privacy' || path === '/discovery') return response(route, {});
     if (path === '/backups/current') return response(route, { state: 'idle' });
+    if (path === '/backups/restore/current') return response(route, { state: 'idle', canRestore: false });
     if (path === '/ai/connections') return state.connectionFailure ? response(route, {error: 'AI_UNAVAILABLE'}, 503) : response(route, connectionState());
     if (path === '/ai/connections/codex/inspect') { state.observed = true; return response(route, connectionState()); }
     if (path === '/ai/connections/codex/authorize') { assert.equal(request.postDataJSON().observationId, ids.observation); state.connected = true; return response(route, connectionState()); }
