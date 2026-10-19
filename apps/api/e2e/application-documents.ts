@@ -34,9 +34,10 @@ async function assertKeyboardFocus(page: import('playwright').Page, target: impo
 export const applicationDocumentsScenario: Scenario = {
   name: 'application-documents-lifecycle-and-deletion',
   async run({ page, api, db, filesDir, uiUrl, marker, note }) {
+    const claimSentinel = `DOCUMENT_E2E_${marker}`;
     const profile = await api.get<Profile>('/profile');
     await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Fictional Candidate', email: 'candidate@example.test', country: 'ES' } } });
-    const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'experience', statement: `I used Python to resolve customer issues for a fictional support team ${marker}.`, tags: ['Python', 'customer support'] });
+    const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'experience', statement: `I used Python to resolve customer issues for a fictional support team. ${claimSentinel}.`, tags: ['Python', 'customer support'] });
     await api.post(`/profile/facts/${fact.id}/approve`, {});
     const job = await api.post<{ id: string }>('/jobs/import', { company: `Document Fixture ${marker}`, title: `Support Engineer ${marker}`, jobUrl: `https://example.com/${marker}/application-documents` });
     const application = await api.post<{ id: string }>('/applications', { company: `Document Fixture ${marker}`, role: `Support Engineer ${marker}`, jobId: job.id, state: 'DRAFT' });
@@ -48,7 +49,7 @@ export const applicationDocumentsScenario: Scenario = {
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
     await panel.getByRole('heading', { name: 'CV adaptado a esta oferta', exact: true }).waitFor();
     await panel.getByRole('button', { name: 'Guardar nueva versión', exact: true }).waitFor();
-    const candidateClaim = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).locator('textarea').first();
+    const candidateClaim = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).filter({ hasText: claimSentinel }).locator('textarea').first();
     await candidateClaim.waitFor();
 
     // Edit and save by keyboard, with the global :focus-visible indicator checked.
@@ -78,7 +79,7 @@ export const applicationDocumentsScenario: Scenario = {
 
     // An unsupported skill is refused first. A separate, keyboard-operated confirmation allows it to be saved as USER_UNSUPPORTED.
     await page.reload();
-    const claimWithSkill = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).locator('textarea').first();
+    const claimWithSkill = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).filter({ hasText: claimSentinel }).locator('textarea').first();
     await assertKeyboardFocus(page, claimWithSkill, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' I am certified in Kubernetes.');
@@ -109,10 +110,10 @@ export const applicationDocumentsScenario: Scenario = {
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
-    const nextClaim = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).locator('textarea').first();
+    const nextClaim = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).filter({ hasText: claimSentinel }).locator('textarea').first();
     await assertKeyboardFocus(page, nextClaim, true);
     await page.keyboard.press('ControlOrMeta+A');
-    await page.keyboard.type(`I used Python to resolve customer issues for a fictional support team ${marker}.`);
+    await page.keyboard.type(`I used Python to resolve customer issues for a fictional support team. ${claimSentinel}.`);
     await assertKeyboardFocus(page, save);
     await page.keyboard.press('Enter');
     await panel.getByText('Versión guardada. Revisa el PDF antes de aprobarla.', { exact: true }).waitFor();
@@ -168,7 +169,7 @@ export const applicationDocumentsScenario: Scenario = {
     // Repeat editing and approval in English so both document-language flows are exercised.
     await panel.getByLabel('Idioma del documento', { exact: true }).selectOption('en');
     await panel.getByRole('heading', { name: 'Resume tailored to this job', exact: true }).waitFor();
-    const englishClaim = panel.locator('fieldset').filter({ hasText: 'Profile-based claim' }).locator('textarea').first();
+    const englishClaim = panel.locator('fieldset').filter({ hasText: 'Profile-based claim' }).filter({ hasText: claimSentinel }).locator('textarea').first();
     await assertKeyboardFocus(page, englishClaim, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' using Python');
