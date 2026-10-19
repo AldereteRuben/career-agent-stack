@@ -133,7 +133,7 @@ try {
       return response(route, run, 202);
     }
     if (path === '/ai/runs' && method === 'GET' && state.historyFailures > 0) { state.historyFailures--; return response(route, { error: 'AI_UNAVAILABLE' }, 503); }
-    if (path === '/ai/runs' && method === 'GET') return response(route, { runs: state.runs.filter(run => run.request.operation === url.searchParams.get('operation') && run.request.locale === url.searchParams.get('locale') && (!url.searchParams.has('jobId') || run.request.jobId === url.searchParams.get('jobId')) && (!url.searchParams.has('questionId') || run.request.questionId === url.searchParams.get('questionId'))) });
+    if (path === '/ai/runs' && method === 'GET') return response(route, { runs: state.runs.filter(run => run.request.operation === url.searchParams.get('operation') && run.request.locale === url.searchParams.get('locale') && (!url.searchParams.has('provider') || (run.request.provider ?? 'codex') === url.searchParams.get('provider')) && (!url.searchParams.has('jobId') || run.request.jobId === url.searchParams.get('jobId')) && (!url.searchParams.has('questionId') || run.request.questionId === url.searchParams.get('questionId'))) });
     const runId = path.match(/^\/ai\/runs\/([^/]+)(\/cancel)?$/);
     if (runId) { const run = state.runs.find(item => item.id === runId[1]); assert.ok(run); if (runId[2]) run.state = 'CANCELLED'; return response(route, run); }
     const artifact = path.match(/^\/ai\/artifacts\/([^/]+)(\/(answer|resume))?$/);
