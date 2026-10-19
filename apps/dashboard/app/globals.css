@@ -3542,6 +3542,10 @@ main:focus {
 /* Keep secondary job metadata compact and application corrections out of the main path. */
 .job-detail-meta { color: var(--muted); font-size: .875rem; margin: 0 0 1rem; overflow-wrap: anywhere; }
 .job-detail-meta p { margin: .35rem 0; }
+
+/* Adzuna requires its name to link to the local domain at a minimum 116 × 23 CSS pixels. */
+.adzuna-attribution { display: inline-flex; align-items: center; justify-content: center; width: 116px; min-height: 23px; box-sizing: border-box; font-weight: 700; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 3px; }
+.adzuna-attribution:hover { text-decoration: underline; }
 .application-state-options { min-width: 0; grid-column: 1 / -1; }
 .application-state-options summary { cursor: pointer; padding: .65rem 0; }
 .application-state-options .field { margin-top: .75rem; max-width: 28rem; }
