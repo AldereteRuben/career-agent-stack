@@ -109,6 +109,7 @@ try {
     if (path === '/settings' || path === '/privacy' || path === '/discovery') return response(route, {});
     if (path === '/backups/current') return response(route, { state: 'idle' });
     if (path === '/backups/restore/current') return response(route, { state: 'idle', canRestore: false });
+    if (path === '/ai/ollama') return response(route, { enabled: true, available: false, models: [], connection: null, privacy: 'NOT_VERIFIABLE' });
     if (path === '/ai/connections') return state.connectionFailure ? response(route, {error: 'AI_UNAVAILABLE'}, 503) : response(route, connectionState());
     if (path === '/ai/connections/codex/inspect') { state.observed = true; return response(route, connectionState()); }
     if (path === '/ai/connections/codex/authorize') { assert.equal(request.postDataJSON().observationId, ids.observation); state.connected = true; return response(route, connectionState()); }
@@ -202,7 +203,7 @@ try {
   state.mode = 'waiting'; await click('Summarize and explain with Codex'); await click('Allow this task');
   const startsBeforeReopen = state.starts.length;
   await page.close(); page = await context.newPage(); page.setDefaultTimeout(15_000);
-  await goto(`/jobs/${ids.job}`); await click('View assistance progress'); await visible(page.getByRole('button', { name: 'Cancel task', exact: true }));
+  await goto(`/jobs/${ids.job}`); await click('View Codex assistance progress'); await visible(page.getByRole('button', { name: 'Cancel task', exact: true }));
   assert.equal(state.starts.length, startsBeforeReopen, 'Reopening only polls the same run');
   await click('Cancel task'); await visible(page.getByText('Task cancelled. No new suggestion has been added.', { exact: true }));
   state.mode = 'failure'; await click('Summarize and explain with Codex'); await click('Allow this task');
