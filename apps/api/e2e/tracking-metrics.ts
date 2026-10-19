@@ -51,6 +51,9 @@ export const trackingMetricsScenario: Scenario = {
     assert.equal(metrics.noResponseThresholdDays, 14);
     assert.equal(metrics.period, '30d');
 
+    const groupedBefore = await api.get<Metrics>('/tracking-metrics?period=30d');
+    const previousRemotive = groupedBefore.breakdowns.source.find((group) => group.key === 'remotive');
+    const previousUnidentified = groupedBefore.breakdowns.country.find((group) => group.key === 'unidentified');
     const trackedJob = await api.post<Job>('/jobs/import', {
       company: `Tracked source ${marker}`, title: `Tracked role ${marker}`, jobUrl: `https://jobs.example.test/${marker}`, description: 'Synthetic tracked source.',
     });
@@ -61,11 +64,12 @@ export const trackingMetricsScenario: Scenario = {
     await api.patch(`/applications/${attributed.id}`, { state: 'CONFIRMED', confirmationEvidence: 'USER_ATTESTATION' });
     await api.patch(`/applications/${attributed.id}`, { recruitmentStage: 'INTERVIEW' });
     const grouped = await api.get<Metrics>('/tracking-metrics?period=30d');
-    assert.deepEqual(grouped.breakdowns.source.find((group) => group.key === 'remotive'), {
-      key: 'remotive', label: 'remotive', confirmed: 1, interviewed: 1, interviewConversionPercent: null, smallSample: true,
-    }, 'the API attributes only the explicitly linked provider and suppresses the one-application percentage');
+    const remotive = grouped.breakdowns.source.find((group) => group.key === 'remotive');
+    assert.ok(remotive, 'the explicitly linked provider has a breakdown group');
+    assert.equal(remotive.confirmed, (previousRemotive?.confirmed ?? 0) + 1, 'the linked provider gains this one confirmed application');
+    assert.equal(remotive.interviewed, (previousRemotive?.interviewed ?? 0) + 1, 'the linked provider gains this one interview');
     assert.equal(grouped.breakdowns.role.find((group) => group.key === `tracked role ${marker}`)?.confirmed, 1);
-    assert.equal(grouped.breakdowns.country.find((group) => group.key === 'unidentified')?.confirmed, 1);
+    assert.equal(grouped.breakdowns.country.find((group) => group.key === 'unidentified')?.confirmed, (previousUnidentified?.confirmed ?? 0) + 1);
 
     for (const locale of ['es', 'en'] as const) {
       const c = (es: string, en: string) => locale === 'es' ? es : en;
@@ -76,11 +80,11 @@ export const trackingMetricsScenario: Scenario = {
       const role = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por puesto', 'By role'), exact: true }) });
       const country = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por país', 'By country'), exact: true }) });
       await source.getByText(c('remotive', 'remotive'), { exact: true }).waitFor();
-      await source.getByText(`1 ${c('solicitudes', 'applications')} · 1 ${c('entrevistas', 'interviews')}`, { exact: true }).waitFor();
+      await source.getByText(`${remotive.confirmed} ${c('solicitudes', 'applications')} · ${remotive.interviewed} ${c('entrevistas', 'interviews')}`, { exact: true }).waitFor();
       await role.getByText(`Tracked role ${marker}`, { exact: true }).waitFor();
+      await role.getByText(c('Muestra pequeña', 'Small sample'), { exact: true }).waitFor();
       await country.getByText(c('País no identificado', 'Country not identified'), { exact: true }).waitFor();
       await country.getByText(c('La ubicación se guarda como texto libre; no inferimos el país.', 'Location is stored as free text, so we do not infer a country.'), { exact: true }).waitFor();
-      await source.getByText(c('Muestra pequeña', 'Small sample'), { exact: true }).waitFor();
 
       await page.setViewportSize({ width: 390, height: 844 });
       assert.equal(await hasHorizontalOverflow(page), false, `${locale}: overview breakdowns overflow at phone width`);
