@@ -29,6 +29,7 @@ import { registerAssistedRoutes } from './assisted-routes.js';
 import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
+import { logRequestFailure } from './request-error-logging.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerApplicationCoverLetterRoutes } from './application-cover-letter.js';
 import { registerApplicationResumeRoutes } from './application-resume-routes.js';
@@ -688,12 +689,12 @@ app.post('/api/v1/documents', async (request, reply) => {
   const storageRoot = resolve(config.FILES_LOCAL_PATH); const filePath = resolve(storageRoot, relativePath);
   const computedRelativePath = relative(storageRoot, filePath);
   if (computedRelativePath.startsWith(`..${sep}`) || computedRelativePath === '..' || isAbsolute(computedRelativePath)) return fail(reply, 400, 'DOCUMENT_PATH_INVALID');
-  const removeFile = () => unlink(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') app.log.warn({ err: error, documentId: docId }, 'Could not remove orphaned document file'); });
+  const removeFile = () => unlink(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') app.log.warn({ code: error.code ?? 'FILE_REMOVE_FAILED', documentId: docId }, 'Could not remove orphaned document file'); });
   const pdfLocale = documentLanguage(body.locale, profile.locale);
   const renderedFacts = selected.map((fact) => ({ kind: fact.kind, statement: printedStatement(fact, pdfLocale), tags: fact.tags }));
   let rendered: { sha256: string; size: number };
   try { rendered = await renderResume({ path: filePath, ...identity, role, locale: pdfLocale, paperSize, facts: renderedFacts }); }
-  catch (error) { await removeFile(); app.log.error({ err: error, workspaceId: id }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', error instanceof Error ? error.message : 'Unknown renderer error'); }
+  catch { await removeFile(); app.log.error({ code: 'DOCUMENT_RENDER_FAILED', workspaceId: id, documentId: docId }, 'Document generation failed'); return fail(reply, 503, 'DOCUMENT_RENDER_FAILED', 'Document rendering failed'); }
   // Claims come from approved facts, but the generated document itself has not been reviewed yet.
   const claims = selected.map((fact, index) => ({ text: renderedFacts[index]!.statement, sourceFactIds: [fact.id], approvalStatus: 'PENDING_REVIEW' }));
   let row: typeof documentVersions.$inferSelect;
@@ -809,9 +810,9 @@ app.get('/api/v1/export', async (request, reply) => {
 
 app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'scheduled-discovery', 'new-jobs-inbox', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill', 'saved-job-searches', 'automatic-preparation', 'supported-submission', ...(aiEnabled ? ['ai-processing'] : [])], unavailable: [...(aiEnabled ? [] : ['ai-processing']), 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: true, submissionScope: 'experimental-explicit-one-application-lever', realEmployerSubmissionVerified: false }));
 
-app.setErrorHandler((error, _request, reply) => {
+app.setErrorHandler((error, request, reply) => {
   if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');
-  app.log.error({ err: error }, 'Request failed');
+  logRequestFailure(app, error, request);
   const errorMessage = error instanceof Error ? error.message : 'INTERNAL_ERROR';
   if (['INVALID_STATE_TRANSITION', 'CONFIRMATION_EVIDENCE_REQUIRED', 'RECRUITMENT_STAGE_CANNOT_REGRESS', 'STALE_APPLICATION_VERSION'].includes(errorMessage)) return fail(reply, 409, errorMessage);
   if ((error as { code?: string }).code === '23505') return fail(reply, 409, 'DUPLICATE_RECORD');

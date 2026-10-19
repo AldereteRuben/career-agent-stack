@@ -81,6 +81,14 @@ const operationInstructions: Record<AiOperation, string> = {
     'Use warnings for ambiguous dates, unclear section ownership, or information that needs the person to check it. Do not invent or complete anything.',
     'These are unapproved suggestions. Do not approve, save, or alter the profile.',
   ].join('\n'),
+  DOCUMENT_REWORD: [
+    'TASK: Reword each supplied existing candidate-claim sentence only. Never draft a new sentence or document.',
+    'Preserve each sentence’s meaning and every cited fact. Return exactly one proposal for each supplied sentence, using its sentenceId and exactly its cited factIds in the same order.',
+    'Use only the supplied cited fact text to support candidate claims. The offer is context about the employer, not evidence about the applicant.',
+    'Do not add or imply any employer, title, date, number, credential, qualification or skill that is not already supported by that sentence and its cited facts.',
+    'Do not reword OFFER_REFERENCE or BOILERPLATE sentences. They are intentionally absent from this input.',
+    'Return only proposals with sentenceId, text and sourceFactIds. Do not approve, save or alter the document.',
+  ].join('\n'),
 };
 
 function validatedSnapshot(input: unknown): AiSourceSnapshot {
@@ -107,6 +115,11 @@ export function hashAiInputContent(input: unknown): string {
   return createHash('sha256').update(canonicalJson(content), 'utf8').digest('hex');
 }
 
+/** Hashes canonical serialization of the exact role/content messages given to a provider. */
+export function hashAiPromptMessages(messages: AiPrompt['messages']): string {
+  return createHash('sha256').update(canonicalJson(messages), 'utf8').digest('hex');
+}
+
 function sourceData(snapshot: AiSourceSnapshot): Record<string, unknown> {
   const facts = snapshot.facts.map(({ factId, kind, text }) => ({ factId, kind, text }));
   const job = snapshot.job ? { text: snapshot.job.normalizedText } : null;
@@ -118,6 +131,7 @@ function sourceData(snapshot: AiSourceSnapshot): Record<string, unknown> {
       questionId: snapshot.question!.questionId, text: snapshot.question!.text, answerPolicy: snapshot.question!.answerPolicy,
     }, facts, ...(job ? { job } : {}) };
     case 'RESUME_IMPORT': return { resumeText: snapshot.resume!.text };
+    case 'DOCUMENT_REWORD': return { document: { offer: snapshot.documentReword!.offer, sentences: snapshot.documentReword!.sentences } };
   }
 }
 
@@ -173,7 +187,8 @@ export function buildAiPrompt(input: unknown, expected: AiPromptScope): AiPrompt
     || (snapshot.operation !== 'ANSWER_DRAFT' && snapshot.question)
     || (snapshot.operation === 'RESUME_IMPORT' && (snapshot.job || snapshot.facts.length || snapshot.profileRevision !== null || snapshot.identityFingerprint !== null))) throw new AiPromptError('AI_INVALID_SNAPSHOT');
   if ((snapshot.operation === 'RESUME_DRAFT' && !snapshot.facts.length)
-    || (snapshot.operation === 'JOB_ANALYSIS' && snapshot.job!.normalizedText.length < 4)) throw new AiPromptError('AI_INSUFFICIENT_SOURCE');
+    || (snapshot.operation === 'JOB_ANALYSIS' && snapshot.job!.normalizedText.length < 4)
+    || (snapshot.operation === 'DOCUMENT_REWORD' && !snapshot.documentReword?.sentences.length)) throw new AiPromptError('AI_INSUFFICIENT_SOURCE');
 
   // Escape source delimiters inside JSON strings. JSON.parse recovers the exact source; a source cannot close the block.
   const data = canonicalJson(sourceData(snapshot)).replace(/&/gu, '\\u0026').replace(/</gu, '\\u003c').replace(/>/gu, '\\u003e');
