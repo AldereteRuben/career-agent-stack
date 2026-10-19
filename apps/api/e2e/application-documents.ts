@@ -120,7 +120,6 @@ export const applicationDocumentsScenario: Scenario = {
     history = await api.get<Saved>(`/applications/${application.id}/resume?language=es`);
     assert.equal(history.revisions.length, 2);
     const unsupportedRevision = history.revisions[0]!;
-    assert.ok(unsupportedRevision.confirmedUnsupportedIds.length > 0);
     assert.ok(unsupportedRevision.claims.some((claim) => claim.origin === 'USER_UNSUPPORTED' && new RegExp(unsupportedSkill, 'iu').test(claim.text)));
     const approveUnsupported = panel.getByRole('button', { name: 'Aprobar esta versión', exact: true });
     assert.equal(await approveUnsupported.isDisabled(), true, 'A version containing an unsupported claim needs a separate approval confirmation');
@@ -129,7 +128,7 @@ export const applicationDocumentsScenario: Scenario = {
     await page.keyboard.press(' ');
     await assertKeyboardFocus(page, approveUnsupported);
     await page.keyboard.press('Enter');
-    await eventually(() => api.get<Saved>(`/applications/${application.id}/resume?language=es`), (value) => Boolean(value.revisions[0]?.approvedAt), 'The explicitly confirmed unsupported revision is approved');
+    await eventually(() => api.get<Saved>(`/applications/${application.id}/resume?language=es`), (value) => Boolean(value.revisions[0]?.approvedAt && value.revisions[0]?.confirmedUnsupportedIds.length), 'The explicitly confirmed unsupported revision is approved with its confirmation recorded');
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
