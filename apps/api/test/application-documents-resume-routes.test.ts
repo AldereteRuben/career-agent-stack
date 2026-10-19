@@ -51,11 +51,13 @@ test('application resume routes build both drafts, save isolated revisions, rest
     await client.query("INSERT INTO profile_facts(id,workspace_id,profile_version_id,kind,statement,tags,approval_status) VALUES($1,$2,$3,'skill_evidence','I use Python for test automation.','[\"python\"]','USER_APPROVED'),($4,$2,$3,'skill_evidence','I have Kubernetes experience.','[\"kubernetes\"]','SUGGESTED'),($5,$6,$7,'skill_evidence','I use Go in another workspace.','[\"go\"]','USER_APPROVED')", [factId, workspaceId, profileVersionId, suggestedFactId, foreignFactId, foreignWorkspaceId, foreignProfileVersionId]);
     const workspace = (request: { headers: Record<string, unknown> }) => request.headers['x-fixture-workspace'] === foreignWorkspaceId ? foreignWorkspaceId : workspaceId;
     let failRender = false;
+    let renderCount = 0;
     let renderPause: { entered: () => void; wait: Promise<void> } | undefined;
     registerApplicationResumeRoutes(app, workspace, {
       database,
       storageRoot: filesRoot,
       render: async ({ path, fullName, email, role, sentences }) => {
+        renderCount += 1;
         if (failRender) throw new Error('synthetic renderer failure');
         if (renderPause) {
           const pause = renderPause;
@@ -167,6 +169,68 @@ test('application resume routes build both drafts, save isolated revisions, rest
     const history = await app.inject({ url: `/api/v1/applications/${applicationId}/resume?language=en`, headers });
     assert.equal(history.statusCode, 200, history.body);
     assert.equal(history.json().revisions.length, 5);
+    assert.equal(history.json().revisions[0].currentness.status, 'CURRENT');
+    const pending = history.json().revisions[0];
+    const pendingRow = (await client.query('SELECT * FROM application_document_revisions WHERE workspace_id=$1 AND id=$2', [workspaceId, pending.id])).rows[0]!;
+    const pendingPdfPath = join(filesRoot, String(pendingRow.pdf_storage_path));
+    const previewPdf = await readFile(pendingPdfPath);
+    const callsBeforeApprove = renderCount;
+    await writeFile(pendingPdfPath, Buffer.from('%PDF-1.7\ntampered\n'));
+    const approvalUrl = `/api/v1/applications/${applicationId}/resume/revisions/${pending.id}/approve`;
+    const approvalBody = {
+      language: 'en', expectedContentHash: pending.contentHash, expectedFactsHash: pending.factsHash,
+      expectedOfferHash: pending.offerHash, expectedTextSha256: pending.textSha256, expectedPdfSha256: pending.pdfSha256,
+      confirmedUnsupportedIds: [],
+    };
+    const tampered = await app.inject({ method: 'POST', url: approvalUrl, headers, payload: approvalBody });
+    assert.equal(tampered.statusCode, 409);
+    assert.equal(tampered.json().error, 'APPROVAL_STALE');
+    await writeFile(pendingPdfPath, previewPdf);
+    const staleHashes = await app.inject({ method: 'POST', url: approvalUrl, headers, payload: { ...approvalBody, expectedPdfSha256: '0'.repeat(64) } });
+    assert.equal(staleHashes.statusCode, 409);
+    assert.equal(staleHashes.json().error, 'APPROVAL_STALE');
+    const approvals = await Promise.all([1, 2].map(() => app.inject({ method: 'POST', url: approvalUrl, headers, payload: approvalBody })));
+    assert.deepEqual(approvals.map((response) => response.statusCode).sort(), [200, 409], 'concurrent approval has exactly one winner');
+    assert.equal((await client.query('SELECT approved_at IS NOT NULL AS approved FROM application_document_revisions WHERE workspace_id=$1 AND id=$2', [workspaceId, pending.id])).rows[0]!.approved, true);
+    assert.equal(renderCount, callsBeforeApprove, 'approval validates the stored preview without re-rendering');
+    assert.deepEqual(await readFile(pendingPdfPath), previewPdf, 'approval leaves the preview bytes unchanged');
+
+    const approvedClaims = pending.claims as Array<{ sentenceId: string; text: string; sourceFactIds: string[] }>;
+    const approvedFactSentence = approvedClaims.find((sentence) => sentence.sourceFactIds.includes(factId));
+    assert.ok(approvedFactSentence);
+    const unsupportedEdit = await app.inject({ method: 'POST', url, headers, payload: {
+      language: 'en', parentRevisionId: pending.id,
+      confirmUnsupportedIds: [approvedFactSentence.sentenceId],
+      sentences: approvedClaims.map((sentence) => ({ sentenceId: sentence.sentenceId, text: sentence.sentenceId === approvedFactSentence.sentenceId ? 'I shipped Kubernetes for 12 years.' : sentence.text, sourceFactIds: sentence.sourceFactIds })),
+    } });
+    assert.equal(unsupportedEdit.statusCode, 201, unsupportedEdit.body);
+    assert.equal(unsupportedEdit.json().revision.approvedAt, null, 'editing an approved revision creates a pending revision');
+    const unsupportedRevision = unsupportedEdit.json().revision;
+    const unsupportedUrl = `/api/v1/applications/${applicationId}/resume/revisions/${unsupportedRevision.id}/approve`;
+    const unsupportedBody = { ...approvalBody, expectedContentHash: unsupportedRevision.contentHash, expectedFactsHash: unsupportedRevision.factsHash, expectedOfferHash: unsupportedRevision.offerHash, expectedTextSha256: unsupportedRevision.textSha256, expectedPdfSha256: unsupportedRevision.pdfSha256 };
+    const unconfirmed = await app.inject({ method: 'POST', url: unsupportedUrl, headers, payload: { ...unsupportedBody, confirmedUnsupportedIds: [] } });
+    assert.equal(unconfirmed.statusCode, 409);
+    assert.equal(unconfirmed.json().error, 'UNSUPPORTED_NOT_CONFIRMED');
+    await client.query('UPDATE profile_facts SET statement=$1 WHERE id=$2 AND workspace_id=$3', ['I use Python in an updated workflow.', factId, workspaceId]);
+    const changedFact = await app.inject({ method: 'POST', url: unsupportedUrl, headers, payload: { ...unsupportedBody, confirmedUnsupportedIds: [approvedFactSentence.sentenceId] } });
+    assert.equal(changedFact.statusCode, 409);
+    assert.equal(changedFact.json().error, 'APPROVAL_STALE', 'a fact changed after preview cannot be approved');
+    await client.query('UPDATE profile_facts SET statement=$1 WHERE id=$2 AND workspace_id=$3', ['I use Python for test automation.', factId, workspaceId]);
+    await client.query("UPDATE job_snapshots SET title='Another role' WHERE workspace_id=$1 AND job_id=$2", [workspaceId, jobId]);
+    const changedOffer = await app.inject({ method: 'POST', url: unsupportedUrl, headers, payload: { ...unsupportedBody, confirmedUnsupportedIds: [approvedFactSentence.sentenceId] } });
+    assert.equal(changedOffer.statusCode, 409);
+    assert.equal(changedOffer.json().error, 'APPROVAL_STALE', 'an offer changed after preview cannot be approved');
+    await client.query("UPDATE job_snapshots SET title='QA Engineer' WHERE workspace_id=$1 AND job_id=$2", [workspaceId, jobId]);
+    const confirmed = await Promise.all([1, 2].map(() => app.inject({ method: 'POST', url: unsupportedUrl, headers, payload: { ...unsupportedBody, confirmedUnsupportedIds: [approvedFactSentence.sentenceId] } })));
+    assert.deepEqual(confirmed.map((response) => response.statusCode).sort(), [200, 409], 'concurrent confirmed approvals have exactly one winner');
+    assert.deepEqual(confirmed.find((response) => response.statusCode === 200)!.json().revision.confirmedUnsupportedIds, [approvedFactSentence.sentenceId]);
+
+    await client.query('UPDATE profile_facts SET statement=$1 WHERE id=$2 AND workspace_id=$3', ['I use Python in a changed automation workflow.', factId, workspaceId]);
+    const staleHistory = await app.inject({ url: `/api/v1/applications/${applicationId}/resume?language=en`, headers });
+    assert.equal(staleHistory.statusCode, 200, staleHistory.body);
+    assert.equal(staleHistory.json().revisions[0].currentness.status, 'NEEDS_REVIEW');
+    assert.ok(staleHistory.json().revisions[0].currentness.reasons.includes('FACTS_CHANGED'));
+
     const largeApplicationId = randomUUID();
     await client.query("INSERT INTO applications(id,workspace_id,job_id,company,role,location,application_cycle) VALUES($1,$2,$3,'Synthetic Co','QA Engineer','Remote',2)", [largeApplicationId, workspaceId, jobId]);
     await client.query('UPDATE profile_facts SET statement=$1 WHERE id=$2 AND workspace_id=$3', [`I use Python. ${'Evidence '.repeat(5_000)}`, factId, workspaceId]);

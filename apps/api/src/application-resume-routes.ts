@@ -2,10 +2,12 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, realpath, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { applications, applicationDocuments, applicationDocumentRevisions, db, jobSnapshots, profileFacts, profileVersions } from '@career/db';
 import {
+  applicationDocumentCurrentness,
   applicationDocumentHashes,
+  approveApplicationDocumentRevision,
   buildApplicationCoverLetter,
   buildApplicationResumeDraft,
   createApplicationDocumentRevision,
@@ -236,17 +238,93 @@ export function registerApplicationResumeRoutes(
     const revisions = await database.select().from(applicationDocumentRevisions).where(and(eq(applicationDocumentRevisions.workspaceId, workspaceId), eq(applicationDocumentRevisions.documentId, document.id))).orderBy(desc(applicationDocumentRevisions.revision));
     if (!options.storageRoot) return reply.code(503).send({ error: 'DOCUMENT_STORAGE_UNAVAILABLE' });
     try {
+      const profile = (await database.select().from(profileVersions).where(eq(profileVersions.workspaceId, workspaceId)).orderBy(desc(profileVersions.revision)).limit(1))[0];
+      const facts = profile ? await database.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, workspaceId), eq(profileFacts.profileVersionId, profile.id))) : [];
+      const snapshot = application.jobId ? (await database.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, workspaceId), eq(jobSnapshots.jobId, application.jobId))).orderBy(desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)).limit(1))[0] : undefined;
+      const offer = latestApplicationDocumentOffer({ workspaceId, company: application.company, role: application.role, location: application.location, snapshots: snapshot ? [{ id: snapshot.id, title: snapshot.title, descriptionText: snapshot.descriptionText, fetchedAt: snapshot.fetchedAt.toISOString() }] : [] });
+      const factSnapshots = facts.map((fact) => ({ id: fact.id, workspaceId, approval: fact.approvalStatus, text: fact.statement, tags: fact.tags }));
       const rows = await Promise.all(revisions.map(async (revision) => ({
         id: revision.id, revision: revision.revision, parentRevision: revision.parentRevision, language: document.language,
         claims: revision.claims, contentHash: revision.contentHash, factsHash: revision.factsHash, offerHash: revision.offerHash,
         textSha256: revision.textSha256, pdfSha256: revision.pdfSha256, approvedAt: revision.approvedAt,
         confirmedUnsupportedIds: revision.confirmedUnsupportedIds,
+        currentness: await applicationDocumentCurrentness({ revision: rowToRevision(revision, document.language as ApplicationDocumentLanguage), facts: factSnapshots, offer }),
         text: (await readVerifiedApplicationFile(options.storageRoot!, revision.textStoragePath, revision.textSha256, 'TEXT')).toString('utf8'),
       })));
       return reply.send({ applicationId: application.id, documentId: document.id, language: document.language, revisions: rows });
     } catch (error) {
       return reply.code(409).send({ error: error instanceof Error ? error.message : 'APPLICATION_DOCUMENT_FILE_UNAVAILABLE' });
     }
+  });
+
+  app.post('/api/v1/applications/:id/resume/revisions/:revisionId/approve', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const params = z.object({ id: z.uuid(), revisionId: z.uuid() }).strict().safeParse(request.params);
+    const body = z.object({
+      language: languageSchema,
+      expectedContentHash: z.string().regex(/^[a-f0-9]{64}$/u),
+      expectedFactsHash: z.string().regex(/^[a-f0-9]{64}$/u),
+      expectedOfferHash: z.string().regex(/^[a-f0-9]{64}$/u),
+      expectedTextSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      expectedPdfSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      confirmedUnsupportedIds: z.array(z.string().min(1).max(80)).max(50),
+    }).strict().safeParse(request.body);
+    if (!params.success || !body.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    if (!options.storageRoot) return reply.code(503).send({ error: 'DOCUMENT_STORAGE_UNAVAILABLE' });
+    const workspaceId = workspace(request);
+    const result = await database.transaction(async (tx) => {
+      await lockJobIdentity(tx, workspaceId);
+      await lockKey(tx, profileLockKey(workspaceId));
+      await lockKey(tx, `application-document:${workspaceId}:${params.data.id}:RESUME:${body.data.language}`);
+      const application = (await tx.select().from(applications).where(and(eq(applications.workspaceId, workspaceId), eq(applications.id, params.data.id))).limit(1).for('update'))[0];
+      if (!application) return { status: 404 as const, error: 'APPLICATION_NOT_FOUND' };
+      const document = (await tx.select().from(applicationDocuments).where(and(
+        eq(applicationDocuments.workspaceId, workspaceId), eq(applicationDocuments.applicationId, application.id),
+        eq(applicationDocuments.kind, 'RESUME'), eq(applicationDocuments.language, body.data.language),
+      )).limit(1).for('update'))[0];
+      if (!document) return { status: 404 as const, error: 'APPLICATION_DOCUMENT_NOT_FOUND' };
+      const revision = (await tx.select().from(applicationDocumentRevisions).where(and(
+        eq(applicationDocumentRevisions.workspaceId, workspaceId), eq(applicationDocumentRevisions.documentId, document.id),
+        eq(applicationDocumentRevisions.id, params.data.revisionId),
+      )).limit(1).for('update'))[0];
+      if (!revision) return { status: 404 as const, error: 'APPLICATION_DOCUMENT_REVISION_NOT_FOUND' };
+      const newest = (await tx.select().from(applicationDocumentRevisions).where(and(eq(applicationDocumentRevisions.workspaceId, workspaceId), eq(applicationDocumentRevisions.documentId, document.id))).orderBy(desc(applicationDocumentRevisions.revision)).limit(1))[0];
+      if (!application.jobId) return { status: 409 as const, error: 'APPLICATION_HAS_NO_OFFER' };
+      const snapshot = (await tx.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, workspaceId), eq(jobSnapshots.jobId, application.jobId))).orderBy(desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)).limit(1))[0];
+      if (!snapshot) return { status: 409 as const, error: 'APPLICATION_HAS_NO_OFFER' };
+      const profile = (await tx.select().from(profileVersions).where(eq(profileVersions.workspaceId, workspaceId)).orderBy(desc(profileVersions.revision)).limit(1))[0];
+      const facts = profile ? await tx.select().from(profileFacts).where(and(eq(profileFacts.workspaceId, workspaceId), eq(profileFacts.profileVersionId, profile.id))) : [];
+      const offer = latestApplicationDocumentOffer({ workspaceId, company: application.company, role: application.role, location: application.location, snapshots: [{ id: snapshot.id, title: snapshot.title, descriptionText: snapshot.descriptionText, fetchedAt: snapshot.fetchedAt.toISOString() }] });
+      try {
+        await Promise.all([
+          readVerifiedApplicationFile(options.storageRoot!, revision.textStoragePath, revision.textSha256, 'TEXT'),
+          readVerifiedApplicationFile(options.storageRoot!, revision.pdfStoragePath, revision.pdfSha256, 'PDF'),
+        ]);
+      } catch {
+        return { status: 409 as const, error: 'APPROVAL_STALE', detail: { code: 'APPROVAL_STALE', reason: 'PREVIEW_DIGEST_MISMATCH' } };
+      }
+      const approved = await approveApplicationDocumentRevision({
+        revision: rowToRevision(revision, document.language as ApplicationDocumentLanguage), newestRevisionId: newest?.id ?? '',
+        facts: facts.map((fact) => ({ id: fact.id, workspaceId, approval: fact.approvalStatus, text: fact.statement, tags: fact.tags })), offer,
+        expectedContentHash: body.data.expectedContentHash, expectedFactsHash: body.data.expectedFactsHash,
+        expectedOfferHash: body.data.expectedOfferHash, expectedTextSha256: body.data.expectedTextSha256,
+        expectedPdfSha256: body.data.expectedPdfSha256, storedTextSha256: revision.textSha256, storedPdfSha256: revision.pdfSha256,
+        confirmedUnsupportedIds: body.data.confirmedUnsupportedIds, approvedAt: new Date().toISOString(), approvedBy: 'USER',
+      });
+      if (!approved.ok) {
+        const stale = approved.code === 'NOT_NEWEST' || approved.code === 'FACT_NOT_APPROVED';
+        const resultCode = stale ? 'APPROVAL_STALE' : approved.code;
+        return { status: 409 as const, error: resultCode, detail: stale ? { ...approved, code: resultCode } : approved };
+      }
+      const updated = await tx.update(applicationDocumentRevisions).set({
+        approvedAt: new Date(approved.revision.approvedAt!), approvedBy: approved.revision.approvedBy,
+        confirmedUnsupportedIds: approved.revision.confirmedUnsupportedIds,
+      }).where(and(eq(applicationDocumentRevisions.workspaceId, workspaceId), eq(applicationDocumentRevisions.id, revision.id), isNull(applicationDocumentRevisions.approvedAt))).returning();
+      if (!updated.length) return { status: 409 as const, error: 'APPLICATION_DOCUMENT_REVISION_CHANGED' };
+      return { status: 200 as const, revision: approved.revision };
+    });
+    if (result.status !== 200) return reply.code(result.status).send(result);
+    return reply.send(result);
   });
 }
 
