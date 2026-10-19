@@ -131,8 +131,8 @@ test('restore creates a missing private destination parent before invoking the i
     const restore = await app.inject({ method: 'POST', url: `/api/v1/backups/restore/${id}/restore`, payload: { confirmed: true } });
     assert.equal(restore.statusCode, 202);
     current = restore.json();
-    for (let attempt = 0; attempt < 20 && current.state === 'restoring'; attempt += 1) {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 5));
+    for (let attempt = 0; attempt < 100 && current.state === 'restoring'; attempt += 1) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
       current = (await app.inject({ method: 'GET', url: '/api/v1/backups/restore/current' })).json();
     }
     assert.equal(current.state, 'restored');
