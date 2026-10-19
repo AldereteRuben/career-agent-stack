@@ -90,6 +90,8 @@ try {
     const application = { id: ids.application, documentId: ids.document, documentApprovalStatus: state.documentApproval, jobId: ids.job, company: job.company, role: job.title, location: job.location, canonicalUrl: job.canonicalUrl, state: 'REVIEW_REQUIRED', recruitmentStage: 'NOT_CONTACTED', shortlistDecision: 'UNREVIEWED', notes: '', updatedAt: now, version: 1 };
     if (path === '/applications') return response(route, { items: [application], total: 1, offset: 0, limit: 25 });
     if (path === `/applications/${ids.application}`) return response(route, application);
+    if (path === `/applications/${ids.application}/resume/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
+    if (path === `/applications/${ids.application}/resume`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
     if (path === `/applications/${ids.application}/cover-letter/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
     if (path === `/applications/${ids.application}/cover-letter`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
     if (path === `/applications/${ids.application}/follow-up-draft`) return response(route, { draft: null });
