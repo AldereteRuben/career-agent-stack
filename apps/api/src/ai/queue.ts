@@ -54,7 +54,7 @@ const uuid = z.string().uuid(); const hash = z.string().regex(/^[a-f0-9]{64}$/u)
 const usageSchema = z.object({ availability: z.enum(['KNOWN', 'STALE', 'UNAVAILABLE']), model: z.string().min(1).max(160).nullable().optional(), inputTokens: z.number().int().nonnegative().nullable().optional(), outputTokens: z.number().int().nonnegative().nullable().optional(), costUsd: z.string().regex(/^\d+(?:\.\d+)?$/u).nullable().optional() }).strict();
 const enqueueSchema = z.object({
   workspaceId: uuid, connectionId: uuid, consentId: uuid, connectionRevision: z.number().int().positive(), consentRevision: z.number().int().positive(),
-  provider: aiProviderSchema, model: z.string().min(1).max(160).optional(), accountFingerprint: hash, operation: z.enum(['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT']), origin: z.enum(['MANUAL', 'AUTOMATIC']),
+  provider: aiProviderSchema, model: z.string().min(1).max(160).optional(), accountFingerprint: hash, operation: z.enum(['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'RESUME_IMPORT']), origin: z.enum(['MANUAL', 'AUTOMATIC']),
   idempotencyKey: z.string().min(1).max(200), contentIdentity: hash, accountLockKey: hash, snapshot: aiSourceSnapshotSchema, snapshotHash: hash, inputVersions: z.record(z.string(), z.unknown()),
   searchId: uuid.optional(), automationPolicyId: uuid.optional(), automationPolicyRevision: z.number().int().positive().optional(), reservationPassId: uuid.optional(), now: z.date().optional(), retryOf: uuid.optional(),
 }).strict();

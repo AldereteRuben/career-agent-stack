@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { applyProfileProposals, detectIdentity, hasResumeDates, parseResume, profileProposals, resumeProposalFact, splitResumeSections, suggestTargetTitles, type IdentityProposal, type StructuredEntry } from '@career/domain';
+import { applyProfileProposals, detectIdentity, hasResumeDates, parseResume, profileProposals, redactResumeContactDetails, resumeProposalFact, splitResumeSections, suggestTargetTitles, type IdentityProposal, type ResumeProposal, type StructuredEntry } from '@career/domain';
 import { ProfileEntryForm, type EntryInput, type ProfileEntry } from '@/components/profile-entry-form';
 import { Button, Card, Empty, Notice, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
@@ -11,6 +11,8 @@ import { useLocale } from '@/lib/i18n';
 import { copy, countryName, labelFor } from '@/lib/labels';
 import { extractionError, initialSelection, issueLabel, pendingImports, previewItems, reconcileReviewSelection, reviewRows, reviewSelection, type ImportedFact, type PreviewItem } from '@/lib/resume-import';
 import { extractResumePdfText, ResumePdfExtractionError, resumePdfLimits } from '@/lib/resume-pdf-text';
+import { AiDraftAction } from '@/components/ai/draft-action';
+import type { AiArtifact } from '@/components/ai/result-view';
 import styles from './resume-import.module.css';
 
 type Fact = ImportedFact & ProfileEntry;
@@ -31,6 +33,9 @@ export function ResumeImport() {
   const [data, setData] = useState<Profile | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [busy, setBusy] = useState<string | null>(null); const [message, setMessage] = useState(''); const [error, setError] = useState('');
   const [pasted, setPasted] = useState(''); const [reading, setReading] = useState(false); const reader = useRef<AbortController | null>(null);
+  const [pendingText, setPendingText] = useState<{ text: string; pagesTruncated: boolean } | null>(null);
+  const [aiText, setAiText] = useState<string | null>(null);
+  const [aiContext, setAiContext] = useState<Omit<Preview, 'importId' | 'revision' | 'profile' | 'items'> | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -48,11 +53,11 @@ export function ResumeImport() {
   useEffect(() => { void load(); }, [load]);
   // Proposals live only in this page's memory; leaving the page discards them, so warn before that happens.
   useEffect(() => {
-    if (!preview) return;
+    if (!preview && !pendingText && aiText === null) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [preview]);
+  }, [preview, pendingText, aiText]);
   useEffect(() => () => reader.current?.abort(), []);
   const stage = preview ? 'preview' : importId ? 'review' : 'choose';
   useEffect(() => { heading.current?.focus(); }, [stage]);
@@ -92,15 +97,37 @@ export function ResumeImport() {
     setSelected(initialSelection(items)); setIdentityChoice(new Set()); setTitleChoice(new Set());
     setPasted(''); if (fileInput.current) fileInput.current.value = '';
   };
+  const useAiPreview = (text: string, pagesTruncated: boolean) => {
+    if (!data) return;
+    const parsed = parseResume(text);
+    const jobs: StructuredEntry[] = parsed.proposals.filter((proposal) => proposal.kind === 'experience' && hasResumeDates(proposal))
+      .map((proposal) => ({ type: 'employment', title: proposal.title, organization: proposal.organization, startMonth: proposal.startMonth, ...(proposal.current ? {} : { endMonth: proposal.endMonth }), current: proposal.current, description: proposal.description, locale: proposal.locale }));
+    const preferences = (data.profile.preferences ?? {}) as { targetTitles?: string[] };
+    const proposals = profileProposals(data.profile, detectIdentity(splitResumeSections(text).header.join('\\n')), suggestTargetTitles(jobs, preferences.targetTitles ?? []));
+    setAiContext({ skipped: parsed.skipped, truncated: parsed.truncated, pagesTruncated, sectionsFound: parsed.sectionsFound, identity: proposals.identity, titles: proposals.targetTitles });
+    setPendingText(null); setPasted(''); if (fileInput.current) fileInput.current.value = '';
+    setAiText(redactResumeContactDetails(text).trim());
+  };
+  const reviewAiImport = (artifact: AiArtifact) => {
+    if (!data || artifact.output.operation !== 'RESUME_IMPORT' || !aiContext) return;
+    const items: ResumeProposal[] = artifact.output.proposals.map((proposal) => ({
+      key: proposal.key, kind: proposal.kind, locale, title: '', organization: '', startMonth: '', endMonth: '', current: false,
+      dateText: '', description: proposal.statement, tags: [], excerpt: proposal.sourceQuote,
+      issues: proposal.kind === 'experience' || proposal.kind === 'education' ? ['MISSING_DATES'] : [],
+    }));
+    const nextItems = previewItems(items, data.facts);
+    setPreview({ importId: crypto.randomUUID(), revision: data.revision, profile: data.profile, items: nextItems, ...aiContext });
+    setSelected(initialSelection(nextItems)); setIdentityChoice(new Set()); setTitleChoice(new Set()); setAiText(null); setAiContext(null);
+  };
   const readFile = async (file: File) => {
     setError(''); setMessage(''); setReading(true);
     const controller = new AbortController(); reader.current = controller;
-    try { const result = await extractResumePdfText(file, undefined, undefined, controller.signal); startPreview(result.text, result.truncated); }
+    try { const result = await extractResumePdfText(file, undefined, undefined, controller.signal); setPendingText({ text: result.text, pagesTruncated: result.truncated }); }
     catch (cause) { setError(extractionError(cause instanceof ResumePdfExtractionError ? cause.code : 'unknown', locale)); if (fileInput.current) fileInput.current.value = ''; }
     finally { setReading(false); reader.current = null; }
   };
-  const readPasted = (event: FormEvent) => { event.preventDefault(); if (pasted.trim()) startPreview(pasted, false); };
-  const discardPreview = () => { if (window.confirm(c('¿Descartar estas propuestas? No se ha guardado nada.', 'Discard these proposals? Nothing has been saved.'))) { setPreview(null); setMessage(c('Propuestas descartadas. No se guardó nada.', 'Proposals discarded. Nothing was saved.')); } };
+  const readPasted = (event: FormEvent) => { event.preventDefault(); if (pasted.trim()) setPendingText({ text: pasted, pagesTruncated: false }); };
+  const discardPreview = () => { if (window.confirm(c('¿Descartar estas propuestas? No se ha guardado nada.', 'Discard these proposals? Nothing has been saved.'))) { setPreview(null); setAiText(null); setAiContext(null); setPendingText(null); setMessage(c('Propuestas descartadas. No se guardó nada.', 'Proposals discarded. Nothing was saved.')); } };
 
   const savePreview = async () => {
     if (!preview || !data) return;
@@ -158,7 +185,7 @@ export function ResumeImport() {
 
     {stage === 'choose' && <Card className="form-card">
       <h2 ref={heading} tabIndex={-1}>{c('Elige tu CV', 'Choose your resume')}</h2>
-      <p>{c('Leemos el PDF en este navegador y te proponemos entradas para tu perfil. El archivo y su texto no se envían ni se guardan: solo se guardan las entradas que elijas, como pendientes de confirmar.', 'We read the PDF in this browser and propose entries for your profile. The file and its text are never sent or stored: only the entries you choose are saved, waiting for your confirmation.')}</p>
+      <p>{c('Leemos el PDF en este navegador. Puedes continuar con el análisis local, sin compartir el texto, o elegir Codex como ayuda opcional tras revisar el texto con los datos de contacto ocultos. Solo las entradas que elijas se guardan en tu perfil como pendientes de confirmar.', 'We read the PDF in this browser. You can continue with local analysis without sharing the text, or choose optional Codex help after reviewing the text with contact details redacted. Only entries you choose are saved to your profile as suggestions waiting for confirmation.')}</p>
       <div className={styles.fileField}>
         <label htmlFor="resume-file">{c('CV en PDF', 'Resume PDF')}</label>
         <input id="resume-file" ref={fileInput} type="file" accept="application/pdf,.pdf" disabled={locked || reading} aria-describedby="resume-file-hint" onChange={(event) => { const file = event.target.files?.[0]; if (file) void readFile(file); }}/>
@@ -171,6 +198,14 @@ export function ResumeImport() {
           <div className="form-submit"><Button type="submit" disabled={locked || reading || !pasted.trim()}>{c('Proponer entradas', 'Propose entries')}</Button></div>
         </form>
       </details>
+      {pendingText && <section className={styles.group} aria-labelledby="resume-import-mode">
+        <h3 id="resume-import-mode">{c('¿Cómo quieres preparar las propuestas?', 'How would you like to prepare suggestions?')}</h3>
+        <p>{c('La opción local no comparte el texto. Codex puede ayudar a organizar entradas difíciles; antes podrás ver el texto con los datos de contacto ocultos y autorizar un único envío.', 'The local option does not share the text. Codex can help organize difficult entries; first you can review the text with contact details hidden and allow one request.')}</p>
+        <div className="form-submit"><Button type="button" disabled={locked} onClick={() => { const source = pendingText; if (source) { setPendingText(null); startPreview(source.text, source.pagesTruncated); } }}>{c('Continuar sin IA', 'Continue without AI')}</Button>
+          <Button type="button" variant="secondary" disabled={locked} onClick={() => useAiPreview(pendingText.text, pendingText.pagesTruncated)}>{c('Preparar con Codex', 'Prepare with Codex')}</Button>
+          <Button type="button" variant="quiet" disabled={locked} onClick={() => { setPendingText(null); setPasted(''); if (fileInput.current) fileInput.current.value = ''; }}>{c('Descartar texto', 'Discard text')}</Button></div>
+      </section>}
+      {aiText !== null && <AiDraftAction request={{ operation: 'RESUME_IMPORT', locale, resumeText: aiText }} label={c('Preparar propuestas del CV con Codex', 'Prepare resume suggestions with Codex')} onReview={reviewAiImport} initiallyOpen/>}
       {pending.length > 0 && <section aria-labelledby="pending-imports-heading" className={styles.pending}><h3 id="pending-imports-heading">{c('Importaciones por revisar', 'Imports to review')}</h3><ul>{pending.map((item, index) => <li key={item.importId}><Link href={`/profile/import?importId=${item.importId}`}>{c(`Importación ${index + 1}: ${item.pending} por confirmar`, `Import ${index + 1}: ${item.pending} to confirm`)}</Link></li>)}</ul></section>}
     </Card>}
 

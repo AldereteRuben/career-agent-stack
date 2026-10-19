@@ -9,7 +9,7 @@ import { AI_LIMITS } from './ai-budget.js';
 export const AI_SCHEMA_VERSION = 1 as const;
 
 export const aiProviders = ['codex', 'claude-code', 'ollama'] as const;
-export const aiOperations = ['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT'] as const;
+export const aiOperations = ['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'RESUME_IMPORT'] as const;
 /** Same lowercase tags as DocumentLanguage. */
 export const aiLocales = ['es', 'en'] as const;
 export const aiConnectionStates = ['NOT_INSTALLED', 'LOGIN_REQUIRED', 'CONNECTING', 'CONNECTED', 'UNSUPPORTED_VERSION', 'UNAVAILABLE'] as const;
@@ -18,7 +18,7 @@ export const aiArtifactStates = ['PENDING_REVIEW', 'ACCEPTED', 'DISMISSED', 'STA
 export const aiUsageAvailability = ['KNOWN', 'STALE', 'UNAVAILABLE'] as const;
 export const aiRunOrigins = ['MANUAL', 'AUTOMATIC'] as const;
 /** What the provider may receive. Contact details are never a category: they are added locally. */
-export const aiDataCategories = ['SEARCH_REQUEST', 'JOB_POSTING', 'APPROVED_FACTS', 'APPLICATION_QUESTION'] as const;
+export const aiDataCategories = ['SEARCH_REQUEST', 'JOB_POSTING', 'APPROVED_FACTS', 'APPLICATION_QUESTION', 'RESUME_TEXT'] as const;
 export const aiErrorCodes = [
   'NOT_CONNECTED', 'CONSENT_MISSING', 'CONSENT_REVOKED', 'ACCOUNT_CHANGED', 'BUDGET_EXHAUSTED', 'PROVIDER_LIMIT_REACHED',
   'INPUT_TOO_LARGE', 'SOURCE_CHANGED', 'TIMEOUT', 'CANCELLED', 'PROVIDER_ERROR', 'INVALID_OUTPUT', 'UNSUPPORTED_VERSION', 'INTERNAL',
@@ -41,6 +41,7 @@ export const aiOperationDataCategories: Record<AiOperation, readonly AiDataCateg
   JOB_ANALYSIS: ['JOB_POSTING'],
   RESUME_DRAFT: ['JOB_POSTING', 'APPROVED_FACTS'],
   ANSWER_DRAFT: ['APPLICATION_QUESTION', 'APPROVED_FACTS'],
+  RESUME_IMPORT: ['RESUME_TEXT'],
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -150,6 +151,8 @@ export const aiSourceSnapshotSchema = z.object({
     /** Classified by application rules. Unknown or personal questions use USER_ONLY, never model classification. */
     answerPolicy: z.enum(['EXPERIENCE_DRAFT', 'USER_ONLY']),
   }).strict().nullable(),
+  /** Contact-redacted resume text sent only for the separately consented import operation. */
+  resume: z.object({ text: text(50_000), contentHash: aiHashSchema }).strict().optional(),
   facts: z.array(aiSnapshotFactSchema).max(500),
   profileRevision: z.number().int().positive().nullable(),
   /** Fingerprint of the printed identity (name/email) the profile had; never the identity itself. */
@@ -169,6 +172,11 @@ export const aiSourceSnapshotSchema = z.object({
   need('searchRequest', ['SEARCH_DRAFT']);
   need('job', ['JOB_ANALYSIS', 'RESUME_DRAFT']);
   need('question', ['ANSWER_DRAFT']);
+  if (snapshot.operation === 'RESUME_IMPORT' && !snapshot.resume) ctx.addIssue({ code: 'custom', path: ['resume'], message: 'RESUME_IMPORT requires resume text.' });
+  if (snapshot.operation !== 'RESUME_IMPORT' && snapshot.resume) ctx.addIssue({ code: 'custom', path: ['resume'], message: 'Resume text is allowed only for RESUME_IMPORT.' });
+  if (snapshot.operation === 'RESUME_IMPORT' && (snapshot.searchRequest || snapshot.job || snapshot.question || snapshot.facts.length || snapshot.profileRevision !== null || snapshot.identityFingerprint !== null)) {
+    ctx.addIssue({ code: 'custom', path: ['operation'], message: 'Resume import receives only the contact-redacted resume text.' });
+  }
   if (snapshot.operation === 'SEARCH_DRAFT' && (snapshot.facts.length || snapshot.job || snapshot.question)) {
     ctx.addIssue({ code: 'custom', path: ['operation'], message: 'A search draft receives only the written request.' });
   }
@@ -182,6 +190,7 @@ export function aiSnapshotDataCategories(snapshot: AiSourceSnapshot): AiDataCate
   if (snapshot.job) categories.push('JOB_POSTING');
   if (snapshot.facts.length) categories.push('APPROVED_FACTS');
   if (snapshot.question) categories.push('APPLICATION_QUESTION');
+  if (snapshot.resume) categories.push('RESUME_TEXT');
   return categories;
 }
 
@@ -237,6 +246,24 @@ export const resumeDraftOutputSchema = z.object({
 });
 export type ResumeDraftOutput = z.infer<typeof resumeDraftOutputSchema>;
 
+export const resumeImportOutputSchema = z.object({
+  ...header('RESUME_IMPORT'),
+  proposals: z.array(z.object({
+    key: aiIdSchema,
+    kind: z.enum(['experience', 'education', 'skill_evidence', 'project', 'achievement', 'certification', 'language']),
+    statement: text(4000),
+    sourceQuote: aiQuoteSchema.shape.quote,
+  }).strict()).min(1).max(100),
+  warnings: z.array(text(400)).max(10),
+}).strict().superRefine((output, ctx) => {
+  const keys = new Set<string>();
+  output.proposals.forEach((proposal, index) => {
+    if (keys.has(proposal.key)) ctx.addIssue({ code: 'custom', path: ['proposals', index, 'key'], message: 'Duplicate proposal.' });
+    keys.add(proposal.key);
+  });
+});
+export type ResumeImportOutput = z.infer<typeof resumeImportOutputSchema>;
+
 export const aiNeedsInputReasons = ['MISSING_FACT', 'PERSONAL_DECISION', 'LEGAL_OR_SENSITIVE', 'AMBIGUOUS_QUESTION'] as const;
 export const answerDraftOutputSchema = z.object({
   ...header('ANSWER_DRAFT'),
@@ -251,9 +278,9 @@ export const answerDraftOutputSchema = z.object({
 }).strict();
 export type AnswerDraftOutput = z.infer<typeof answerDraftOutputSchema>;
 
-export const aiOutputSchema = z.discriminatedUnion('operation', [searchDraftOutputSchema, jobAnalysisOutputSchema, resumeDraftOutputSchema, answerDraftOutputSchema]);
+export const aiOutputSchema = z.discriminatedUnion('operation', [searchDraftOutputSchema, jobAnalysisOutputSchema, resumeDraftOutputSchema, answerDraftOutputSchema, resumeImportOutputSchema]);
 export type AiOutput = z.infer<typeof aiOutputSchema>;
-export const aiOutputSchemas = { SEARCH_DRAFT: searchDraftOutputSchema, JOB_ANALYSIS: jobAnalysisOutputSchema, RESUME_DRAFT: resumeDraftOutputSchema, ANSWER_DRAFT: answerDraftOutputSchema } as const;
+export const aiOutputSchemas = { SEARCH_DRAFT: searchDraftOutputSchema, JOB_ANALYSIS: jobAnalysisOutputSchema, RESUME_DRAFT: resumeDraftOutputSchema, ANSWER_DRAFT: answerDraftOutputSchema, RESUME_IMPORT: resumeImportOutputSchema } as const;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Evidence validation
@@ -321,6 +348,10 @@ export function validateAiOutput(raw: unknown, snapshotInput: unknown, expected:
       break;
     case 'RESUME_DRAFT':
       output.proposals.forEach((proposal, index) => checkFacts(proposal.sourceFactIds, ['proposals', index, 'sourceFactIds']));
+      break;
+    case 'RESUME_IMPORT':
+      if (!snapshot.resume) return { ok: false, issues: [{ code: 'INVALID_SNAPSHOT', path: ['resume'] }] };
+      output.proposals.forEach((proposal, index) => checkQuote(proposal.sourceQuote, snapshot.resume?.text, ['proposals', index, 'sourceQuote']));
       break;
     case 'ANSWER_DRAFT':
       if (!snapshot.question || output.questionId !== snapshot.question.questionId) issues.push({ code: 'QUESTION_MISMATCH', path: ['questionId'] });

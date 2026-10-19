@@ -14,13 +14,15 @@ import { isOllamaCloudModel } from './ai/ollama.js';
 
 export const AI_CONFIG_VERSION = 'codex-0.163.0-v1';
 export const OLLAMA_CONFIG_VERSION = 'ollama-0.1.0-v1';
-export const AI_NOTICE_VERSION = 'career-sharing-v1';
+export const AI_NOTICE_VERSION = 'career-sharing-v2';
 type Preview = { id: string; workspaceId: string; provider: AiProvider; model: string; connectionId: string; connectionRevision: number; accountFingerprint: string; maskedIdentity: string | null; snapshot: AiSourceSnapshot; at: number; runId?: string; consent?: typeof aiConsents.$inferSelect; idempotencyKey?: string; task?: Promise<unknown> };
 const paramsSchema = z.object({ id: z.uuid() }).strict();
 const createSchema = z.object({ previewId: z.uuid(), idempotencyKey: z.uuid(), rememberPermission: z.boolean().default(false) }).strict();
 const reviewSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
-const listSchema = z.object({ operation: aiOperationSchema, locale: z.enum(['es', 'en']), provider: aiProviderSchema.optional(), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequestHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
-const previewSchema = z.object({ provider: aiProviderSchema.default('codex'), operation: aiOperationSchema, locale: z.enum(['es', 'en']), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequest: z.string().optional(), selectedFactIds: z.array(z.string().uuid()).optional() }).strict();
+const listSchema = z.object({ operation: aiOperationSchema, locale: z.enum(['es', 'en']), provider: aiProviderSchema.optional(), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequestHash: z.string().regex(/^[a-f0-9]{64}$/).optional(), resumeTextHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict().superRefine((query, ctx) => {
+  if ((query.operation === 'RESUME_IMPORT') !== Boolean(query.resumeTextHash)) ctx.addIssue({ code: 'custom', path: ['resumeTextHash'], message: 'Resume imports must be scoped to their source hash.' });
+});
+const previewSchema = z.object({ provider: aiProviderSchema.default('codex'), operation: aiOperationSchema, locale: z.enum(['es', 'en']), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequest: z.string().optional(), resumeText: z.string().trim().min(1).max(50_000).optional(), selectedFactIds: z.array(z.string().uuid()).optional() }).strict();
 
 export function aiVisibleSources(snapshot: AiSourceSnapshot) {
   return {
@@ -28,6 +30,7 @@ export function aiVisibleSources(snapshot: AiSourceSnapshot) {
     ...(snapshot.job ? { job: snapshot.job.normalizedText } : {}),
     facts: snapshot.facts.map(({ factId, kind, text }) => ({ factId, kind, text })),
     ...(snapshot.question ? { question: snapshot.question.text } : {}),
+    ...(snapshot.resume ? { resumeText: snapshot.resume.text } : {}),
   };
 }
 export function storedAiConsent(row: typeof aiConsents.$inferSelect): AiConsent {
@@ -47,8 +50,9 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     return { id: run.id, state: run.status, origin: run.origin, ...(run.error ? { error: run.error } : {}), ...(artifact ? { artifactId: artifact.id } : {}) };
   };
   const remembered = async (preview: Preview) => {
+    if (preview.snapshot.operation === 'RESUME_IMPORT') return undefined;
     const rows = await database.select().from(aiConsents).where(and(eq(aiConsents.workspaceId, preview.workspaceId), eq(aiConsents.connectionId, preview.connectionId), eq(aiConsents.operation, preview.snapshot.operation), eq(aiConsents.remembered, true), isNull(aiConsents.searchIds))).orderBy(desc(aiConsents.revision));
-    return rows.find(row => checkAiConsent(storedAiConsent(row), { workspaceId: preview.workspaceId, connectionId: preview.connectionId, provider: preview.provider, accountFingerprint: preview.accountFingerprint, connectionRevision: preview.connectionRevision, operation: preview.snapshot.operation, origin: 'MANUAL', dataCategories: aiSnapshotDataCategories(preview.snapshot) }).ok);
+    return rows.find(row => row.noticeVersion === AI_NOTICE_VERSION && checkAiConsent(storedAiConsent(row), { workspaceId: preview.workspaceId, connectionId: preview.connectionId, provider: preview.provider, accountFingerprint: preview.accountFingerprint, connectionRevision: preview.connectionRevision, operation: preview.snapshot.operation, origin: 'MANUAL', dataCategories: aiSnapshotDataCategories(preview.snapshot) }).ok);
   };
   app.addHook('onRoute', route => {
     if (!route.url.startsWith('/api/v1/ai/runs') && !route.url.startsWith('/api/v1/ai/artifacts') && !route.url.startsWith('/api/v1/ai/consents')) return;
@@ -84,7 +88,8 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     const parsed = previewSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
     const { provider, ...sourceRequest } = parsed.data;
-    if (provider === 'ollama' && !['JOB_ANALYSIS', 'SEARCH_DRAFT'].includes(sourceRequest.operation)) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    if ((provider === 'ollama' && !['JOB_ANALYSIS', 'SEARCH_DRAFT'].includes(sourceRequest.operation))
+      || (sourceRequest.operation === 'RESUME_IMPORT' && provider !== 'codex')) return reply.code(400).send({ error: 'INVALID_INPUT' });
     const connection = await activeConnection(id, provider);
     if (!connection) {
       // An authorized account whose last check did not find a signed-in session is not the same as no account:
@@ -137,7 +142,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
       if (!consent) consent = await database.transaction(async tx => {
         await lockKey(tx, AI_QUEUE_LOCK);
         const last = (await tx.select().from(aiConsents).where(and(eq(aiConsents.workspaceId, id), eq(aiConsents.connectionId, connection.id), eq(aiConsents.operation, preview.snapshot.operation))).orderBy(desc(aiConsents.revision)).limit(1))[0];
-        return (await tx.insert(aiConsents).values({ workspaceId: id, connectionId: connection.id, provider: preview.provider, accountFingerprint: connection.accountFingerprint, connectionRevision: connection.revision, revision: (last?.revision ?? 0) + 1, operation: preview.snapshot.operation, dataCategories: aiSnapshotDataCategories(preview.snapshot), searchIds: null, noticeVersion: AI_NOTICE_VERSION, remembered: body.data.rememberPermission }).returning())[0]!;
+        return (await tx.insert(aiConsents).values({ workspaceId: id, connectionId: connection.id, provider: preview.provider, accountFingerprint: connection.accountFingerprint, connectionRevision: connection.revision, revision: (last?.revision ?? 0) + 1, operation: preview.snapshot.operation, dataCategories: aiSnapshotDataCategories(preview.snapshot), searchIds: null, noticeVersion: AI_NOTICE_VERSION, remembered: preview.snapshot.operation === 'RESUME_IMPORT' ? false : body.data.rememberPermission }).returning())[0]!;
       });
       preview.consent = consent;
       const prompt = buildAiPrompt(preview.snapshot, { workspaceId: id, operation: preview.snapshot.operation, locale: preview.snapshot.locale });
@@ -161,7 +166,8 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
         sql`${aiRuns.snapshot}->>'locale' = ${query.locale}`,
         query.jobId ? sql`${aiRuns.snapshot}->'job'->>'jobId' = ${query.jobId}` : sql`${aiRuns.snapshot}->>'job' IS NULL`,
         query.questionId ? sql`${aiRuns.snapshot}->'question'->>'questionId' = ${query.questionId}` : sql`${aiRuns.snapshot}->>'question' IS NULL`,
-        query.searchRequestHash ? sql`${aiRuns.snapshot}->'searchRequest'->>'contentHash' = ${query.searchRequestHash}` : undefined))
+        query.searchRequestHash ? sql`${aiRuns.snapshot}->'searchRequest'->>'contentHash' = ${query.searchRequestHash}` : undefined,
+        query.resumeTextHash ? sql`${aiRuns.snapshot}->'resume'->>'contentHash' = ${query.resumeTextHash}` : undefined))
       .orderBy(desc(aiRuns.reservedAt), desc(aiRuns.id)).limit(20);
     const recovered = [];
     for (const { run, artifactId } of rows) {

@@ -16,7 +16,7 @@ The interface supports **English and Spanish**. Each person runs a separate inst
 ## What you can do
 
 - Build your profile with editable work experience and education dates; confirm, correct or archive the details used in documents.
-- Import an existing resume PDF (or its pasted text) in **Profile → Import from a resume**. The browser reads it and proposes entries; nothing is used until you confirm it, and the PDF and its text are never uploaded or stored. Scanned PDFs, DOCX and AI-assisted import are not supported yet.
+- Import an existing resume PDF (or its pasted text) in **Profile → Import from a resume**. Local parsing is the default; optionally ask Codex to organize suggestions after reviewing and allowing a one-time share of contact-redacted text. Suggestions remain unapproved until you confirm them. Scanned PDFs and DOCX are not supported.
 - Keep reusable answers with their question and country context.
 - Save searches by role or company and automatically discover matches from Remotive, Arbeitnow and Himalayas, alongside confirmed companies you follow. You can also add jobs manually or follow individually reviewed Greenhouse, Lever, and Ashby employer boards.
 - Search jobs by title or company, filter saved jobs and availability, archive or restore offers, and see explainable matching.
@@ -34,6 +34,7 @@ In **Profile and tools → Settings and privacy → Assistant**, connect the off
 - Summarize a job and compare it with selected, confirmed experience.
 - Review suggested resume wording and its original sources, then generate and approve the exact PDF.
 - Draft an answer from confirmed facts; personal or legal details require your input.
+- Optionally organize resume entries with Codex after a separate one-time consent; contact-redacted source text stays in local AI history for up to 30 days and may be included in exports and backups.
 - After a manual job analysis, optionally authorize analysis of future jobs from selected searches. It starts off, processes at most five per pass and ten per UTC day, and can be paused without stopping job searches.
 
 Native AI execution is currently supported only on **macOS with Codex CLI 0.160.0 or 0.163.0** and ChatGPT plan authentication. Other versions or systems keep ordinary app features; this integration is not certified there. Disconnecting revokes Career Stack's access without signing you out of Codex elsewhere. Claude is deferred. [Setup, privacy and limits](docs/operations/assistant.md).
