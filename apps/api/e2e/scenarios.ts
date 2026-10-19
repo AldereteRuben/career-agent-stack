@@ -26,6 +26,7 @@ import { timelineScenario } from './timeline.js';
 import { emailImportScenario } from './email-import.js';
 import { trackingMetricsScenario } from './tracking-metrics.js';
 import { profileImprovementScenario } from './profile-improvement.js';
+import { applicationFollowUpDraftScenario } from './application-follow-up-draft.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -586,6 +587,7 @@ scenarios.splice(1, 0, v051First);
 scenarios.splice(1, 0, v082Scenario);
 // v053 leaves current approved PDFs behind; v052's printed-name change then restores the guide state v051Last expects.
 scenarios.push(...v053Scenarios);
+scenarios.push(applicationFollowUpDraftScenario);
 scenarios.push(v052Scenario);
 // The final sign-out scenario must remain last.
 scenarios.push(v060Scenario);

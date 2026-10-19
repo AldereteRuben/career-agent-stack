@@ -92,6 +92,7 @@ try {
     if (path === `/applications/${ids.application}`) return response(route, application);
     if (path === `/applications/${ids.application}/cover-letter/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
     if (path === `/applications/${ids.application}/cover-letter`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
+    if (path === `/applications/${ids.application}/follow-up-draft`) return response(route, { draft: null });
     if (path === `/applications/${ids.application}/events` || path === '/preparations') return response(route, []);
     if (/^\/applications\/[0-9a-f-]+\/contacts$/.test(path)) return response(route, { links: [], contacts: [] });
     if (path === `/applications/${ids.application}/assist`) return response(route, { supported: false, url: job.canonicalUrl, identity: { fullName: 'Alex Example', email: 'alex@example.test' }, application, documents: [], attempts: [] });
