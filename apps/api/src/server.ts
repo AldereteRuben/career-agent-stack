@@ -45,6 +45,7 @@ import { registerApplicationContactRoutes } from './application-contact-routes.j
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
+import { attachGracefulShutdown, resolveLauncherStopFile } from './graceful-shutdown.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
 const aiEnabled = config.CAREER_AI_ENABLED && process.platform === 'darwin';
@@ -787,14 +788,7 @@ await app.listen({ host: config.API_HOST, port: config.API_PORT });
 app.log.info({ host: config.API_HOST, port: config.API_PORT, externalWrites: true, setupTokenPath }, `Career Agent Stack API ${RELEASE_VERSION} started`);
 for (const unavailable of ['email OAuth', 'interview coaching']) app.log.info({ capability: unavailable, status: 'UNAVAILABLE', release: RELEASE_VERSION });
 
-let closing = false;
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.once(signal, () => {
-    if (closing) return;
-    closing = true;
-    const deadline = setTimeout(() => process.exit(1), 15_000); deadline.unref();
-    void app.close().then(() => pool.end()).then(() => {
-      clearTimeout(deadline); process.exit(0);
-    }).catch(() => { clearTimeout(deadline); process.exit(1); });
-  });
-}
+const configuredStopFile = process.env.CAREER_STOP_FILE;
+const stopFile = resolveLauncherStopFile(localData, configuredStopFile);
+if (process.platform === 'win32' && configuredStopFile && !stopFile) app.log.warn('Ignoring invalid launcher stop-file path');
+attachGracefulShutdown(app, pool, { stopFile, onPollError: (error) => app.log.warn({ err: error }, 'Could not inspect launcher stop file') });
