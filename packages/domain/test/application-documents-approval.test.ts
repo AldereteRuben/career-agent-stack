@@ -101,7 +101,34 @@ test('fact changes affect factsHash and material offer changes affect offerHash'
   if (!baseline.ok || !changedFact.ok || !changedTitle.ok) return;
   assert.notEqual(baseline.factsHash, changedFact.factsHash);
   const changedTags = await applicationDocumentHashes({ workspaceId, claims: [claim], facts: [{ ...facts[0]!, tags: ['react', 'payments'] }], offer });
-  assert.notEqual(baseline.factsHash, changedTags.factsHash);
+  assert.equal(changedTags.ok, true);
+  if (!changedTags.ok) return;
+  assert.equal(baseline.factsHash, changedTags.factsHash);
+  assert.equal(baseline.factsHash, createHash('sha256').update(JSON.stringify([
+    ['fact-1', 'USER_APPROVED', 'Diseñé interfaces React.'],
+  ])).digest('hex'));
+  const secondFact: ApplicationDocumentFactSnapshot = {
+    id: 'fact-2', workspaceId, approval: 'USER_APPROVED', text: 'Lideré equipos de diseño.',
+  };
+  const orderedEvidence = await applicationDocumentHashes({
+    workspaceId,
+    claims: [{ ...claim, sourceFactIds: ['fact-1', 'fact-2'] }],
+    facts: [facts[0]!, secondFact],
+    offer,
+  });
+  const reorderedEvidence = await applicationDocumentHashes({
+    workspaceId,
+    claims: [{ ...claim, sourceFactIds: ['fact-2', 'fact-1'] }],
+    facts: [secondFact, facts[0]!],
+    offer,
+  });
+  assert.equal(orderedEvidence.ok && reorderedEvidence.ok, true);
+  if (!orderedEvidence.ok || !reorderedEvidence.ok) return;
+  assert.equal(orderedEvidence.factsHash, reorderedEvidence.factsHash);
+  assert.equal(orderedEvidence.factsHash, createHash('sha256').update(JSON.stringify([
+    ['fact-1', 'USER_APPROVED', 'Diseñé interfaces React.'],
+    ['fact-2', 'USER_APPROVED', 'Lideré equipos de diseño.'],
+  ])).digest('hex'));
   assert.notEqual(baseline.offerHash, changedTitle.offerHash);
   const changedApplicationFields = await applicationDocumentHashes({
     workspaceId,
@@ -111,6 +138,14 @@ test('fact changes affect factsHash and material offer changes affect offerHash'
   });
   assert.equal(changedApplicationFields.ok, true);
   if (baseline.ok && changedApplicationFields.ok) assert.notEqual(baseline.offerHash, changedApplicationFields.offerHash);
+
+  const revision = await createRevision();
+  const tagOnlyCurrentnessChange = await applicationDocumentCurrentness({
+    revision,
+    facts: [{ ...facts[0]!, tags: ['react', 'payments'] }],
+    offer,
+  });
+  assert.deepEqual(tagOnlyCurrentnessChange, { status: 'CURRENT', reasons: [] });
 });
 
 test('duplicate sentence ids are refused when creating a revision', async () => {

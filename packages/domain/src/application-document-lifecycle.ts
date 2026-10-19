@@ -165,8 +165,7 @@ export async function applicationDocumentHashes(input: HashInputs) {
   const factsById = new Map(input.facts.filter((fact) => fact.workspaceId === input.workspaceId).map((fact) => [fact.id, fact]));
   const factsForHash = citedIds.map((id) => {
     const fact = factsById.get(id);
-    const tags = (fact?.tags ?? []).map(canonicalText).sort((a, b) => a === b ? 0 : a < b ? -1 : 1);
-    return { factId: id, status: fact?.approval ?? 'MISSING', canonicalText: canonicalText(fact?.text ?? ''), tags };
+    return [id, fact?.approval ?? 'MISSING', canonicalText(fact?.text ?? '')];
   });
   const description = canonicalText(input.offer.snapshot.descriptionText);
   const offer = {
