@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { jobReportBatchItemErrors, jobReportBatchStates, jobReportCheckKinds, jobReportCheckStatuses, jobReportReasons, jobReportRequirementLevels, jobReportUnknowns, jobReportVerdicts } from '@career/domain';
-import { applicationEvents, factKinds, humanizeKey, jobReportBatchStateLabels, jobReportCheckLabels, jobReportCheckStatusLabels, jobReportItemErrorLabels, jobReportLevelLabels, jobReportReasonLabels, jobReportUnknownLabels, jobReportVerdictLabels, selectableFactKinds } from './labels';
+import { applicationDocumentCurrentnessReasons, applicationDocumentMessages, applicationEvents, factKinds, humanizeKey, jobReportBatchStateLabels, jobReportCheckLabels, jobReportCheckStatusLabels, jobReportItemErrorLabels, jobReportLevelLabels, jobReportReasonLabels, jobReportUnknownLabels, jobReportVerdictLabels, selectableFactKinds } from './labels';
 
 const dashboard = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -58,6 +58,21 @@ test('certifications and languages can be added with labels in both languages', 
     assert.ok((selectableFactKinds as readonly string[]).includes(kind));
     assert.ok(factKinds[kind].es);
     assert.ok(factKinds[kind].en);
+  }
+});
+
+test('applications without a saved offer explain the next step in both languages', () => {
+  const message = applicationDocumentMessages.APPLICATION_HAS_NO_OFFER;
+  assert.match(message.es, /oferta guardada/u);
+  assert.match(message.en, /saved job/u);
+  assert.match(message.es, /no se creará ningún documento/u);
+  assert.match(message.en, /no document will be created/u);
+});
+
+test('document freshness reasons are localized', () => {
+  for (const reason of ['FACTS_CHANGED', 'OFFER_CHANGED', 'FACT_NOT_APPROVED', 'LANGUAGE_MISMATCH', 'INVALID_CLAIM']) {
+    assert.ok(applicationDocumentCurrentnessReasons[reason]?.es);
+    assert.ok(applicationDocumentCurrentnessReasons[reason]?.en);
   }
 });
 

@@ -13,7 +13,7 @@ import { ApplicationJourney } from '@/components/application-journey';
 import { ApplicationContacts } from '@/components/application-contacts';
 import { ApplicationEmailImport } from '@/components/application-email-import';
 import { ApplicationMaterialsPacket } from '@/components/application-materials-packet';
-import { ApplicationCoverLetter } from '@/components/application-cover-letter';
+import { ApplicationCoverLetter, ApplicationResumeDocument } from '@/components/application-cover-letter';
 import { ApplicationFollowUpDraft } from '@/components/application-follow-up-draft';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
@@ -345,7 +345,10 @@ function ApplicationsView() {
           </div>}
 
           <ApplicationMaterialsPacket key={`materials:${selected.id}`} applicationId={selected.id}/>
-          {selected.jobId && <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id}/>}
+          {selected.jobId ? <>
+            <ApplicationResumeDocument key={`application-resume:${selected.id}`} applicationId={selected.id}/>
+            <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id} hideNoOfferMessage/>
+          </> : <Card className="application-resume"><h3>{c('Documentos para esta solicitud', 'Documents for this application')}</h3><p>{labelFor.applicationDocumentMessage('APPLICATION_HAS_NO_OFFER', locale)}</p><Link className="button button-quiet" href="/jobs">{c('Ver ofertas guardadas', 'View saved jobs')}</Link></Card>}
           <AssistedApplication key={`assisted:${selected.id}`} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
           <ApplicationFollowUpDraft key={`follow-up-draft:${selected.id}`} applicationId={selected.id} company={selected.company} role={selected.role}/>
