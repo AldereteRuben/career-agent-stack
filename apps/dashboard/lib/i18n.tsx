@@ -314,6 +314,9 @@ export function LanguageToggle({ className = '' }: { className?: string }) {
 export function localizedError(code: string, locale: Locale) {
   const spanish: Record<string, string> = {
     AI_ARTIFACT_NOT_FOUND: 'No encontramos ese borrador. Puede que ya se haya sustituido; actualiza la página.', AI_CONSENT_NOT_FOUND: 'No encontramos tu permiso para usar el asistente. Revísalo en Ajustes y vuelve a intentarlo.',
+    AI_CANCELLED: 'Se canceló la propuesta. El borrador del documento no cambió.', AI_PROPOSAL_EXPIRED: 'La propuesta ya no está disponible. Vuelve a generar una nueva antes de aceptarla.',
+    CONSENT_REQUIRES_PERSON: 'Confirma esta tarea personalmente antes de que se envíe información a Codex.', PAYLOAD_CHANGED: 'El documento o sus datos cambiaron desde la vista previa. Revísalo y confirma de nuevo.',
+    PROPOSAL_MISMATCH: 'La propuesta recibida no coincide con la que se mostró. No se guardaron cambios; actualiza y revísala de nuevo.', REQUEST_ABORTED: 'La solicitud se interrumpió. El documento no cambió; puedes volver a intentarlo.',
     AI_INVALID_SELECTION: 'Algunos datos elegidos ya no están disponibles. Revisa la selección e inténtalo de nuevo.', ASSIST_UNSUPPORTED_URL: 'Esta solicitud no se puede preparar aquí: su enlace no es de un formulario compatible.',
     HOST_NOT_ALLOWED: 'Abre Career Stack desde la dirección local que muestra el lanzador (localhost). Esta dirección no está permitida.', LOCAL_ONLY: 'Career Stack solo acepta conexiones desde este mismo equipo.',
     ORIGIN_NOT_ALLOWED: 'Esta página no se abrió desde la dirección de tu Career Stack. Ábrela desde la dirección que muestra el lanzador.', ORIGIN_REQUIRED: 'No pudimos comprobar desde dónde se envió la petición. Recarga la página e inténtalo de nuevo.',
@@ -375,6 +378,9 @@ export function localizedError(code: string, locale: Locale) {
   };
   const english: Record<string, string> = {
     AI_ARTIFACT_NOT_FOUND: 'We could not find that draft. It may have been replaced; refresh the page.', AI_CONSENT_NOT_FOUND: 'We could not find your permission to use the assistant. Check it in Settings and try again.',
+    AI_CANCELLED: 'The proposal was cancelled. The document draft has not changed.', AI_PROPOSAL_EXPIRED: 'That proposal is no longer available. Generate a new one before accepting it.',
+    CONSENT_REQUIRES_PERSON: 'Confirm this task yourself before any information is sent to Codex.', PAYLOAD_CHANGED: 'The document or its source details changed after the preview. Review and confirm it again.',
+    PROPOSAL_MISMATCH: 'The received proposal does not match what was shown. Nothing was saved; refresh and review it again.', REQUEST_ABORTED: 'The request was interrupted. The document has not changed; you can try again.',
     AI_INVALID_SELECTION: 'Some of the chosen details are no longer available. Review the selection and try again.', ASSIST_UNSUPPORTED_URL: 'This application cannot be prepared here: its link is not from a supported form.',
     HOST_NOT_ALLOWED: 'Open Career Stack from the local address the launcher shows (localhost). This address is not allowed.', LOCAL_ONLY: 'Career Stack only accepts connections from this same computer.',
     ORIGIN_NOT_ALLOWED: 'This page was not opened from your Career Stack address. Open it from the address the launcher shows.', ORIGIN_REQUIRED: 'We could not check where the request came from. Reload the page and try again.',

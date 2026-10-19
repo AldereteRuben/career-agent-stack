@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  aiConsentSchema, aiOutputSchema, aiSourceSnapshotSchema, applyAiRunEvent, canAutoRetryAiRun, canonicalAiReuseKey, checkAiConsent, aiSnapshotDataCategories,
+  aiConsentSchema, aiOutputSchema, aiSourceSnapshotSchema, applyAiRunEvent, canAutoRetryAiRun, canonicalAiReuseKey, checkAiConsent, aiSnapshotDataCategories, aiOperationDataCategories,
   decideAiArtifact, normalizeAiUsage, normalizeEvidenceText, validateAiOutput, type AiConsent, type AiRunRecord, type AiSourceSnapshot,
 } from '../src/ai.js';
 
@@ -73,6 +73,26 @@ test('snapshots carry only approved facts and the inputs each operation needs', 
   assert.equal(aiSourceSnapshotSchema.safeParse(snapshot({ snapshotHash: 'not-a-hash' })).success, false);
   assert.equal(aiSourceSnapshotSchema.safeParse(snapshot({ facts: [snapshot().facts[0]!, snapshot().facts[0]!] })).success, false);
   assert.equal(aiSourceSnapshotSchema.safeParse(snapshot({ operation: 'SEARCH_DRAFT', searchRequest: { text: 'designer', contentHash: h('e') } })).success, false);
+});
+
+test('document reword snapshots expose only candidate claims and validate every proposal against its original citations', () => {
+  const input=snapshot({operation:'DOCUMENT_REWORD',job:null,facts:[],profileRevision:null,identityFingerprint:null,documentReword:{
+    documentId:'document-1',revisionId:'revision-2',revision:2,kind:'RESUME',
+    offer:{company:'Example Ltd',role:'Support Agent',location:'Madrid',title:'Customer Support Agent',description:'Help customers use the product.'},
+    sentences:[{sentenceId:'claim-1',text:'I helped customers resolve product issues.',kind:'CANDIDATE_CLAIM',citedFacts:[{factId:'fact-1',text:'I helped customers use the product.'}]}],
+  }});
+  const output={schemaVersion:1,operation:'DOCUMENT_REWORD',locale:'en',proposals:[{sentenceId:'claim-1',text:'I supported customers with product issues.',sourceFactIds:['fact-1']}]};
+  assert.equal(aiSourceSnapshotSchema.safeParse(input).success,true);
+  assert.deepEqual(aiOperationDataCategories.DOCUMENT_REWORD,['APPROVED_FACTS','JOB_POSTING']);
+  assert.equal(validateAiOutput(output,input,{workspaceId:'ws-a',operation:'DOCUMENT_REWORD',locale:'en'}).ok,true);
+  for(const bad of [
+    { ...output,proposals:[{...output.proposals[0],sourceFactIds:['fact-from-another-run']}] },
+    { ...output,proposals:[{...output.proposals[0],sentenceId:'not-in-draft'}] },
+    { ...output,proposals:[] },
+    { ...output,proposals:[{...output.proposals[0],approved:true}] },
+  ]) assert.equal(validateAiOutput(bad,input,{workspaceId:'ws-a',operation:'DOCUMENT_REWORD',locale:'en'}).ok,false);
+  assert.equal(aiSourceSnapshotSchema.safeParse({...input,documentReword:{...input.documentReword!,sentences:[{...input.documentReword!.sentences[0]!,kind:'BOILERPLATE'}]}}).success,false);
+  assert.equal(aiSourceSnapshotSchema.safeParse({...input,facts:[...snapshot().facts]}).success,false);
 });
 
 test('search drafts keep supported filters and list unsupported constraints instead of dropping them', () => {

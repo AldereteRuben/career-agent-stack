@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { type AiSourceSnapshot } from '@career/domain';
-import { AI_PROMPT_VERSION, AiPromptError, buildAiPrompt, hashAiInputContent } from '../src/ai/prompts.js';
+import { AI_PROMPT_VERSION, AiPromptError, buildAiPrompt, hashAiInputContent, hashAiPromptMessages } from '../src/ai/prompts.js';
 
 const h = (character: string) => character.repeat(64);
 const snapshot = (patch: Partial<AiSourceSnapshot> = {}): AiSourceSnapshot => ({
@@ -21,6 +21,9 @@ const answer = (policy: 'USER_ONLY' | 'EXPERIENCE_DRAFT' = 'EXPERIENCE_DRAFT'): 
 });
 const resumeImport = (): AiSourceSnapshot => snapshot({ operation: 'RESUME_IMPORT', searchRequest: null, job: null, question: null, facts: [], profileRevision: null, identityFingerprint: null,
   resume: { text: 'Senior designer at Fictional Studio, 2019-2021.', contentHash: h('e') } });
+const documentReword = (): AiSourceSnapshot => snapshot({operation:'DOCUMENT_REWORD',job:null,facts:[],profileRevision:null,identityFingerprint:null,
+  documentReword:{documentId:'document-1',revisionId:'revision-2',revision:2,kind:'RESUME',offer:{company:'Example Ltd',role:'Support Agent',location:'Madrid',title:'Customer Support Agent',description:'Help customers use the product.'},
+    sentences:[{sentenceId:'claim-1',text:'I helped customers resolve product issues.',kind:'CANDIDATE_CLAIM',citedFacts:[{factId:'fact-1',text:'I helped customers use the product.'}]}]}});
 const dataOf = (value: AiSourceSnapshot): Record<string, unknown> => {
   const text = build(value).messages[1].content;
   return JSON.parse(text.split('\n')[1]!);
@@ -29,7 +32,7 @@ const properties = (schema: Record<string, unknown>) => schema.properties as Rec
 const hasError = (code: string) => (error: unknown) => error instanceof AiPromptError && error.code === code && error.message === code;
 
 test('every operation produces deterministic, versioned Codex role messages and its own output schema', () => {
-  for (const value of [search(), snapshot(), snapshot({ operation: 'RESUME_DRAFT' }), answer(), resumeImport()]) {
+  for (const value of [search(), snapshot(), snapshot({ operation: 'RESUME_DRAFT' }), answer(), resumeImport(),documentReword()]) {
     const result = build(value);
     assert.deepEqual(result, build(value));
     assert.equal(result.provider, 'codex');
@@ -40,6 +43,21 @@ test('every operation produces deterministic, versioned Codex role messages and 
     assert.match(result.inputContentHash, /^[a-f0-9]{64}$/u);
     assert.ok(result.messages[0].content.includes(`Operation: ${value.operation}`));
   }
+});
+
+test('document reword preview hashes the exact messages and includes only current candidate claims with cited evidence',()=>{
+  const value=documentReword(),result=build(value),serialized=JSON.stringify(result.messages);
+  assert.equal(hashAiPromptMessages(result.messages),hashAiPromptMessages(build(value).messages));
+  assert.ok(serialized.includes(value.documentReword!.sentences[0]!.text));
+  assert.ok(serialized.includes(value.documentReword!.sentences[0]!.citedFacts[0]!.text));
+  assert.ok(serialized.includes(value.documentReword!.offer.company));
+  assert.ok(result.messages[0].content.includes('Never draft a new sentence or document'));
+  assert.ok(!serialized.includes(value.workspaceId));
+  assert.ok(!serialized.includes(value.documentReword!.documentId));
+  assert.deepEqual(properties(result.outputSchema).operation!.enum,['DOCUMENT_REWORD']);
+  assert.equal(properties(result.outputSchema).proposals!.minItems,1);
+  const changed=structuredClone(value);changed.documentReword!.sentences[0]!.text+=' changed';
+  assert.notEqual(hashAiPromptMessages(result.messages),hashAiPromptMessages(build(changed).messages));
 });
 
 test('resume import prompt uses only the contact-redacted CV text and instructs against inventing facts', () => {
