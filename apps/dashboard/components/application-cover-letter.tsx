@@ -6,6 +6,7 @@ import { ApiError, api, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 import { Button, Card } from '@/components/ui';
 import { labelFor } from '@/lib/labels';
+import { ApplicationDocumentReword } from './application-document-reword';
 import styles from './application-cover-letter.module.css';
 
 type Sentence = { sentenceId: string; text: string; kind: 'OFFER_REFERENCE' | 'BOILERPLATE' | 'CANDIDATE_CLAIM'; origin: 'BUILDER' | 'CODEX' | 'USER_EDITED' | 'USER_UNSUPPORTED'; sourceFactIds: string[]; language?: 'es' | 'en' };
@@ -45,12 +46,13 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
   const [noOffer, setNoOffer] = useState(false);
   const [stale, setStale] = useState(false);
   const [facts, setFacts] = useState<ProfileFacts['facts']>([]);
+  const [assistantActive, setAssistantActive] = useState(false);
   const basePath = `/applications/${applicationId}/${kind}`;
   const title = kind === 'resume' ? copy('CV adaptado a esta oferta', 'Resume tailored to this job') : copy('Carta de presentación', 'Cover letter');
 
   const load = useCallback(async () => {
     setLoading(true); setError(''); setMessage(''); setStored(null); setConfirmIds([]); setApproveUnsupported(false); setUnsupportedSentenceId(null);
-    setNoOffer(false);
+    setNoOffer(false); setAssistantActive(false);
     setStale(false);
     try {
       const [nextDraft, history, profile] = await Promise.all([
@@ -83,8 +85,8 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
     return JSON.stringify(sentences) !== JSON.stringify(baseline);
   }, [draft, saved, sentences, stale]);
 
-  const save = async () => {
-    if (!draft || busy || !sentences.length) return;
+  const save = async (draftSentences = sentences): Promise<boolean> => {
+    if (!draft || busy || !draftSentences.length) return false;
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await fetch(`/api/v1${basePath}/revisions`, {
@@ -93,7 +95,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
           language,
           paperSize: 'A4',
           parentRevisionId: baseRevisionId,
-          sentences: sentences.map(({ sentenceId, text, sourceFactIds }) => ({ sentenceId, text, sourceFactIds })),
+          sentences: draftSentences.map(({ sentenceId, text, sourceFactIds }) => ({ sentenceId, text, sourceFactIds })),
           confirmUnsupportedIds: confirmIds,
         }),
       });
@@ -101,16 +103,17 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         const payload = await response.json().catch(() => ({})) as { error?: string; sentenceId?: string; issue?: { item?: unknown; sentenceId?: string } };
         if (typeof payload.issue?.item === 'string') {
           const refusedSentenceId = payload.sentenceId ?? payload.issue.sentenceId;
-          setUnsupportedSentenceId(sentences.find((sentence) => sentence.sentenceId === refusedSentenceId)?.sentenceId ?? null);
+          setUnsupportedSentenceId(draftSentences.find((sentence) => sentence.sentenceId === refusedSentenceId)?.sentenceId ?? null);
           setError(copy(`No se guardó: la frase añade «${payload.issue.item}», que no aparece en la evidencia ni en la oferta. Corrige la frase o confirma expresamente que no está respaldada.`, `Not saved: the sentence adds “${payload.issue.item}”, which does not appear in the evidence or the job post. Edit the sentence or explicitly confirm it is unsupported.`));
-          return;
+          return false;
         }
         throw new ApiError(errorMessage(new ApiError('', response.status, payload.error ?? 'UNKNOWN')), response.status, payload.error ?? 'UNKNOWN');
       }
       await response.json() as Stored;
       await load();
       setMessage(copy('Versión guardada. Revisa el PDF antes de aprobarla.', 'Version saved. Review the PDF before approving it.'));
-    } catch (reason) { setError(errorMessage(reason)); }
+      return true;
+    } catch (reason) { setError(errorMessage(reason)); return false; }
     finally { setBusy(false); }
   };
 
@@ -155,13 +158,13 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
       sourceFactIds: checked ? [...new Set([...sentence.sourceFactIds, factId])] : sentence.sourceFactIds.filter((id) => id !== factId),
     } : sentence));
   };
-  const restore = () => { if (draft) { setSentences(draft.sentences); setConfirmIds([]); } };
+  const restore = () => { if (draft && !assistantActive) { setSentences(draft.sentences); setConfirmIds([]); } };
 
   const pdfUrl = stored ? documentFileUrl(applicationId, kind, stored.revision.id, language, 'pdf') : null;
   const textUrl = stored ? documentFileUrl(applicationId, kind, stored.revision.id, language, 'text') : null;
 
   return <Card className={`${styles.card} application-resume`}>
-    <div className={styles.heading}><h3>{title}</h3><label>{copy('Idioma del documento', 'Document language')} <select value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label></div>
+    <div className={styles.heading}><h3>{title}</h3><label>{copy('Idioma del documento', 'Document language')} <select value={language} disabled={busy || assistantActive} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label></div>
     <p>{copy('Borrador local basado en la oferta guardada y tus hechos aprobados. Nada se envía a la empresa.', 'A local draft based on the saved offer and your approved facts. Nothing is sent to the employer.')}</p>
     {loading ? <p role="status">{copy('Preparando el borrador…', 'Preparing draft…')}</p> : error && !draft ? <p role="alert" className={styles.error}>{error} <Button variant="quiet" onClick={() => void load()}>{copy('Reintentar', 'Retry')}</Button></p> : null}
     {draft?.profileNotice && <p className={styles.notice} role="status">{draft.profileNotice}</p>}
@@ -171,16 +174,16 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         {sentences.map((sentence) => <fieldset key={sentence.sentenceId} className={styles.sentence}>
           <legend>{sentence.kind === 'CANDIDATE_CLAIM' ? copy('Afirmación basada en tu perfil', 'Profile-based claim') : sentence.kind === 'OFFER_REFERENCE' ? copy('Referencia a la oferta', 'Offer reference') : copy('Saludo o cierre', 'Greeting or closing')}</legend>
           <label className="sr-only" htmlFor={`${kind}-${sentence.sentenceId}`}>{copy('Texto de la frase', 'Sentence text')}</label>
-          <textarea id={`${kind}-${sentence.sentenceId}`} rows={3} maxLength={4000} value={sentence.text} disabled={busy} onChange={(event) => updateSentence(sentence.sentenceId, event.target.value)}/>
-          {sentence.kind === 'CANDIDATE_CLAIM' && <details><summary>{copy('Evidencia que respalda esta frase', 'Evidence supporting this sentence')}</summary><ul>{sentence.sourceFactIds.map((id) => <li key={id}>{facts.find((fact) => fact.id === id)?.statement ?? copy('La evidencia ya no está disponible en el perfil actual.', 'This evidence is no longer available in the current profile.')}</li>)}</ul><fieldset><legend>{copy('Vincular hechos aprobados', 'Link approved facts')}</legend>{facts.map((fact) => <label key={fact.id} className={styles.confirm}><input type="checkbox" checked={sentence.sourceFactIds.includes(fact.id)} disabled={busy} onChange={(event) => updateCitations(sentence.sentenceId, fact.id, event.target.checked)}/>{fact.statement}</label>)}</fieldset></details>}
+          <textarea id={`${kind}-${sentence.sentenceId}`} rows={3} maxLength={4000} value={sentence.text} disabled={busy || assistantActive} onChange={(event) => updateSentence(sentence.sentenceId, event.target.value)}/>
+          {sentence.kind === 'CANDIDATE_CLAIM' && <details><summary>{copy('Evidencia que respalda esta frase', 'Evidence supporting this sentence')}</summary><ul>{sentence.sourceFactIds.map((id) => <li key={id}>{facts.find((fact) => fact.id === id)?.statement ?? copy('La evidencia ya no está disponible en el perfil actual.', 'This evidence is no longer available in the current profile.')}</li>)}</ul><fieldset><legend>{copy('Vincular hechos aprobados', 'Link approved facts')}</legend>{facts.map((fact) => <label key={fact.id} className={styles.confirm}><input type="checkbox" checked={sentence.sourceFactIds.includes(fact.id)} disabled={busy || assistantActive} onChange={(event) => updateCitations(sentence.sentenceId, fact.id, event.target.checked)}/>{fact.statement}</label>)}</fieldset></details>}
           <span className="tag tag-blue">{sentence.origin === 'USER_EDITED' ? 'USER_EDITED' : sentence.origin === 'USER_UNSUPPORTED' ? 'USER_UNSUPPORTED' : sentence.origin}</span>
-          {sentence.kind === 'CANDIDATE_CLAIM' && (sentence.sourceFactIds.length === 0 || unsupportedSentenceId === sentence.sentenceId) && <label className={styles.confirm}><input type="checkbox" checked={confirmIds.includes(sentence.sentenceId)} disabled={busy} onChange={(event) => setConfirmIds((current) => event.target.checked ? [...current, sentence.sentenceId] : current.filter((id) => id !== sentence.sentenceId))}/>{copy('Confirmo que revisé esta afirmación aunque no esté respaldada por hechos aprobados.', 'I confirm I reviewed this claim even though approved facts do not support it.')}</label>}
-          <Button type="button" variant="quiet" disabled={busy} onClick={() => setSentences((current) => current.filter((item) => item.sentenceId !== sentence.sentenceId))}>{copy('Quitar frase', 'Remove sentence')}</Button>
+          {sentence.kind === 'CANDIDATE_CLAIM' && (sentence.sourceFactIds.length === 0 || unsupportedSentenceId === sentence.sentenceId) && <label className={styles.confirm}><input type="checkbox" checked={confirmIds.includes(sentence.sentenceId)} disabled={busy || assistantActive} onChange={(event) => setConfirmIds((current) => event.target.checked ? [...current, sentence.sentenceId] : current.filter((id) => id !== sentence.sentenceId))}/>{copy('Confirmo que revisé esta afirmación aunque no esté respaldada por hechos aprobados.', 'I confirm I reviewed this claim even though approved facts do not support it.')}</label>}
+          <Button type="button" variant="quiet" disabled={busy || assistantActive} onClick={() => setSentences((current) => current.filter((item) => item.sentenceId !== sentence.sentenceId))}>{copy('Quitar frase', 'Remove sentence')}</Button>
         </fieldset>)}
       </div>
       <div className={styles.actions}>
-        <Button variant="secondary" disabled={busy || !sentences.length || !changed} onClick={() => void save()}>{busy ? copy('Guardando…', 'Saving…') : copy('Guardar nueva versión', 'Save new version')}</Button>
-        <Button variant="quiet" disabled={busy} onClick={restore}>{copy('Restaurar borrador base', 'Restore base draft')}</Button>
+        <Button variant="secondary" disabled={busy || assistantActive || !sentences.length || !changed} onClick={() => void save()}>{busy ? copy('Guardando…', 'Saving…') : copy('Guardar nueva versión', 'Save new version')}</Button>
+        <Button variant="quiet" disabled={busy || assistantActive} onClick={restore}>{copy('Restaurar borrador base', 'Restore base draft')}</Button>
       </div>
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {message && <p role="status" className={styles.success}>{message}</p>}
@@ -194,8 +197,22 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         {pdfUrl && <iframe title={copy(`Vista previa de ${title} en PDF`, `${title} PDF preview`)} src={pdfUrl} />}
         {textUrl && <a className="button button-quiet" href={textUrl}>{copy('Descargar texto', 'Download text')}</a>}
         {!stored.revision.approvedAt && stored.revision.confirmedUnsupportedIds.length > 0 && <label className={styles.confirm}><input type="checkbox" checked={approveUnsupported} disabled={busy} onChange={(event) => setApproveUnsupported(event.target.checked)}/>{copy('Confirmo que revisé las afirmaciones marcadas como no respaldadas.', 'I confirm that I reviewed the claims marked as unsupported.')}</label>}
-        {!stored.revision.approvedAt && <Button disabled={busy || confirmIds.length > 0 || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW' || (stored.revision.confirmedUnsupportedIds.length > 0 && !approveUnsupported)} onClick={() => void approve()}>{copy('Aprobar esta versión', 'Approve this version')}</Button>}
+        {!stored.revision.approvedAt && <Button disabled={busy || assistantActive || confirmIds.length > 0 || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW' || (stored.revision.confirmedUnsupportedIds.length > 0 && !approveUnsupported)} onClick={() => void approve()}>{copy('Aprobar esta versión', 'Approve this version')}</Button>}
       </section>}
+      {stored && <ApplicationDocumentReword
+        key={`reword:${stored.revision.id}`}
+        applicationId={applicationId}
+        documentId={stored.documentId}
+        revisionId={stored.revision.id}
+        kind={kind}
+        language={language}
+        claims={stored.revision.claims}
+        facts={facts}
+        disabled={busy || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW'}
+        onActiveChange={setAssistantActive}
+        onAccepted={async () => { await load(); setMessage(copy('Propuesta de Codex aceptada y guardada como una nueva versión por revisar.', 'Codex proposal accepted and saved as a new revision awaiting review.')); }}
+        onSaveEdited={async (nextClaims) => { setSentences(nextClaims); return save(nextClaims); }}
+      />}
     </>}
   </Card>;
 }
