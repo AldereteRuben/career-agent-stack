@@ -3609,4 +3609,6 @@ main:focus {
   margin-top: 20px;
 }
 
+.job-compensation { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.job-compensation small { color: var(--muted, #526171); }
 .tracker-export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 16px; }

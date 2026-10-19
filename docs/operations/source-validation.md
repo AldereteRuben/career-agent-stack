@@ -37,6 +37,21 @@ Any other `provider` value → `SOURCE_PROVIDER_UNSUPPORTED`. Tenants must match
 | `updatedAt` | `updated_at` | `null` (not documented) | `null` (not documented) |
 | `raw` | job object as received | posting as received | job as received |
 
+### Salary (issue #36)
+
+The app shows pay only when the source states it, as the source states it: no currency conversion and no change of period. It is read from the stored payload when a job is listed (`jobCompensationFromSource`, `packages/domain/src/job-compensation.ts`), so jobs saved before this was added also show it.
+
+| Source | Pay in the data it returns | What is read |
+| --- | --- | --- |
+| Greenhouse | Only the single-job endpoint, with `pay_transparency=true` (`pay_input_ranges`: `min_cents`, `max_cents`, `currency_type`). The job list the adapter calls (`?content=true`) does not carry it. | Nothing. Reading it would need one extra request per job, so it is left out. |
+| Lever | `salaryRange` (`currency`, `interval`, `min`, `max`, optional) and `salaryDescriptionPlain` | Range, currency and interval. `salaryDescriptionPlain` is not used: it is usually a paragraph of legal text, not pay |
+| Ashby | With `includeCompensation=true`: `compensation.summaryComponents[]` (`compensationType`, `interval`, `currencyCode`, `minValue`, `maxValue`) and summary strings | The `Salary` component only (equity and bonus are ignored) and `scrapeableCompensationSalarySummary` (salary only) as text. `compensationTierSummary` is not used because it also lists equity and bonus. An interval whose multiplier is not 1 (`2 WEEK`, `6 MONTH`) leaves the period empty |
+| Remotive | `salary`, optional free text (for example `$40,000 - $50,000`) | The text as written, never parsed into numbers |
+| Himalayas | `minSalary`, `maxSalary` (number or null), `currency` (ISO 4217), and a period that defaults to annual | Range and currency; an unknown period is left empty |
+| Arbeitnow | No pay field in the job objects | Nothing |
+
+Checked against live public responses on 2026-10-18 (4 Ashby boards, 387 jobs, and the first 20 Himalayas jobs, read once and not stored): Ashby returns `compensation` per job with `summaryComponents[]` and intervals `1 YEAR`, `1 MONTH` and `NONE`; its `compensationTierSummary` does include text such as `• Offers Equity • Offers Bonus`; two boards return empty `compensation` objects, which show no pay. Himalayas returns `minSalary`, `maxSalary`, `currency` and `salaryPeriod` (`annual`, `monthly`, `hourly`); many jobs have no numbers. Greenhouse, Lever and Remotive were not called, so their rows still rest on the documentation.
+
 Rules applied to every provider:
 
 - **Plain text.** The adapter removes scripts, styles and comments, keeps paragraph and line breaks, and turns list items into `• ` lines. It decodes named and numeric entities, collapses repeated spaces, and caps descriptions at 200,000 characters. Titles and locations are trimmed to one line of at most 300 code points, matching `varchar(300)`. Truncation never splits a surrogate pair.
@@ -110,3 +125,19 @@ No jobs were skipped on any live feed. All job URLs were on the provider's hoste
 - New boards reject unsupported provider/region combinations at creation. A legacy Greenhouse or Ashby board saved with region `eu` fails at refresh with `BOARD_REGION_UNSUPPORTED` instead of being read from the global host.
 - Board refresh uses `readBoardWithReport` and reports `coverage: 'PARTIAL'` with a `skipped` count when per-job validation drops jobs.
 - Changing description formatting changes snapshot hashes, so the first v0.2 refresh of an existing board stores one new snapshot per job.
+
+## Reading one posting from a pasted link (issue #47)
+
+`POST /api/v1/jobs/lookup` pre-fills the manual job form from a posting link. It saves nothing; the person reviews the form and saves it.
+
+| Provider | Links recognised (HTTPS, no port or credentials) | Request made |
+| --- | --- | --- |
+| Greenhouse | `boards.greenhouse.io` and `job-boards.greenhouse.io`, `/{board}/jobs/{id}` | `GET https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{id}` |
+| Lever | `jobs.lever.co` and `jobs.eu.lever.co`, `/{site}/{id}`, optional `/apply` | `GET https://api.lever.co/v0/postings/{site}/{id}?mode=json` (EU: `api.eu.lever.co`) |
+| Ashby | `jobs.ashbyhq.com`, `/{board}/{id}`, optional `/application` | The board feed (Ashby documents no single-posting endpoint); only the matching posting is kept |
+
+Any other link, including LinkedIn, is not recognised and causes no request. The request uses the same protections as a board read: fixed host, HTTPS, no redirects, bounded time and size. A 404 (Greenhouse and Lever answer it for a closed posting) or a posting absent from the Ashby feed gives `JOB_POSTING_NOT_FOUND`; an Ashby posting that is not public gives `JOB_POSTING_CLOSED`.
+
+Greenhouse names the company in the posting. Lever and Ashby do not, so the board name in the link stands in for it and the form asks the person to check it. Greenhouse's EU board hosts are not recognised because its API documents no EU read host.
+
+The saved job takes the posting's own URL, so it matches the same job if a search or a followed company finds it later. It is not linked to the source as an occurrence, so availability tracking does not apply to it.

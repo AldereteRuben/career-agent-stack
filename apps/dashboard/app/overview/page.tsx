@@ -7,6 +7,7 @@ import { DiscoveryPanel } from '@/components/discovery-panel';
 import { overviewDetailsOpen } from '@/lib/overview-details';
 import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
 import { ApplicationPatterns } from '@/components/application-patterns';
+import { OverviewReminders } from '@/components/overview-reminders';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -206,6 +207,7 @@ export default function OverviewPage() {
       </Card>
     </div>}
     {summary && <ActivityCalendar activity={summary.activityByDay ?? []}/>}
+    <OverviewReminders />
 
     <details className="search-guide" open={Boolean(summary && summary.totalJobs === 0 && totalApplications === 0)}>
       <summary id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</summary>
