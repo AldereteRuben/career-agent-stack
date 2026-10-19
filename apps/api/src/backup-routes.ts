@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { chmod, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 export type BackupOptions = { root: string; data: string; files: string; database: string; key: string };
@@ -31,6 +31,21 @@ function redactPrivatePaths(text: string, roots: string[]): string {
     result = result.replace(new RegExp(`${escapedRoot}(?:[/\\\\][^\\r\\n\\"'\\x60;,)]*)?`, 'g'), '[redacted]');
   }
   return result;
+}
+
+/** Resolves symlinked ancestors too, matching the backup writer's path diagnostics. */
+async function canonicalPathForRedaction(path: string): Promise<string> {
+  const absolute = resolve(path);
+  let existing = absolute;
+  const rest: string[] = [];
+  for (;;) {
+    try { return join(await realpath(existing), ...rest.reverse()); } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return absolute;
+      rest.push(basename(existing));
+      existing = parent;
+    }
+  }
 }
 
 /** Run the already verified archive writer with this API's configuration, never the checkout's .env. */
@@ -88,7 +103,8 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
       // Keep the diagnostic useful while hiding credentials and private filesystem locations from server logs.
       const privatePaths = [join(job.directory, 'keys'), job.directory, join(job.directory, '.backup-env'), options.files, options.data, options.root];
       const message = error instanceof Error ? error.message : String(error);
-      app.log.warn({ reason: redactPrivatePaths(redactSecrets(message, [options.database, options.key]), privatePaths) }, 'Backup failed');
+      const canonicalPrivatePaths = await Promise.all(privatePaths.map(canonicalPathForRedaction));
+      app.log.warn({ reason: redactPrivatePaths(redactSecrets(message, [options.database, options.key]), [...privatePaths, ...canonicalPrivatePaths]) }, 'Backup failed');
       // Failed archives are not recoverable. Completed copies are retained until the user removes them.
       await rm(job.directory, { recursive: true, force: true }).catch(() => undefined);
     }

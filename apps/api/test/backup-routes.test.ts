@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import Fastify from 'fastify';
 import { registerBackupRoutes, backupRunner, redactSecrets, type BackupRunner } from '../src/backup-routes.js';
 
-async function fixture(run: BackupRunner, extra: { logs?: string[]; database?: string; key?: string } = {}) {
+async function fixture(run: BackupRunner, extra: { logs?: string[]; database?: string; key?: string; paths?: (data: string) => Promise<{ root: string; data: string; files: string }> } = {}) {
   const data = await mkdtemp(join(tmpdir(), 'career-backup-api-'));
+  const paths = await extra.paths?.(data) ?? { root: data, data, files: join(data, 'files') };
   const app = Fastify(extra.logs ? { logger: { level: 'warn', stream: { write: (line: string) => { extra.logs!.push(line); } } } } : {});
   app.addHook('onRequest', async (request, reply) => {
     if (!request.headers.authorization) return reply.code(401).send({ error: 'SESSION_REQUIRED' });
   });
-  registerBackupRoutes(app, (request) => request.headers.authorization!, { root: data, data, files: join(data, 'files'), database: extra.database ?? 'unused', key: extra.key ?? 'unused' }, run);
+  registerBackupRoutes(app, (request) => request.headers.authorization!, { ...paths, database: extra.database ?? 'unused', key: extra.key ?? 'unused' }, run);
   const request = (method: 'GET' | 'POST', url: string, workspace = 'one') => app.inject({ method, url, headers: { authorization: workspace } });
   const wait = async () => {
     for (let i = 0; i < 100; i++) {
@@ -134,6 +135,28 @@ test('a failed backup is explained in the server log without any credential, and
     assert.ok(!logs.join('').includes('hunter2-pw') && !logs.join('').includes(key), 'no credential reaches the log');
     assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes(outputDirectory), 'no private filesystem path reaches the log');
     assert.ok(!logs.join('').includes('private-resume.pdf') && !logs.join('').includes('.backup-env'), 'no private path suffix reaches the log');
+  } finally { await f.close(); }
+});
+test('a failed backup redacts canonical paths behind symlinked data folders', async () => {
+  const logs: string[] = [];
+  const f = await fixture(async (directory) => {
+    const canonicalDirectory = await realpath(directory);
+    throw new Error(`Could not verify that ${canonicalDirectory} is private`);
+  }, {
+    logs,
+    paths: async (data) => {
+      const target = join(data, 'private-target'); const link = join(data, 'data-link');
+      await mkdir(target); await symlink(target, link);
+      return { root: data, data: link, files: join(link, 'files') };
+    },
+  });
+  try {
+    await f.request('POST', '/api/v1/backups'); const job = await f.wait();
+    assert.equal(job.state, 'failed');
+    const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
+    assert.ok(entry, 'the failure is logged');
+    assert.match(entry.reason, /Could not verify that \[redacted\] is private/);
+    assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes('private-target') && !logs.join('').includes('data-link'), 'neither the symlink path nor its target reaches the log');
   } finally { await f.close(); }
 });
 test('redactSecrets hides every configured value and ignores trivially short ones', () => {
