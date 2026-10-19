@@ -72,7 +72,8 @@ test('follow-up draft routes support CRUD while scoping every operation to its w
     assert.equal(update.statusCode, 200, update.body); assert.deepEqual({ language: update.json().draft.language, subject: update.json().draft.subject, body: update.json().draft.body }, edited);
     const beforeDelete = (await client.query('SELECT state, version FROM applications WHERE id=$1 AND workspace_id=$2', [applicationId, owner])).rows[0];
     const deleted = await app.inject({ method: 'DELETE', url: url(applicationId), headers });
-    assert.equal(deleted.statusCode, 204);
+    assert.equal(deleted.statusCode, 200);
+    assert.deepEqual(deleted.json(), { ok: true });
     assert.deepEqual((await app.inject({ url: url(applicationId), headers })).json(), { draft: null });
     assert.deepEqual((await client.query('SELECT state, version FROM applications WHERE id=$1 AND workspace_id=$2', [applicationId, owner])).rows[0], beforeDelete, 'draft CRUD does not change application state or version');
     assert.equal((await client.query('SELECT count(*)::int AS n FROM application_events WHERE application_id=$1', [applicationId])).rows[0].n, 0, 'draft CRUD does not create application timeline events');

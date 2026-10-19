@@ -63,6 +63,6 @@ export function registerApplicationFollowUpRoutes(app: FastifyInstance, workspac
     const removed = await database.delete(applicationFollowUpDrafts)
       .where(and(eq(applicationFollowUpDrafts.workspaceId, workspaceId), eq(applicationFollowUpDrafts.applicationId, applicationId))).returning({ id: applicationFollowUpDrafts.id });
     if (!removed.length) return reply.code(404).send({ error: 'NOT_FOUND' });
-    return reply.code(204).send();
+    return reply.code(200).send({ ok: true });
   });
 }
