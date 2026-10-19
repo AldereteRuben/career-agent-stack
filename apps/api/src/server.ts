@@ -124,10 +124,33 @@ app.get('/api/v1/tracking-metrics', async (request, reply) => {
     .where(and(eq(applicationEvents.workspaceId, id), inArray(applicationEvents.eventType, ['MANUAL_APPLICATION_RECORDED', 'APPLICATION_STATE_CHANGED', 'ASSIST_SUBMISSION_CONFIRMED', 'ASSIST_USER_RECONCILED', 'RECRUITMENT_STAGE_CHANGED', 'RECRUITMENT_STAGE_CORRECTED'])));
   const applicationIds = [...new Set(events.filter((event) => event.newState === 'CONFIRMED').map((event) => event.applicationId))];
   const trackedApplications = applicationIds.length
-    ? await db.select({ id: applications.id, state: applications.state, recruitmentStage: applications.recruitmentStage })
+    ? await db.select({ id: applications.id, jobId: applications.jobId, role: applications.role, state: applications.state, recruitmentStage: applications.recruitmentStage })
       .from(applications).where(and(eq(applications.workspaceId, id), inArray(applications.id, applicationIds)))
     : [];
-  return calculateTrackingMetrics({ period, now: new Date(), applications: trackedApplications, events });
+  const jobIds = [...new Set(trackedApplications.flatMap((application) => application.jobId ? [application.jobId] : []))];
+  const [occurrences, searchSources] = jobIds.length
+    ? await Promise.all([
+      db.select({ jobId: jobOccurrences.jobId, provider: jobOccurrences.provider }).from(jobOccurrences)
+        .where(and(eq(jobOccurrences.workspaceId, id), inArray(jobOccurrences.jobId, jobIds))),
+      db.select({ jobId: jobSearchSources.jobId, provider: jobSearchSources.provider }).from(jobSearchSources)
+        .where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, jobIds))),
+    ])
+    : [[], []];
+  const providersByJob = new Map<string, Set<string>>();
+  for (const source of [...occurrences, ...searchSources]) {
+    const providers = providersByJob.get(source.jobId) ?? new Set<string>();
+    providers.add(source.provider);
+    providersByJob.set(source.jobId, providers);
+  }
+  return calculateTrackingMetrics({
+    period,
+    now: new Date(),
+    applications: trackedApplications.map((application) => ({
+      ...application,
+      sourceProviders: application.jobId ? [...(providersByJob.get(application.jobId) ?? [])] : [],
+    })),
+    events,
+  });
 });
 
 app.get('/api/v1/session', async (request) => ({ authenticated: Boolean(workspaceFromRequest(request)), setupRequired: true, capabilities: { profile: true, tracking: true, discovery: true, documentExport: true, autofill: true, externalWrites: true, email: false, ai: aiEnabled } }));

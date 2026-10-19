@@ -6,6 +6,7 @@ import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
 import { overviewDetailsOpen } from '@/lib/overview-details';
 import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
+import { ApplicationPatterns } from '@/components/application-patterns';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -31,6 +32,7 @@ type Summary = {
   profileCompletion: { percent: number; completed: number; total: number; missing: ProfileCheck[]; approvedFactCount: number; pendingFactCount: number };
 };
 type TrackingPeriod = '30d' | '90d' | 'all';
+type TrackingBreakdown = Array<{ key: string; label: string; confirmed: number; interviewed: number; interviewConversionPercent: number | null; smallSample: boolean }>;
 type TrackingMetrics = {
   period: TrackingPeriod;
   periodStart: string | null;
@@ -40,6 +42,7 @@ type TrackingMetrics = {
   noResponseYet: number;
   noResponseAfter14Days: number;
   noResponseThresholdDays: number;
+  breakdowns: { source: TrackingBreakdown; role: TrackingBreakdown; country: TrackingBreakdown };
 };
 
 type ProfileCheck = 'fullName' | 'email' | 'country' | 'targetTitles' | 'workModes' | 'approvedFact';
@@ -246,6 +249,7 @@ export default function OverviewPage() {
               <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c(`Sin respuesta tras ${trackingMetrics.noResponseThresholdDays} días`, `No response after ${trackingMetrics.noResponseThresholdDays} days`)} </span><strong className="metric-value">{trackingMetrics.noResponseAfter14Days}</strong><span className="metric-label">{c('etapa actual: sin respuesta', 'current stage: no response')}</span></Link></li>
             </ul>}
     </section>
+    {trackingMetrics && <ApplicationPatterns breakdowns={trackingMetrics.breakdowns}/>}
     <div className="home-grid">
       <Card className="home-panel">
         <div className="panel-heading"><h2>{c('Otros pendientes y opciones', 'Other tasks and options')}</h2></div>
