@@ -170,6 +170,37 @@ describe('manifest authentication', () => {
       assert.throws(() => validateManifest(value), ArchiveError);
     }
   });
+  test('application document revisions bind both stored files and remain backward compatible with old manifests', () => {
+    const value = manifest();
+    const documentId = '33333333-3333-4333-8333-333333333333';
+    const revisionId = '44444444-4444-4444-8444-444444444444';
+    const textStoragePath = `${documentId}/${revisionId}.txt`;
+    const pdfStoragePath = `${documentId}/${revisionId}.pdf`;
+    const textArchivePath = `files/${textStoragePath}`;
+    const pdfArchivePath = `files/${pdfStoragePath}`;
+    value.applicationDocumentRevisions = [{
+      id: revisionId, workspaceId: '22222222-2222-4222-8222-222222222222', documentId, revision: 1,
+      textStoragePath, textSha256: 'c'.repeat(64), textArchivePath,
+      pdfStoragePath, pdfSha256: 'd'.repeat(64), pdfArchivePath,
+    }];
+    value.entries.push({ path: textArchivePath, size: 1, sha256: 'c'.repeat(64) }, { path: pdfArchivePath, size: 1, sha256: 'd'.repeat(64) });
+    assert.ok(validateManifest(value));
+
+    const variants = [
+      (m) => { m.applicationDocumentRevisions[0].textStoragePath = '../../private.txt'; },
+      (m) => { m.applicationDocumentRevisions[0].textSha256 = 'not-a-hash'; },
+      (m) => { m.applicationDocumentRevisions[0].pdfArchivePath = 'files/other.pdf'; },
+      (m) => { m.entries = m.entries.filter((entry) => entry.path !== pdfArchivePath); },
+      (m) => { m.applicationDocumentRevisions.push({ ...m.applicationDocumentRevisions[0] }); },
+    ];
+    for (const change of variants) {
+      const hostile = JSON.parse(JSON.stringify(value));
+      change(hostile);
+      assert.throws(() => validateManifest(hostile), ArchiveError);
+    }
+    const legacy = manifest();
+    assert.ok(validateManifest(legacy), 'previous backup manifests without application document revisions remain accepted');
+  });
 });
 
 

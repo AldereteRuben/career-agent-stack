@@ -336,11 +336,26 @@ async function restore(options) {
     if (mismatched.length || Object.keys(counts).length !== expected.length) throw new RecoveryError({
       es: `Los recuentos restaurados no coinciden con el manifiesto (${mismatched.join(', ') || 'tablas distintas'}).`, en: `Restored row counts do not match the manifest (${mismatched.join(', ') || 'different tables'}).`,
     });
-    const restoredDocuments = new Map((await documentRows(appClient)).map((row) => [row.id, row]));
+    const restoredDocumentRows = await documentRows(appClient);
+    const restoredDocuments = new Map(restoredDocumentRows.documents.map((row) => [row.id, row]));
     if (restoredDocuments.size !== manifest.documents.length || manifest.documents.some((document) => {
       const row = restoredDocuments.get(document.id);
       return !row || row.storagePath !== document.storagePath || row.sha256 !== document.sha256 || row.workspaceId !== document.workspaceId;
     })) throw new RecoveryError({ es: 'Las filas de documentos restauradas no coinciden con el manifiesto.', en: 'Restored document rows do not match the manifest.' });
+    const revisions = manifest.applicationDocumentRevisions ?? [];
+    const restoredRevisions = new Map(restoredDocumentRows.applicationDocumentRevisions.map((row) => [row.id, row]));
+    if (restoredRevisions.size !== revisions.length) throw new RecoveryError({ es: 'Las filas de revisiones de documentos restauradas no coinciden con el manifiesto.', en: 'Restored application document revision rows do not match the manifest.' });
+    for (const revision of revisions) {
+      const row = restoredRevisions.get(revision.id);
+      if (!row || row.workspaceId !== revision.workspaceId || row.documentId !== revision.documentId || row.revision !== revision.revision
+        || row.textStoragePath !== revision.textStoragePath || row.textSha256 !== revision.textSha256
+        || row.pdfStoragePath !== revision.pdfStoragePath || row.pdfSha256 !== revision.pdfSha256) {
+        throw new RecoveryError({
+          es: `La revisión del documento ${revision.documentId} no coincide con el manifiesto.`,
+          en: `Revision for document ${revision.documentId} does not match the manifest.`,
+        });
+      }
+    }
     const unsafe = await appClient.query(`select
       (select count(*)::int from boards where enabled or permission_status <> 'UNKNOWN') as boards,
       (select count(*)::int from source_policy_reviews where permission_status <> 'UNKNOWN') as reviews,
@@ -356,12 +371,24 @@ async function restore(options) {
     const filesDir = join(dataDir, 'files');
     await ensurePrivateDir(dataDir);
     await ensurePrivateDir(filesDir);
-    for (const document of manifest.documents) {
-      const destination = safeJoin(filesDir, document.storagePath);
+    const restoreDocumentFile = async ({ documentId, label, storagePath, sha256, archivePath }) => {
+      const source = files.get(archivePath)?.path;
+      if (!source) throw new RecoveryError({ es: `Falta el archivo ${label} del documento ${documentId} en la copia.`, en: `Backup is missing the ${label} file for document ${documentId}.` });
+      const destination = safeJoin(filesDir, storagePath);
       await ensurePrivateDir(dirname(destination));
-      await rename(files.get(document.archivePath).path, destination);
+      await rename(source, destination);
       await ensurePrivateFile(destination, { create: false });
-      if ((await hashFile(destination)) !== document.sha256) throw new RecoveryError({ es: `El documento ${document.id} no coincide tras copiarlo.`, en: `Document ${document.id} does not match after copying.` });
+      if ((await hashFile(destination)) !== sha256) throw new RecoveryError({
+        es: `El archivo ${label} del documento ${documentId} no coincide tras copiarlo.`,
+        en: `The ${label} file for document ${documentId} does not match after copying.`,
+      });
+    };
+    for (const document of manifest.documents) {
+      await restoreDocumentFile({ documentId: document.id, label: 'documento', storagePath: document.storagePath, sha256: document.sha256, archivePath: document.archivePath });
+    }
+    for (const revision of revisions) {
+      await restoreDocumentFile({ documentId: revision.documentId, label: 'texto', storagePath: revision.textStoragePath, sha256: revision.textSha256, archivePath: revision.textArchivePath });
+      await restoreDocumentFile({ documentId: revision.documentId, label: 'PDF', storagePath: revision.pdfStoragePath, sha256: revision.pdfSha256, archivePath: revision.pdfArchivePath });
     }
     await rm(staging, { recursive: true, force: true });
 
@@ -387,15 +414,16 @@ async function restore(options) {
     const report = {
       format: 'career-agent-stack-restore-report', restoredAt: new Date().toISOString(), archive: basename(archive),
       backupCreatedAt: manifest.createdAt, database: databaseLabel(restoredUrl), owner: appRole,
-      rowCounts: counts, documentsVerified: manifest.documents.length, sanitised, unresolvedApplications: unresolved, pendingMigrations,
+      rowCounts: counts, documentsVerified: manifest.documents.length, applicationDocumentRevisionsVerified: revisions.length, sanitised, unresolvedApplications: unresolved, pendingMigrations,
       session: 'new APP_SESSION_SECRET and single-use sign-in token; sessions from the original installation are not valid here',
     };
     await writePrivateFile(join(target, 'restore-report.json'), `${JSON.stringify(report, null, 2)}\n`);
 
     process.stdout.write('\n');
     ok(`Restauración aislada completada en ${target}`, `Isolated restore completed in ${target}`);
-    say(`  Base de datos nueva: ${databaseLabel(restoredUrl)} · ${manifest.documents.length} documento(s) verificados · recuentos idénticos a la copia.`,
-      `New database: ${databaseLabel(restoredUrl)} · ${manifest.documents.length} document(s) verified · row counts identical to the backup.`);
+    const verifiedDocumentCount = manifest.documents.length + revisions.length;
+    say(`  Base de datos nueva: ${databaseLabel(restoredUrl)} · ${verifiedDocumentCount} documento(s) verificados · recuentos idénticos a la copia.`,
+      `New database: ${databaseLabel(restoredUrl)} · ${verifiedDocumentCount} document(s) verified · row counts identical to the backup.`);
     say(`  Tableros desactivados: ${sanitised.boardsDisabled} · permisos a UNKNOWN: ${sanitised.boardPermissionsReset + sanitised.reviewPermissionsReset} · búsquedas desactivadas: ${sanitised.searchProfilesDisabled}.`,
       `Boards disabled: ${sanitised.boardsDisabled} · permissions reset to UNKNOWN: ${sanitised.boardPermissionsReset + sanitised.reviewPermissionsReset} · searches disabled: ${sanitised.searchProfilesDisabled}.`);
     if (unresolved) warn(`${unresolved} solicitud(es) en estado IN_PROGRESS/UNKNOWN: concílialas a mano; nada se reenvía.`, `${unresolved} application(s) in IN_PROGRESS/UNKNOWN: reconcile them by hand; nothing is resubmitted.`);
