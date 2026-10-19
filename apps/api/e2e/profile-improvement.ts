@@ -17,7 +17,7 @@ export const profileImprovementScenario: Scenario = {
 
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: uiUrl });
     const outbound: string[] = [];
-    const onRequest = (request: { url(): string }) => { if (new URL(request.url()).hostname.endsWith('linkedin.com')) outbound.push(request.url()); };
+    const onRequest = (request: { url(): string }) => { const hostname = new URL(request.url()).hostname; if (hostname === 'linkedin.com' || hostname.endsWith('.linkedin.com')) outbound.push(request.url()); };
     page.on('request', onRequest);
     try {
       for (const locale of ['es', 'en'] as const) {
