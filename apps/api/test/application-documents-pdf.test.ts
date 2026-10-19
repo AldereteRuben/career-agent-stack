@@ -63,6 +63,8 @@ test('application resume and cover-letter PDFs preserve reviewed wording, accent
     assert.ok(resume.size > 1_000);
     assert.match(resume.sha256, /^[a-f0-9]{64}$/u);
     assert.ok(resumeText.includes(locale === 'es' ? 'Rubén Álvarez' : 'Ruben Alvarez'));
+    assert.ok(resumeText.includes(locale === 'es' ? 'Ingeniero de calidad' : 'Quality engineer'));
+    assert.ok(resumeText.includes(locale === 'es' ? 'EXPERIENCIA' : 'EXPERIENCE'), `${locale} resume uses the localized experience heading`);
     for (const statement of languageText) assert.ok(resumeText.includes(statement), `${locale} resume preserves “${statement}”`);
     assertPageSize(resumePath, paperSize);
   }
