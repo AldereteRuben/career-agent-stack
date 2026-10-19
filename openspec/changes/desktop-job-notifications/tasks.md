@@ -6,5 +6,5 @@
 - [x] Add bilingual Settings control, test notification, and honest provider/permission status.
 - [x] Add unit and disposable-database coverage for privacy, localization, opt-in, completion status, manual runs, and disabled delivery.
 - [x] Run local typecheck, lint, build, search/deletion/integration/UI tests, OpenSpec validation, and the concurrency/privacy/migration review.
-- [ ] Run CI after opening the draft PR; database-backed cases still depend on the configured disposable database in CI.
-- [ ] Confirm the proposed design in issue #38 before promoting this draft to ready for review.
+- [x] Run CI after opening the draft PR; all required checks passed in run 39209639940.
+- [x] Confirm the proposed design in issue #38 before promoting this draft to ready for review; confirmed in issue comment 6261723728.
