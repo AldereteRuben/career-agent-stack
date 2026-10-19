@@ -145,7 +145,7 @@ export const applicationDocumentsScenario: Scenario = {
     const approvedBeforeNewer = packet.files.find((file) => file.revision === unsupportedRevision.revision);
     assert.ok(approvedBeforeNewer?.selectable && approvedBeforeNewer.newerPendingRevision, 'A newer pending edit does not silently replace the approved download');
     const materials = page.locator('.application-materials');
-    await materials.getByText(/edición más reciente pendiente de aprobación/u).waitFor();
+    await materials.getByText(/Hay una edición más reciente pendiente de aprobación|A newer edit is awaiting approval/u).waitFor();
     await setLocale(page, 'en');
     await materials.getByText(/newer edit is awaiting approval/u).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
