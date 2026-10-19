@@ -29,7 +29,7 @@ async function claimAlert(): Promise<QueuedAlert | null> {
 }
 
 async function finishAlert(client: NotificationClient, event: QueuedAlert, status: 'SENT' | 'FAILED' | 'DISABLED', error: string | null = null): Promise<void> {
-  const updated = await client.query(`UPDATE desktop_notification_events SET status=$2,lease_until=NULL,last_error=$3,delivered_at=CASE WHEN $2='SENT' THEN now() ELSE delivered_at END WHERE id=$1 AND status='SENDING'`, [event.id,status,error]);
+  const updated = await client.query(`UPDATE desktop_notification_events SET status=$2,lease_until=NULL,last_error=$3,delivered_at=CASE WHEN $4 THEN now() ELSE delivered_at END WHERE id=$1 AND status='SENDING'`, [event.id,status,error,status === 'SENT']);
   if (!updated.rowCount) return;
   if (status === 'SENT' || status === 'FAILED') {
     await client.query(`UPDATE desktop_notification_settings SET last_status=$2,last_attempt_at=now(),updated_at=now() WHERE workspace_id=$1`, [event.workspace_id,status === 'SENT' ? 'ACCEPTED' : 'FAILED']);
