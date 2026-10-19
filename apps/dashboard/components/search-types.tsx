@@ -1,4 +1,4 @@
-export type ProviderId = 'remotive' | 'arbeitnow' | 'himalayas' | 'boards';
+export type ProviderId = 'remotive' | 'arbeitnow' | 'himalayas' | 'boards' | 'adzuna';
 export type Search = {
   id: string;
   role: string | null;

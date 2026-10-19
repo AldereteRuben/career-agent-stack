@@ -9,6 +9,8 @@ export type PublicJob = {
   location: string | null;
   workMode: Exclude<SearchWorkMode, 'any'> | 'unknown';
   url: string;
+  /** Optional provider attribution target, distinct from the job advert link. */
+  attributionUrl?: string;
   postedAt: string | null;
   description: string | null;
   raw: Record<string, unknown>;

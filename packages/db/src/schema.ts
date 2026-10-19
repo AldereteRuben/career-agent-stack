@@ -239,7 +239,7 @@ export const jobSearchSources = pgTable('job_search_sources', {
   // Consecutive complete, freshly downloaded feeds of this provider that did not list this job (ADR 021).
   missedCompleteReads: integer('missed_complete_reads').notNull().default(0),
   raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_search_sources_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_search_sources_identity_uq').on(t.workspaceId, t.provider, t.externalId), index('job_search_sources_job_idx').on(t.workspaceId, t.jobId)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_search_sources_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_search_sources_identity_uq').on(t.workspaceId, t.provider, t.externalId), index('job_search_sources_job_idx').on(t.workspaceId, t.jobId), check('job_search_sources_provider_check', sql`${t.provider} in ('remotive','arbeitnow','himalayas','adzuna')`)]);
 
 export const savedJobSearchMatches = pgTable('saved_job_search_matches', {
   workspaceId: uuid('workspace_id').notNull(), searchId: uuid('search_id').notNull(), jobId: uuid('job_id').notNull(),
