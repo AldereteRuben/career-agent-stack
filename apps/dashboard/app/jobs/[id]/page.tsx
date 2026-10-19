@@ -14,6 +14,7 @@ import { AppShell, PageHeader, WorkspaceGate, DetailTitle } from '@/components/s
 import { Button, Card, Icon, Notice, Tag } from '@/components/ui';
 import { ApiError, api, errorMessage, formatDate } from '@/lib/api';
 import { copy, applicationStage, labelFor } from '@/lib/labels';
+import { JobCompensationText, type JobCompensationView } from '@/components/job-compensation';
 import styles from '../jobs.module.css';
 
 type Match = { titleAlignment: number | null; matchedTargetTitle: string | null; matchedSkills: string[]; missingSkills: string[]; approvedFactCount: number; targetTitles: string[]; profileRevision: number; notes: string[] };
@@ -22,7 +23,7 @@ type Job = { discoveredAt: string | null; seenAt: string | null; id: string; tit
 type Snapshot = { id: string; title: string; descriptionText: string | null; fetchedAt: string };
 type JobApplication = { id: string; state: string; recruitmentStage?: string; updatedAt?: string };
 type AvailabilityEvent = { fromState: string; toState: string; reason: string; createdAt: string };
-type Detail = { searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[]; closedByUser: boolean; availabilityHistory: AvailabilityEvent[]; stillListedBySource: boolean };
+type Detail = { compensation?: JobCompensationView | null; searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[]; closedByUser: boolean; availabilityHistory: AvailabilityEvent[]; stillListedBySource: boolean };
 
 export default function JobDetailPage() {
   const { locale } = useLocale(); const c = copy(locale);
@@ -151,6 +152,7 @@ export default function JobDetailPage() {
       <ul className={styles.summary} aria-label={c('Datos principales de la oferta', 'Key job details')}>
         <li><span>{c('Empresa', 'Company')}</span><strong>{job.company}</strong></li>
         <li><span>{c('Ubicación', 'Location')}</span><strong>{job.location ?? c('Por confirmar', 'To be confirmed')}</strong></li>
+        {data?.compensation && <li><span>{c('Salario', 'Salary')}</span><JobCompensationText compensation={data.compensation}/></li>}
         <li><span>{c('Disponibilidad', 'Availability')}</span><Tag tone={job.availability === 'OPEN' ? 'green' : job.availability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(job.availability, locale)}</Tag></li>
         <li><span>{c('Requisitos para solicitar', 'Requirements to apply')}</span><Tag tone={job.eligibility === 'PASS' ? 'green' : job.eligibility === 'FAIL' ? 'red' : 'amber'}>{labelFor.eligibility(job.eligibility, locale)}</Tag></li>
         {(source?.applyUrl ?? job.canonicalUrl) && <li className={styles.summaryLink}><a target="_blank" rel="noopener noreferrer" href={source?.applyUrl ?? job.canonicalUrl ?? undefined}>{c('Ver la oferta original', 'View the original post')}<span className="sr-only"> {c('(se abre en una pestaña nueva)', '(opens in a new tab)')}</span></a></li>}

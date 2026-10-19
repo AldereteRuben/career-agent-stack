@@ -1,6 +1,6 @@
 import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
-import { RELEASE_VERSION, securityHeaders } from '@career/domain';
+import { RELEASE_VERSION, firstJobCompensation, securityHeaders } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { registerRestoreRoutes } from './restore-routes.js';
 import { config, projectRoot } from './config.js';
@@ -15,6 +15,7 @@ import { db, pool, applications, applicationEvents, applicationContacts, workspa
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
+import { fromDrizzle, setAvailability } from './job-availability.js';
 import { registerActivityTimelineRoutes } from './activity-timeline.js';
 import { registerDesktopNotificationRoutes } from './desktop-notification-routes.js';
 import { startDesktopNotificationWorker } from './desktop-notification-worker.js';
@@ -22,7 +23,8 @@ import { calculateTrackingMetrics, parseTrackingPeriod } from './tracking-metric
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
 import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie, setSessionGeneration, workspaceFromRequest } from './session.js';
-import { normalizeJobUrl } from './sources.js';
+import { normalizeJobUrl, readPosting, type PostingFeedCache, type ProviderJob } from './sources.js';
+import { createPostingLookupHandleStore, parsePostingUrl, postingPrefill } from './posting-link.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
 import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
@@ -422,6 +424,8 @@ app.get('/api/v1/jobs', async (request) => {
     paged ? db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...filters)) : Promise.resolve([]),
   ]);
   const sourceRows = rows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, rows.map((row) => row.id)))) : [];
+  // Only the pay fields of each board posting are read, not the whole stored payload (descriptions are large).
+  const boardPay = rows.length ? await db.select({ jobId: jobOccurrences.jobId, provider: jobOccurrences.provider, salaryRange: sql<unknown>`${jobOccurrences.sourcePayload}->'salaryRange'`, compensation: sql<unknown>`${jobOccurrences.sourcePayload}->'compensation'` }).from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), inArray(jobOccurrences.jobId, rows.map((row) => row.id)))) : [];
   const snapshots = rows.length && query.scope === 'filtered' ? await db.select({ jobId: jobSnapshots.jobId, descriptionText: jobSnapshots.descriptionText }).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), inArray(jobSnapshots.jobId, rows.map((row) => row.id)))).orderBy(desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)) : [];
   const descriptions = new Map<string, string | null>(); for (const snapshot of snapshots) if (!descriptions.has(snapshot.jobId)) descriptions.set(snapshot.jobId, snapshot.descriptionText);
   const items = (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, rows))).map((row) => {
@@ -429,6 +433,7 @@ app.get('/api/v1/jobs', async (request) => {
     const publicRow = omit(row, 'companyResearch');
     return {
       ...publicRow,
+      compensation: firstJobCompensation([...sourceRows.filter((source) => source.jobId === row.id).map((source) => ({ provider: source.provider, payload: source.raw })), ...boardPay.filter((source) => source.jobId === row.id).map((source) => ({ provider: source.provider, payload: { salaryRange: source.salaryRange, compensation: source.compensation } }))]),
       ...(query.scope === 'filtered' ? { preferenceReasons: evaluateJobFilters({ company: row.company, title: row.title, description: descriptions.get(row.id) ?? null }, filterPreferences).reasons } : {}),
       searchSources: sourceRows.filter((source, index, rows) => source.jobId === publicRow.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })),
     };
@@ -449,7 +454,7 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const [scored] = await scoreJobs(db, id, await withEffectiveSeenAt(db, id, [job]));
   // Present legacy feed snapshots as readable text without rewriting their evidence/hash.
   const readableSnapshots = searchSources.length ? snapshots.map((snapshot) => ({ ...snapshot, descriptionText: plainDescription(snapshot.descriptionText) })) : snapshots;
-  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, closedByUser: availability.closedByUser, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
+  return { job: scored ?? job, compensation: firstJobCompensation([...searchSources.map((source) => ({ provider: source.provider, payload: source.raw })), ...occurrences.map((occurrence) => ({ provider: occurrence.provider, payload: occurrence.sourcePayload }))]), snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, closedByUser: availability.closedByUser, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
 });
 /** Reviewing from /jobs also clears the job from every search inbox and from strong-identity duplicates. */
 app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
@@ -462,6 +467,11 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
   if (/linkedin\.com$/i.test(new URL(parsed.jobUrl).hostname) || new URL(parsed.jobUrl).hostname.toLowerCase().endsWith('.linkedin.com')) return fail(reply, 400, 'LINKEDIN_URL_MANUAL_ONLY', 'Add the description or the employer career URL; no request was made.');
   let jobUrl: string; try { jobUrl = normalizeJobUrl(parsed.jobUrl); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
   const id = workspace(request);
+  const postingRef = parsed.postingLookupToken ? parsePostingUrl(jobUrl) : null;
+  const linkedPosting = parsed.postingLookupToken && postingRef
+    ? postingLookupHandles.get(parsed.postingLookupToken, id, postingRef, jobUrl)
+    : null;
+  if (parsed.postingLookupToken && !linkedPosting) return fail(reply, 409, 'POSTING_LOOKUP_EXPIRED', 'Check the link again before saving it as a tracked source occurrence.');
   const now = new Date();
   const scored = applyMatch({ companyResearch: { whatItDoes: '', howItMakesMoney: '', recentNews: '', culture: '', questionsToAsk: '' }, companyResearchRevision: 1, discoveredAt: null, seenAt: null, savedAt: null, id: '', workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', closedByUser: false, shortlistDecision: 'UNREVIEWED', fitScore: null, evidenceCoverage: null, eligibility: 'NEEDS_REVIEW', reasons: ['MANUAL_IMPORT_REVIEW_REQUIRED'], createdAt: now, updatedAt: now }, parsed.description, await loadMatchingContext(db, id));
   const created = await db.transaction(async (tx) => {
@@ -469,14 +479,65 @@ app.post('/api/v1/jobs/import', async (request, reply) => {
     await lockJobIdentity(tx,id);
     await lockKey(tx, `job-url:${id}:${jobUrl}`);
     const duplicateId = await findJobIdentity(tx,id,jobUrl);
-    if (duplicateId) return { duplicateId };
-    const job = (await tx.insert(jobs).values({ workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: 'UNKNOWN', fitScore: scored.fitScore, evidenceCoverage: scored.evidenceCoverage, eligibility: scored.eligibility, reasons: scored.reasons }).returning())[0]!;
+    if (duplicateId) {
+      if (!linkedPosting || !postingRef) return { duplicateId };
+      // Serialize source reappearance with the manual close/reopen endpoint, which also locks this row.
+      // Otherwise a stale read could reopen a job after the user closed it concurrently.
+      const existingJob = (await tx.select().from(jobs).where(and(eq(jobs.id, duplicateId), eq(jobs.workspaceId, id))).limit(1).for('update'))[0];
+      if (!existingJob) return { duplicateId };
+      const occurrence = (await tx.select().from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), eq(jobOccurrences.provider, postingRef.provider), eq(jobOccurrences.region, postingRef.region), eq(jobOccurrences.tenant, postingRef.tenant), eq(jobOccurrences.externalJobId, linkedPosting.externalId))).limit(1))[0];
+      if (occurrence && occurrence.jobId !== duplicateId) return { lookupConflict: true };
+      let occurrenceId = occurrence?.id;
+      if (!occurrence) {
+        occurrenceId = (await tx.insert(jobOccurrences).values({ workspaceId: id, jobId: duplicateId, provider: postingRef.provider, region: postingRef.region, tenant: postingRef.tenant, externalJobId: linkedPosting.externalId, jobUrl: linkedPosting.jobUrl, applyUrl: linkedPosting.applyUrl, sourcePostedAt: linkedPosting.postedAt ? new Date(linkedPosting.postedAt) : null, sourceUpdatedAt: linkedPosting.updatedAt ? new Date(linkedPosting.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: linkedPosting.raw }).returning({ id: jobOccurrences.id }))[0]!.id;
+      } else {
+        await tx.update(jobOccurrences).set({ lastSeenAt: now, missedCompleteReads: 0, lastSuccessfulRefreshAt: now, sourcePostedAt: linkedPosting.postedAt ? new Date(linkedPosting.postedAt) : null, sourceUpdatedAt: linkedPosting.updatedAt ? new Date(linkedPosting.updatedAt) : null, sourcePayload: linkedPosting.raw, jobUrl: linkedPosting.jobUrl, applyUrl: linkedPosting.applyUrl }).where(and(eq(jobOccurrences.id, occurrence.id), eq(jobOccurrences.workspaceId, id)));
+      }
+      const sourceHash = createHash('sha256').update(`${linkedPosting.title}\n${linkedPosting.description ?? ''}`).digest('hex');
+      const latestSnapshot = (await tx.select({ snapshotHash: jobSnapshots.snapshotHash }).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), eq(jobSnapshots.jobId, duplicateId))).orderBy(desc(jobSnapshots.fetchedAt)).limit(1))[0];
+      if (latestSnapshot?.snapshotHash !== sourceHash) await tx.insert(jobSnapshots).values({ workspaceId: id, jobId: duplicateId, occurrenceId: occurrenceId ?? null, title: linkedPosting.title, descriptionText: linkedPosting.description, snapshotHash: sourceHash });
+      if (!existingJob.closedByUser && existingJob.availability !== 'OPEN') await setAvailability(fromDrizzle(tx), id, duplicateId, existingJob.availability, 'OPEN', 'SEEN_AGAIN', now);
+      return { job: { ...existingJob, ...(!existingJob.closedByUser ? { availability: 'OPEN' as const } : {}) }, duplicate: true };
+    }
+    const job = (await tx.insert(jobs).values({ workspaceId: id, company: parsed.company, title: parsed.title, location: parsed.location, canonicalUrl: jobUrl, availability: linkedPosting ? 'OPEN' : 'UNKNOWN', fitScore: scored.fitScore, evidenceCoverage: scored.evidenceCoverage, eligibility: scored.eligibility, reasons: scored.reasons }).returning())[0]!;
     await bindJobIdentity(tx,id,job.id,jobUrl);
-    await tx.insert(jobSnapshots).values({ workspaceId: id, jobId: job.id, title: parsed.title, descriptionText: parsed.description, snapshotHash: createHash('sha256').update(`${parsed.title}\n${parsed.description ?? ''}`).digest('hex') });
-    return { ...job, provisional: scored.provisional, match: scored.match };
+    let occurrenceId: string | null = null;
+    if (linkedPosting && postingRef) occurrenceId = (await tx.insert(jobOccurrences).values({ workspaceId: id, jobId: job.id, provider: postingRef.provider, region: postingRef.region, tenant: postingRef.tenant, externalJobId: linkedPosting.externalId, jobUrl: linkedPosting.jobUrl, applyUrl: linkedPosting.applyUrl, sourcePostedAt: linkedPosting.postedAt ? new Date(linkedPosting.postedAt) : null, sourceUpdatedAt: linkedPosting.updatedAt ? new Date(linkedPosting.updatedAt) : null, lastSuccessfulRefreshAt: now, sourcePayload: linkedPosting.raw }).returning({ id: jobOccurrences.id }))[0]!.id;
+    await tx.insert(jobSnapshots).values({ workspaceId: id, jobId: job.id, occurrenceId, title: linkedPosting?.title ?? parsed.title, descriptionText: linkedPosting?.description ?? parsed.description, snapshotHash: createHash('sha256').update(`${linkedPosting?.title ?? parsed.title}\n${linkedPosting?.description ?? parsed.description ?? ''}`).digest('hex') });
+    return { job: { ...job, provisional: scored.provisional, match: scored.match }, duplicate: false };
   });
+  if ('lookupConflict' in created) return fail(reply, 409, 'POSTING_ALREADY_LINKED');
   if ('duplicateId' in created) return fail(reply, 409, 'JOB_ALREADY_EXISTS', created.duplicateId);
-  return reply.code(201).send(created);
+  return reply.code(created.duplicate ? 200 : 201).send({ ...created.job, alreadySaved: created.duplicate, sourceTracked: Boolean(linkedPosting) });
+});
+/**
+ * Pre-fills the job form from a pasted Greenhouse, Lever or Ashby posting link (#47). It reads only that posting, from the
+ * source's fixed public host, and saves nothing. Any other link answers `supported: false` without a request.
+ */
+const postingFeedCache: PostingFeedCache = new Map();
+const postingLookupHandles = createPostingLookupHandleStore<ProviderJob>();
+app.post('/api/v1/jobs/lookup', async (request, reply) => {
+  const body = request.body as { url?: unknown } | null;
+  if (typeof body?.url !== 'string' || body.url.length > 2048) return fail(reply, 400, 'JOB_URL_INVALID');
+  const id = workspace(request);
+  let host: string; try { host = new URL(body.url.trim()).hostname.toLowerCase(); } catch { return fail(reply, 400, 'JOB_URL_INVALID'); }
+  if (host === 'linkedin.com' || host.endsWith('.linkedin.com')) return fail(reply, 400, 'LINKEDIN_URL_MANUAL_ONLY', 'Add the description or the employer career URL; no request was made.');
+  const ref = parsePostingUrl(body.url);
+  if (!ref) return { supported: false };
+  try {
+    const posting = await readPosting(ref, { feedCache: postingFeedCache });
+    const prefill = postingPrefill(ref, posting);
+    const lookupToken = postingLookupHandles.issue(id, ref, normalizeJobUrl(posting.jobUrl), posting);
+    if (!lookupToken) return fail(reply, 413, 'JOB_POSTING_TOO_LARGE');
+    return { supported: true, ...prefill, lookupToken };
+  }
+  catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'POSTING_NOT_FOUND') return fail(reply, 404, 'JOB_POSTING_NOT_FOUND');
+    if (code === 'POSTING_UNLISTED') return fail(reply, 409, 'JOB_POSTING_CLOSED');
+    request.log.warn({ code }, 'posting lookup failed');
+    return fail(reply, 502, 'JOB_POSTING_UNAVAILABLE');
+  }
 });
 app.post('/api/v1/jobs/:id/shortlist', async (request, reply) => {
   const body = request.body as { decision?: unknown } | null;
