@@ -4,6 +4,7 @@ import { BackupPanel } from '@/components/backup-panel';
 import { RestorePanel } from '@/components/restore-panel';
 import { DeleteAllDataPanel } from '@/components/delete-all-data-panel';
 import { AiConnectionPanel } from '@/components/ai/connection';
+import { OllamaConnectionPanel } from '@/components/ai/ollama-connection';
 import { AiAutomationPanel } from '@/components/ai/automation';
 import { AiHistoryPanel } from '@/components/ai/history';
 import { RELEASE_VERSION } from '@career/domain';
@@ -142,6 +143,7 @@ export default function SettingsPage() {
       <DesktopNotificationsPanel/>
       <section id="assistant" aria-label={c('Conexión y permisos de IA', 'AI connection and permissions')}><Card className="form-card">
         <AiConnectionPanel onConnectionChange={() => setAiConnectionRevision(value => value + 1)}/>
+        <OllamaConnectionPanel/>
         <AiPermissionsPanel connectionRevision={aiConnectionRevision} onChanged={() => setAiConnectionRevision(value => value + 1)}/>
         <AiAutomationPanel connectionRevision={aiConnectionRevision} onChanged={() => setAiConnectionRevision(value => value + 1)}/>
         <AiHistoryPanel/>

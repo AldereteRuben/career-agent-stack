@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
-  AI_LIMITS, aiErrorSchema, aiOperationDataCategories, aiSnapshotDataCategories, aiSourceSnapshotSchema, canAutoRetryAiRun, validateAiOutput,
-  type AiError, type AiOperation, type AiRunOrigin, type AiSourceSnapshot,
+  AI_LIMITS, aiErrorSchema, aiOperationDataCategories, aiSnapshotDataCategories, aiSourceSnapshotSchema, canAutoRetryAiRun, validateAiOutput, aiProviderSchema,
+  type AiError, type AiOperation, type AiProvider, type AiRunOrigin, type AiSourceSnapshot,
 } from '@career/domain';
 import { hashAiInputContent } from './prompts.js';
 
@@ -10,7 +10,7 @@ export type AiQueueErrorCode = 'INVALID_INPUT' | 'STORAGE_UNAVAILABLE' | 'CONSEN
 export class AiQueueError extends Error { constructor(readonly code: AiQueueErrorCode) { super(code); this.name = 'AiQueueError'; } }
 export type EnqueueAiRunInput = {
   workspaceId: string; connectionId: string; consentId: string; connectionRevision: number; consentRevision: number;
-  provider: 'codex' | 'claude-code'; model?: string; accountFingerprint: string; operation: AiOperation; origin: AiRunOrigin;
+  provider: AiProvider; model?: string; accountFingerprint: string; operation: AiOperation; origin: AiRunOrigin;
   idempotencyKey: string; contentIdentity: string;
   /** Derived by the server from the official account/context, never accepted from a browser. */
   accountLockKey: string; snapshot: AiSourceSnapshot; snapshotHash: string; inputVersions: Record<string, unknown>;
@@ -18,7 +18,7 @@ export type EnqueueAiRunInput = {
 };
 export type AiQueueRun = {
   id: string; workspaceId: string; connectionId: string; consentId: string; connectionRevision: number; consentRevision: number;
-  provider: 'codex' | 'claude-code'; accountFingerprint: string; model: string | null; operation: AiOperation; origin: AiRunOrigin;
+  provider: AiProvider; accountFingerprint: string; model: string | null; operation: AiOperation; origin: AiRunOrigin;
   status: string; snapshot: AiSourceSnapshot; snapshotHash: string; inputVersions: Record<string, unknown>;
   searchId: string | null; automationPolicyId: string | null; leaseToken?: string;
 };
@@ -54,7 +54,7 @@ const uuid = z.string().uuid(); const hash = z.string().regex(/^[a-f0-9]{64}$/u)
 const usageSchema = z.object({ availability: z.enum(['KNOWN', 'STALE', 'UNAVAILABLE']), model: z.string().min(1).max(160).nullable().optional(), inputTokens: z.number().int().nonnegative().nullable().optional(), outputTokens: z.number().int().nonnegative().nullable().optional(), costUsd: z.string().regex(/^\d+(?:\.\d+)?$/u).nullable().optional() }).strict();
 const enqueueSchema = z.object({
   workspaceId: uuid, connectionId: uuid, consentId: uuid, connectionRevision: z.number().int().positive(), consentRevision: z.number().int().positive(),
-  provider: z.enum(['codex', 'claude-code']), model: z.string().min(1).max(160).optional(), accountFingerprint: hash, operation: z.enum(['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT']), origin: z.enum(['MANUAL', 'AUTOMATIC']),
+  provider: aiProviderSchema, model: z.string().min(1).max(160).optional(), accountFingerprint: hash, operation: z.enum(['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT']), origin: z.enum(['MANUAL', 'AUTOMATIC']),
   idempotencyKey: z.string().min(1).max(200), contentIdentity: hash, accountLockKey: hash, snapshot: aiSourceSnapshotSchema, snapshotHash: hash, inputVersions: z.record(z.string(), z.unknown()),
   searchId: uuid.optional(), automationPolicyId: uuid.optional(), automationPolicyRevision: z.number().int().positive().optional(), reservationPassId: uuid.optional(), now: z.date().optional(), retryOf: uuid.optional(),
 }).strict();

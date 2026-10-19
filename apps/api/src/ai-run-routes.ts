@@ -3,21 +3,24 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { aiConnections, aiConsents, aiRuns, aiArtifacts, type db } from '@career/db';
-import { AI_SCHEMA_VERSION, aiOperationSchema, aiOutputSchema, aiSourceSnapshotSchema, aiSnapshotDataCategories, canonicalAiReuseKey, checkAiConsent, type AiConsent, type AiSourceSnapshot } from '@career/domain';
+import { AI_SCHEMA_VERSION, aiOperationSchema, aiProviderSchema, aiOutputSchema, aiSourceSnapshotSchema, aiSnapshotDataCategories, canonicalAiReuseKey, checkAiConsent, type AiConsent, type AiProvider, type AiSourceSnapshot } from '@career/domain';
 import { createCurrentAiSnapshot, checkCurrentAiSnapshot } from './ai/source-reader.js';
 import { AI_PROMPT_VERSION, buildAiPrompt } from './ai/prompts.js';
 import { CODEX_DEFAULT_MODEL } from './ai/codex.js';
 import { AI_QUEUE_LOCK, AiQueueError, type AiQueue } from './ai/queue.js';
 import { AiSourceError } from './ai/source-snapshot.js';
 import { lockKey, profileLockKey } from './workspace-data.js';
+import { isOllamaCloudModel } from './ai/ollama.js';
 
 export const AI_CONFIG_VERSION = 'codex-0.163.0-v1';
+export const OLLAMA_CONFIG_VERSION = 'ollama-0.1.0-v1';
 export const AI_NOTICE_VERSION = 'career-sharing-v1';
-type Preview = { id: string; workspaceId: string; connectionId: string; connectionRevision: number; accountFingerprint: string; maskedIdentity: string | null; snapshot: AiSourceSnapshot; at: number; runId?: string; consent?: typeof aiConsents.$inferSelect; idempotencyKey?: string; task?: Promise<unknown> };
+type Preview = { id: string; workspaceId: string; provider: AiProvider; model: string; connectionId: string; connectionRevision: number; accountFingerprint: string; maskedIdentity: string | null; snapshot: AiSourceSnapshot; at: number; runId?: string; consent?: typeof aiConsents.$inferSelect; idempotencyKey?: string; task?: Promise<unknown> };
 const paramsSchema = z.object({ id: z.uuid() }).strict();
 const createSchema = z.object({ previewId: z.uuid(), idempotencyKey: z.uuid(), rememberPermission: z.boolean().default(false) }).strict();
 const reviewSchema = z.object({ expectedRevision: z.number().int().positive() }).strict();
-const listSchema = z.object({ operation: aiOperationSchema, locale: z.enum(['es', 'en']), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequestHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+const listSchema = z.object({ operation: aiOperationSchema, locale: z.enum(['es', 'en']), provider: aiProviderSchema.optional(), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequestHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+const previewSchema = z.object({ provider: aiProviderSchema.default('codex'), operation: aiOperationSchema, locale: z.enum(['es', 'en']), jobId: z.uuid().optional(), questionId: z.uuid().optional(), searchRequest: z.string().optional(), selectedFactIds: z.array(z.string().uuid()).optional() }).strict();
 
 export function aiVisibleSources(snapshot: AiSourceSnapshot) {
   return {
@@ -36,7 +39,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
 }) {
   const database = options.database;
   const previews = new Map<string, Preview>();
-  const activeConnection = async (id: string) => (await database.select().from(aiConnections).where(and(eq(aiConnections.workspaceId, id), eq(aiConnections.provider, 'codex'), eq(aiConnections.active, true), eq(aiConnections.state, 'CONNECTED'))).limit(1))[0];
+  const activeConnection = async (id: string, provider: AiProvider) => (await database.select().from(aiConnections).where(and(eq(aiConnections.workspaceId, id), eq(aiConnections.provider, provider), eq(aiConnections.active, true), eq(aiConnections.state, 'CONNECTED'))).limit(1))[0];
   const runView = async (workspaceId: string, id: string) => {
     const run = (await database.select().from(aiRuns).where(and(eq(aiRuns.workspaceId, workspaceId), eq(aiRuns.id, id))).limit(1))[0];
     if (!run) return null;
@@ -45,7 +48,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
   };
   const remembered = async (preview: Preview) => {
     const rows = await database.select().from(aiConsents).where(and(eq(aiConsents.workspaceId, preview.workspaceId), eq(aiConsents.connectionId, preview.connectionId), eq(aiConsents.operation, preview.snapshot.operation), eq(aiConsents.remembered, true), isNull(aiConsents.searchIds))).orderBy(desc(aiConsents.revision));
-    return rows.find(row => checkAiConsent(storedAiConsent(row), { workspaceId: preview.workspaceId, connectionId: preview.connectionId, provider: 'codex', accountFingerprint: preview.accountFingerprint, connectionRevision: preview.connectionRevision, operation: preview.snapshot.operation, origin: 'MANUAL', dataCategories: aiSnapshotDataCategories(preview.snapshot) }).ok);
+    return rows.find(row => checkAiConsent(storedAiConsent(row), { workspaceId: preview.workspaceId, connectionId: preview.connectionId, provider: preview.provider, accountFingerprint: preview.accountFingerprint, connectionRevision: preview.connectionRevision, operation: preview.snapshot.operation, origin: 'MANUAL', dataCategories: aiSnapshotDataCategories(preview.snapshot) }).ok);
   };
   app.addHook('onRoute', route => {
     if (!route.url.startsWith('/api/v1/ai/runs') && !route.url.startsWith('/api/v1/ai/artifacts') && !route.url.startsWith('/api/v1/ai/consents')) return;
@@ -78,20 +81,27 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     reply.header('Cache-Control', 'no-store');
     if (!options.enabled) return reply.code(503).send({ error: 'AI_UNAVAILABLE' });
     const id = workspace(request);
-    const connection = await activeConnection(id);
+    const parsed = previewSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const { provider, ...sourceRequest } = parsed.data;
+    if (provider === 'ollama' && !['JOB_ANALYSIS', 'SEARCH_DRAFT'].includes(sourceRequest.operation)) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const connection = await activeConnection(id, provider);
     if (!connection) {
       // An authorized account whose last check did not find a signed-in session is not the same as no account:
       // checking it again in Settings is enough, and the person need not authorize anything new.
-      const authorized = (await database.select({ id: aiConnections.id }).from(aiConnections).where(and(eq(aiConnections.workspaceId, id), eq(aiConnections.provider, 'codex'), eq(aiConnections.active, true))).limit(1))[0];
+      const authorized = (await database.select({ id: aiConnections.id }).from(aiConnections).where(and(eq(aiConnections.workspaceId, id), eq(aiConnections.provider, provider), eq(aiConnections.active, true))).limit(1))[0];
       return reply.code(409).send({ error: authorized ? 'AI_SESSION_UNAVAILABLE' : 'AI_NOT_CONNECTED' });
     }
-    const snapshot = await createCurrentAiSnapshot(database, id, request.body);
+    if (provider === 'ollama' && (!connection.selectedModel || isOllamaCloudModel(connection.selectedModel)
+      || connection.capabilities.cloudDisabledAttested !== true)) return reply.code(409).send({ error: 'AI_NOT_CONNECTED' });
+    const snapshot = await createCurrentAiSnapshot(database, id, sourceRequest);
     buildAiPrompt(snapshot, { workspaceId: id, operation: snapshot.operation, locale: snapshot.locale });
     for (const [key, value] of previews) if (Date.now() - value.at >= 300_000 && !value.task) previews.delete(key);
     if ([...previews.values()].filter(value => value.workspaceId === id).length >= 20) return reply.code(429).send({ error: 'AI_TOO_MANY_PREVIEWS' });
-    const preview: Preview = { id: randomUUID(), workspaceId: id, connectionId: connection.id, connectionRevision: connection.revision, accountFingerprint: connection.accountFingerprint, maskedIdentity: connection.maskedIdentity, snapshot, at: Date.now() };
+    const preview: Preview = { id: randomUUID(), workspaceId: id, provider, model: provider === 'ollama' ? connection.selectedModel ?? '' : CODEX_DEFAULT_MODEL, connectionId: connection.id, connectionRevision: connection.revision, accountFingerprint: connection.accountFingerprint, maskedIdentity: connection.maskedIdentity, snapshot, at: Date.now() };
+    if (!preview.model) return reply.code(409).send({ error: 'AI_NOT_CONNECTED' });
     previews.set(preview.id, preview);
-    return { previewId: preview.id, operation: snapshot.operation, locale: snapshot.locale, expiresAt: new Date(preview.at + 300_000).toISOString(), categories: aiSnapshotDataCategories(snapshot), sources: aiVisibleSources(snapshot), rememberedPermission: Boolean(await remembered(preview)), connection: { maskedIdentity: connection.maskedIdentity } };
+    return { previewId: preview.id, provider, model: preview.model, operation: snapshot.operation, locale: snapshot.locale, expiresAt: new Date(preview.at + 300_000).toISOString(), categories: aiSnapshotDataCategories(snapshot), sources: aiVisibleSources(snapshot), rememberedPermission: Boolean(await remembered(preview)), connection: { maskedIdentity: connection.maskedIdentity } };
   });
   app.post('/api/v1/ai/runs', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -119,7 +129,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     if (preview.task) return accepted(await preview.task);
     preview.idempotencyKey = body.data.idempotencyKey;
     const execute = async () => {
-      const connection = await activeConnection(id);
+      const connection = await activeConnection(id, preview.provider);
       if (!connection || connection.id !== preview.connectionId || connection.revision !== preview.connectionRevision || connection.accountFingerprint !== preview.accountFingerprint) throw new AiQueueError('CONSENT_INVALID');
       const current = await database.transaction(async tx => { await lockKey(tx, profileLockKey(id)); return checkCurrentAiSnapshot(tx, id, preview.snapshot); });
       if (!current.ok) throw new AiSourceError('AI_SOURCE_CHANGED');
@@ -127,12 +137,13 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
       if (!consent) consent = await database.transaction(async tx => {
         await lockKey(tx, AI_QUEUE_LOCK);
         const last = (await tx.select().from(aiConsents).where(and(eq(aiConsents.workspaceId, id), eq(aiConsents.connectionId, connection.id), eq(aiConsents.operation, preview.snapshot.operation))).orderBy(desc(aiConsents.revision)).limit(1))[0];
-        return (await tx.insert(aiConsents).values({ workspaceId: id, connectionId: connection.id, provider: 'codex', accountFingerprint: connection.accountFingerprint, connectionRevision: connection.revision, revision: (last?.revision ?? 0) + 1, operation: preview.snapshot.operation, dataCategories: aiSnapshotDataCategories(preview.snapshot), searchIds: null, noticeVersion: AI_NOTICE_VERSION, remembered: body.data.rememberPermission }).returning())[0]!;
+        return (await tx.insert(aiConsents).values({ workspaceId: id, connectionId: connection.id, provider: preview.provider, accountFingerprint: connection.accountFingerprint, connectionRevision: connection.revision, revision: (last?.revision ?? 0) + 1, operation: preview.snapshot.operation, dataCategories: aiSnapshotDataCategories(preview.snapshot), searchIds: null, noticeVersion: AI_NOTICE_VERSION, remembered: body.data.rememberPermission }).returning())[0]!;
       });
       preview.consent = consent;
       const prompt = buildAiPrompt(preview.snapshot, { workspaceId: id, operation: preview.snapshot.operation, locale: preview.snapshot.locale });
-      const contentIdentity = createHash('sha256').update(canonicalAiReuseKey({ workspaceId: id, operation: preview.snapshot.operation, connectionId: connection.id, accountFingerprint: connection.accountFingerprint, inputContentHash: prompt.inputContentHash, jobIdentity: preview.snapshot.job?.canonicalIdentity ?? null, jobContentHash: preview.snapshot.job?.contentHash ?? null, evidenceHashes: preview.snapshot.facts.map(fact => fact.contentHash), questionHash: preview.snapshot.question?.contentHash ?? null, locale: preview.snapshot.locale, schemaVersion: AI_SCHEMA_VERSION, promptVersion: AI_PROMPT_VERSION, configVersion: AI_CONFIG_VERSION })).digest('hex');
-      const run = await options.queue.enqueue({ workspaceId: id, connectionId: connection.id, consentId: consent.id, connectionRevision: connection.revision, consentRevision: consent.revision, provider: 'codex', accountFingerprint: connection.accountFingerprint, operation: preview.snapshot.operation, origin: 'MANUAL', idempotencyKey: body.data.idempotencyKey, contentIdentity, accountLockKey: connection.accountFingerprint, snapshot: preview.snapshot, snapshotHash: preview.snapshot.snapshotHash, inputVersions: { previewId: preview.id, schemaVersion: AI_SCHEMA_VERSION, promptVersion: AI_PROMPT_VERSION, configVersion: AI_CONFIG_VERSION, model: CODEX_DEFAULT_MODEL, connectionRevision: connection.revision, consentRevision: consent.revision } });
+      const configVersion = preview.provider === 'ollama' ? OLLAMA_CONFIG_VERSION : AI_CONFIG_VERSION;
+      const contentIdentity = createHash('sha256').update(canonicalAiReuseKey({ workspaceId: id, operation: preview.snapshot.operation, connectionId: connection.id, accountFingerprint: connection.accountFingerprint, inputContentHash: prompt.inputContentHash, jobIdentity: preview.snapshot.job?.canonicalIdentity ?? null, jobContentHash: preview.snapshot.job?.contentHash ?? null, evidenceHashes: preview.snapshot.facts.map(fact => fact.contentHash), questionHash: preview.snapshot.question?.contentHash ?? null, locale: preview.snapshot.locale, schemaVersion: AI_SCHEMA_VERSION, promptVersion: AI_PROMPT_VERSION, configVersion })).digest('hex');
+      const run = await options.queue.enqueue({ workspaceId: id, connectionId: connection.id, consentId: consent.id, connectionRevision: connection.revision, consentRevision: consent.revision, provider: preview.provider, accountFingerprint: connection.accountFingerprint, operation: preview.snapshot.operation, origin: 'MANUAL', idempotencyKey: body.data.idempotencyKey, contentIdentity, accountLockKey: connection.accountFingerprint, snapshot: preview.snapshot, snapshotHash: preview.snapshot.snapshotHash, inputVersions: { previewId: preview.id, schemaVersion: AI_SCHEMA_VERSION, promptVersion: AI_PROMPT_VERSION, configVersion, model: preview.model, connectionRevision: connection.revision, consentRevision: consent.revision } });
       preview.runId = run.id;
       return runView(id, run.id);
     };
@@ -146,7 +157,7 @@ export function registerAiRunRoutes(app: FastifyInstance, workspace: (request: F
     const query = parsed.data;
     const rows = await database.select({ run: aiRuns, artifactId: aiArtifacts.id }).from(aiRuns)
       .leftJoin(aiArtifacts, and(eq(aiArtifacts.workspaceId, aiRuns.workspaceId), eq(aiArtifacts.runId, aiRuns.id)))
-      .where(and(eq(aiRuns.workspaceId, workspace(request)), eq(aiRuns.operation, query.operation),
+      .where(and(eq(aiRuns.workspaceId, workspace(request)), eq(aiRuns.operation, query.operation), query.provider ? eq(aiRuns.provider, query.provider) : undefined,
         sql`${aiRuns.snapshot}->>'locale' = ${query.locale}`,
         query.jobId ? sql`${aiRuns.snapshot}->'job'->>'jobId' = ${query.jobId}` : sql`${aiRuns.snapshot}->>'job' IS NULL`,
         query.questionId ? sql`${aiRuns.snapshot}->'question'->>'questionId' = ${query.questionId}` : sql`${aiRuns.snapshot}->>'question' IS NULL`,

@@ -8,7 +8,7 @@ import { AI_LIMITS } from './ai-budget.js';
 
 export const AI_SCHEMA_VERSION = 1 as const;
 
-export const aiProviders = ['codex', 'claude-code'] as const;
+export const aiProviders = ['codex', 'claude-code', 'ollama'] as const;
 export const aiOperations = ['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT'] as const;
 /** Same lowercase tags as DocumentLanguage. */
 export const aiLocales = ['es', 'en'] as const;
