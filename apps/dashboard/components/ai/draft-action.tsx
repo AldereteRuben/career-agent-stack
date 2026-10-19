@@ -9,15 +9,16 @@ import { copy, labelFor } from '@/lib/labels';
 import { AiResultView, type AiArtifact, type AiPreviewSources } from './result-view';
 import { useLocalRefresh } from '@/lib/local-refresh';
 import { AiConnectionPanel } from './connection';
+import { OllamaConnectionPanel } from './ollama-connection';
 import styles from './draft-action.module.css';
 
 export type AiDraftRequest =
-  | { operation: 'SEARCH_DRAFT'; locale: AiLocale; searchRequest: string }
-  | { operation: 'JOB_ANALYSIS'; locale: AiLocale; jobId: string; selectedFactIds?: string[] }
+  | { operation: 'SEARCH_DRAFT'; locale: AiLocale; searchRequest: string; provider?: 'codex' | 'ollama' }
+  | { operation: 'JOB_ANALYSIS'; locale: AiLocale; jobId: string; selectedFactIds?: string[]; provider?: 'codex' | 'ollama' }
   | { operation: 'RESUME_DRAFT'; locale: AiLocale; jobId: string; selectedFactIds: string[] }
   | { operation: 'ANSWER_DRAFT'; locale: AiLocale; questionId: string; selectedFactIds?: string[]; jobId?: string };
 export type AiRunPreview = {
-  previewId: string; operation: AiOperation; locale: AiLocale; expiresAt: string; categories: string[];
+  previewId: string; provider: 'codex' | 'ollama'; model: string; operation: AiOperation; locale: AiLocale; expiresAt: string; categories: string[];
   sources: AiPreviewSources; rememberedPermission: boolean; connection: { maskedIdentity: string | null };
 };
 type Run = { id: string; state: AiRunState; error?: AiError; artifactId?: string; origin?: 'MANUAL' | 'AUTOMATIC' };
@@ -30,11 +31,11 @@ const ACTIVE_STATES = new Set<AiRunState>(['QUEUED', 'RUNNING', 'CANCEL_REQUESTE
 function failureCode(failure: unknown): string {
   return failure instanceof ApiError ? failure.code : failure instanceof TypeError ? 'NETWORK_UNAVAILABLE' : 'UNKNOWN';
 }
-function draftError(code: string, locale: Locale): string {
+function draftError(code: string, locale: Locale, providerLabel: string): string {
   const c = copy(locale);
   const messages: Record<string, string> = {
-    NOT_CONNECTED: c('Conecta tu cuenta de Codex en Ajustes para usar esta ayuda.', 'Connect your Codex account in Settings to use this help.'),
-    AI_NOT_CONNECTED: c('Conecta tu cuenta de Codex en Ajustes para usar esta ayuda.', 'Connect your Codex account in Settings to use this help.'),
+    NOT_CONNECTED: c('Conecta el proveedor elegido en Ajustes para usar esta ayuda.', 'Connect the selected provider in Settings to use this help.'),
+    AI_NOT_CONNECTED: c('Conecta el proveedor elegido en Ajustes para usar esta ayuda.', 'Connect the selected provider in Settings to use this help.'),
     AI_SESSION_UNAVAILABLE: c('Tu cuenta de Codex está autorizada, pero en la última comprobación no tenía la sesión iniciada. Comprueba la cuenta en Ajustes; no hace falta autorizarla de nuevo.', 'Your Codex account is authorized, but it was not signed in at the last check. Check the account in Settings; you do not need to authorize it again.'),
     AI_UNAVAILABLE: c('La ayuda con IA no está disponible ahora. Puedes seguir usando la app y revisar la conexión en Ajustes.', 'AI assistance is unavailable right now. You can keep using the app and check the connection in Settings.'),
     AI_DISABLED: c('La ayuda con IA no está activa en esta instalación.', 'AI assistance is not active on this installation.'),
@@ -60,9 +61,9 @@ function draftError(code: string, locale: Locale): string {
     AI_IDEMPOTENCY_CONFLICT: c('Esta tarea ya se solicitó con otros datos. Consulta el resultado antes de preparar otra.', 'This task was already requested with different details. Check the result before preparing another.'),
     AI_TOO_MANY_PREVIEWS: c('Has revisado muchas tareas seguidas. Espera unos minutos antes de preparar otra.', 'You have previewed many tasks in a short time. Wait a few minutes before preparing another.'),
     AI_RUN_NOT_FOUND: c('Esta tarea ya no está disponible. No se iniciará otra automáticamente.', 'This task is no longer available. Another task will not start automatically.'),
-    TIMEOUT: c('Codex tardó más de lo esperado. No hay una nueva sugerencia disponible.', 'Codex took longer than expected. No new suggestion is available.'),
+    TIMEOUT: c(`${providerLabel} tardó más de lo esperado. No hay una nueva sugerencia disponible.`, `${providerLabel} took longer than expected. No new suggestion is available.`),
     INVALID_OUTPUT: c('La respuesta no pasó las comprobaciones de la app. No se ha usado su contenido.', 'The response did not pass the app’s checks. Its content has not been used.'),
-    PROVIDER_ERROR: c('Codex no pudo completar la tarea. Puedes intentarlo de nuevo cuando quieras.', 'Codex could not complete the task. You can try again when you are ready.'),
+    PROVIDER_ERROR: c(`${providerLabel} no pudo completar la tarea. Puedes intentarlo de nuevo cuando quieras.`, `${providerLabel} could not complete the task. You can try again when you are ready.`),
     UNSUPPORTED_VERSION: c('La configuración de Codex necesita una revisión. Consulta la conexión en Ajustes.', 'Your Codex setup needs checking. Review the connection in Settings.'),
     AI_RESULT_UNAVAILABLE: c('La tarea terminó, pero no pudimos abrir su resultado. Consulta el resultado otra vez; no generaremos otra tarea.', 'The task finished, but we could not open its result. Check the result again; this will not generate another task.'),
   };
@@ -137,7 +138,7 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
       void (async () => {
         try {
           const sourceRequest = JSON.parse(requestKey) as AiDraftRequest;
-          const query = new URLSearchParams({ operation: sourceRequest.operation, locale: sourceRequest.locale });
+          const query = new URLSearchParams({ operation: sourceRequest.operation, locale: sourceRequest.locale, provider: 'provider' in sourceRequest ? sourceRequest.provider ?? 'codex' : 'codex' });
           if ('jobId' in sourceRequest && sourceRequest.jobId) query.set('jobId', sourceRequest.jobId);
           if ('questionId' in sourceRequest) query.set('questionId', sourceRequest.questionId);
           if (sourceRequest.operation === 'SEARCH_DRAFT') {
@@ -274,27 +275,29 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
   const previewExpired = !!preview && (!Number.isFinite(Date.parse(preview.value.expiresAt)) || Date.parse(preview.value.expiresAt) <= clock);
   const previewChanged = !!preview && preview.requestKey !== requestKey;
   const categories: Record<string, string> = { SEARCH_REQUEST: c('Lo que buscas', 'Your search request'), JOB_POSTING: c('Texto de la oferta', 'Job posting text'), APPROVED_FACTS: c('Datos confirmados de tu perfil', 'Confirmed profile details'), APPLICATION_QUESTION: c('Pregunta de la solicitud', 'Application question') };
-  const progress = run?.state === 'QUEUED' ? c('En espera. La tarea empezará cuando Codex esté disponible.', 'Waiting. The task will start when Codex is available.') : run?.state === 'CANCEL_REQUESTED' ? c('Deteniendo la tarea…', 'Stopping the task…') : run?.state === 'SUCCEEDED' ? c('La sugerencia está lista. Consultando el resultado…', 'The suggestion is ready. Opening the result…') : c('Codex está preparando la sugerencia…', 'Codex is preparing the suggestion…');
+  const selectedProvider = 'provider' in request ? request.provider ?? 'codex' : 'codex';
+  const providerLabel = selectedProvider === 'ollama' ? 'Ollama' : 'Codex';
+  const progress = run?.state === 'QUEUED' ? c('En espera. La tarea empezará cuando el proveedor esté disponible.', 'Waiting. The task will start when the provider is available.') : run?.state === 'CANCEL_REQUESTED' ? c('Deteniendo la tarea…', 'Stopping the task…') : run?.state === 'SUCCEEDED' ? c('La sugerencia está lista. Consultando el resultado…', 'The suggestion is ready. Opening the result…') : c(`${providerLabel} está preparando la sugerencia…`, `${providerLabel} is preparing the suggestion…`);
   const oldResult = !!artifact && (artifact.requestKey !== requestKey || (!!run && artifact.runId !== run.id));
   const connectionProblem = needsSettings(error) || needsSettings(run?.error?.code);
 
   return <div className={styles.action} hidden={!visible}>
-    <div className={styles.actions}><Button type="button" variant="secondary" aria-expanded={open} aria-controls={regionId} disabled={work !== null || historyLoading} onClick={() => { if ((artifact || run) && !open) setOpen(true); else void prepare(); }}>{historyLoading ? c('Consultando tareas anteriores…', 'Checking earlier tasks…') : work === 'preview' ? c('Preparando los datos…', 'Preparing the data…') : running || needsResult ? c('Ver progreso de la ayuda', 'View assistance progress') : uncertainStart ? c('Revisar la tarea pendiente', 'Check the pending task') : run && ['FAILED', 'INTERRUPTED', 'CANCELLED'].includes(run.state) && !open ? c('Ver qué pasó con la tarea', 'See what happened to the task') : artifact && !open ? c('Ver la sugerencia guardada', 'View the saved suggestion') : label}</Button></div>
+    <div className={styles.actions}><Button type="button" variant="secondary" aria-expanded={open} aria-controls={regionId} disabled={work !== null || historyLoading} onClick={() => { if ((artifact || run) && !open) setOpen(true); else void prepare(); }}>{historyLoading ? c('Consultando tareas anteriores…', 'Checking earlier tasks…') : work === 'preview' ? c('Preparando los datos…', 'Preparing the data…') : running || needsResult ? c(`Ver progreso de la ayuda de ${providerLabel}`, `View ${providerLabel} assistance progress`) : uncertainStart ? c('Revisar la tarea pendiente', 'Check the pending task') : run && ['FAILED', 'INTERRUPTED', 'CANCELLED'].includes(run.state) && !open ? c('Ver qué pasó con la tarea', 'See what happened to the task') : artifact && !open ? c('Ver la sugerencia guardada', 'View the saved suggestion') : label}</Button></div>
     {historyError && <Notice tone="warning" actions={<Button type="button" variant="secondary" disabled={work !== null || historyLoading} onClick={() => setHistoryRetry(value => value + 1)}>{c('Reintentar carga del historial', 'Retry loading history')}</Button>}>{c('No pudimos consultar las tareas anteriores. Reintenta para recuperar su estado antes de iniciar otra.', 'We could not check earlier tasks. Retry to recover their status before starting another.')}</Notice>}
     {open && <section id={regionId} className={styles.panel} aria-labelledby={headingId}>
-      <div className={styles.heading}><h3 ref={heading} tabIndex={-1} id={headingId}>{c('Ayuda de Codex', 'Help from Codex')}</h3><Button type="button" variant="quiet" disabled={work !== null} onClick={() => setOpen(false)}>{c('Ocultar', 'Hide')}</Button></div>
-      {work === 'preview' && <p role="status">{c('Preparando la vista de los datos que compartirás. Todavía no se envían a Codex.', 'Preparing a preview of the data you will share. It has not been sent to Codex yet.')}</p>}
-      {error && <Notice tone="error">{draftError(error, locale)}</Notice>}
+      <div className={styles.heading}><h3 ref={heading} tabIndex={-1} id={headingId}>{c(`Ayuda de ${providerLabel}`, `Help from ${providerLabel}`)}</h3><Button type="button" variant="quiet" disabled={work !== null} onClick={() => setOpen(false)}>{c('Ocultar', 'Hide')}</Button></div>
+      {work === 'preview' && <p role="status">{c(`Preparando la vista de los datos que compartirás con ${providerLabel}. Todavía no se envían.`, `Preparing a preview of the data you will share with ${providerLabel}. Nothing has been sent yet.`)}</p>}
+      {error && <Notice tone="error">{draftError(error, locale, providerLabel)}</Notice>}
       {connectionProblem && <div className={styles.actions}><Button type="button" variant="secondary" aria-expanded={connectionOpen} aria-controls={`${regionId}-connection`} onClick={() => setConnectionOpen(value => !value)}>{connectionOpen ? c('Ocultar la conexión', 'Hide connection') : c('Revisar la conexión aquí', 'Check the connection here')}</Button></div>}
       {connectionOpen && <div id={`${regionId}-connection`} className={styles.section}>
-        <AiConnectionPanel visible={visible && open} onConnectionChange={state => {
+        {selectedProvider === 'ollama' ? <OllamaConnectionPanel/> : <AiConnectionPanel visible={visible && open} onConnectionChange={state => {
           if (state.enabled && state.connection?.authorized && state.connection.sessionState === 'SIGNED_IN') setError(null);
-        }}/>
+        }}/>}
         <div className={styles.actions}><Button type="button" variant="secondary" disabled={work !== null || running || needsResult || uncertainStart} onClick={() => { setConnectionOpen(false); void prepare(); }}>{c('Volver a revisar los datos de mi tarea', 'Review my task’s data again')}</Button></div>
       </div>}
       {uncertainStart && <Notice tone="warning"><div className={styles.section}><p>{c('No pudimos confirmar si la tarea empezó. Reintentar consultará la misma solicitud para evitar duplicarla.', 'We could not confirm whether the task started. Retrying uses the same request to avoid a duplicate.')}</p><div className={styles.actions}><Button type="button" disabled={work !== null} onClick={() => void start()}>{work === 'start' ? c('Comprobando…', 'Checking…') : c('Reintentar esta tarea', 'Retry this task')}</Button></div></div></Notice>}
       {preview && !run && !uncertainStart && <>
-        <p>{c('Codex usará estos datos para preparar una sugerencia. Tú la revisarás antes de usarla.', 'Codex will use these details to prepare a suggestion. You will review it before using it.')}</p>
+        <p>{c(`${providerLabel} usará estos datos para preparar una sugerencia. Tú la revisarás antes de usarla.`, `${providerLabel} will use these details to prepare a suggestion. You will review it before using it.`)}</p>
         {preview.value.connection.maskedIdentity && <p className={styles.hint}>{c('Cuenta:', 'Account:')} {preview.value.connection.maskedIdentity}</p>}
         <ul className={styles.categories}>{preview.value.categories.map((category, index) => <li key={`${category}-${index}`}><Tag>{categories[category] ?? c('Otros datos de esta tarea', 'Other details for this task')}</Tag></li>)}</ul>
         <details className={styles.preview}><summary>{c('Ver exactamente qué se comparte', 'See exactly what will be shared')}</summary><div className={styles.sourceBody}>
@@ -303,14 +306,14 @@ export function AiDraftAction({ request, label, onReview, renderResultActions, v
           {preview.value.sources.question && <div className={styles.section}><h4>{c('Pregunta', 'Question')}</h4><p className={styles.source}>{preview.value.sources.question}</p></div>}
           {preview.value.sources.facts.length > 0 && <div className={styles.section}><h4>{c('Datos confirmados que se usarán', 'Confirmed details that will be used')}</h4><ul className={styles.facts}>{preview.value.sources.facts.map(fact => <li key={fact.factId}><div className={styles.fact}><span className={styles.hint}>{labelFor.factKind(fact.kind, locale)}</span><p className={styles.source}>{fact.text}</p></div></li>)}</ul></div>}
         </div></details>
-        <p className={styles.hint}>{c('Al permitir esta tarea, estos datos se envían a OpenAI. Puede consumir cuota de tu plan de Codex.', 'Allowing this task sends these details to OpenAI. It may use your Codex plan’s quota.')}</p>
+        {selectedProvider === 'codex' ? <p className={styles.hint}>{c('Al permitir esta tarea, estos datos se envían a OpenAI. Puede consumir cuota de tu plan de Codex.', 'Allowing this task sends these details to OpenAI. It may use your Codex plan’s quota.')}</p> : <p className={styles.hint}>{c(`Al permitir esta tarea, los datos se envían al servidor local de Ollama y al modelo ${preview.value.model}. La app no puede verificar si el servidor tiene desactivadas las funciones en la nube.`, `Allowing this task sends the data to the local Ollama server and model ${preview.value.model}. The app cannot verify whether the server has cloud features disabled.`)}</p>}
         {preview.value.rememberedPermission ? <p className={styles.hint}>{c('Ya guardaste permiso para este tipo de ayuda. Esta tarea solo empieza cuando tú lo eliges.', 'You have already saved permission for this type of help. This task only starts when you choose.')}</p> : <label className={styles.check}><input type="checkbox" checked={remember} disabled={work !== null} onChange={event => setRemember(event.target.checked)}/><span>{c('Recordar este permiso para este tipo de ayuda', 'Remember this permission for this type of help')}<small>{c('No activa tareas automáticas. Podrás revisar los datos antes de cada tarea.', 'This does not turn on automatic tasks. You can review the data before each task.')}</small></span></label>}
         {(previewExpired || previewChanged) && <Notice tone="warning">{previewChanged ? c('Cambiaste lo que quieres preparar. Actualiza los datos antes de continuar.', 'You changed what you want to prepare. Refresh the data before continuing.') : c('Esta vista de los datos ha caducado. Actualízala antes de continuar.', 'This data preview has expired. Refresh it before continuing.')}</Notice>}
         <div className={styles.actions}>{previewExpired || previewChanged ? <Button type="button" disabled={work !== null} onClick={() => void prepare()}>{c('Actualizar los datos', 'Refresh the data')}</Button> : <Button type="button" disabled={work !== null} onClick={() => void start()}>{work === 'start' ? c('Iniciando…', 'Starting…') : c('Permitir esta tarea', 'Allow this task')}</Button>}</div>
       </>}
       {needsResult && <div className={styles.progress}><p role="status">{progress}</p><p className={styles.hint}>{c('Puedes seguir usando la app. Ocultar esta sección no cancela la tarea.', 'You can keep using the app. Hiding this section does not cancel the task.')}</p>{running && <><div className={styles.actions}><Button type="button" variant="secondary" disabled={work !== null || run?.state === 'CANCEL_REQUESTED'} onClick={() => void cancel()}>{work === 'cancel' || run?.state === 'CANCEL_REQUESTED' ? c('Cancelando…', 'Cancelling…') : c('Cancelar tarea', 'Cancel task')}</Button></div><p className={styles.hint}>{c('Si Codex ya empezó, cancelar puede consumir cuota igualmente.', 'If Codex has already started, cancelling may still use quota.')}</p></>}</div>}
-      {pollError && <Notice tone="warning" actions={<Button type="button" variant="secondary" disabled={work !== null} onClick={() => { setPollError(null); setPollRetry(value => value + 1); }}>{c('Consultar el estado otra vez', 'Check the status again')}</Button>}>{draftError(pollError, locale)}</Notice>}
-      {run?.state === 'FAILED' && <Notice tone="error"><div className={styles.section}><p>{draftError(run.error?.code ?? 'PROVIDER_ERROR', locale)}</p>{run.error?.dispatched !== 'NO' && <p className={styles.hint}>{c('La tarea puede haber consumido cuota aunque no haya un resultado.', 'The task may have used quota even though there is no result.')}</p>}</div></Notice>}
+      {pollError && <Notice tone="warning" actions={<Button type="button" variant="secondary" disabled={work !== null} onClick={() => { setPollError(null); setPollRetry(value => value + 1); }}>{c('Consultar el estado otra vez', 'Check the status again')}</Button>}>{draftError(pollError, locale, providerLabel)}</Notice>}
+      {run?.state === 'FAILED' && <Notice tone="error"><div className={styles.section}><p>{draftError(run.error?.code ?? 'PROVIDER_ERROR', locale, providerLabel)}</p>{run.error?.dispatched !== 'NO' && <p className={styles.hint}>{c('La tarea puede haber consumido cuota aunque no haya un resultado.', 'The task may have used quota even though there is no result.')}</p>}</div></Notice>}
       {run?.state === 'INTERRUPTED' && <Notice tone="warning">{c('La tarea se interrumpió. No se repetirá sola y puede haber consumido cuota. Puedes preparar otra cuando quieras.', 'The task was interrupted. It will not repeat on its own and may have used quota. You can prepare another when you are ready.')}</Notice>}
       {run?.state === 'CANCELLED' && <Notice>{c('Tarea cancelada. No se ha añadido una nueva sugerencia.', 'Task cancelled. No new suggestion has been added.')}</Notice>}
       {artifact && <>{oldResult && <p className={styles.hint}>{c('Se conserva la sugerencia anterior. Sus datos pueden ser distintos de los que acabas de elegir.', 'The previous suggestion is preserved. Its source details may differ from your current selection.')}</p>}{!oldResult && run?.origin === 'AUTOMATIC' && <p className={styles.hint}>{c('Resumen preparado automáticamente para una búsqueda que autorizaste. Puedes consultar sus datos de origen debajo.', 'Summary prepared automatically for a search you authorized. You can check its supporting details below.')}</p>}<AiResultView artifact={artifact.value} {...(!oldResult && onReview ? { onReview } : {})}/>{!oldResult && run?.origin === 'MANUAL' && artifact.value.state !== 'STALE' && renderResultActions?.(artifact.value, artifact.runId)}</>}

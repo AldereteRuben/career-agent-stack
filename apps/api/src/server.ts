@@ -51,7 +51,7 @@ import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingC
 import { attachGracefulShutdown, resolveLauncherStopFile } from './graceful-shutdown.js';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
-const aiEnabled = config.CAREER_AI_ENABLED && process.platform === 'darwin';
+const aiEnabled = config.CAREER_AI_ENABLED;
 await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
 
 const localData = config.DATA_LOCAL_PATH;
@@ -775,7 +775,8 @@ app.addHook('onClose', () => stopDiscovery());
 const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;
 
-const aiRuntime = await registerAiRuntime(app, workspace, { enabled: aiEnabled, identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH });
+const aiRuntime = await registerAiRuntime(app, workspace, { enabled: aiEnabled, codexEnabled: aiEnabled && process.platform === 'darwin',
+  identitySalt: config.APP_ENCRYPTION_KEY, storageRoot: config.FILES_LOCAL_PATH, ollamaBaseUrl: config.OLLAMA_BASE_URL });
 
 // ---- Delete all my data (ADR 020, point 2) ----------------------------------------------------------------------
 const deletionPhrases = new Set(['BORRAR TODOS MIS DATOS', 'DELETE ALL MY DATA']);
