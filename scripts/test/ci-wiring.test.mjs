@@ -26,7 +26,7 @@ test('every test script cited in the change tasks is declared and run by CI', ()
 test('planned document test families are covered by scripts that CI runs', () => {
   const coverage = [
     { taskPath: 'packages/domain/test/application-documents*.test.ts', script: 'test:unit', input: '../../packages/domain/test/*.test.ts' },
-    { taskPath: 'apps/api/test/application-documents-routes.test.ts', script: 'test:application-documents', input: 'test/application-documents*.test.ts' },
+    { taskPath: 'apps/api/test/application-documents-resume-routes.test.ts', script: 'test:application-documents', input: 'test/application-documents*.test.ts' },
     { taskPath: 'apps/api/test/ai-application-documents.test.ts', script: 'test:ai', input: 'test/ai-*.test.ts' },
     { taskPath: 'scripts/test/application-documents-migration.test.mjs', script: 'test:integration', input: 'scripts/test/application-documents-migration.test.mjs' },
     { taskPath: 'scripts/test/ci-wiring.test.mjs', script: 'test:integration', input: 'scripts/test/ci-wiring.test.mjs' },
