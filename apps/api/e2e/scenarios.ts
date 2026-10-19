@@ -115,13 +115,13 @@ export const scenarios: Scenario[] = [
         const toggle = panel.getByRole('checkbox', { name: locale === 'es' ? 'Activar notificaciones del sistema' : 'Enable system notifications', exact: true });
         await toggle.waitFor();
         await eventually(getSettings, (settings) => settings.language === locale, `${locale}: notification copy preference is saved`);
-        await eventually(() => toggle.isEnabled(), Boolean, `${locale}: settings save has finished`);
         assert.equal(await toggle.isChecked(), false, `${locale}: notifications must remain disabled until opted in`);
         assert.equal(await hasHorizontalOverflow(page), false, `${locale}: Settings overflows at phone width`);
         await page.screenshot({ animations: 'disabled', path: join(artifacts, `desktop-notifications-settings-${locale}-mobile.png`), fullPage: true });
 
         const native = await getSettings();
         if (native.available) {
+          await eventually(() => toggle.isEnabled(), Boolean, `${locale}: settings save has finished`);
           await toggle.click();
           await eventually(getSettings, (settings) => settings.enabled, `${locale}: opt-in is saved`);
           await eventually(() => toggle.isChecked(), Boolean, `${locale}: opted-in state is shown`);
