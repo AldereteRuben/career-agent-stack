@@ -112,7 +112,8 @@ export const applicationDocumentsScenario: Scenario = {
     assert.equal((await api.get<Saved>(`/applications/${application.id}/resume?language=es`)).revisions.length, 1, 'The unsupported skill is refused without creating a revision');
     const unsupportedConfirm = panel.getByLabel('Confirmo que revisé esta afirmación aunque no esté respaldada por hechos aprobados.');
     await assertKeyboardFocus(page, unsupportedConfirm, true);
-    await page.keyboard.press('Space');
+    await page.keyboard.press(' ');
+    assert.equal(await unsupportedConfirm.isChecked(), true, 'Keyboard confirmation marks the unsupported claim checkbox');
     await assertKeyboardFocus(page, save);
     await page.keyboard.press('Enter');
     await panel.getByText('Versión guardada. Revisa el PDF antes de aprobarla.', { exact: true }).waitFor();
@@ -125,7 +126,7 @@ export const applicationDocumentsScenario: Scenario = {
     assert.equal(await approveUnsupported.isDisabled(), true, 'A version containing an unsupported claim needs a separate approval confirmation');
     const approveConfirm = panel.getByLabel('Confirmo que revisé las afirmaciones marcadas como no respaldadas.');
     await assertKeyboardFocus(page, approveConfirm, true);
-    await page.keyboard.press('Space');
+    await page.keyboard.press(' ');
     await assertKeyboardFocus(page, approveUnsupported);
     await page.keyboard.press('Enter');
     await eventually(() => api.get<Saved>(`/applications/${application.id}/resume?language=es`), (value) => Boolean(value.revisions[0]?.approvedAt), 'The explicitly confirmed unsupported revision is approved');
