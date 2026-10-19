@@ -1,6 +1,7 @@
 'use client';
 
 import { BackupPanel } from '@/components/backup-panel';
+import { RestorePanel } from '@/components/restore-panel';
 import { DeleteAllDataPanel } from '@/components/delete-all-data-panel';
 import { AiConnectionPanel } from '@/components/ai/connection';
 import { AiAutomationPanel } from '@/components/ai/automation';
@@ -96,10 +97,11 @@ export default function SettingsPage() {
       </Card></section>
       <Card className="form-card"><h2>{c('Copia de seguridad para recuperar tu espacio', 'Back up your workspace for recovery')}</h2>
         <BackupPanel/>
+        <RestorePanel/>
         <details><summary>{c('Recuperar una copia y otras opciones', 'Restore a backup and other options')}</summary>
           <p><strong>macOS:</strong> {c('también puedes crear la copia abriendo Backup Career Agent Stack.command desde la carpeta de instalación.', 'you can also create a backup by opening Backup Career Agent Stack.command in the installation folder.')}</p>
-          <p>{c('Desde la carpeta del proyecto, ejecuta pnpm run backup para crear una copia. Para restaurar, sigue docs/operations/backup-restore.md. La recuperación crea un espacio independiente que puedes revisar antes de usar.', 'From the project folder, run pnpm run backup to create a backup. To restore it, follow docs/operations/backup-restore.md. Recovery creates a separate workspace you can review before using.')}</p>
-          <p>{c('La recuperación todavía requiere la terminal. La copia está cifrada con tu clave de recuperación: guarda la clave aparte, porque quien tenga las dos puede leer tus datos. Las copias anteriores al cifrado no están protegidas: haz una nueva y borra las antiguas.', 'Recovery still requires a terminal. The backup is encrypted with your recovery key: keep the key apart, because anyone with both can read your data. Backups made before encryption are not protected: make a new one and delete the old ones.')}</p>
+          <p>{c('El asistente de arriba verifica la copia y restaura en un espacio independiente que puedes abrir cuando quieras. Para la recuperación manual avanzada, consulta docs/operations/backup-restore.md.', 'The assistant above verifies the backup and restores it into a separate workspace that you can open when ready. For advanced manual recovery, see docs/operations/backup-restore.md.')}</p>
+          <p>{c('La copia está cifrada con tu clave de recuperación: guarda la clave aparte, porque quien tenga las dos puede leer tus datos. Las copias anteriores al cifrado no están protegidas: haz una nueva y borra las antiguas.', 'The backup is encrypted with your recovery key: keep the key apart, because anyone with both can read your data. Backups made before encryption are not protected: make a new one and delete the old ones.')}</p>
         </details>
       </Card>
       <details className="optional-section"><summary>{c('Exportar a otra herramienta · avanzado', 'Export to another tool · advanced')}</summary><Card className="settings-export"><div className="export-art"><Icon name="download" size={20}/></div><div>
