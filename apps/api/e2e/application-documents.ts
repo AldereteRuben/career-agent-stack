@@ -86,6 +86,8 @@ export const applicationDocumentsScenario: Scenario = {
     await panel.getByText('El contenido o sus fuentes cambiaron; crea una nueva versión para revisar los cambios.', { exact: true }).waitFor();
     const staleApprove = panel.getByRole('button', { name: 'Aprobar esta versión', exact: true });
     assert.equal(await staleApprove.isDisabled(), true, 'A stale document cannot be approved');
+    const refreshedFact = await api.post<{ id: string }>('/profile/facts', { kind: 'experience', statement: `I used Python to resolve customer issues for a refreshed fictional support team. ${claimSentinel}.`, tags: ['Python', 'customer support'] });
+    await api.post(`/profile/facts/${refreshedFact.id}/approve`, {});
     await setLocale(page, 'en');
     await page.getByRole('heading', { level: 1, name: 'Applications', exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
@@ -95,10 +97,11 @@ export const applicationDocumentsScenario: Scenario = {
 
     // An unsupported skill is refused first. A separate, keyboard-operated confirmation allows it to be saved as USER_UNSUPPORTED.
     await page.reload();
-    history = await api.get<Saved>(`/applications/${application.id}/resume?language=es`);
-    const editedClaim = history.revisions[0]!.claims.find((claim) => claim.sentenceId === candidateClaim.sentenceId);
-    assert.ok(editedClaim, 'The latest saved revision still contains the edited evidence-linked sentence');
-    const claimWithSkill = await claimTextarea(panel, editedClaim.text);
+    const currentDraft = await api.get<Draft>(`/applications/${application.id}/resume/draft?language=es`);
+    const currentCandidateClaim = currentDraft.sentences.find((sentence) => sentence.kind === 'CANDIDATE_CLAIM' && sentence.sourceFactIds.length > 0);
+    assert.ok(currentCandidateClaim, 'The refreshed profile provides an approved evidence-linked claim');
+    await panel.getByRole('button', { name: 'Restaurar borrador base', exact: true }).click();
+    const claimWithSkill = await claimTextarea(panel, currentCandidateClaim.text);
     await assertKeyboardFocus(page, claimWithSkill, true);
     await page.keyboard.press('End');
     await page.keyboard.type(` I am certified in ${unsupportedSkill}.`);
@@ -129,12 +132,12 @@ export const applicationDocumentsScenario: Scenario = {
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
-    const unsupportedClaim = unsupportedRevision.claims.find((claim) => claim.sentenceId === candidateClaim.sentenceId);
-    assert.ok(unsupportedClaim, 'The unsupported revision retains the sentence edited for this scenario');
-    const nextClaim = await claimTextarea(panel, unsupportedClaim.text);
+    const unsupportedCandidateClaim = unsupportedRevision.claims.find((claim) => claim.sourceFactIds.length > 0 && new RegExp(unsupportedSkill, 'iu').test(claim.text));
+    assert.ok(unsupportedCandidateClaim, 'The unsupported revision retains the sentence edited for this scenario');
+    const nextClaim = await claimTextarea(panel, unsupportedCandidateClaim.text);
     await assertKeyboardFocus(page, nextClaim, true);
     await page.keyboard.press('ControlOrMeta+A');
-    await page.keyboard.type(candidateClaim.text);
+    await page.keyboard.type(currentCandidateClaim.text);
     await assertKeyboardFocus(page, save);
     await page.keyboard.press('Enter');
     await panel.getByText('Versión guardada. Revisa el PDF antes de aprobarla.', { exact: true }).waitFor();
