@@ -48,7 +48,7 @@ export const applicationDocumentsScenario: Scenario = {
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
     await panel.getByRole('heading', { name: 'CV adaptado a esta oferta', exact: true }).waitFor();
     await panel.getByRole('button', { name: 'Guardar nueva versión', exact: true }).waitFor();
-    const candidateClaim = panel.locator('fieldset').filter({ has: panel.getByText('Afirmación basada en tu perfil', { exact: true }) }).locator('textarea').first();
+    const candidateClaim = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).locator('textarea').first();
     await candidateClaim.waitFor();
 
     // Edit and save by keyboard, with the global :focus-visible indicator checked.
@@ -78,7 +78,7 @@ export const applicationDocumentsScenario: Scenario = {
 
     // An unsupported skill is refused first. A separate, keyboard-operated confirmation allows it to be saved as USER_UNSUPPORTED.
     await page.reload();
-    const claimWithSkill = panel.locator('fieldset').filter({ has: panel.getByText('Afirmación basada en tu perfil', { exact: true }) }).locator('textarea').first();
+    const claimWithSkill = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).locator('textarea').first();
     await assertKeyboardFocus(page, claimWithSkill, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' I am certified in Kubernetes.');
@@ -109,7 +109,7 @@ export const applicationDocumentsScenario: Scenario = {
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
-    const nextClaim = panel.locator('fieldset').filter({ has: panel.getByText('Afirmación basada en tu perfil', { exact: true }) }).locator('textarea').first();
+    const nextClaim = panel.locator('fieldset').filter({ hasText: 'Afirmación basada en tu perfil' }).locator('textarea').first();
     await assertKeyboardFocus(page, nextClaim, true);
     await page.keyboard.press('ControlOrMeta+A');
     await page.keyboard.type(`I used Python to resolve customer issues for a fictional support team ${marker}.`);
@@ -168,7 +168,7 @@ export const applicationDocumentsScenario: Scenario = {
     // Repeat editing and approval in English so both document-language flows are exercised.
     await panel.getByLabel('Idioma del documento', { exact: true }).selectOption('en');
     await panel.getByRole('heading', { name: 'Resume tailored to this job', exact: true }).waitFor();
-    const englishClaim = panel.locator('fieldset').filter({ has: panel.getByText('Profile-based claim', { exact: true }) }).locator('textarea').first();
+    const englishClaim = panel.locator('fieldset').filter({ hasText: 'Profile-based claim' }).locator('textarea').first();
     await assertKeyboardFocus(page, englishClaim, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' using Python');
