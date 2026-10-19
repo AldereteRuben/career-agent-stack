@@ -105,7 +105,7 @@ export function RestorePanel() {
         <p>{c('Creada:', 'Created:')} <time dateTime={job.summary.createdAt}>{new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(job.summary.createdAt))}</time></p>
         <p>{c('Versión:', 'Version:')} {job.summary.appVersion ?? '—'} · PostgreSQL {job.summary.postgresVersion}</p>
         <p>{job.summary.tableCount} {c('tablas,', 'tables,')} {job.summary.rowCount} {c('filas y', 'rows and')} {job.summary.documentCount} {c('documentos.', 'documents.')}</p>
-        {job.summary.pendingMigrations > 0 && <p>{c('Al abrir, se aplicarán', 'On opening,')} {job.summary.pendingMigrations} {c('migraciones compatibles.', 'compatible migrations will be applied.')}</p>}
+        {job.summary.pendingMigrations > 0 && <p>{c('Al abrir, se incorporarán', 'On opening,')} {job.summary.pendingMigrations} {c('migraciones compatibles.', 'compatible migrations will be applied.')}</p>}
       </div>}
     </div>
     {job.state === 'idle' || job.state === 'awaiting-files' ? <div className="form-stack">
