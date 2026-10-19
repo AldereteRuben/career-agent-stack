@@ -38,6 +38,10 @@ The draft SHALL be included in the complete workspace JSON export, encrypted bac
 - **WHEN** the person downloads an application-material ZIP or application-tracker CSV
 - **THEN** the follow-up subject and body are not included
 
+#### Scenario: Workspace and application isolation
+- **WHEN** a request reads, creates, edits or deletes a draft for an application outside the active workspace
+- **THEN** the API returns not found and leaves the foreign application and draft unchanged
+
 #### Scenario: Timing and migration order
 - **WHEN** the follow-up draft work is scheduled
 - **THEN** it may start once the base application-documents migration and the backup work are merged to `main`, needs only the base migration, the backup work and their dependencies (which include the staleness rules) rather than the remaining document phases, and its migration takes the next free number then

@@ -47,6 +47,7 @@ import { setCodexTaskRoot } from './ai/codex.js';
 import { exportAiData } from './ai/export.js';
 import { ApplicationDocumentExportError, buildApplicationDocumentExport } from './application-document-export.js';
 import { registerApplicationContactRoutes } from './application-contact-routes.js';
+import { registerApplicationFollowUpRoutes } from './application-follow-up-routes.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
@@ -554,6 +555,7 @@ registerApplicationPacketRoutes(app, workspace, { filesRoot: config.FILES_LOCAL_
 registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 registerApplicationContactRoutes(app, workspace);
+registerApplicationFollowUpRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 const restores = registerRestoreRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, appDatabase: config.DATABASE_URL, adminUrl: process.env.CAREER_RESTORE_ADMIN_URL });
 
