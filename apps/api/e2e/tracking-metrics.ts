@@ -79,7 +79,7 @@ export const trackingMetricsScenario: Scenario = {
       const source = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por fuente', 'By source'), exact: true }) });
       const role = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por puesto', 'By role'), exact: true }) });
       const country = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por país', 'By country'), exact: true }) });
-      await source.getByText(c('remotive', 'remotive'), { exact: true }).waitFor();
+      await source.getByText('Remotive', { exact: true }).waitFor();
       await source.getByText(`${remotive.confirmed} ${c('solicitudes', 'applications')} · ${remotive.interviewed} ${c('entrevistas', 'interviews')}`, { exact: true }).waitFor();
       await role.getByText(`Tracked role ${marker}`, { exact: true }).waitFor();
       await role.getByText(c('Muestra pequeña', 'Small sample'), { exact: true }).waitFor();
