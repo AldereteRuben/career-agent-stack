@@ -167,6 +167,11 @@ export async function applicationDocumentHashes(input: HashInputs) {
     const fact = factsById.get(id);
     return [id, fact?.approval ?? 'MISSING', canonicalText(fact?.text ?? '')];
   });
+  const legacyFactsForHash = citedIds.map((id) => {
+    const fact = factsById.get(id);
+    const tags = (fact?.tags ?? []).map(canonicalText).sort((a, b) => a === b ? 0 : a < b ? -1 : 1);
+    return { factId: id, status: fact?.approval ?? 'MISSING', canonicalText: canonicalText(fact?.text ?? ''), tags };
+  });
   const description = canonicalText(input.offer.snapshot.descriptionText);
   const offer = {
     company: canonicalText(input.offer.company),
@@ -175,12 +180,13 @@ export async function applicationDocumentHashes(input: HashInputs) {
     title: canonicalText(input.offer.snapshot.title),
     description,
   };
-  const [contentHash, factsHash, offerHash] = await Promise.all([
+  const [contentHash, factsHash, legacyFactsHash, offerHash] = await Promise.all([
     sha256(stableJson(canonicalClaims(input.claims))),
     sha256(stableJson(factsForHash)),
+    sha256(stableJson(legacyFactsForHash)),
     sha256(stableJson(offer)),
   ]);
-  return { ok: true as const, offerSnapshotId: input.offer.snapshot.id, contentHash, factsHash, offerHash };
+  return { ok: true as const, offerSnapshotId: input.offer.snapshot.id, contentHash, factsHash, legacyFactsHash, offerHash };
 }
 
 export type CreateApplicationDocumentRevisionResult =
@@ -277,11 +283,11 @@ export async function approveApplicationDocumentRevision(input: {
   const hashes = await applicationDocumentHashes({ workspaceId: revision.workspaceId, claims: revision.claims, facts: input.facts, offer: input.offer });
   if (!hashes.ok) return { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_MISSING' };
   if (hashes.contentHash !== revision.contentHash) return { ok: false, code: 'APPROVAL_STALE', reason: 'CONTENT_HASH_CHANGED' };
-  if (hashes.factsHash !== revision.factsHash) return { ok: false, code: 'APPROVAL_STALE', reason: 'FACTS_CHANGED' };
+  if (!matchesCurrentFactsHash(revision.factsHash, hashes)) return { ok: false, code: 'APPROVAL_STALE', reason: 'FACTS_CHANGED' };
   if (hashes.offerHash !== revision.offerHash) return { ok: false, code: 'APPROVAL_STALE', reason: 'OFFER_CHANGED' };
   const issue = revisionClaimIssue({ workspaceId: revision.workspaceId, claims: revision.claims, facts: input.facts, offer: input.offer });
   if (issue) return { ok: false, code: 'INVALID_CLAIM', issue };
-  if (hashes.contentHash !== input.expectedContentHash || hashes.factsHash !== input.expectedFactsHash || hashes.offerHash !== input.expectedOfferHash
+  if (hashes.contentHash !== input.expectedContentHash || input.expectedFactsHash !== revision.factsHash || !matchesCurrentFactsHash(input.expectedFactsHash, hashes) || hashes.offerHash !== input.expectedOfferHash
     || revision.textSha256 !== input.expectedTextSha256 || revision.pdfSha256 !== input.expectedPdfSha256) {
     return { ok: false, code: 'APPROVAL_STALE', reason: 'SUBMITTED_HASH_MISMATCH' };
   }
@@ -326,9 +332,13 @@ export async function applicationDocumentCurrentness(input: {
     if (issues.some((issue) => issue.code !== 'FACT_NOT_APPROVED')) reasons.push('INVALID_CLAIM');
   }
   const hashes = await applicationDocumentHashes({ workspaceId: input.revision.workspaceId, claims: input.revision.claims, facts: input.facts, offer: input.offer });
-  if (!hashes.ok || hashes.factsHash !== input.revision.factsHash) reasons.push('FACTS_CHANGED');
+  if (!hashes.ok || !matchesCurrentFactsHash(input.revision.factsHash, hashes)) reasons.push('FACTS_CHANGED');
   if (!hashes.ok || hashes.offerHash !== input.revision.offerHash) reasons.push('OFFER_CHANGED');
   return { status: reasons.length ? 'NEEDS_REVIEW' : 'CURRENT', reasons: [...new Set(reasons)] };
+}
+
+function matchesCurrentFactsHash(expected: string, hashes: Extract<Awaited<ReturnType<typeof applicationDocumentHashes>>, { ok: true }>) {
+  return hashes.factsHash === expected || hashes.legacyFactsHash === expected;
 }
 
 export function isApplicationDocumentSentenceKind(value: string): value is ApplicationDocumentSentenceKind {

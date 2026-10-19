@@ -146,6 +146,27 @@ test('fact changes affect factsHash and material offer changes affect offerHash'
     offer,
   });
   assert.deepEqual(tagOnlyCurrentnessChange, { status: 'CURRENT', reasons: [] });
+
+  const legacyFactsHash = createHash('sha256').update(JSON.stringify([{
+    factId: 'fact-1', status: 'USER_APPROVED', canonicalText: 'Diseñé interfaces React.', tags: [],
+  }])).digest('hex');
+  const legacyRevision = { ...(await createRevision()), factsHash: legacyFactsHash };
+  const legacyPendingCurrentness = await applicationDocumentCurrentness({ revision: legacyRevision, facts, offer });
+  assert.deepEqual(legacyPendingCurrentness, { status: 'CURRENT', reasons: [] });
+  const legacyApprovedCurrentness = await applicationDocumentCurrentness({
+    revision: { ...legacyRevision, approvedAt: '2026-10-17T20:00:00.000Z', approvedBy: 'user-1' },
+    facts,
+    offer,
+  });
+  assert.deepEqual(legacyApprovedCurrentness, { status: 'CURRENT', reasons: [] });
+  const changedLegacyTags = await applicationDocumentCurrentness({
+    revision: legacyRevision,
+    facts: [{ ...facts[0]!, tags: ['react'] }],
+    offer,
+  });
+  assert.deepEqual(changedLegacyTags, { status: 'NEEDS_REVIEW', reasons: ['FACTS_CHANGED'] });
+  const legacyApproval = await approveApplicationDocumentRevision(approveInput(legacyRevision));
+  assert.equal(legacyApproval.ok, true, 'existing revisions with an unchanged legacy hash remain approvable');
 });
 
 test('duplicate sentence ids are refused when creating a revision', async () => {
