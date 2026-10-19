@@ -20,6 +20,7 @@ import {
   type ApplicationDocumentRevisionClaim,
 } from '@career/domain';
 import { renderApplicationResume, type ResumePaperSize } from './document-renderer.js';
+import { applicationDocumentDownloadFileName } from './application-document-download.js';
 import { lockKey, profileLockKey } from './workspace-data.js';
 import { lockJobIdentity } from './job-identity.js';
 import { z } from 'zod';
@@ -252,6 +253,42 @@ export function registerApplicationResumeRoutes(
         text: (await readVerifiedApplicationFile(options.storageRoot!, revision.textStoragePath, revision.textSha256, 'TEXT')).toString('utf8'),
       })));
       return reply.send({ applicationId: application.id, documentId: document.id, language: document.language, revisions: rows });
+    } catch (error) {
+      return reply.code(409).send({ error: error instanceof Error ? error.message : 'APPLICATION_DOCUMENT_FILE_UNAVAILABLE' });
+    }
+  });
+
+  app.get('/api/v1/applications/:id/resume/revisions/:revisionId/file', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const params = z.object({ id: z.uuid(), revisionId: z.uuid() }).strict().safeParse(request.params);
+    const query = z.object({ format: z.enum(['text', 'pdf']), language: languageSchema }).strict().safeParse(request.query);
+    if (!params.success || !query.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const workspaceId = workspace(request);
+    const application = (await database.select().from(applications).where(and(
+      eq(applications.workspaceId, workspaceId), eq(applications.id, params.data.id),
+    )).limit(1))[0];
+    if (!application) return reply.code(404).send({ error: 'APPLICATION_NOT_FOUND' });
+    const document = (await database.select().from(applicationDocuments).where(and(
+      eq(applicationDocuments.workspaceId, workspaceId), eq(applicationDocuments.applicationId, application.id),
+      eq(applicationDocuments.kind, 'RESUME'), eq(applicationDocuments.language, query.data.language),
+    )).limit(1))[0];
+    if (!document) return reply.code(404).send({ error: 'APPLICATION_DOCUMENT_NOT_FOUND' });
+    const revision = (await database.select().from(applicationDocumentRevisions).where(and(
+      eq(applicationDocumentRevisions.workspaceId, workspaceId), eq(applicationDocumentRevisions.documentId, document.id),
+      eq(applicationDocumentRevisions.id, params.data.revisionId),
+    )).limit(1))[0];
+    if (!revision) return reply.code(404).send({ error: 'APPLICATION_DOCUMENT_REVISION_NOT_FOUND' });
+    if (!options.storageRoot) return reply.code(503).send({ error: 'DOCUMENT_STORAGE_UNAVAILABLE' });
+    try {
+      const isPdf = query.data.format === 'pdf';
+      const bytes = await readVerifiedApplicationFile(options.storageRoot, isPdf ? revision.pdfStoragePath : revision.textStoragePath, isPdf ? revision.pdfSha256 : revision.textSha256, isPdf ? 'PDF' : 'TEXT');
+      reply.type(isPdf ? 'application/pdf' : 'text/plain; charset=utf-8');
+      reply.header('X-Content-SHA256', isPdf ? revision.pdfSha256 : revision.textSha256);
+      reply.header('Content-Disposition', `attachment; filename="${applicationDocumentDownloadFileName({
+        applicationId: application.id, company: application.company, role: application.role, kind: 'RESUME',
+        language: document.language as ApplicationDocumentLanguage, revision: revision.revision, format: query.data.format,
+      })}"`);
+      return reply.send(bytes);
     } catch (error) {
       return reply.code(409).send({ error: error instanceof Error ? error.message : 'APPLICATION_DOCUMENT_FILE_UNAVAILABLE' });
     }
