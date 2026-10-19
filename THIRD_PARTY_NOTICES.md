@@ -2,11 +2,11 @@
 
 Project restrictions apply to project-authored material only. Dependencies retain their own licenses, including commercial-use rights where those licenses allow them.
 
-This inventory was generated from installed packages with `pnpm licenses list --json` on macOS arm64 on 2026-10-18. It includes development dependencies. Optional binaries on other platforms and separately downloaded browsers/system tools are not a complete part of this inventory. The lockfile fixes package versions.
+This inventory was generated from installed packages with `pnpm licenses list --json` on macOS arm64 on 2026-10-19. It includes development dependencies. Optional binaries on other platforms and separately downloaded browsers/system tools are not a complete part of this inventory. The lockfile fixes package versions.
 
 Collected upstream license/notice texts: [dependency license texts](docs/legal/dependency-license-texts.txt). Metadata is not a legal compatibility opinion. Source cloning installs dependencies from upstream; this repository does not ship node_modules, browser binaries or system libraries. Before distributing a bundled app or binary, inventory the actual artifact and meet its source, notice and relinking obligations.
 
-In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniuse-lite` is CC-BY-4.0. Their licenses are not replaced by the project license. Retain upstream notices; review the LGPL obligations before redistributing libvips binaries. `@axe-core/playwright` and its `axe-core` engine are MPL-2.0, a file-level copyleft: they are development-only accessibility-test dependencies, are not modified and are not shipped with Career Stack. The MPL text is included in [dependency license texts](docs/legal/dependency-license-texts.txt). `language-subtag-registry` (CC0-1.0, data) and `language-tags` (MIT) publish no license file in their package, so no text is collected for them.
+In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniuse-lite` is CC-BY-4.0. Their licenses are not replaced by the project license. Retain upstream notices; review the LGPL obligations before redistributing libvips binaries. `@axe-core/playwright` and its `axe-core` engine are MPL-2.0, a file-level copyleft: they are development-only accessibility-test dependencies, are not modified and are not shipped with Career Stack. The MPL text is included in [dependency license texts](docs/legal/dependency-license-texts.txt). `node-notifier` is MIT and bundles `terminal-notifier` (MIT), SnoreToast (LGPL-3.0), and notifu (BSD-3-Clause); their texts are included in [dependency license texts](docs/legal/dependency-license-texts.txt). `language-subtag-registry` (CC0-1.0, data), `language-tags` (MIT), and `growly` (MIT) publish no license file in their package, so no text is collected for them.
 
 | Package | Installed versions | Declared license |
 | --- | --- | --- |
@@ -16,7 +16,7 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | @drizzle-team/brocli | 0.10.2 | Apache-2.0 |
 | @esbuild-kit/core-utils | 3.3.2 | MIT |
 | @esbuild-kit/esm-loader | 2.6.5 | MIT |
-| @esbuild/darwin-arm64 | 0.18.20, 0.25.12, 0.28.2 | MIT |
+| @esbuild/darwin-arm64 | 0.25.12, 0.28.2 | MIT |
 | @eslint-community/eslint-utils | 4.10.1 | MIT |
 | @eslint-community/regexpp | 4.12.2 | MIT |
 | @eslint/config-array | 0.23.5 | Apache-2.0 |
@@ -25,13 +25,14 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | @eslint/js | 10.0.1 | MIT |
 | @eslint/object-schema | 3.0.5 | Apache-2.0 |
 | @eslint/plugin-kit | 0.7.3 | Apache-2.0 |
-| @fastify/ajv-compiler | 4.0.6 | MIT |
-| @fastify/error | 4.2.0 | MIT |
-| @fastify/fast-json-stringify-compiler | 5.1.0 | MIT |
-| @fastify/forwarded | 3.0.2 | MIT |
-| @fastify/merge-json-schemas | 0.2.1 | MIT |
-| @fastify/proxy-addr | 5.1.1 | MIT |
-| @fastify/rate-limit | 10.3.0 | MIT |
+| @fastify/ajv-compiler | 4.0.7 | MIT |
+| @fastify/deepmerge | 3.2.2 | MIT |
+| @fastify/error | 4.2.1 | MIT |
+| @fastify/fast-json-stringify-compiler | 5.1.1 | MIT |
+| @fastify/forwarded | 3.1.1 | MIT |
+| @fastify/merge-json-schemas | 0.2.2 | MIT |
+| @fastify/proxy-addr | 5.1.2 | MIT |
+| @fastify/rate-limit | 11.2.1 | MIT |
 | @humanfs/core | 0.19.2 | Apache-2.0 |
 | @humanfs/node | 0.16.8 | Apache-2.0 |
 | @humanfs/types | 0.15.0 | Apache-2.0 |
@@ -43,30 +44,39 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | @keyv/bigmap | 1.3.1 | MIT |
 | @keyv/serialize | 1.1.1 | MIT |
 | @lukeed/ms | 2.0.2 | MIT |
-| @next/env | 16.3.8 | MIT |
-| @next/swc-darwin-arm64 | 16.3.8 | MIT |
+| @napi-rs/canvas | 1.0.10 | MIT |
+| @napi-rs/canvas-darwin-arm64 | 1.0.10 | MIT |
+| @next/env | 16.4.0 | MIT |
+| @next/swc-darwin-arm64 | 16.4.0 | MIT |
+| @noble/ciphers | 2.4.0 | MIT |
+| @noble/curves | 2.0.1, 2.4.0 | MIT |
+| @noble/hashes | 2.0.1, 2.4.0 | MIT |
+| @noble/post-quantum | 0.5.4 | MIT |
 | @pinojs/redact | 0.4.0 | MIT |
+| @scure/base | 2.4.0 | MIT |
 | @swc/helpers | 0.5.23 | Apache-2.0 |
 | @types/esrecurse | 4.3.1 | MIT |
 | @types/estree | 1.0.9 | MIT |
 | @types/json-schema | 7.0.15 | MIT |
-| @types/node | 24.10.0, 24.19.0 | MIT |
+| @types/node | 24.19.2 | MIT |
+| @types/node-notifier | 8.0.5 | MIT |
 | @types/pg | 8.23.1 | MIT |
-| @types/react | 19.2.2 | MIT |
-| @types/react-dom | 19.2.2 | MIT |
-| @typescript-eslint/eslint-plugin | 8.71.0 | MIT |
-| @typescript-eslint/parser | 8.71.0 | MIT |
-| @typescript-eslint/project-service | 8.71.0 | MIT |
-| @typescript-eslint/scope-manager | 8.71.0 | MIT |
-| @typescript-eslint/tsconfig-utils | 8.71.0 | MIT |
-| @typescript-eslint/type-utils | 8.71.0 | MIT |
-| @typescript-eslint/types | 8.71.0 | MIT |
-| @typescript-eslint/typescript-estree | 8.71.0 | MIT |
-| @typescript-eslint/utils | 8.71.0 | MIT |
-| @typescript-eslint/visitor-keys | 8.71.0 | MIT |
+| @types/react | 19.3.0 | MIT |
+| @types/react-dom | 19.3.0 | MIT |
+| @typescript-eslint/eslint-plugin | 8.71.2 | MIT |
+| @typescript-eslint/parser | 8.71.2 | MIT |
+| @typescript-eslint/project-service | 8.71.2 | MIT |
+| @typescript-eslint/scope-manager | 8.71.2 | MIT |
+| @typescript-eslint/tsconfig-utils | 8.71.2 | MIT |
+| @typescript-eslint/type-utils | 8.71.2 | MIT |
+| @typescript-eslint/types | 8.71.2 | MIT |
+| @typescript-eslint/typescript-estree | 8.71.2 | MIT |
+| @typescript-eslint/utils | 8.71.2 | MIT |
+| @typescript-eslint/visitor-keys | 8.71.2 | MIT |
 | abstract-logging | 2.0.1 | MIT |
-| acorn | 8.18.0 | MIT |
+| acorn | 8.19.0 | MIT |
 | acorn-jsx | 5.3.2 | MIT |
+| age-encryption | 0.3.1 | BSD-3-Clause |
 | ajv | 6.15.0, 8.20.0 | MIT |
 | ajv-formats | 3.0.1 | MIT |
 | aria-query | 5.3.2 | Apache-2.0 |
@@ -79,12 +89,12 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | async-function | 1.0.0 | MIT |
 | atomic-sleep | 1.0.0 | MIT |
 | available-typed-arrays | 1.0.7 | MIT |
-| avvio | 9.3.0 | MIT |
+| avvio | 9.3.1 | MIT |
 | axe-core | 4.13.0 | MPL-2.0 |
 | axobject-query | 4.1.0 | Apache-2.0 |
-| balanced-match | 4.0.4 | MIT |
+| balanced-match | 1.0.2, 4.0.4 | MIT |
 | baseline-browser-mapping | 2.11.27 | Apache-2.0 |
-| brace-expansion | 5.0.12 | MIT |
+| brace-expansion | 1.1.21, 5.0.12 | MIT |
 | buffer-from | 1.1.2 | MIT |
 | cacheable | 2.5.0 | MIT |
 | call-bind | 1.0.9 | MIT |
@@ -93,7 +103,7 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | caniuse-lite | 1.0.30001814 | CC-BY-4.0 |
 | client-only | 0.0.1 | MIT |
 | concat-map | 0.0.1 | MIT |
-| cookie | 1.1.1 | MIT |
+| cookie | 2.0.1 | MIT |
 | cross-spawn | 7.0.6 | MIT |
 | csstype | 3.2.3 | MIT |
 | damerau-levenshtein | 1.0.8 | BSD-2-Clause |
@@ -106,9 +116,9 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | define-properties | 1.2.1 | MIT |
 | dequal | 2.0.3 | MIT |
 | detect-libc | 2.1.2 | Apache-2.0 |
-| dotenv | 16.6.1 | BSD-2-Clause |
+| dotenv | 18.0.7 | BSD-2-Clause |
 | drizzle-kit | 0.31.11 | MIT |
-| drizzle-orm | 0.44.7 | Apache-2.0 |
+| drizzle-orm | 0.45.4 | Apache-2.0 |
 | dunder-proto | 1.0.1 | MIT |
 | emoji-regex | 9.2.2 | MIT |
 | es-abstract | 1.24.2 | MIT |
@@ -119,9 +129,9 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | es-set-tostringtag | 2.1.0 | MIT |
 | es-shim-unscopables | 1.1.0 | MIT |
 | es-to-primitive | 1.3.4 | MIT |
-| esbuild | 0.18.20, 0.25.12, 0.28.2 | MIT |
+| esbuild | 0.25.12, 0.28.2 | MIT |
 | escape-string-regexp | 4.0.0 | MIT |
-| eslint | 10.11.0 | MIT |
+| eslint | 10.12.0 | MIT |
 | eslint-plugin-jsx-a11y | 6.10.2 | MIT |
 | eslint-scope | 9.1.2 | BSD-2-Clause |
 | eslint-visitor-keys | 3.4.3, 5.0.1 | Apache-2.0 |
@@ -133,16 +143,17 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | fast-decode-uri-component | 1.0.1 | MIT |
 | fast-deep-equal | 3.1.3 | MIT |
 | fast-json-stable-stringify | 2.1.0 | MIT |
-| fast-json-stringify | 7.0.1 | MIT |
+| fast-json-stringify | 7.1.0 | MIT |
 | fast-levenshtein | 2.0.6 | MIT |
 | fast-querystring | 1.1.2 | MIT |
-| fast-uri | 3.1.8, 4.2.1 | BSD-3-Clause |
-| fastify | 5.12.5 | MIT |
-| fastify-plugin | 5.1.0 | MIT |
+| fast-uri | 3.1.8, 4.2.2 | BSD-3-Clause |
+| fastify | 5.12.7 | MIT |
+| fastify-plugin | 6.0.1 | MIT |
 | fastq | 1.20.3 | ISC |
 | fdir | 6.5.0 | MIT |
+| fflate | 0.8.3 | MIT |
 | file-entry-cache | 11.1.5 | MIT |
-| find-my-way | 9.9.0 | MIT |
+| find-my-way | 9.10.0 | MIT |
 | find-up | 5.0.0 | MIT |
 | flat-cache | 6.1.23 | MIT |
 | flatted | 3.4.4 | ISC |
@@ -159,6 +170,7 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | glob-parent | 6.0.2 | ISC |
 | globalthis | 1.0.4 | MIT |
 | gopd | 1.2.0 | MIT |
+| growly | 1.3.0 | MIT |
 | has-bigints | 1.1.0 | MIT |
 | has-property-descriptors | 1.0.2 | MIT |
 | has-proto | 1.2.0 | MIT |
@@ -167,9 +179,10 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | hashery | 1.5.1 | MIT |
 | hasown | 2.0.4 | MIT |
 | hookified | 1.15.1, 2.2.0 | MIT |
-| ignore | 5.3.2, 7.0.11 | MIT |
+| ignore | 5.3.2, 7.0.12 | MIT |
 | imurmurhash | 0.1.4 | MIT |
 | internal-slot | 1.1.0 | MIT |
+| ip-address | 10.7.4 | MIT |
 | ipaddr.js | 2.5.0 | MIT |
 | is-array-buffer | 3.0.5 | MIT |
 | is-async-function | 2.1.1 | MIT |
@@ -178,6 +191,7 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | is-callable | 1.2.7 | MIT |
 | is-data-view | 1.0.2 | MIT |
 | is-date-object | 1.1.0 | MIT |
+| is-docker | 2.2.1 | MIT |
 | is-document.all | 1.0.0 | MIT |
 | is-extglob | 2.1.1 | MIT |
 | is-finalizationregistry | 1.1.1 | MIT |
@@ -195,9 +209,10 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | is-weakmap | 2.0.2 | MIT |
 | is-weakref | 1.1.1 | MIT |
 | is-weakset | 2.0.4 | MIT |
+| is-wsl | 2.2.0 | MIT |
 | isarray | 2.0.5 | MIT |
 | isexe | 2.0.0 | ISC |
-| json-schema-ref-resolver | 3.0.0 | MIT |
+| json-schema-ref-resolver | 3.0.1 | MIT |
 | json-schema-traverse | 0.4.1, 1.0.0 | MIT |
 | json-stable-stringify-without-jsonify | 1.0.1 | MIT |
 | jsx-ast-utils | 3.3.5 | MIT |
@@ -205,14 +220,16 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | language-subtag-registry | 0.3.23 | CC0-1.0 |
 | language-tags | 1.0.9 | MIT |
 | levn | 0.4.1 | MIT |
-| light-my-request | 6.6.0 | BSD-3-Clause |
+| light-my-request | 6.8.0 | BSD-3-Clause |
 | locate-path | 6.0.0 | MIT |
 | math-intrinsics | 1.1.0 | MIT |
 | minimatch | 10.2.6 | BlueOak-1.0.0 |
+| minimatch | 3.1.5 | ISC |
 | ms | 2.1.3 | MIT |
-| nanoid | 3.3.19 | MIT |
+| nanoid | 3.3.20 | MIT |
 | natural-compare | 1.4.0 | MIT |
-| next | 16.3.8 | MIT |
+| next | 16.4.0 | MIT |
+| node-notifier | 10.0.1 | MIT |
 | object-inspect | 1.13.4 | MIT |
 | object-keys | 1.1.1 | MIT |
 | object.assign | 4.1.7 | MIT |
@@ -225,6 +242,7 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | p-locate | 5.0.0 | MIT |
 | path-exists | 4.0.0 | MIT |
 | path-key | 3.1.1 | MIT |
+| pdfjs-dist | 6.4.299 | Apache-2.0 |
 | pg | 8.23.1 | MIT |
 | pg-cloudflare | 1.4.1 | MIT |
 | pg-connection-string | 2.14.1 | MIT |
@@ -235,25 +253,26 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | pgpass | 1.0.5 | MIT |
 | picocolors | 1.1.1 | ISC |
 | picomatch | 4.0.7 | MIT |
-| pino | 10.3.1 | MIT |
+| pino | 10.4.0 | MIT |
 | pino-abstract-transport | 3.0.0 | MIT |
 | pino-std-serializers | 7.1.0 | MIT |
-| playwright | 1.63.0 | Apache-2.0 |
-| playwright-core | 1.63.0 | Apache-2.0 |
+| playwright | 1.64.0 | Apache-2.0 |
+| playwright-core | 1.64.0 | Apache-2.0 |
 | possible-typed-array-names | 1.1.0 | MIT |
+| postal-mime | 4.0.5 | MIT-0 |
 | postcss | 8.5.23 | MIT |
 | postgres-array | 2.0.0 | MIT |
 | postgres-bytea | 1.0.1 | MIT |
 | postgres-date | 1.0.7 | MIT |
 | postgres-interval | 1.2.0 | MIT |
 | prelude-ls | 1.2.1 | MIT |
-| process-warning | 4.0.1, 5.1.0 | MIT |
+| process-warning | 5.1.1 | MIT |
 | punycode | 2.3.1 | MIT |
 | qified | 0.10.1 | MIT |
 | quick-format-unescaped | 4.0.4 | MIT |
 | react | 19.3.0 | MIT |
 | react-dom | 19.3.0 | MIT |
-| real-require | 0.2.0, 1.0.0 | MIT |
+| real-require | 1.0.0 | MIT |
 | reflect.getprototypeof | 1.0.10 | MIT |
 | regexp.prototype.flags | 1.5.4 | MIT |
 | require-from-string | 2.0.2 | MIT |
@@ -264,18 +283,19 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | safe-array-concat | 1.1.4 | MIT |
 | safe-push-apply | 1.0.0 | MIT |
 | safe-regex-test | 1.1.0 | MIT |
-| safe-regex2 | 5.1.1 | MIT |
+| safe-regex2 | 5.1.2 | MIT |
 | safe-stable-stringify | 2.5.0 | MIT |
 | scheduler | 0.28.0 | MIT |
-| secure-json-parse | 4.1.0 | BSD-3-Clause |
+| secure-json-parse | 4.1.1 | BSD-3-Clause |
 | semver | 7.8.5 | ISC |
-| set-cookie-parser | 2.7.2 | MIT |
+| set-cookie-parser | 3.1.3 | MIT |
 | set-function-length | 1.2.2 | MIT |
 | set-function-name | 2.0.2 | MIT |
 | set-proto | 1.0.0 | MIT |
 | sharp | 0.35.5 | Apache-2.0 |
 | shebang-command | 2.0.0 | MIT |
 | shebang-regex | 3.0.0 | MIT |
+| shellwords | 0.1.1 | MIT |
 | side-channel | 1.1.1 | MIT |
 | side-channel-list | 1.0.1 | MIT |
 | side-channel-map | 1.0.1 | MIT |
@@ -303,10 +323,11 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | typed-array-byte-offset | 1.0.5 | MIT |
 | typed-array-length | 1.0.8 | MIT |
 | typescript | 5.9.3 | Apache-2.0 |
-| typescript-eslint | 8.71.0 | MIT |
+| typescript-eslint | 8.71.2 | MIT |
 | unbox-primitive | 1.1.0 | MIT |
-| undici-types | 7.16.0, 7.24.6 | MIT |
+| undici-types | 7.24.6 | MIT |
 | uri-js | 4.4.1 | BSD-2-Clause |
+| uuid | 8.3.2 | MIT |
 | which | 2.0.2 | ISC |
 | which-boxed-primitive | 1.1.1 | MIT |
 | which-builtin-type | 1.2.1 | MIT |
@@ -315,37 +336,7 @@ In particular, `@img/sharp-libvips-darwin-arm64` is LGPL-3.0-or-later and `caniu
 | word-wrap | 1.2.5 | MIT |
 | xtend | 4.0.2 | MIT |
 | yocto-queue | 0.1.0 | MIT |
-| zod | 4.6.5 | MIT |
-
-## Metadata-only entries
-
-No top-level license/notice file was found for these installed packages. Consult their upstream distributions before bundling them:
-
-- @drizzle-team/brocli
-- @esbuild/darwin-arm64
-- @humanfs/types
-- @img/sharp-libvips-darwin-arm64
-- @next/env
-- @next/swc-darwin-arm64
-- abstract-logging
-- client-only
-- drizzle-kit
-- drizzle-orm
-- esrecurse
-- imurmurhash
-- natural-compare
-- pg-types
-- pgpass
-
-## PDF preview dependency additions
-
-The local PDF viewer adds the following installed packages to the inventory above. PDF.js worker and font assets are served locally with their upstream license files.
-
-| Package | Installed version | Declared license |
-| --- | --- | --- |
-| `pdfjs-dist` | 6.4.299 | Apache-2.0 |
-| `@napi-rs/canvas-darwin-arm64` | 1.0.10 | MIT |
-| `@napi-rs/canvas` | 1.0.10 | MIT |
+| zod | 4.6.7 | MIT |
 
 ## Encrypted backup dependency additions
 

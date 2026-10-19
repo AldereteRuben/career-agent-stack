@@ -16,6 +16,8 @@ import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicati
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
 import { registerActivityTimelineRoutes } from './activity-timeline.js';
+import { registerDesktopNotificationRoutes } from './desktop-notification-routes.js';
+import { startDesktopNotificationWorker } from './desktop-notification-worker.js';
 import { calculateTrackingMetrics, parseTrackingPeriod } from './tracking-metrics.js';
 import { createRequestGate, releaseOnResponse } from './request-gate.js';
 import { completeDeletionFiles as finishWorkspaceDeletionFiles, deleteWorkspaceRows, filesPathProblem, retryPendingDeletionFiles } from './workspace-deletion.js';
@@ -756,11 +758,15 @@ registerApplicationCoverLetterRoutes(app, workspace, { storageRoot: config.FILES
 registerActivityTimelineRoutes(app, workspace);
 const prepareAutomatically = (workspaceId: string, jobId: string, locale: 'en' | 'es') => prepareApplication(workspaceId, jobId, locale, { automatic: true });
 registerJobSearchRoutes(app, workspace, prepareAutomatically);
+registerDesktopNotificationRoutes(app, workspace);
 registerJobFilterRoutes(app, workspace);
 registerJobMatchFeedbackRoutes(app, workspace);
 const startJobSearches = () => startJobSearchWorker((error) => app.log.error({ err: error }, 'Saved job search failed'), prepareAutomatically);
 let stopJobSearches = startJobSearches();
 app.addHook('onClose', () => stopJobSearches());
+const startDesktopNotifications = () => startDesktopNotificationWorker((error) => app.log.error({ err: error }, 'Desktop notification delivery failed'));
+const stopDesktopNotifications = startDesktopNotifications();
+app.addHook('onClose', () => stopDesktopNotifications());
 registerDiscoveryRoutes(app, workspace);
 const startDiscovery = () => startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
 let stopDiscovery = startDiscovery();

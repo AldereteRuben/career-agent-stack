@@ -17,7 +17,57 @@ import { api, ApiError, errorMessage } from '@/lib/api';
 import { copy } from '@/lib/labels';
 
 type Capabilities = { release: string; available: string[]; unavailable: string[]; externalWrites: boolean; automaticSubmission: boolean };
+type DesktopNotificationSettings = { enabled: boolean; language: 'en' | 'es'; status: 'NOT_TESTED' | 'ACCEPTED' | 'UNAVAILABLE' | 'FAILED'; available: boolean };
 type AiPermission = { id: string; operation: string; dataCategories: string[]; searchIds: string[] | null; remembered: boolean; grantedAt: string };
+function notificationSettingsError(err: unknown, locale: 'en' | 'es'): string {
+  if (err instanceof ApiError && err.code === 'INVALID_NOTIFICATION_SETTINGS') return locale === 'es'
+    ? 'Los ajustes de notificaciones no son válidos. Recarga la página e inténtalo de nuevo.'
+    : 'The notification settings are invalid. Reload the page and try again.';
+  return errorMessage(err);
+}
+function DesktopNotificationsPanel() {
+  const { locale } = useLocale(); const c = copy(locale);
+  const [settings, setSettings] = useState<DesktopNotificationSettings | null>(null);
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('');
+  useEffect(() => { const controller = new AbortController(); void api<DesktopNotificationSettings>('/notifications', { signal: controller.signal }).then(setSettings).catch(err => { if (!controller.signal.aborted) setError(errorMessage(err)); }); return () => controller.abort(); }, []);
+  useEffect(() => {
+    if (!settings || settings.language === locale || busy) return;
+    setBusy(true); void api<DesktopNotificationSettings>('/notifications', { method: 'PUT', body: JSON.stringify({ enabled: settings.enabled, language: locale }) })
+      .then(setSettings).catch(err => setError(notificationSettingsError(err, locale))).finally(() => setBusy(false));
+  }, [locale, settings, busy]);
+  const save = async (enabled: boolean) => {
+    if (!settings || busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try { setSettings(await api<DesktopNotificationSettings>('/notifications', { method: 'PUT', body: JSON.stringify({ enabled, language: locale }) })); }
+    catch (err) { setError(notificationSettingsError(err, locale)); }
+    finally { setBusy(false); }
+  };
+  const test = async () => {
+    setBusy(true); setError(''); setMessage('');
+    try { await api<{ status: string }>('/notifications/test', { method: 'POST' }); setMessage(c('La notificación de prueba se entregó al sistema. Si no aparece, revisa los permisos de notificaciones del sistema operativo.', 'The test notification was handed to the operating system. If it does not appear, check your operating system notification settings.')); setSettings(current => current ? { ...current, status: 'ACCEPTED' } : current); }
+    catch (err) {
+      const failed = err instanceof ApiError && err.code === 'NATIVE_NOTIFICATIONS_UNAVAILABLE'
+        ? c('No hay un proveedor de notificaciones disponible en este equipo.', 'No native notification provider is available on this device.')
+        : err instanceof ApiError && err.code === 'NATIVE_NOTIFICATION_FAILED'
+          ? c('El sistema no aceptó la notificación. Revisa sus ajustes e inténtalo de nuevo.', 'The system did not accept the notification. Check its settings and try again.')
+          : errorMessage(err);
+      setError(failed); setSettings(current => current ? { ...current, status: err instanceof ApiError && err.code === 'NATIVE_NOTIFICATIONS_UNAVAILABLE' ? 'UNAVAILABLE' : 'FAILED' } : current);
+    }
+    finally { setBusy(false); }
+  };
+  const statusText = settings?.status === 'ACCEPTED' ? c('El sistema aceptó la última notificación; la visibilidad también depende de sus ajustes.', 'The system accepted the last notification; visibility also depends on its settings.')
+    : settings?.status === 'UNAVAILABLE' ? c('No hay un proveedor de notificaciones del sistema disponible en este equipo.', 'A native notification provider is unavailable on this device.')
+      : settings?.status === 'FAILED' ? c('Falló el último intento. Revisa la configuración de notificaciones del sistema.', 'The last attempt failed. Check the operating system notification settings.')
+        : c('Prueba la notificación para comprobar que el sistema la puede mostrar.', 'Send a test notification to check whether the system can display it.');
+  return <section aria-labelledby="desktop-notifications-heading"><Card className="form-card"><h2 id="desktop-notifications-heading">{c('Avisos de ofertas nuevas', 'New job notifications')}</h2>
+    <p>{c('Recibe un aviso del sistema después de una búsqueda automática completada con ofertas nuevas. No se incluyen puestos, empresas ni salarios.', 'Get a system notification after a completed automatic search finds new jobs. Job titles, companies, and salaries are not included.')}</p>
+    <label className="settings-notification-toggle"><input type="checkbox" checked={settings?.enabled ?? false} disabled={!settings || busy || !settings.available} onChange={event => void save(event.target.checked)}/><span>{c('Activar notificaciones del sistema', 'Enable system notifications')}</span></label>
+    <p role="status" aria-live="polite">{settings ? statusText : c('Cargando estado…', 'Loading status…')}</p>
+    <p>{c('El sistema operativo controla el permiso final y puede no permitir consultar su estado desde la app. El botón de prueba puede activar el aviso de permiso.', 'The operating system controls final permission and may not let the app query it. The test button may trigger a permission prompt.')}</p>
+    {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    <Button type="button" variant="secondary" disabled={!settings?.available || busy} onClick={() => void test()}>{busy ? c('Guardando…', 'Saving…') : c('Probar notificación', 'Test notification')}</Button>
+  </Card></section>;
+}
 function AiPermissionsPanel({ connectionRevision, onChanged }: { connectionRevision: number; onChanged: () => void }) {
   const { locale } = useLocale(); const c = copy(locale);
   const [open, setOpen] = useState(false);
@@ -89,6 +139,7 @@ export default function SettingsPage() {
     {error && <Notice tone="error">{error}</Notice>}
     {exportMessage && <Notice tone="success">{exportMessage}</Notice>}
     <div className="settings-grid"><div className="settings-main">
+      <DesktopNotificationsPanel/>
       <section id="assistant" aria-label={c('Conexión y permisos de IA', 'AI connection and permissions')}><Card className="form-card">
         <AiConnectionPanel onConnectionChange={() => setAiConnectionRevision(value => value + 1)}/>
         <AiPermissionsPanel connectionRevision={aiConnectionRevision} onChanged={() => setAiConnectionRevision(value => value + 1)}/>
