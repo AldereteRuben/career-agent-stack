@@ -8,3 +8,4 @@
 - [x] Run local typecheck, lint, build, search/deletion/integration/UI tests, OpenSpec validation, and the concurrency/privacy/migration review.
 - [x] Run CI after opening the draft PR; all required checks passed in run 39209639940.
 - [x] Confirm the proposed design in issue #38 before promoting this draft to ready for review; confirmed in issue comment 6261723728.
+- [x] Verify the Settings panel in Spanish and English at 390 px, confirm no horizontal overflow, and exercise persisted opt-in/opt-out in the headed isolated E2E scenario.
