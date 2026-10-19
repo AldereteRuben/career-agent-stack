@@ -10,7 +10,7 @@ type Revision = {
   claims: Array<{ sentenceId: string; text: string; origin: string; sourceFactIds: string[] }>;
 };
 type Saved = { documentId: string; revisions: Revision[] };
-type Draft = { sentences: Array<{ text: string; kind: string; sourceFactIds: string[] }> };
+type Draft = { sentences: Array<{ sentenceId: string; text: string; kind: string; sourceFactIds: string[] }> };
 type PacketFile = { id: string; fileName: string; selectable: boolean; revision: number | null; newerPendingRevision: boolean };
 
 async function tabTo(page: import('playwright').Page, target: import('playwright').Locator, fromStart = false) {
@@ -91,7 +91,10 @@ export const applicationDocumentsScenario: Scenario = {
 
     // An unsupported skill is refused first. A separate, keyboard-operated confirmation allows it to be saved as USER_UNSUPPORTED.
     await page.reload();
-    const claimWithSkill = await claimTextarea(panel, candidateClaim.text);
+    history = await api.get<Saved>(`/applications/${application.id}/resume?language=es`);
+    const editedClaim = history.revisions[0]!.claims.find((claim) => claim.sentenceId === candidateClaim.sentenceId);
+    assert.ok(editedClaim, 'The latest saved revision still contains the edited evidence-linked sentence');
+    const claimWithSkill = await claimTextarea(panel, editedClaim.text);
     await assertKeyboardFocus(page, claimWithSkill, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' I am certified in Kubernetes.');
@@ -122,7 +125,9 @@ export const applicationDocumentsScenario: Scenario = {
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
-    const nextClaim = await claimTextarea(panel, candidateClaim.text);
+    const unsupportedClaim = unsupportedRevision.claims.find((claim) => claim.sentenceId === candidateClaim.sentenceId);
+    assert.ok(unsupportedClaim, 'The unsupported revision retains the sentence edited for this scenario');
+    const nextClaim = await claimTextarea(panel, unsupportedClaim.text);
     await assertKeyboardFocus(page, nextClaim, true);
     await page.keyboard.press('ControlOrMeta+A');
     await page.keyboard.type(candidateClaim.text);
