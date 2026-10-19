@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import type { Scenario } from './scenarios.js';
 import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
@@ -187,7 +187,9 @@ export const applicationDocumentsScenario: Scenario = {
     assert.equal(download.suggestedFilename(), 'application-materials.zip');
     assert.equal(zipResponse.status(), 200);
     assert.match(zipResponse.headers()['content-type'] ?? '', /application\/zip/u);
-    assert.equal((await zipResponse.body()).subarray(0, 2).toString('ascii'), 'PK', 'The selected materials download is a ZIP archive');
+    const zipPath = await download.path();
+    assert.ok(zipPath, 'The browser saved the selected materials download to its temporary download directory');
+    assert.equal((await readFile(zipPath)).subarray(0, 2).toString('ascii'), 'PK', 'The selected materials download is a ZIP archive');
     await materials.getByRole('status').filter({ hasText: 'Descarga del paquete ZIP iniciada.' }).waitFor();
 
     // Repeat editing and approval in English so both document-language flows are exercised.
