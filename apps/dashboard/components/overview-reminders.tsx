@@ -11,7 +11,8 @@ import { useLocalRefresh } from '@/lib/local-refresh';
 import { Button, Card } from '@/components/ui';
 import styles from './overview-reminders.module.css';
 
-const horizonDays = 30;
+// The API range includes both endpoints: today plus 29 days is 30 local calendar days.
+const horizonDays = 29;
 
 function dayRange(timeZone: string): { from: string; to: string } {
   const parts = new Intl.DateTimeFormat('en', {
