@@ -297,6 +297,24 @@ export const searchRunSources = pgTable('search_run_sources', {
   status:varchar('status',{length:16}).notNull().default('QUEUED'),coverage:varchar('coverage',{length:16}),
   fetchedAt:timestamp('fetched_at',{withTimezone:true}),nextFetchAt:timestamp('next_fetch_at',{withTimezone:true}),error:varchar('error',{length:80}),found:integer('found').notNull().default(0),
 },t=>[primaryKey({columns:[t.workspaceId,t.runId,t.provider]}),foreignKey({columns:[t.workspaceId,t.runId],foreignColumns:[searchRuns.workspaceId,searchRuns.id]}).onDelete('cascade')]);
+/** Desktop alerts are opt-in and carry no job names, companies, URLs, or salary data. */
+export const desktopNotificationSettings = pgTable('desktop_notification_settings', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false), language: varchar('language', { length: 2 }).notNull().default('en'),
+  lastStatus: varchar('last_status', { length: 24 }).notNull().default('NOT_TESTED'), lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }), updatedAt: changed(),
+}, t => [check('desktop_notification_settings_language_check', sql`${t.language} in ('en','es')`), check('desktop_notification_settings_status_check', sql`${t.lastStatus} in ('NOT_TESTED','ACCEPTED','UNAVAILABLE','FAILED')`)]);
+/** Durable, privacy-safe queue of automatic-search alerts; run_id makes v2 enqueue idempotent. */
+export const desktopNotificationEvents = pgTable('desktop_notification_events', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), searchId: uuid('search_id').notNull(), runId: uuid('run_id'),
+  newCount: integer('new_count').notNull(), language: varchar('language', { length: 2 }).notNull(), status: varchar('status', { length: 16 }).notNull().default('PENDING'),
+  attempts: integer('attempts').notNull().default(0), leaseUntil: timestamp('lease_until', { withTimezone: true }), lastError: varchar('last_error', { length: 64 }),
+  createdAt: created(), deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+}, t => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'desktop_notification_events_search_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.runId], foreignColumns: [searchRuns.workspaceId, searchRuns.id], name: 'desktop_notification_events_run_fk' }).onDelete('cascade'),
+  check('desktop_notification_events_count_check', sql`${t.newCount} > 0`), check('desktop_notification_events_language_check', sql`${t.language} in ('en','es')`),
+  check('desktop_notification_events_status_check', sql`${t.status} in ('PENDING','SENDING','SENT','FAILED','DISABLED')`),
+  uniqueIndex('desktop_notification_events_workspace_run_uq').on(t.workspaceId, t.runId).where(sql`${t.runId} is not null`),
+  index('desktop_notification_events_queue_idx').on(t.status, t.leaseUntil, t.createdAt)]);
 export const searchQueryCache = pgTable('search_query_cache', {
   provider:varchar('provider',{length:24}).notNull(),queryHash:varchar('query_hash',{length:64}).notNull(),payload:jsonb('payload').$type<Record<string,unknown>[]>().notNull().default([]),
   coverage:varchar('coverage',{length:16}).notNull().default('BOUNDED'),fetchedAt:timestamp('fetched_at',{withTimezone:true}),nextFetchAt:timestamp('next_fetch_at',{withTimezone:true}),

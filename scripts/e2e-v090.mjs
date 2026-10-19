@@ -78,6 +78,7 @@ try {
     if (path === '/session') return route.continue();
     if (path === '/capabilities') return response(route, { available: ['ai-processing'], unavailable: [] });
     if (path === '/skill-gap-report') return response(route, { savedJobCount: 0, groups: [] });
+    if (path === '/notifications') return response(route, { enabled: false, language: 'en', status: 'NOT_TESTED', available: true });
     if (path === '/job-filters') return response(route, { excludedCompanies: [], requiredTerms: [], excludedTerms: [] });
     if (path === '/job-feedback/summary') return response(route, { periodStart: now, periodEnd: now, windowDays: 90, total: 0, interested: 0, notForMe: 0, minimumSample: 5, patterns: [] });
     if (/^\/jobs\/[^/]+\/feedback$/.test(path)) return response(route, null);

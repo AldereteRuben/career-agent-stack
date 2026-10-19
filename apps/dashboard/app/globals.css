@@ -1451,6 +1451,20 @@ main:focus {
   padding: var(--space-5);
 }
 
+.settings-notification-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 1rem 0;
+  font-weight: 650;
+}
+
+.settings-notification-toggle input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
 .form-heading {
   display: flex;
   align-items: center;
