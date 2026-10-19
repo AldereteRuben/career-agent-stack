@@ -2,6 +2,7 @@ import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identit
 import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
 import { RELEASE_VERSION, securityHeaders } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
+import { registerRestoreRoutes } from './restore-routes.js';
 import { config, projectRoot } from './config.js';
 import { DiscoveryError, refreshBoard, registerDiscoveryRoutes, startDiscoveryWorker } from './discovery.js';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -468,6 +469,7 @@ registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 registerApplicationContactRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
+const restores = registerRestoreRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, appDatabase: config.DATABASE_URL, adminUrl: process.env.CAREER_RESTORE_ADMIN_URL });
 
 app.get('/api/v1/applications', async (request, reply) => {
   const query = request.query as { offset?: string; limit?: string; q?: string; sort?: string };
@@ -756,6 +758,7 @@ app.post('/api/v1/workspace/delete-all', async (request, reply) => {
   const confirmation = (request.body as { confirmation?: unknown } | null)?.confirmation;
   if (typeof confirmation !== 'string' || !deletionPhrases.has(confirmation.trim())) return fail(reply, 400, 'CONFIRMATION_REQUIRED');
   if (backups.isRunning()) return fail(reply, 409, 'BACKUP_IN_PROGRESS', 'Wait until the backup finishes.');
+  if (restores.isRunning()) return fail(reply, 409, 'RESTORE_IN_PROGRESS', 'Wait until the restore finishes.');
   const id = workspace(request);
   // Refuse new requests and wait for those already running, so none writes after the rows are deleted.
   const gate = await requestGate.close(30_000, request);

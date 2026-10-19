@@ -302,6 +302,14 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal(withKey.code, 0, withKey.all);
     assert.match(withKey.stdout, /Backup decrypted with this key file/);
     assert.match(withKey.stdout, /authentic backup/);
+    const json = await run('restore.mjs', ['--verify-only', '--json', '--archive', archive, '--key-file', keyFile]);
+    assert.equal(json.code, 0, json.all);
+    const summary = JSON.parse(json.stdout);
+    assert.equal(summary.valid, true);
+    assert.equal(summary.encrypted, true);
+    assert.equal(summary.authenticated, true);
+    assert.ok(summary.tableCount > 0);
+    assert.equal(summary.documentCount, documents.length);
     const withoutKey = await run('restore.mjs', ['--verify-only', '--archive', archive]);
     assert.equal(withoutKey.code, 1, withoutKey.all);
     assert.match(withoutKey.stderr, /This backup is encrypted: its key file is needed/);

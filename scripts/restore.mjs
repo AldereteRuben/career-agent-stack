@@ -53,7 +53,7 @@ function parseOptions() {
       args,
       options: {
         archive: { type: 'string' }, 'key-file': { type: 'string' }, target: { type: 'string' }, database: { type: 'string' },
-        'web-port': { type: 'string' }, 'api-port': { type: 'string' }, 'env-file': { type: 'string' }, 'verify-only': { type: 'boolean' }, 'allow-unencrypted': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+        'web-port': { type: 'string' }, 'api-port': { type: 'string' }, 'env-file': { type: 'string' }, 'verify-only': { type: 'boolean' }, json: { type: 'boolean' }, 'allow-unencrypted': { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
       },
       allowPositionals: false,
     }).values;
@@ -142,16 +142,33 @@ async function verifyOnly(options) {
   // Extracted entries are personal data in clear, so they go to a private folder too.
   const staging = await privateTempDir('career-verify-');
   try {
-    step(`Verificando ${shown(archive)} sin crear nada…`, `Verifying ${shown(archive)} without creating anything…`);
+    if (!options.json) step(`Verificando ${shown(archive)} sin crear nada…`, `Verifying ${shown(archive)} without creating anything…`);
     const result = await openBackup(archive, staging, { key, allowUnencrypted: options['allow-unencrypted'] });
     await result.close();
     const pending = await checkSchema(result.manifest);
-    if (result.encrypted) ok('Copia descifrada con este archivo de clave.', 'Backup decrypted with this key file.');
-    ok('Copia íntegra: estructura, tamaños, hashes SHA-256 y volcado de PostgreSQL correctos.', 'Backup intact: structure, sizes, SHA-256 hashes and PostgreSQL dump are correct.');
-    if (result.authenticated) ok('Firma del manifiesto válida con este archivo de clave (copia auténtica).', 'Manifest signature valid with this key file (authentic backup).');
-    else warn('Sin --key-file solo se comprueba la integridad, no la autenticidad, y no se sabe si tienes la clave correcta.', 'Without --key-file only integrity is checked, not authenticity, and it is unknown whether you hold the right key.');
-    summarise(result.manifest);
-    if (pending > 0) say(`  Esta versión del proyecto aplicará ${pending} migración(es) nuevas al iniciar la copia restaurada.`, `This project version will apply ${pending} newer migration(s) when the restored copy starts.`);
+    if (options.json) {
+      const manifest = result.manifest;
+      process.stdout.write(`${JSON.stringify({
+        valid: true,
+        encrypted: result.encrypted,
+        authenticated: result.authenticated,
+        createdAt: manifest.createdAt,
+        appVersion: manifest.app?.version ?? null,
+        postgresVersion: manifest.tools.server,
+        tableCount: Object.keys(manifest.tables).length,
+        rowCount: Object.values(manifest.tables).reduce((sum, count) => sum + count, 0),
+        documentCount: manifest.documents.length,
+        migrationCount: manifest.migrations.length,
+        pendingMigrations: pending,
+      })}\n`);
+    } else {
+      if (result.encrypted) ok('Copia descifrada con este archivo de clave.', 'Backup decrypted with this key file.');
+      ok('Copia íntegra: estructura, tamaños, hashes SHA-256 y volcado de PostgreSQL correctos.', 'Backup intact: structure, sizes, SHA-256 hashes and PostgreSQL dump are correct.');
+      if (result.authenticated) ok('Firma del manifiesto válida con este archivo de clave (copia auténtica).', 'Manifest signature valid with this key file (authentic backup).');
+      else warn('Sin --key-file solo se comprueba la integridad, no la autenticidad, y no se sabe si tienes la clave correcta.', 'Without --key-file only integrity is checked, not authenticity, and it is unknown whether you hold the right key.');
+      summarise(result.manifest);
+      if (pending > 0) say(`  Esta versión del proyecto aplicará ${pending} migración(es) nuevas al iniciar la copia restaurada.`, `This project version will apply ${pending} newer migration(s) when the restored copy starts.`);
+    }
   } finally { await rm(staging, { recursive: true, force: true }); }
 }
 
