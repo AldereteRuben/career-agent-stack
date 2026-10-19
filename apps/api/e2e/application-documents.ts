@@ -10,6 +10,7 @@ type Revision = {
   claims: Array<{ sentenceId: string; text: string; origin: string; sourceFactIds: string[] }>;
 };
 type Saved = { documentId: string; revisions: Revision[] };
+type Draft = { sentences: Array<{ text: string; kind: string; sourceFactIds: string[] }> };
 type PacketFile = { id: string; fileName: string; selectable: boolean; revision: number | null; newerPendingRevision: boolean };
 
 async function tabTo(page: import('playwright').Page, target: import('playwright').Locator, fromStart = false) {
@@ -31,10 +32,10 @@ async function assertKeyboardFocus(page: import('playwright').Page, target: impo
   assert.equal(visible, true, 'Keyboard focus is visible with a 2px or wider outline');
 }
 
-async function claimTextarea(panel: import('playwright').Locator, sentinel: string) {
+async function claimTextarea(panel: import('playwright').Locator, claimText: string) {
   const textareas = panel.locator('textarea');
-  const index = await textareas.evaluateAll((nodes, value) => nodes.findIndex((node) => (node as HTMLTextAreaElement).value.includes(value)), sentinel);
-  assert.ok(index >= 0, `A claim textarea contains the unique fixture marker ${sentinel}`);
+  const index = await textareas.evaluateAll((nodes, value) => nodes.findIndex((node) => (node as HTMLTextAreaElement).value.startsWith(value)), claimText);
+  assert.ok(index >= 0, 'A claim textarea matches the candidate claim returned by the application document draft API');
   return textareas.nth(index);
 }
 
@@ -48,6 +49,9 @@ export const applicationDocumentsScenario: Scenario = {
     await api.post(`/profile/facts/${fact.id}/approve`, {});
     const job = await api.post<{ id: string }>('/jobs/import', { company: `Document Fixture ${marker}`, title: `Support Engineer ${marker}`, jobUrl: `https://example.com/${marker}/application-documents` });
     const application = await api.post<{ id: string }>('/applications', { company: `Document Fixture ${marker}`, role: `Support Engineer ${marker}`, jobId: job.id, state: 'DRAFT' });
+    const draft = await api.get<Draft>(`/applications/${application.id}/resume/draft?language=es`);
+    const candidateClaim = draft.sentences.find((sentence) => sentence.kind === 'CANDIDATE_CLAIM' && sentence.sourceFactIds.length > 0);
+    assert.ok(candidateClaim, 'The generated resume draft has an evidence-linked candidate claim to review');
     const workspace = (await db.query<{ id: string }>('select id from workspaces limit 1')).rows[0]!.id;
 
     const panel = page.locator('.application-resume').filter({ has: page.getByRole('heading', { name: /^(CV adaptado a esta oferta|Resume tailored to this job)$/u }) });
@@ -56,11 +60,11 @@ export const applicationDocumentsScenario: Scenario = {
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
     await panel.getByRole('heading', { name: 'CV adaptado a esta oferta', exact: true }).waitFor();
     await panel.getByRole('button', { name: 'Guardar nueva versión', exact: true }).waitFor();
-    const candidateClaim = await claimTextarea(panel, claimSentinel);
-    await candidateClaim.waitFor();
+    const candidateClaimTextarea = await claimTextarea(panel, candidateClaim.text);
+    await candidateClaimTextarea.waitFor();
 
     // Edit and save by keyboard, with the global :focus-visible indicator checked.
-    await assertKeyboardFocus(page, candidateClaim, true);
+    await assertKeyboardFocus(page, candidateClaimTextarea, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' using Python');
     const save = panel.getByRole('button', { name: 'Guardar nueva versión', exact: true });
@@ -86,7 +90,7 @@ export const applicationDocumentsScenario: Scenario = {
 
     // An unsupported skill is refused first. A separate, keyboard-operated confirmation allows it to be saved as USER_UNSUPPORTED.
     await page.reload();
-    const claimWithSkill = await claimTextarea(panel, claimSentinel);
+    const claimWithSkill = await claimTextarea(panel, candidateClaim.text);
     await assertKeyboardFocus(page, claimWithSkill, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' I am certified in Kubernetes.');
@@ -117,10 +121,10 @@ export const applicationDocumentsScenario: Scenario = {
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
-    const nextClaim = await claimTextarea(panel, claimSentinel);
+    const nextClaim = await claimTextarea(panel, candidateClaim.text);
     await assertKeyboardFocus(page, nextClaim, true);
     await page.keyboard.press('ControlOrMeta+A');
-    await page.keyboard.type(`I used Python to resolve customer issues for a fictional support team. ${claimSentinel}.`);
+    await page.keyboard.type(candidateClaim.text);
     await assertKeyboardFocus(page, save);
     await page.keyboard.press('Enter');
     await panel.getByText('Versión guardada. Revisa el PDF antes de aprobarla.', { exact: true }).waitFor();
@@ -176,7 +180,10 @@ export const applicationDocumentsScenario: Scenario = {
     // Repeat editing and approval in English so both document-language flows are exercised.
     await panel.getByLabel('Idioma del documento', { exact: true }).selectOption('en');
     await panel.getByRole('heading', { name: 'Resume tailored to this job', exact: true }).waitFor();
-    const englishClaim = await claimTextarea(panel, claimSentinel);
+    const englishDraft = await api.get<Draft>(`/applications/${application.id}/resume/draft?language=en`);
+    const englishCandidateClaim = englishDraft.sentences.find((sentence) => sentence.kind === 'CANDIDATE_CLAIM' && sentence.sourceFactIds.length > 0);
+    assert.ok(englishCandidateClaim, 'The English resume draft has an evidence-linked candidate claim to review');
+    const englishClaim = await claimTextarea(panel, englishCandidateClaim.text);
     await assertKeyboardFocus(page, englishClaim, true);
     await page.keyboard.press('End');
     await page.keyboard.type(' using Python');
