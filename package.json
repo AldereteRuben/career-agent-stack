@@ -33,7 +33,7 @@
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",
     "uninstall": "node scripts/uninstall.mjs",
-    "test:sources": "pnpm --filter @career/api exec tsx --test test/sources.test.ts test/adzuna-source.test.ts",
+    "test:sources": "pnpm --filter @career/api exec tsx --test test/sources.test.ts test/adzuna-source.test.ts test/posting-link.test.ts",
     "verify:sources": "pnpm --filter @career/api exec tsx scripts/verify-sources.ts",
     "test:backup": "node --test scripts/test/backup-archive.test.mjs",
     "test:backup-crypto": "node --test scripts/test/backup-crypto.test.mjs scripts/test/private-files.test.mjs",
