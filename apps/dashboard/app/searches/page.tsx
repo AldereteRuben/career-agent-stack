@@ -83,7 +83,7 @@ const fieldElementId = (field: string) => field === 'providers' ? 'search-provid
 export default function SearchesPage() {
   const { locale } = useLocale(); const es = locale === 'es';
   const t = (spanish: string, english: string) => es ? spanish : english;
-  const [searches, setSearches] = useState<Search[]>([]); const [results, setResults] = useState<SearchJob[]>([]);
+  const [searches, setSearches] = useState<Search[]>([]); const [results, setResults] = useState<SearchJob[]>([]); const [adzunaConfigured, setAdzunaConfigured] = useState(false);
   const [selectedId, setSelectedId] = useState(''); const [view, setView] = useState<SearchView>('new'); const [sort, setSort] = useState<SearchSort>('relevance');
   const formDraft = useSessionDraft('saved-search-form', { payload: '' }, (value): value is { payload: string } => Boolean(value && typeof value === 'object' && 'payload' in value && typeof value.payload === 'string'));
   const formState = readForm(formDraft.value.payload); const { draft, editing, open: formOpen } = formState;
@@ -126,7 +126,7 @@ export default function SearchesPage() {
     window.history[replace ? 'replaceState' : 'pushState'](null, '', href);
     try { sessionStorage.setItem(contextKey, JSON.stringify({ search: searchId, view: nextView, sort: nextSort, offset: nextOffset })); } catch { /* URL continues to preserve this tab's context. */ }
   };
-  const sourceName = (id: string) => ({ remotive: 'Remotive', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', boards: t('Empresas que sigues', 'Companies you follow') } as Record<string, string>)[id] ?? id;
+  const sourceName = (id: string) => ({ remotive: 'Remotive', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', boards: t('Empresas que sigues', 'Companies you follow'), adzuna: 'Adzuna' } as Record<string, string>)[id] ?? id;
   const dateTime = (value: string) => new Intl.DateTimeFormat(es ? 'es-ES' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
   const modeLabel = (mode: Search['workMode']) => ({ any: t('Cualquier modalidad', 'Any work mode'), remote: t('En remoto', 'Remote'), hybrid: t('Híbrida', 'Hybrid'), onsite: t('Presencial', 'On-site') })[mode];
   const anyRole = t('Cualquier puesto', 'Any role');
@@ -166,10 +166,10 @@ export default function SearchesPage() {
   /** Saved searches plus the deduplicated unread total; both come from local data and never start a portal check. */
   const fetchSearches = useCallback(async () => {
     const [response, inbox] = await Promise.all([
-      api<{ searches: Search[] }>('/job-searches'),
+      api<{ searches: Search[]; coverage?: { providers?: { adzuna?: { configured?: boolean } } } }>('/job-searches'),
       api<ResultsPayload>(`/job-searches/results?${new URLSearchParams({ view: 'new', limit: '1' })}`).catch(() => null),
     ]);
-    return { searches: response.searches, unread: inbox ? inbox.total : null };
+    return { searches: response.searches, unread: inbox ? inbox.total : null, adzunaConfigured: response.coverage?.providers?.adzuna?.configured === true };
   }, []);
 
   const load = useCallback(async (background = false, restoreContext?: ReturnType<typeof readContext>) => {
@@ -179,6 +179,7 @@ export default function SearchesPage() {
       if (ticket !== listRequest.current) return;
       searchesRef.current = response.searches;
       setSearches(response.searches); setUnreadTotal(response.unread); setListFailed(false); setLoadError('');
+      setAdzunaConfigured(response.adzunaConfigured);
       const context = restoreContext ?? { search: selectedRef.current, view: viewRef.current, sort: sortRef.current, offset: offsetRef.current };
       const id = context.search && response.searches.some((search) => search.id === context.search) ? context.search : '';
       selectedRef.current = id; setSelectedId(id); viewRef.current = context.view; setView(context.view); sortRef.current = context.sort; setSort(context.sort); offsetRef.current = context.offset;
@@ -197,6 +198,7 @@ export default function SearchesPage() {
       const response = await fetchSearches();
       if (ticket !== listRequest.current) return;
       searchesRef.current = response.searches; setSearches(response.searches); setUnreadTotal(response.unread);
+      setAdzunaConfigured(response.adzunaConfigured);
     } catch { /* The next poll retries; the action itself already succeeded. */ }
   };
 
@@ -380,7 +382,7 @@ export default function SearchesPage() {
         {(!aiOpen || !aiAvailable || Boolean(editing)) && <>
         {aiSearchProposal?.output.operation === 'SEARCH_DRAFT' && <Notice role={null}><div className="form-stack"><p>{t('Propuesta de IA en los campos de abajo. Revísalos y pulsa Buscar ofertas cuando quieras empezar.', 'The AI suggestion is in the fields below. Review them and choose Find jobs when you want to start.')}</p>{aiSearchProposal.output.unsupportedConstraints.length > 0 && <><strong>{t('Recuerda comprobar estas condiciones en cada oferta; no se usan como filtros:', 'Remember to check these conditions in each posting; they are not used as filters:')}</strong><ul>{aiSearchProposal.output.unsupportedConstraints.map((item, index) => <li key={index}>«{item.requestQuote}» — {item.explanation}</li>)}</ul></>}{aiSearchProposal.output.clarifications.length > 0 && <ul>{aiSearchProposal.output.clarifications.map((item, index) => <li key={index}>{item.question}</li>)}</ul>}</div></Notice>}
         {formState.aiArtifactId && aiSearchProposal?.id !== formState.aiArtifactId && <Notice tone={aiProposalError ? 'warning' : 'info'} actions={aiProposalError ? <><Button type="button" variant="secondary" onClick={() => setAiProposalRetry(value => value + 1)}>{t('Recuperar la propuesta', 'Retrieve the suggestion')}</Button><Button type="button" variant="quiet" onClick={() => { if (window.confirm(t('¿Descartar esta propuesta y sus campos para empezar una búsqueda nueva?', 'Discard this suggestion and its fields to start a new search?'))) { setAiSearchProposal(null); setFormState({ ...initialForm(), open: true }); setFormError(''); } }}>{t('Descartar esta propuesta', 'Discard this suggestion')}</Button></> : undefined}>{aiProposalError ? t('No pudimos recuperar las notas de esta propuesta. Consérvalas antes de buscar para no perder las condiciones que requieren revisión manual.', 'We could not retrieve the notes for this suggestion. Recover them before searching so conditions requiring a manual check are not lost.') : t('Recuperando la propuesta y las condiciones que debes revisar…', 'Retrieving the suggestion and the conditions you need to check…')}</Notice>}
-        <SearchForm key={`${editing || 'new'}-${aiSearchProposal?.id ?? 'manual'}`} defaultProviders={defaultProviders} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t}/></>}
+        <SearchForm key={`${editing || 'new'}-${aiSearchProposal?.id ?? 'manual'}`} defaultProviders={defaultProviders} adzunaConfigured={adzunaConfigured} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t}/></>}
       </div>}
       {loading && <Notice>{t('Cargando tus búsquedas…', 'Loading your searches…')}</Notice>}
       {listFailed && <Card className={styles.emptyResults}><Empty headingLevel="h2" title={t('No pudimos cargar tus búsquedas', 'Could not load your searches')} detail={t('Reintenta para recuperar la lista. Esto no inicia otra consulta a los portales.', 'Try again to recover the list. This does not start a new portal check.')} action={<Button variant="secondary" onClick={() => void load()}>{t('Reintentar', 'Try again')}</Button>} /></Card>}
@@ -427,6 +429,6 @@ export default function SearchesPage() {
         {pageCount > 1 && <nav className={styles.pagination} aria-label={t('Páginas de resultados', 'Result pages')}><Button variant="secondary" disabled={offset === 0 || resultLoading} onClick={() => void choose(selectedId, view, sort, Math.max(0, offset - 20))}>{t('Anterior', 'Previous')}</Button><span>{Math.floor(offset / 20) + 1} / {pageCount}</span><Button variant="secondary" disabled={offset + 20 >= total || resultLoading} onClick={() => void choose(selectedId, view, sort, offset + 20)}>{t('Siguiente', 'Next')}</Button></nav>}
       </section>}
     </div>
-    <details className={styles.coverage}><summary>{t('Portales donde buscamos y datos que compartimos', 'Job portals we search and data we share')}</summary><p>{t('Buscamos ofertas públicas en los portales de empleo Remotive, Arbeitnow e Himalayas (portal de empleo en remoto), según los que elijas en cada búsqueda. Himalayas recibe solo los criterios que escribes (puesto, empresa o país); nunca tu CV ni tus datos de contacto. Las empresas que sigues aparecen solo si las incluyes.', 'We look for public listings on the job portals Remotive, Arbeitnow and Himalayas (a remote-jobs portal), as chosen for each search. Himalayas receives only the criteria you enter (role, company or country); never your resume or contact details. Companies you follow appear only when selected.')}</p><p><a href="https://github.com/remotive-com/remote-jobs-api" target="_blank" rel="noopener noreferrer">Remotive</a> · <a href="https://www.arbeitnow.com/blog/job-board-api" target="_blank" rel="noopener noreferrer">Arbeitnow</a> · <a href="https://himalayas.app/docs/remote-jobs-api" target="_blank" rel="noopener noreferrer">Himalayas</a></p></details>
+    <details className={styles.coverage}><summary>{t('Portales donde buscamos y datos que compartimos', 'Job portals we search and data we share')}</summary><p>{t('Buscamos ofertas públicas en Remotive, Arbeitnow, Himalayas y, si lo activas, Adzuna. Himalayas y Adzuna reciben solo los criterios que escribes (puesto, empresa o ubicación); nunca tu CV ni tus datos de contacto. Adzuna requiere credenciales locales y limita cada consulta a 60 resultados como máximo, con un límite global de 50 solicitudes diarias, 300 semanales y 1200 mensuales. Cada anuncio muestra la atribución a Adzuna. Las empresas que sigues aparecen solo si las incluyes.', 'We search public listings on Remotive, Arbeitnow, Himalayas and, if enabled, Adzuna. Himalayas and Adzuna receive only the criteria you enter (role, company or location); never your resume or contact details. Adzuna requires local credentials and limits each search to at most 60 results, with a global cap of 50 requests per day, 300 per week and 1,200 per month. Every advert displays Adzuna attribution. Followed company boards appear only when included.')}</p><p><a href="https://github.com/remotive-com/remote-jobs-api" target="_blank" rel="noopener noreferrer">Remotive</a> · <a href="https://www.arbeitnow.com/blog/job-board-api" target="_blank" rel="noopener noreferrer">Arbeitnow</a> · <a href="https://himalayas.app/docs/remote-jobs-api" target="_blank" rel="noopener noreferrer">Himalayas</a> · <a href="https://developer.adzuna.com/docs/search" target="_blank" rel="noopener noreferrer">Adzuna API</a> · <a href="https://developer.adzuna.com/docs/terms_of_service" target="_blank" rel="noopener noreferrer">Adzuna terms</a></p></details>
   </AppShell></WorkspaceGate>;
 }

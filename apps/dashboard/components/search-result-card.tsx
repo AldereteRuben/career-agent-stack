@@ -26,6 +26,7 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
   const applicationLabel = ['UNKNOWN', 'IN_PROGRESS', 'CONFIRMED', 'CANCELLED'].includes(job.applicationState ?? '') ? t('Ver seguimiento', 'View application status') : t('Ver solicitud', 'View application');
   const unknownLocation = job.locationStatus?.toLowerCase() === 'unknown' || job.unknownLocation;
   const portals = [...new Map(job.sources.map((source) => [source.provider, source])).values()];
+  const adzunaAttribution = portals.find((source) => source.provider === 'adzuna');
   const published = job.sources.filter((source) => source.postedAt).slice(0, 2);
   const checked = job.sources.filter((source) => source.fetchedAt && Number.isFinite(Date.parse(source.fetchedAt)));
   const canReview = view === 'new' && !job.seenAt;
@@ -36,6 +37,7 @@ export function SearchResultCard({ aiAvailable = false, job, returnTo, view, bus
     <div className={styles.resultMain}>
       <h3 id={titleId}><Link href={jobHref} data-result-id={job.id}>{job.title}</Link></h3>
       <p className={styles.resultMeta}>{job.company} · {job.location || t('Ubicación sin indicar', 'Location not listed')}</p>
+      {adzunaAttribution && <a className={styles.adzunaAttribution} href={adzunaAttribution.url} target="_blank" rel="noopener noreferrer">Adzuna</a>}
       {view === 'filtered' && <p className={styles.warning}>{t('Excluida por tus preferencias', 'Filtered by your preferences')}: {filterText.join('; ')}</p>}
       <p className={styles.resultReason}>{reasons[0] ?? t('Coincide con tus criterios', 'Matches your criteria')}</p>
       {unknownLocation && <p className={styles.warning}>{t('Comprueba en el anuncio desde qué países se puede trabajar.', 'Check eligible countries in the original listing.')}</p>}
