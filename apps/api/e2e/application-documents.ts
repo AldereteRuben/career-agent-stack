@@ -66,7 +66,7 @@ export const applicationDocumentsScenario: Scenario = {
     // Edit and save by keyboard, with the global :focus-visible indicator checked.
     await assertKeyboardFocus(page, candidateClaimTextarea, true);
     await page.keyboard.press('End');
-    await page.keyboard.type(' using Python');
+    await page.keyboard.type(' (reviewed)');
     const save = panel.getByRole('button', { name: 'Guardar nueva versión', exact: true });
     await assertKeyboardFocus(page, save);
     await page.keyboard.press('Enter');
@@ -186,7 +186,7 @@ export const applicationDocumentsScenario: Scenario = {
     const englishClaim = await claimTextarea(panel, englishCandidateClaim.text);
     await assertKeyboardFocus(page, englishClaim, true);
     await page.keyboard.press('End');
-    await page.keyboard.type(' using Python');
+    await page.keyboard.type(' (reviewed)');
     const saveEnglish = panel.getByRole('button', { name: 'Save new version', exact: true });
     await assertKeyboardFocus(page, saveEnglish);
     await page.keyboard.press('Enter');
