@@ -193,7 +193,7 @@ export const applicationDocumentsScenario: Scenario = {
     await materials.getByRole('status').filter({ hasText: 'Descarga del paquete ZIP iniciada.' }).waitFor();
 
     // Repeat editing and approval in English so both document-language flows are exercised.
-    await panel.getByLabel('Idioma del documento', { exact: true }).selectOption('en');
+    await panel.getByLabel(/Idioma del documento/u).selectOption('en');
     await panel.getByRole('heading', { name: 'Resume tailored to this job', exact: true }).waitFor();
     const englishDraft = await api.get<Draft>(`/applications/${application.id}/resume/draft?language=en`);
     const englishCandidateClaim = englishDraft.sentences.find((sentence) => sentence.kind === 'CANDIDATE_CLAIM' && sentence.sourceFactIds.length > 0);
