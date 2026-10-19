@@ -1,4 +1,4 @@
-import { lstat, unlink } from 'node:fs/promises';
+import { lstat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import process from 'node:process';
 
@@ -53,7 +53,11 @@ export function attachGracefulShutdown(
       try {
         const signal = await lstat(options.stopFile!);
         if (signal.isFile() && !signal.isSymbolicLink()) {
-          await unlink(options.stopFile!);
+          // Keep the request as a lock while shutdown is in progress. If it
+          // were removed here, a second `stop` could create a fresh signal
+          // after this poll has been disabled, then force-kill the API when
+          // its own 15-second wait expires. The launcher removes the file
+          // after it observes that this process has exited.
           shutdown();
           return;
         }

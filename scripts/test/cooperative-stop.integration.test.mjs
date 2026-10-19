@@ -15,7 +15,7 @@ const worker = resolve(root, 'scripts/test/fixtures/cooperative-stop-worker.mjs'
 const stopScript = resolve(root, 'scripts/stop.mjs');
 const onWindows = process.platform === 'win32';
 
-async function startWorker(temp, ignoreStop = false) {
+async function startWorker(temp, { ignoreStop = false, closeDelayMs = 0 } = {}) {
   const dataRoot = join(temp, 'data');
   const runDir = join(dataRoot, 'run');
   await ensurePrivateDir(dataRoot);
@@ -25,9 +25,10 @@ async function startWorker(temp, ignoreStop = false) {
   await writeFile(envFile, `DATA_LOCAL_PATH=${dataRoot.replaceAll('\\', '/')}`);
   const stopFile = join(runDir, 'api-stop-12345678-1234-1234-1234-123456789abc.signal');
   const marker = join(temp, 'closed.marker');
+  const closingMarker = join(temp, 'closing.marker');
   const child = spawn(process.execPath, ['--import', 'tsx', worker, ...(ignoreStop ? ['--ignore-stop'] : [])], {
     cwd: resolve(root, 'apps/api'),
-    env: { ...process.env, DATA_LOCAL_PATH: dataRoot, CAREER_STOP_FILE: stopFile, CAREER_TEST_CLOSED: marker },
+    env: { ...process.env, DATA_LOCAL_PATH: dataRoot, CAREER_STOP_FILE: stopFile, CAREER_TEST_CLOSED: marker, CAREER_TEST_CLOSING: closingMarker, CAREER_TEST_CLOSE_DELAY_MS: String(closeDelayMs) },
     stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true,
   });
   let line = '';
@@ -55,7 +56,16 @@ async function startWorker(temp, ignoreStop = false) {
     lstart: identity.lstart, cwd: null, entry: worker, titles: [], stopFile,
   };
   await writeFile(join(runDir, 'api.json'), JSON.stringify(record));
-  return { child, dataRoot, envFile, marker, port, runDir, stopFile };
+  return { child, dataRoot, envFile, marker, closingMarker, port, runDir, stopFile };
+}
+
+async function waitForFile(path, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { await readFile(path); return; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+  throw new Error(`timed out waiting for ${path}`);
 }
 
 async function stopWorker({ envFile }) {
@@ -94,7 +104,7 @@ test('Windows stop force-stops an unresponsive process only after the 15-second 
   const temp = await mkdtemp(join(tmpdir(), 'career-stop-fallback-'));
   let service;
   try {
-    service = await startWorker(temp, true);
+    service = await startWorker(temp, { ignoreStop: true });
     const startedAt = Date.now();
     const output = await stopWorker(service);
     assert.ok(Date.now() - startedAt >= 14_500, 'the graceful wait should last about 15 seconds');
@@ -110,9 +120,14 @@ test('concurrent Windows stop requests both finish cleanly for the same API reco
   const temp = await mkdtemp(join(tmpdir(), 'career-stop-concurrent-'));
   let service;
   try {
-    service = await startWorker(temp);
-    const outputs = await Promise.all([stopWorker(service), stopWorker(service)]);
-    assert.ok(outputs.every((output) => /api: stopped|no services started by the launcher/i.test(output)));
+    service = await startWorker(temp, { closeDelayMs: 3_000 });
+    const firstStop = stopWorker(service);
+    await waitForFile(service.closingMarker);
+    const secondStop = await stopWorker(service);
+    assert.match(secondStop, /shutdown is already in progress/i);
+    const firstOutput = await firstStop;
+    assert.match(firstOutput, /api: stopped/i);
+    assert.doesNotMatch(`${firstOutput}\n${secondStop}`, /last resort|taskkill/i);
     assert.equal(await readFile(service.marker, 'utf8'), 'closed');
   } finally {
     if (service?.child.exitCode === null) service.child.kill();
