@@ -27,6 +27,7 @@ import { emailImportScenario } from './email-import.js';
 import { trackingMetricsScenario } from './tracking-metrics.js';
 import { profileImprovementScenario } from './profile-improvement.js';
 import { applicationFollowUpDraftScenario } from './application-follow-up-draft.js';
+import { applicationDocumentsScenario } from './application-documents.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -48,6 +49,8 @@ export type ScenarioContext = {
   context: BrowserContext;
   api: ApiClient;
   db: PgClient;
+  /** Private files directory used by the disposable E2E API process. */
+  filesDir: string;
   uiUrl: string;
   marker: string;
   token: () => Promise<string>;
@@ -595,3 +598,5 @@ scenarios.push(v061Scenario);
 scenarios.push(v070Scenario);
 scenarios.push(...v071Scenarios);
 scenarios.push(v051Last);
+// Workspace deletion must run last because it removes the isolated fixture shared by this shard.
+scenarios.push(applicationDocumentsScenario);

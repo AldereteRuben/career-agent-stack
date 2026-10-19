@@ -111,6 +111,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
       }
       await response.json() as Stored;
       await load();
+      window.dispatchEvent(new Event('career:application-documents-updated'));
       setMessage(copy('Versión guardada. Revisa el PDF antes de aprobarla.', 'Version saved. Review the PDF before approving it.'));
       return true;
     } catch (reason) { setError(errorMessage(reason)); return false; }
@@ -137,11 +138,12 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
           expectedOfferHash: stored.revision.offerHash,
           expectedTextSha256: stored.revision.textSha256,
           expectedPdfSha256: stored.revision.pdfSha256,
-          confirmedUnsupportedIds: stored.revision.confirmedUnsupportedIds,
+          confirmedUnsupportedIds: approveUnsupported ? unsupportedClaimIds : [],
         }),
       });
       setMessage(copy('Versión aprobada. Ya puedes descargarla.', 'Version approved. You can download it now.'));
       await load();
+      window.dispatchEvent(new Event('career:application-documents-updated'));
     } catch (reason) { if (reason instanceof ApiError && reason.code === 'APPROVAL_STALE') setStale(true); setError(errorMessage(reason)); }
     finally { setBusy(false); }
   };
@@ -162,6 +164,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
 
   const pdfUrl = stored ? documentFileUrl(applicationId, kind, stored.revision.id, language, 'pdf') : null;
   const textUrl = stored ? documentFileUrl(applicationId, kind, stored.revision.id, language, 'text') : null;
+  const unsupportedClaimIds = stored?.revision.claims.filter((sentence) => sentence.origin === 'USER_UNSUPPORTED').map((sentence) => sentence.sentenceId) ?? [];
 
   return <Card className={`${styles.card} application-resume`}>
     <div className={styles.heading}><h3>{title}</h3><label>{copy('Idioma del documento', 'Document language')} <select value={language} disabled={busy || assistantActive} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label></div>
@@ -196,8 +199,8 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         <p>{copy('Estos hashes muestran qué fuentes y archivos se comprobarán al aprobar. Si algo cambia, la aprobación se bloquea.', 'These hashes show which sources and files will be checked on approval. If anything changes, approval is blocked.')}</p>
         {pdfUrl && <iframe title={copy(`Vista previa de ${title} en PDF`, `${title} PDF preview`)} src={pdfUrl} />}
         {textUrl && <a className="button button-quiet" href={textUrl}>{copy('Descargar texto', 'Download text')}</a>}
-        {!stored.revision.approvedAt && stored.revision.confirmedUnsupportedIds.length > 0 && <label className={styles.confirm}><input type="checkbox" checked={approveUnsupported} disabled={busy} onChange={(event) => setApproveUnsupported(event.target.checked)}/>{copy('Confirmo que revisé las afirmaciones marcadas como no respaldadas.', 'I confirm that I reviewed the claims marked as unsupported.')}</label>}
-        {!stored.revision.approvedAt && <Button disabled={busy || assistantActive || confirmIds.length > 0 || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW' || (stored.revision.confirmedUnsupportedIds.length > 0 && !approveUnsupported)} onClick={() => void approve()}>{copy('Aprobar esta versión', 'Approve this version')}</Button>}
+        {!stored.revision.approvedAt && unsupportedClaimIds.length > 0 && <label className={styles.confirm}><input type="checkbox" checked={approveUnsupported} disabled={busy} onChange={(event) => setApproveUnsupported(event.target.checked)}/>{copy('Confirmo que revisé las afirmaciones marcadas como no respaldadas.', 'I confirm that I reviewed the claims marked as unsupported.')}</label>}
+        {!stored.revision.approvedAt && <Button disabled={busy || assistantActive || confirmIds.length > 0 || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW' || (unsupportedClaimIds.length > 0 && !approveUnsupported)} onClick={() => void approve()}>{copy('Aprobar esta versión', 'Approve this version')}</Button>}
       </section>}
       {stored && <ApplicationDocumentReword
         key={`reword:${stored.revision.id}`}
@@ -210,7 +213,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         facts={facts}
         disabled={busy || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW'}
         onActiveChange={setAssistantActive}
-        onAccepted={async () => { await load(); setMessage(copy('Propuesta de Codex aceptada y guardada como una nueva versión por revisar.', 'Codex proposal accepted and saved as a new revision awaiting review.')); }}
+        onAccepted={async () => { await load(); window.dispatchEvent(new Event('career:application-documents-updated')); setMessage(copy('Propuesta de Codex aceptada y guardada como una nueva versión por revisar.', 'Codex proposal accepted and saved as a new revision awaiting review.')); }}
         onSaveEdited={async (nextClaims) => { setSentences(nextClaims); return save(nextClaims); }}
       />}
     </>}
