@@ -16,8 +16,8 @@
 // without that file the backup can be neither read nor restored.
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, mkdtemp, readFile, readdir, rm, stat, unlink } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { lstat, mkdtemp, readFile, readdir, realpath, rm, stat, unlink } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { pipeline } from 'node:stream/promises';
 import { parseArgs } from 'node:util';
@@ -125,13 +125,16 @@ async function main() {
       es: 'Ya hay otra copia de seguridad en curso para esta base de datos.', en: 'Another backup of this database is already running.',
       fixes: [fix('Espera a que termine y vuelve a intentarlo.', 'Wait for it to finish and try again.')],
     });
-    const lockDocuments = await hasTable(client, 'public.document_versions');
+    const documentTables = [];
+    for (const table of ['document_versions', 'application_documents', 'application_document_revisions']) {
+      if (await hasTable(client, `public.${table}`)) documentTables.push(`public.${table}`);
+    }
     await client.query('begin isolation level repeatable read');
     await client.query("set local lock_timeout = '10s'");
-    if (lockDocuments) {
-      try { await client.query('lock table public.document_versions in share mode'); } catch (error) {
+    if (documentTables.length) {
+      try { await client.query(`lock table ${documentTables.join(', ')} in share mode`); } catch (error) {
         throw new RecoveryError({
-          es: `La aplicación está escribiendo documentos y no se pudo bloquear la tabla en 10 s (${safeMessage(error)}).`, en: `The application is writing documents and the table could not be locked within 10 s (${safeMessage(error)}).`,
+          es: `La aplicación está escribiendo documentos y no se pudieron bloquear las tablas en 10 s (${safeMessage(error)}).`, en: `The application is writing documents and the tables could not be locked within 10 s (${safeMessage(error)}).`,
           fixes: [fix('Espera a que termine la generación del documento y repite pnpm run backup.', 'Wait for document generation to finish and run pnpm run backup again.')],
         });
       }
@@ -139,7 +142,7 @@ async function main() {
     const snapshot = (await client.query('select pg_export_snapshot() as id')).rows[0].id;
     const tables = await tableCounts(client);
     const migrations = await appliedMigrations(client);
-    const documents = await documentRows(client);
+    const { documents, applicationDocumentRevisions } = await documentRows(client);
     const dumpPath = join(staging, DUMP_NAME);
     const dump = runPgTool('pg_dump', ['--format=custom', `--snapshot=${snapshot}`, '--no-password', `--file=${dumpPath}`], databaseUrl);
     if (!dump.ok) throw new RecoveryError({ es: `pg_dump falló: ${dump.stderr}`, en: `pg_dump failed: ${dump.stderr}` });
@@ -149,21 +152,70 @@ async function main() {
     const missing = [];
     const documentEntries = [];
     const manifestDocuments = [];
-    for (const document of documents) {
+    const manifestApplicationDocumentRevisions = [];
+    const filesRootRealPath = await realpath(filesRoot);
+    const addFile = async ({ documentId, label, storagePath, sha256 }) => {
       let filePath;
       try {
-        assertSafeRelativePath(document.storagePath);
-        filePath = safeJoin(filesRoot, document.storagePath);
+        assertSafeRelativePath(storagePath);
+        filePath = safeJoin(filesRootRealPath, storagePath);
       } catch (error) {
-        if (error instanceof ArchiveError) throw new RecoveryError({ es: `El documento ${document.id} tiene una ruta no válida en la base de datos.`, en: `Document ${document.id} has an invalid path in the database.` });
+        if (error instanceof ArchiveError) throw new RecoveryError({ es: `El documento ${documentId} tiene una ruta no válida en la base de datos.`, en: `Document ${documentId} has an invalid path in the database.` });
         throw error;
       }
-      let info;
-      try { info = await lstat(filePath); } catch { info = null; }
-      if (!info?.isFile()) { missing.push(document.id); continue; }
-      const archivePath = `${FILES_PREFIX}${document.storagePath}`;
-      documentEntries.push({ name: archivePath, path: filePath, sha256: document.sha256, size: info.size });
+      let info = null;
+      try {
+        const parts = storagePath.split('/');
+        let current = filesRootRealPath;
+        for (let index = 0; index < parts.length; index += 1) {
+          current = join(current, parts[index]);
+          const component = await lstat(current);
+          if (component.isSymbolicLink() || (index < parts.length - 1 && !component.isDirectory())) {
+            throw new RecoveryError({
+              es: `La ruta del archivo ${label} del documento ${documentId} atraviesa un enlace simbólico o una carpeta no válida.`,
+              en: `The ${label} file path for document ${documentId} traverses a symbolic link or an invalid directory.`,
+            });
+          }
+          if (index === parts.length - 1) info = component;
+        }
+        const resolvedFilePath = await realpath(filePath);
+        const rel = relative(filesRootRealPath, resolvedFilePath);
+        if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+          throw new RecoveryError({
+            es: `La ruta del archivo ${label} del documento ${documentId} queda fuera de la carpeta de documentos.`,
+            en: `The ${label} file path for document ${documentId} resolves outside the documents folder.`,
+          });
+        }
+        filePath = resolvedFilePath;
+      } catch (error) {
+        if (error instanceof RecoveryError) throw error;
+        if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') info = null;
+        else throw error;
+      }
+      if (!info?.isFile()) { missing.push(documentId); return null; }
+      const actualHash = await hashFile(filePath);
+      if (actualHash !== sha256) throw new RecoveryError({
+        es: `El archivo ${label} del documento ${documentId} no coincide con el hash registrado en la base de datos.`,
+        en: `The ${label} file for document ${documentId} does not match the hash recorded in the database.`,
+      });
+      const archivePath = `${FILES_PREFIX}${storagePath}`;
+      documentEntries.push({ name: archivePath, path: filePath, sha256, size: info.size });
+      return archivePath;
+    };
+    for (const document of documents) {
+      const archivePath = await addFile({ documentId: document.id, label: 'document', storagePath: document.storagePath, sha256: document.sha256 });
+      if (!archivePath) continue;
       manifestDocuments.push({ id: document.id, workspaceId: document.workspaceId, storagePath: document.storagePath, mediaType: document.mediaType, sha256: document.sha256, archivePath });
+    }
+    for (const revision of applicationDocumentRevisions) {
+      const textArchivePath = await addFile({ documentId: revision.documentId, label: 'text', storagePath: revision.textStoragePath, sha256: revision.textSha256 });
+      const pdfArchivePath = await addFile({ documentId: revision.documentId, label: 'PDF', storagePath: revision.pdfStoragePath, sha256: revision.pdfSha256 });
+      if (!textArchivePath || !pdfArchivePath) continue;
+      manifestApplicationDocumentRevisions.push({
+        id: revision.id, workspaceId: revision.workspaceId, documentId: revision.documentId, revision: revision.revision,
+        textStoragePath: revision.textStoragePath, textSha256: revision.textSha256, textArchivePath,
+        pdfStoragePath: revision.pdfStoragePath, pdfSha256: revision.pdfSha256, pdfArchivePath,
+      });
     }
     if (missing.length) throw new RecoveryError({
       es: `${missing.length} documento(s) registrados no están en ${shown(filesRoot)} (p. ej. ${missing[0]}). No se crea una copia incompleta.`,
@@ -181,10 +233,11 @@ async function main() {
       app: { name: packageJson.name, version: packageJson.version },
       tools: { node: process.versions.node, pgDump: pgDump.text, pgDumpMajor: pgDump.major, server: serverVersion, serverMajor },
       source: { database: database.database },
-      consistency: 'Single REPEATABLE READ snapshot (pg_export_snapshot + pg_dump --snapshot); documents verified against snapshot SHA-256.',
+      consistency: 'Single REPEATABLE READ snapshot (pg_export_snapshot + pg_dump --snapshot); document files verified against snapshot SHA-256.',
       tables,
       migrations,
       documents: manifestDocuments,
+      applicationDocumentRevisions: manifestApplicationDocumentRevisions,
       entries: [dumpEntry, ...documentEntries.map(({ name, sha256, size }) => ({ path: name, size, sha256 }))],
       encryption: { keyFingerprint: keyFingerprint(key), keyIncluded: false, keyFile: `career-key-${keyFingerprint(key).slice(0, 12)}.json` },
       excluded: ['.env', 'APP_SESSION_SECRET', 'APP_ENCRYPTION_KEY (separate key file)', 'sign-in token', 'logs', 'process records', 'browser state', `${orphanFiles} unreferenced file(s) in the documents folder`],
