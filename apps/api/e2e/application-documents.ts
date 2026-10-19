@@ -4,7 +4,7 @@ import { resolve, sep } from 'node:path';
 import type { Scenario } from './scenarios.js';
 import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
 
-type Profile = { revision: number; profile: Record<string, unknown> };
+type Profile = { revision: number; profile: Record<string, unknown>; facts: Array<{ id: string; kind: string; statement: string; tags: string[]; approvalStatus: string }> };
 type Revision = {
   id: string; revision: number; approvedAt: string | null; confirmedUnsupportedIds: string[];
   claims: Array<{ sentenceId: string; text: string; origin: string; sourceFactIds: string[] }>;
@@ -49,7 +49,11 @@ export const applicationDocumentsScenario: Scenario = {
     await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Fictional Candidate', email: 'candidate@example.test', country: 'ES' } } });
     const fact = await api.post<{ id: string }>('/profile/facts', { kind: 'experience', statement: `I used Python to resolve customer issues for a fictional support team. ${claimSentinel}.`, tags: ['Python', 'customer support'] });
     await api.post(`/profile/facts/${fact.id}/approve`, {});
-    const job = await api.post<{ id: string }>('/jobs/import', { company: `Document Fixture ${marker}`, title: `Support Engineer ${marker}`, jobUrl: `https://example.com/${marker}/application-documents` });
+    const currentProfile = await api.get<Profile>('/profile');
+    const unsupportedSkill = ['kubernetes', 'java', 'typescript', 'docker', 'aws', 'azure', 'gcp', 'graphql', 'react', 'terraform', 'cypress', 'selenium', 'jenkins', 'linux']
+      .find((skill) => !currentProfile.facts.filter((item) => item.approvalStatus === 'USER_APPROVED').some((item) => `${item.statement} ${item.tags.join(' ')}`.toLocaleLowerCase('en').includes(skill)));
+    assert.ok(unsupportedSkill, 'The isolated profile has a known skill that no approved fact supports');
+    const job = await api.post<{ id: string }>('/jobs/import', { company: `Document Fixture ${marker}`, title: `Support Engineer ${marker}`, description: `Python is required. ${unsupportedSkill} is also required.`, jobUrl: `https://example.com/${marker}/application-documents` });
     const application = await api.post<{ id: string }>('/applications', { company: `Document Fixture ${marker}`, role: `Support Engineer ${marker}`, jobId: job.id, state: 'DRAFT' });
     const draft = await api.get<Draft>(`/applications/${application.id}/resume/draft?language=es`);
     const candidateClaim = draft.sentences.find((sentence) => sentence.kind === 'CANDIDATE_CLAIM' && sentence.sourceFactIds.length > 0);
@@ -97,11 +101,11 @@ export const applicationDocumentsScenario: Scenario = {
     const claimWithSkill = await claimTextarea(panel, editedClaim.text);
     await assertKeyboardFocus(page, claimWithSkill, true);
     await page.keyboard.press('End');
-    await page.keyboard.type(' I am certified in Kubernetes.');
+    await page.keyboard.type(` I am certified in ${unsupportedSkill}.`);
     await assertKeyboardFocus(page, save);
     await page.keyboard.press('Enter');
     const refusal = panel.getByRole('alert');
-    await refusal.getByText(/Kubernetes/).waitFor();
+    await refusal.getByText(new RegExp(unsupportedSkill, 'iu')).waitFor();
     assert.equal((await api.get<Saved>(`/applications/${application.id}/resume?language=es`)).revisions.length, 1, 'The unsupported skill is refused without creating a revision');
     const unsupportedConfirm = panel.getByLabel('Confirmo que revisé esta afirmación aunque no esté respaldada por hechos aprobados.');
     await assertKeyboardFocus(page, unsupportedConfirm, true);
@@ -113,7 +117,7 @@ export const applicationDocumentsScenario: Scenario = {
     assert.equal(history.revisions.length, 2);
     const unsupportedRevision = history.revisions[0]!;
     assert.ok(unsupportedRevision.confirmedUnsupportedIds.length > 0);
-    assert.ok(unsupportedRevision.claims.some((claim) => claim.origin === 'USER_UNSUPPORTED' && /Kubernetes/u.test(claim.text)));
+    assert.ok(unsupportedRevision.claims.some((claim) => claim.origin === 'USER_UNSUPPORTED' && new RegExp(unsupportedSkill, 'iu').test(claim.text)));
     const approveUnsupported = panel.getByRole('button', { name: 'Aprobar esta versión', exact: true });
     assert.equal(await approveUnsupported.isDisabled(), true, 'A version containing an unsupported claim needs a separate approval confirmation');
     const approveConfirm = panel.getByLabel('Confirmo que revisé las afirmaciones marcadas como no respaldadas.');
