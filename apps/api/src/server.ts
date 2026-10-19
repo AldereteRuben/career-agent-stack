@@ -1,6 +1,6 @@
 import { lockJobIdentity, findJobIdentity, bindJobIdentity } from './job-identity.js';
 import { decideJob, isNewJob, reviewJob, withEffectiveSeenAt } from './review-state.js';
-import { RELEASE_VERSION, securityHeaders } from '@career/domain';
+import { RELEASE_VERSION, firstJobCompensation, securityHeaders } from '@career/domain';
 import { registerBackupRoutes } from './backup-routes.js';
 import { registerRestoreRoutes } from './restore-routes.js';
 import { config, projectRoot } from './config.js';
@@ -424,6 +424,8 @@ app.get('/api/v1/jobs', async (request) => {
     paged ? db.select({ total: sql<number>`count(*)::int` }).from(jobs).where(and(...filters)) : Promise.resolve([]),
   ]);
   const sourceRows = rows.length ? await db.select().from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, id), inArray(jobSearchSources.jobId, rows.map((row) => row.id)))) : [];
+  // Only the pay fields of each board posting are read, not the whole stored payload (descriptions are large).
+  const boardPay = rows.length ? await db.select({ jobId: jobOccurrences.jobId, provider: jobOccurrences.provider, salaryRange: sql<unknown>`${jobOccurrences.sourcePayload}->'salaryRange'`, compensation: sql<unknown>`${jobOccurrences.sourcePayload}->'compensation'` }).from(jobOccurrences).where(and(eq(jobOccurrences.workspaceId, id), inArray(jobOccurrences.jobId, rows.map((row) => row.id)))) : [];
   const snapshots = rows.length && query.scope === 'filtered' ? await db.select({ jobId: jobSnapshots.jobId, descriptionText: jobSnapshots.descriptionText }).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, id), inArray(jobSnapshots.jobId, rows.map((row) => row.id)))).orderBy(desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)) : [];
   const descriptions = new Map<string, string | null>(); for (const snapshot of snapshots) if (!descriptions.has(snapshot.jobId)) descriptions.set(snapshot.jobId, snapshot.descriptionText);
   const items = (await scoreJobs(db, id, await withEffectiveSeenAt(db, id, rows))).map((row) => {
@@ -431,6 +433,7 @@ app.get('/api/v1/jobs', async (request) => {
     const publicRow = omit(row, 'companyResearch');
     return {
       ...publicRow,
+      compensation: firstJobCompensation([...sourceRows.filter((source) => source.jobId === row.id).map((source) => ({ provider: source.provider, payload: source.raw })), ...boardPay.filter((source) => source.jobId === row.id).map((source) => ({ provider: source.provider, payload: { salaryRange: source.salaryRange, compensation: source.compensation } }))]),
       ...(query.scope === 'filtered' ? { preferenceReasons: evaluateJobFilters({ company: row.company, title: row.title, description: descriptions.get(row.id) ?? null }, filterPreferences).reasons } : {}),
       searchSources: sourceRows.filter((source, index, rows) => source.jobId === publicRow.id && rows.findIndex((other) => other.jobId === source.jobId && other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl })),
     };
@@ -451,7 +454,7 @@ app.get('/api/v1/jobs/:id', async (request, reply) => {
   const [scored] = await scoreJobs(db, id, await withEffectiveSeenAt(db, id, [job]));
   // Present legacy feed snapshots as readable text without rewriting their evidence/hash.
   const readableSnapshots = searchSources.length ? snapshots.map((snapshot) => ({ ...snapshot, descriptionText: plainDescription(snapshot.descriptionText) })) : snapshots;
-  return { job: scored ?? job, snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, closedByUser: availability.closedByUser, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
+  return { job: scored ?? job, compensation: firstJobCompensation([...searchSources.map((source) => ({ provider: source.provider, payload: source.raw })), ...occurrences.map((occurrence) => ({ provider: occurrence.provider, payload: occurrence.sourcePayload }))]), snapshots: readableSnapshots, sources: occurrences.map((occurrence) => omit(occurrence, 'sourcePayload')), searchSources: searchSources.filter((source, index, rows) => rows.findIndex((other) => other.provider === source.provider && other.sourceUrl === source.sourceUrl) === index).map((source) => ({ provider: source.provider, url: source.sourceUrl, postedAt: source.postedAt, lastSeenAt: source.lastSeenAt })), applications: applicationsForJob, closedByUser: availability.closedByUser, availabilityHistory: availability.history, stillListedBySource: availability.stillListedBySource };
 });
 /** Reviewing from /jobs also clears the job from every search inbox and from strong-identity duplicates. */
 app.post('/api/v1/jobs/:id/seen', async (request, reply) => {
