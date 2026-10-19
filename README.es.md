@@ -21,6 +21,7 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 - Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive, Arbeitnow e Himalayas. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
 - Generar, visualizar, revisar y descargar versiones de tu CV en A4 o Carta (EE. UU.); la preparación automática sigue usando A4. Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
+- Crear CV y cartas específicos para una oferta con datos aprobados del perfil. Revisa la evidencia, edita y aprueba cada versión; hace falta una oferta guardada y los CV adjuntos antiguos no se convierten automáticamente.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
@@ -60,6 +61,8 @@ Las búsquedas existentes conservan sus fuentes y reglas hasta que aceptes las m
 ## Solicitudes asistidas
 
 Abre **Mis solicitudes → Por revisar** para revisar el PDF generado y los datos pendientes. En una candidatura de Lever, sigue **Revisar datos → Revisar navegador** y elige continuar manualmente o autorizar por separado el envío compatible. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Las páginas públicas de Lever inspeccionadas para esta versión requirieron intervención manual; no se ha verificado un envío a una empresa real. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
+
+Los documentos quedan vinculados a su solicitud. El ZIP de materiales no está cifrado (hasta 20 documentos seleccionados y 30 MB); no se puede borrar una sola solicitud y, al borrar el espacio, se eliminan sus documentos y se vacía toda la carpeta local de archivos. Consulta [copias, exportación y restauración](docs/operations/backup-restore.md).
 
 ## Empieza aquí
 
