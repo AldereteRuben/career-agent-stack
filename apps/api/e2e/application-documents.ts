@@ -33,6 +33,8 @@ async function assertKeyboardFocus(page: import('playwright').Page, target: impo
 }
 
 async function claimTextarea(panel: import('playwright').Locator, claimText: string) {
+  await panel.getByRole('heading', { name: /^(CV adaptado a esta oferta|Resume tailored to this job)$/u }).waitFor();
+  await panel.page().waitForFunction((value) => Array.from(document.querySelectorAll('.application-resume textarea')).some((node) => (node as HTMLTextAreaElement).value.startsWith(value)), claimText);
   const textareas = panel.locator('textarea');
   const index = await textareas.evaluateAll((nodes, value) => nodes.findIndex((node) => (node as HTMLTextAreaElement).value.startsWith(value)), claimText);
   assert.ok(index >= 0, 'A claim textarea matches the candidate claim returned by the application document draft API');
