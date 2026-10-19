@@ -11,6 +11,7 @@ import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { useSearchParams } from 'next/navigation';
 import { ApplicationJourney } from '@/components/application-journey';
 import { ProfileEntryForm, type EntryInput, type ProfileEntry } from '@/components/profile-entry-form';
+import { ProfileImprovementPack } from '@/components/profile-improvement-pack';
 import { useLocale } from '@/lib/i18n';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
@@ -61,7 +62,7 @@ const leavingLink = (event: MouseEvent): HTMLAnchorElement | null => {
   return anchor;
 };
 /** Fragment targets on this page that are rendered only after the profile loads. */
-const profileSections = new Set(['profile-details', 'experience', 'saved-experience-heading']);
+const profileSections = new Set(['profile-details', 'experience', 'saved-experience-heading', 'profile-improvement-heading']);
 const answerText = (value: unknown) => typeof value === 'string' ? value : value === null || value === undefined ? '' : JSON.stringify(value);
 
 function CountryOptions({ current }: { current: string }) {
@@ -236,6 +237,7 @@ function ProfileView() {
     <ApplicationJourney jobId={jobId} applicationId={applicationId} stage="profile" returnTo={returnTo}/>
     {loadState === 'ready' && <nav className="profile-shortcuts" aria-label={c('Secciones de tu perfil', 'Profile sections')}>
       <a href="#profile-details">{c('Mis datos', 'My details')}</a><a href="#experience">{c('Añadir experiencia o estudios', 'Add experience or education')}</a><a href="#saved-experience-heading">{c('Revisar lo guardado', 'Review saved details')}{pendingFacts > 0 ? ` (${pendingFacts} ${c('por confirmar', 'to confirm')})` : ''}</a><Link href="/profile/import">{c('Importar desde un CV', 'Import from a resume')}</Link>
+      <a href="#profile-improvement-heading">{c('Mejorar mi perfil', 'Improve my profile')}</a>
       {canPrepareCv && !jobId && <Link className="button button-primary" href={resumeHref}>{c('Continuar con mi CV', 'Continue to my resume')}</Link>}
     </nav>}
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error" actions={conflict && <Button variant="quiet" disabled={busy !== null} onClick={() => void reloadLatest()}>{busy === 'reload' ? c('Recargando…', 'Reloading…') : dirty ? c('Recargar la última versión (conserva tus cambios)', 'Reload latest version (keeps your edits)') : c('Recargar la última versión', 'Reload latest version')}</Button>}>{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
@@ -296,6 +298,8 @@ function ProfileView() {
           {item.approvalStatus === 'SUGGESTED' && <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked} onClick={() => reviewFact(item.id, 'reject')}>{c('Descartar', 'Discard')}</Button><Button variant="secondary" disabled={locked} onClick={() => reviewFact(item.id, 'approve')}>{saving(`fact:${item.id}`) ? c('Guardando…', 'Saving…') : c('Confirmar', 'Confirm')}</Button></div>}
         </div>) : loadState === 'ready' && <Empty title={c('Aún no hay datos de tu experiencia', 'No profile details yet')} detail={c('Empieza con un logro o una habilidad que puedas describir con claridad.', 'Start with an achievement or skill you can describe clearly.')}/>}</section>
       </Card>
+
+      {loadState === 'ready' && data && <ProfileImprovementPack facts={data.facts}/>}
 
       <details className="optional-section" open={answersOpen} onToggle={event => setAnswersOpen(event.currentTarget.open)}><summary>{c('Respuestas guardadas · opcional', 'Saved answers · optional')}</summary><p>{c('Guarda preguntas o respuestas que quieras consultar al solicitar un empleo. Puedes dejar esta sección para después. No se rellenan automáticamente.', 'Save questions or answers to refer to when applying. You can do this later. They are not filled in automatically.')}</p><Card className="form-card"><div className="form-heading"><div><span className="step-badge">03</span><div><h2>{c('Respuestas que dependen de ti', 'Answers only you can give')}</h2><p>{c('No inferimos permisos de trabajo, expectativas salariales ni datos sensibles.', 'We never infer work authorization, salary expectations, or sensitive data.')}</p></div></div></div>
         <form ref={answerForm} onSubmit={(event) => void addAnswer(event)} className="form-stack" aria-busy={saving('answer')}>

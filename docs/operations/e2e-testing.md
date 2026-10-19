@@ -39,6 +39,7 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `es-en-labels-on-every-page` | No Spanish interface words in English mode and vice versa (text, `aria-label`, `placeholder`, `title`), plus `html[lang]`, on every main route. |
 | `draft-preserved-when-save-fails` | An intercepted 500 on fact and profile saves keeps the typed draft and creates nothing. Retrying saves exactly once. |
 | `facts-not-duplicated-after-profile-revision` | After two profile revisions, an approved fact appears once in the API, the profile page and the document picker, and stays approved. |
+| `manual-profile-improvement-uses-approved-evidence-and-copies-with-citations` | ES/EN profile suggestions use only approved evidence, keyboard copy includes the source text, pending claims are excluded, no LinkedIn request is made, and 390 px has no horizontal overflow. |
 | `same-name-pdf-creates-distinct-versions` | Generating two PDFs with the same name gives distinct records, files and revision numbers, and two working downloads that contain the fact. |
 | `manual-job-and-application-tracking` | Manual job import, job detail, creating an application and adding a note. |
 | `application-deep-link-and-stage-correction` | `/applications?id=…` opens that application, including after a reload. A mistaken stage can be corrected back, with history, without affecting other records, and `?id` is kept. |
