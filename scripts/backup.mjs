@@ -126,7 +126,7 @@ async function main() {
       fixes: [fix('Espera a que termine y vuelve a intentarlo.', 'Wait for it to finish and try again.')],
     });
     const documentTables = [];
-    for (const table of ['document_versions', 'application_documents', 'application_document_revisions']) {
+    for (const table of ['document_versions', 'application_documents', 'application_document_revisions', 'application_follow_up_drafts']) {
       if (await hasTable(client, `public.${table}`)) documentTables.push(`public.${table}`);
     }
     await client.query('begin isolation level repeatable read');

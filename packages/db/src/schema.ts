@@ -133,6 +133,17 @@ export const applicationDocumentRevisions = pgTable('application_document_revisi
   check('application_document_revisions_approved_check', sql`${t.approvedAt} is null or ${t.approvedBy} is not null`),
 ]);
 
+export const applicationFollowUpDrafts = pgTable('application_follow_up_drafts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), applicationId: uuid('application_id').notNull(),
+  language: varchar('language', { length: 2 }).notNull(), subject: text('subject').notNull(), body: text('body').notNull(),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  unique('application_follow_up_drafts_workspace_id_uq').on(t.workspaceId, t.id),
+  uniqueIndex('application_follow_up_drafts_application_uq').on(t.workspaceId, t.applicationId),
+  foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_follow_up_drafts_workspace_application_fk' }).onDelete('restrict'),
+  check('application_follow_up_drafts_language_check', sql`${t.language} in ('es', 'en')`),
+]);
+
 // AI persistence is deliberately inert until G0 enables an adapter. These tables contain metadata and
 // explicitly consented snapshots only; they never contain provider credentials.
 export const aiConnections = pgTable('ai_connections', {

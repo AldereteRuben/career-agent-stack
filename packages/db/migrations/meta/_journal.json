@@ -204,6 +204,13 @@
       "when": 1792403605246,
       "tag": "0028_add_adzuna_job_source",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792419778842,
+      "tag": "0029_application_follow_up_drafts",
+      "breakpoints": true
     }
   ]
 }
