@@ -74,9 +74,8 @@ export const applicationDocumentsScenario: Scenario = {
     let history = await api.get<Saved>(`/applications/${application.id}/resume?language=es`);
     assert.equal(history.revisions.length, 1);
 
-    // A profile change makes the saved draft stale and the approval control must be blocked.
-    const addedFact = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `A separate reviewed project ${marker}.`, tags: ['e2e'] });
-    await api.post(`/profile/facts/${addedFact.id}/approve`, {});
+    // Removing a fact cited by this revision makes it stale and blocks approval.
+    await api.post(`/profile/facts/${candidateClaim.sourceFactIds[0]}/reject`, {});
     await page.reload();
     await panel.getByText('El contenido o sus fuentes cambiaron; crea una nueva versión para revisar los cambios.', { exact: true }).waitFor();
     const staleApprove = panel.getByRole('button', { name: 'Aprobar esta versión', exact: true });
