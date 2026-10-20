@@ -195,3 +195,63 @@ test('0029 adds one workspace-scoped follow-up draft per existing application wi
     await admin.end().catch(() => {});
   }
 });
+
+test('0030 adds workspace-scoped interview preparation tables without inventing data for existing applications', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
+  assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
+  const database = `career_interviewprep_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let client;
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
+    maintenance.pathname = `/${database}`;
+    client = new Client({ connectionString: maintenance.toString() });
+    await client.connect();
+
+    const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
+    const targetMigration = migrations.indexOf('0030_interview_preparation.sql');
+    assert.notEqual(targetMigration, -1, '0030 interview preparation migration is present');
+    for (const file of migrations.slice(0, targetMigration)) await applyMigration(client, file);
+
+    const workspaceId = randomUUID(); const applicationId = randomUUID();
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [workspaceId]);
+    await client.query('INSERT INTO applications(id,workspace_id,company,role) VALUES ($1,$2,$3,$4)', [applicationId, workspaceId, 'Fictional Co', 'Designer']);
+    const applicationBefore = (await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0];
+
+    await applyMigration(client, migrations[targetMigration]);
+    assert.deepEqual((await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0], applicationBefore, 'existing application data is unchanged');
+    for (const table of ['plans', 'evidence', 'items', 'sessions', 'turns']) {
+      assert.equal((await client.query(`SELECT count(*)::int AS n FROM interview_preparation_${table}`)).rows[0].n, 0, `existing applications do not receive invented ${table}`);
+    }
+
+    const planId = randomUUID();
+    const insertPlan = (id, appId = applicationId, workspace = workspaceId, language = 'en') => client.query(
+      'INSERT INTO interview_preparation_plans(id,workspace_id,application_id,language) VALUES($1,$2,$3,$4)', [id, workspace, appId, language]);
+    await insertPlan(planId);
+    await insertPlan(randomUUID());
+    await assert.rejects(insertPlan(randomUUID(), applicationId, randomUUID()), foreignKey('interview_preparation_plans_workspace_application_fk'), 'cross-workspace application references are rejected');
+    await assert.rejects(insertPlan(randomUUID(), applicationId, workspaceId, 'fr'), (error) => error.code === '23514' && error.constraint === 'interview_preparation_plans_language_check', 'only supported languages are stored');
+    await assert.rejects(client.query('DELETE FROM applications WHERE id=$1', [applicationId]), foreignKey('interview_preparation_plans_workspace_application_fk'), 'plans restrict parent deletion until explicit removal');
+
+    await assert.rejects(client.query("INSERT INTO interview_preparation_evidence(workspace_id,plan_id,kind,source_id,content_sha256) VALUES($1,$2,'APPROVED_FACT',$3,'not-a-hash')", [workspaceId, planId, randomUUID()]), (error) => error.code === '23514', 'evidence keeps only a hash');
+    await assert.rejects(client.query("INSERT INTO interview_preparation_evidence(workspace_id,plan_id,kind,source_id,content_sha256) VALUES($1,$2,'APPROVED_FACT',$3,$4)", [workspaceId, randomUUID(), randomUUID(), 'a'.repeat(64)]), foreignKey('interview_preparation_evidence_workspace_plan_fk'), 'evidence needs a plan in the same workspace');
+    await client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content) VALUES($1,$2,'NOTE','USER_NOTE',0,'My own note')", [workspaceId, planId]);
+    await assert.rejects(client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content) VALUES($1,$2,'NOTE','USER_NOTE',0,'Duplicate position')", [workspaceId, planId]), (error) => error.code === '23505', 'positions are unique within a plan');
+    await assert.rejects(client.query("INSERT INTO interview_preparation_sessions(workspace_id,plan_id,status) VALUES($1,$2,'COMPLETED')", [workspaceId, planId]), (error) => error.code === '23514', 'a completed session needs an end time');
+    const session = (await client.query("INSERT INTO interview_preparation_sessions(workspace_id,plan_id) VALUES($1,$2) RETURNING id", [workspaceId, planId])).rows[0].id;
+    await client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,question) VALUES($1,$2,0,'Fictional question')", [workspaceId, session]);
+
+    await client.query('DELETE FROM interview_preparation_plans WHERE id=$1', [planId]);
+    for (const table of ['evidence', 'items', 'sessions', 'turns']) {
+      assert.equal((await client.query(`SELECT count(*)::int AS n FROM interview_preparation_${table}`)).rows[0].n, 0, `deleting a plan removes its ${table}`);
+    }
+    await client.query('DELETE FROM interview_preparation_plans');
+    await client.query('DELETE FROM applications WHERE id=$1', [applicationId]);
+  } finally {
+    await client?.end().catch(() => {});
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
+    await admin.end().catch(() => {});
+  }
+});

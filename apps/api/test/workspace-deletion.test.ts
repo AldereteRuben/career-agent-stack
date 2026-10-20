@@ -123,6 +123,12 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
       await q(`insert into applications (id, workspace_id, company, role, job_id, document_id) values ($1, $2, 'Fictional Co', 'Designer', $3, $4)`, [app, ws, job, doc]);
       await q(`insert into application_events (workspace_id, application_id, event_type, aggregate_version) values ($1, $2, 'CREATED', 1)`, [ws, app]);
       await q(`insert into application_follow_up_drafts (workspace_id, application_id, language, subject, body) values ($1, $2, 'en', 'Fictional follow-up', 'Synthetic draft only.')`, [ws, app]);
+      const [prepPlan, prepEvidence, prepSession] = Array.from({ length: 3 }, id);
+      await q(`insert into interview_preparation_plans (id, workspace_id, application_id, language) values ($1, $2, $3, 'en')`, [prepPlan, ws, app]);
+      await q(`insert into interview_preparation_evidence (id, workspace_id, plan_id, kind, source_id, content_sha256) values ($1, $2, $3, 'JOB_SNAPSHOT', $4, $5)`, [prepEvidence, ws, prepPlan, snapshot, fp]);
+      await q(`insert into interview_preparation_items (workspace_id, plan_id, kind, origin, position, content, evidence_id) values ($1, $2, 'REQUIREMENT', 'JOB_SNAPSHOT', 0, 'Fictional requirement', $3)`, [ws, prepPlan, prepEvidence]);
+      await q(`insert into interview_preparation_sessions (id, workspace_id, plan_id) values ($1, $2, $3)`, [prepSession, ws, prepPlan]);
+      await q(`insert into interview_preparation_turns (workspace_id, session_id, position, question) values ($1, $2, 0, 'Fictional question')`, [ws, prepSession]);
       await q(`insert into assisted_attempts (workspace_id, application_id, plan, digest, expires_at) values ($1, $2, '{}', $3, now())`, [ws, app, 'd'.repeat(64)]);
       await q(`insert into boards (id, workspace_id, provider, tenant, region, company_name, company_domain, careers_url) values ($1, $2, 'greenhouse', 'fictional', 'us', 'Fictional Co', 'example.test', 'https://example.test/careers')`, [board, ws]);
       await q(`insert into source_policy_reviews (workspace_id, board_id, capability, access_class, permission_status, api_host, adapter_version, reviewed_at) values ($1, $2, 'PUBLIC_JOB_READ', 'DOCUMENTED_PUBLIC_READ', 'APPROVED_FOR_SCOPE', 'boards-api.greenhouse.io', '0.2.0', now())`, [ws, board]);
@@ -210,6 +216,7 @@ test('deleting all data leaves nothing of one workspace and touches nothing of a
     assert.equal(Number((await q('select count(*) from application_documents where workspace_id = $1', [deleted])).rows[0].count), 0);
     assert.equal(Number((await q('select count(*) from application_document_revisions where workspace_id = $1', [deleted])).rows[0].count), 0);
     assert.equal(Number((await q('select count(*) from application_follow_up_drafts where workspace_id = $1', [deleted])).rows[0].count), 0);
+    for (const table of ['plans', 'evidence', 'items', 'sessions', 'turns']) assert.equal(Number((await q(`select count(*) from interview_preparation_${table} where workspace_id = $1`, [deleted])).rows[0].count), 0, `interview preparation ${table} are deleted`);
     assert.equal(Number((await q('select count(*) from ai_document_reword_proposals where workspace_id = $1', [deleted])).rows[0].count), 0);
 
     assert.deepEqual(await counts(other), otherBefore, 'The other workspace is untouched');

@@ -11,7 +11,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { and, desc, eq, ne, gt, gte, ilike, inArray, isNull, lt, or, sql, getTableColumns } from 'drizzle-orm';
-import { db, pool, applications, applicationEvents, applicationContacts, workspaceContacts, applicationDocumentRevisions, applicationDocuments, applicationFollowUpDrafts, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, jobMatchFeedback, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources, jobFilterPreferences, jobFilterOverrides } from '@career/db';
+import { db, pool, applications, applicationEvents, applicationContacts, workspaceContacts, applicationDocumentRevisions, applicationDocuments, applicationFollowUpDrafts, interviewPreparationPlans, interviewPreparationEvidence, interviewPreparationItems, interviewPreparationSessions, interviewPreparationTurns, aiDocumentRewordProposals, assistedAttempts, answerVersions, boards, documentVersions, jobs, jobOccurrences, jobSnapshots, jobMatchFeedback, profileFacts, profileVersions, searchProfiles, sourcePolicyReviews, workspaces, savedJobSearches, savedJobSearchMatches, jobSearchSources, jobFilterPreferences, jobFilterOverrides } from '@career/db';
 import { legacyEmployment, applicationUpdateSchema, applicationSchema, applicationState, answerSchema, boardSchema, factSchema, jobImportSchema, profileUpdateSchema, canTransitionApplication, classifyRecruitmentStageChange, documentFileName, documentLanguage, normalizeLocaleTag, printedResumeIdentity, printedStatement, profileCompletion, localDateTimeToInstant } from '@career/domain';
 import { registerFactImportRoutes } from './fact-import-routes.js';
 import { activityDetailLimit, activityWindow, localDayBounds, parseActivityDay, resolveTimeZone } from './activity-days.js';
@@ -50,6 +50,7 @@ import { exportAiData } from './ai/export.js';
 import { ApplicationDocumentExportError, buildApplicationDocumentExport } from './application-document-export.js';
 import { registerApplicationContactRoutes } from './application-contact-routes.js';
 import { registerApplicationFollowUpRoutes } from './application-follow-up-routes.js';
+import { registerInterviewPreparationRoutes } from './interview-preparation-routes.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
 import { answerLockKey, latestAnswers, latestFacts, latestProfile, loadMatchingContext, lockKey, profileLockKey, rescoreWorkspaceJobs, scoreJobs, applyMatch, type Tx } from './workspace-data.js';
@@ -558,6 +559,7 @@ registerResumeJourney(app, workspace);
 registerFactImportRoutes(app, workspace);
 registerApplicationContactRoutes(app, workspace);
 registerApplicationFollowUpRoutes(app, workspace);
+registerInterviewPreparationRoutes(app, workspace);
 const backups = registerBackupRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, files: config.FILES_LOCAL_PATH, database: config.DATABASE_URL, key: config.APP_ENCRYPTION_KEY });
 const restores = registerRestoreRoutes(app, workspace, { root: projectRoot, data: config.DATA_LOCAL_PATH, appDatabase: config.DATABASE_URL, adminUrl: process.env.CAREER_RESTORE_ADMIN_URL });
 
@@ -755,11 +757,16 @@ function scrubExport(value: unknown): unknown {
 }
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
-  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, contacts, applicationContactLinks, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, followUpDraftRows, search, assistRows, savedSearches, savedMatches, publicSources, filterPreferences, filterOverrides, matchFeedback] = await Promise.all([
+  const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, contacts, applicationContactLinks, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, followUpDraftRows, preparationPlans, preparationEvidence, preparationItems, preparationSessions, preparationTurns, search, assistRows, savedSearches, savedMatches, publicSources, filterPreferences, filterOverrides, matchFeedback] = await Promise.all([
     db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1), db.select().from(profileVersions).where(eq(profileVersions.workspaceId, id)), db.select().from(profileFacts).where(eq(profileFacts.workspaceId, id)), db.select().from(answerVersions).where(eq(answerVersions.workspaceId, id)), db.select().from(boards).where(eq(boards.workspaceId, id)), db.select().from(jobs).where(eq(jobs.workspaceId, id)), db.select().from(jobOccurrences).where(eq(jobOccurrences.workspaceId, id)), db.select().from(jobSnapshots).where(eq(jobSnapshots.workspaceId, id)), db.select().from(applications).where(eq(applications.workspaceId, id)), db.select().from(applicationEvents).where(eq(applicationEvents.workspaceId, id)),
     db.select().from(workspaceContacts).where(eq(workspaceContacts.workspaceId, id)), db.select().from(applicationContacts).where(eq(applicationContacts.workspaceId, id)), db.select().from(documentVersions).where(eq(documentVersions.workspaceId, id)),
     db.select().from(applicationDocuments).where(eq(applicationDocuments.workspaceId, id)), db.select().from(applicationDocumentRevisions).where(eq(applicationDocumentRevisions.workspaceId, id)), db.select().from(aiDocumentRewordProposals).where(eq(aiDocumentRewordProposals.workspaceId, id)),
     db.select().from(applicationFollowUpDrafts).where(eq(applicationFollowUpDrafts.workspaceId, id)),
+    db.select().from(interviewPreparationPlans).where(eq(interviewPreparationPlans.workspaceId, id)),
+    db.select().from(interviewPreparationEvidence).where(eq(interviewPreparationEvidence.workspaceId, id)),
+    db.select().from(interviewPreparationItems).where(eq(interviewPreparationItems.workspaceId, id)),
+    db.select().from(interviewPreparationSessions).where(eq(interviewPreparationSessions.workspaceId, id)),
+    db.select().from(interviewPreparationTurns).where(eq(interviewPreparationTurns.workspaceId, id)),
     db.select().from(searchProfiles).where(eq(searchProfiles.workspaceId, id)), db.select().from(assistedAttempts).where(eq(assistedAttempts.workspaceId, id)),
     db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, id)),
     db.select().from(savedJobSearchMatches).where(eq(savedJobSearchMatches.workspaceId, id)),
@@ -803,7 +810,7 @@ app.get('/api/v1/export', async (request, reply) => {
         : rows;
   }
   const assistant = await exportAiData(db, id);
-  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, contacts, applicationContactLinks, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, applicationFollowUpDrafts: followUpDraftRows, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), jobFilterPreferences: filterPreferences, jobFilterOverrides: filterOverrides, jobMatchFeedback: matchFeedback, assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
+  const data = scrubExport({ assistant, searchState, workspace: workspaceRow[0], profiles, facts, answers, boards: boardRows.map((board) => ({ ...board, enabled: false, permissionStatus: 'UNKNOWN' })), jobs: jobRows, occurrences, snapshots, applications: applicationRows, events, contacts, applicationContactLinks, documents, documentArtifacts: artifacts, applicationDocuments: applicationDocumentExport.documents, applicationDocumentRevisions: applicationDocumentExport.revisions, aiDocumentRewordProposals: applicationDocumentExport.proposals, applicationDocumentArtifacts: applicationDocumentExport.artifacts, applicationFollowUpDrafts: followUpDraftRows, interviewPreparationPlans: preparationPlans, interviewPreparationEvidence: preparationEvidence, interviewPreparationItems: preparationItems, interviewPreparationSessions: preparationSessions, interviewPreparationTurns: preparationTurns, searchProfiles: search.map((item) => ({ ...item, enabled: false })), savedJobSearches: savedSearches.map((item) => ({ ...item, enabled: false, autoPrepare: false })), savedJobSearchMatches: savedMatches, jobSearchSources: publicSources.map((item) => omit(item, 'raw')), jobFilterPreferences: filterPreferences, jobFilterOverrides: filterOverrides, jobMatchFeedback: matchFeedback, assistedAttempts: assistRows.map((attempt) => ({ ...attempt, status: attempt.status === 'PREPARED' ? 'INVALIDATED' : ['STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF'].includes(attempt.status) ? 'UNKNOWN' : attempt.status })) });
   const contentHash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return reply.header('Content-Type', 'application/json').header('Content-Disposition', `attachment; filename="career-workspace-${new Date().toISOString().slice(0, 10)}.json"`).send({ format: 'career-agent-stack-export', schemaVersion: 1, createdAt: new Date().toISOString(), warning: 'Contains personal data and generated PDFs. Store privately. Credentials, tokens, browser sessions and source permissions are excluded or disabled.', sha256: contentHash, data });
 });
