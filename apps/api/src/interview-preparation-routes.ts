@@ -4,9 +4,14 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   applications, db, documentVersions, interviewPreparationEvidence, interviewPreparationItems, interviewPreparationPlans,
-  interviewPreparationSessions, interviewPreparationTurns, jobSnapshots, profileFacts,
+  interviewPreparationSessions, interviewPreparationTurns, jobSnapshots, jobs, profileFacts,
 } from '@career/db';
-import { interviewEvidenceKinds, interviewEvidenceStatus, interviewPlanNeedsReview, type InterviewEvidenceCurrent, type InterviewEvidenceKind } from '@career/domain';
+import {
+  buildInterviewPreparationItems, buildJobReport, INTERVIEW_PLAN_LIMITS, interviewEvidenceKinds, interviewEvidenceStatus, interviewPlanFactIds, interviewPlanNeedsReview,
+  type InterviewEvidenceCurrent, type InterviewEvidenceKind,
+} from '@career/domain';
+import { readableDescriptions } from './job-report-routes.js';
+import { loadMatchingContext, type Executor } from './workspace-data.js';
 
 // ADR 024: a plan belongs to one application. It keeps references and hashes of its evidence, compares them with the
 // current records whenever it is opened, and is deleted together with everything under it.
@@ -16,6 +21,14 @@ const createPlanSchema = z.object({
   evidence: z.array(z.object({ kind: z.enum(interviewEvidenceKinds), sourceId: z.string().uuid() }).strict()).max(200).default([]),
 }).strict();
 const idParamsSchema = z.object({ id: z.string().uuid() });
+const buildPlanSchema = z.object({ language: z.enum(['es', 'en']), stage: z.string().trim().min(1).max(30).optional() }).strict();
+// People add their own notes and questions; generated items are fixed, and can only be removed.
+const userItemSchema = z.object({
+  kind: z.enum(['NOTE', 'QUESTION']), origin: z.enum(['USER_NOTE', 'USER_RESEARCH']).default('USER_NOTE'),
+  content: z.string().trim().min(1).max(INTERVIEW_PLAN_LIMITS.maxContent),
+}).strict();
+const editItemSchema = z.object({ content: z.string().trim().min(1).max(INTERVIEW_PLAN_LIMITS.maxContent) }).strict();
+const userOrigins = ['USER_NOTE', 'USER_RESEARCH'];
 
 type PreparationDatabase = typeof db;
 type EvidenceReference = { kind: InterviewEvidenceKind; sourceId: string };
@@ -65,7 +78,7 @@ async function describePlans(database: PreparationDatabase, workspaceId: string,
       id: plan.id, applicationId: plan.applicationId, language: plan.language, stage: plan.stage, createdAt: plan.createdAt, updatedAt: plan.updatedAt,
       needsReview: interviewPlanNeedsReview(planEvidence.map((row) => row.status)),
       evidence: planEvidence,
-      items: items.filter((item) => item.planId === plan.id).map((item) => ({ id: item.id, kind: item.kind, origin: item.origin, position: item.position, content: item.content, evidenceId: item.evidenceId })),
+      items: items.filter((item) => item.planId === plan.id).map((item) => ({ id: item.id, kind: item.kind, origin: item.origin, position: item.position, content: item.content, evidenceId: item.evidenceId, support: item.support, factIds: item.factIds })),
       sessions: sessions.filter((session) => session.planId === plan.id).map((session) => ({
         id: session.id, status: session.status, createdAt: session.createdAt, endedAt: session.endedAt,
         turns: turns.filter((turn) => turn.sessionId === session.id).map((turn) => ({ id: turn.id, position: turn.position, question: turn.question, answer: turn.answer, feedback: turn.feedback, learningItems: turn.learningItems })),
@@ -121,6 +134,104 @@ export function registerInterviewPreparationRoutes(app: FastifyInstance, workspa
     if (result.kind === 'missing') return reply.code(404).send({ error: 'NOT_FOUND' });
     if (result.kind === 'evidence') return reply.code(400).send({ error: result.error });
     return reply.code(201).send({ plan: (await describePlans(database, workspaceId, [result.plan]))[0] });
+  });
+
+  // The no-AI plan (#200): built from the saved offer, the current stage, the submitted resume and approved facts only.
+  app.post('/api/v1/applications/:id/interview-preparation/build', async (request, reply) => {
+    const params = idParamsSchema.safeParse(request.params);
+    const parsed = buildPlanSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const workspaceId = workspace(request);
+    const result = await database.transaction(async (tx) => {
+      const executor = tx as unknown as Executor;
+      const application = (await tx.select({ id: applications.id, jobId: applications.jobId, documentId: applications.documentId, stage: applications.recruitmentStage }).from(applications)
+        .where(and(eq(applications.workspaceId, workspaceId), eq(applications.id, params.data.id))).limit(1))[0];
+      if (!application) return { kind: 'missing' as const };
+      const job = application.jobId ? (await tx.select().from(jobs).where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, application.jobId))).limit(1))[0] : undefined;
+      const snapshot = job ? (await tx.select({ id: jobSnapshots.id }).from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, workspaceId), eq(jobSnapshots.jobId, job.id))).orderBy(desc(jobSnapshots.fetchedAt), desc(jobSnapshots.id)).limit(1))[0] : undefined;
+      let report = null;
+      if (job) {
+        // Sequential: a transaction is one connection, which runs one query at a time.
+        const context = await loadMatchingContext(executor, workspaceId);
+        const description = (await readableDescriptions(executor, workspaceId, [job.id])).get(job.id) ?? null;
+        report = buildJobReport({ title: job.title, location: job.location, description }, context);
+      }
+      const stage = parsed.data.stage ?? application.stage;
+      const drafts = buildInterviewPreparationItems({ language: parsed.data.language, stage, report, jobSnapshotId: snapshot?.id ?? null });
+      const resume = application.documentId ? (await tx.select({ id: documentVersions.id }).from(documentVersions).where(and(eq(documentVersions.workspaceId, workspaceId), eq(documentVersions.id, application.documentId))).limit(1))[0] : undefined;
+      const references: EvidenceReference[] = [
+        ...(snapshot ? [{ kind: 'JOB_SNAPSHOT' as const, sourceId: snapshot.id }] : []),
+        ...(resume ? [{ kind: 'RESUME_VERSION' as const, sourceId: resume.id }] : []),
+        ...interviewPlanFactIds(drafts).map((sourceId) => ({ kind: 'APPROVED_FACT' as const, sourceId })),
+      ];
+      const current = await currentEvidence(tx as unknown as PreparationDatabase, workspaceId, references);
+      const usable = references.filter((reference) => { const found = current.get(`${reference.kind}:${reference.sourceId}`); return found && !found.withdrawn; });
+      const plan = (await tx.insert(interviewPreparationPlans).values({ workspaceId, applicationId: application.id, language: parsed.data.language, stage }).returning())[0]!;
+      const evidenceIds = new Map<string, string>();
+      if (usable.length) {
+        const rows = await tx.insert(interviewPreparationEvidence).values(usable.map((reference) => ({
+          workspaceId, planId: plan.id, kind: reference.kind, sourceId: reference.sourceId, contentSha256: current.get(`${reference.kind}:${reference.sourceId}`)!.hash,
+        }))).returning({ id: interviewPreparationEvidence.id, kind: interviewPreparationEvidence.kind, sourceId: interviewPreparationEvidence.sourceId });
+        for (const row of rows) evidenceIds.set(`${row.kind}:${row.sourceId}`, row.id);
+      }
+      if (drafts.length) {
+        await tx.insert(interviewPreparationItems).values(drafts.map((item, position) => ({
+          workspaceId, planId: plan.id, kind: item.kind, origin: item.origin, position, content: item.content, support: item.support,
+          factIds: item.factIds.filter((id) => evidenceIds.has(`APPROVED_FACT:${id}`)),
+          evidenceId: item.evidence ? evidenceIds.get(`${item.evidence.kind}:${item.evidence.sourceId}`) ?? null : null,
+        })));
+      }
+      return { kind: 'created' as const, plan };
+    });
+    if (result.kind === 'missing') return reply.code(404).send({ error: 'NOT_FOUND' });
+    return reply.code(201).send({ plan: (await describePlans(database, workspaceId, [result.plan]))[0] });
+  });
+
+  app.post('/api/v1/interview-preparation/:id/items', async (request, reply) => {
+    const params = idParamsSchema.safeParse(request.params);
+    const parsed = userItemSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const workspaceId = workspace(request);
+    const result = await database.transaction(async (tx) => {
+      // The plan row is locked so two additions cannot take the same position.
+      const plan = (await tx.select({ id: interviewPreparationPlans.id }).from(interviewPreparationPlans)
+        .where(and(eq(interviewPreparationPlans.workspaceId, workspaceId), eq(interviewPreparationPlans.id, params.data.id))).for('update').limit(1))[0];
+      if (!plan) return { kind: 'missing' as const };
+      const existing = await tx.select({ position: interviewPreparationItems.position }).from(interviewPreparationItems)
+        .where(and(eq(interviewPreparationItems.workspaceId, workspaceId), eq(interviewPreparationItems.planId, plan.id)));
+      if (existing.length >= INTERVIEW_PLAN_LIMITS.maxItems) return { kind: 'full' as const };
+      const position = existing.reduce((highest, row) => Math.max(highest, row.position), -1) + 1;
+      const item = (await tx.insert(interviewPreparationItems).values({ workspaceId, planId: plan.id, position, ...parsed.data }).returning())[0]!;
+      await tx.update(interviewPreparationPlans).set({ updatedAt: new Date() }).where(and(eq(interviewPreparationPlans.workspaceId, workspaceId), eq(interviewPreparationPlans.id, plan.id)));
+      return { kind: 'created' as const, item };
+    });
+    if (result.kind === 'missing') return reply.code(404).send({ error: 'NOT_FOUND' });
+    if (result.kind === 'full') return reply.code(409).send({ error: 'PLAN_FULL' });
+    const { id, kind, origin, position, content, evidenceId, support, factIds } = result.item;
+    return reply.code(201).send({ item: { id, kind, origin, position, content, evidenceId, support, factIds } });
+  });
+
+  app.patch('/api/v1/interview-preparation/items/:id', async (request, reply) => {
+    const params = idParamsSchema.safeParse(request.params);
+    const parsed = editItemSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const workspaceId = workspace(request);
+    const item = (await database.select().from(interviewPreparationItems).where(and(eq(interviewPreparationItems.workspaceId, workspaceId), eq(interviewPreparationItems.id, params.data.id))).limit(1))[0];
+    if (!item) return reply.code(404).send({ error: 'NOT_FOUND' });
+    // Generated items stay as they were made so their provenance is true; the person can remove them or add their own.
+    if (!userOrigins.includes(item.origin)) return reply.code(409).send({ error: 'ITEM_NOT_EDITABLE' });
+    const updated = (await database.update(interviewPreparationItems).set({ content: parsed.data.content, updatedAt: new Date() })
+      .where(and(eq(interviewPreparationItems.workspaceId, workspaceId), eq(interviewPreparationItems.id, item.id))).returning())[0]!;
+    return { item: { id: updated.id, kind: updated.kind, origin: updated.origin, position: updated.position, content: updated.content, evidenceId: updated.evidenceId, support: updated.support, factIds: updated.factIds } };
+  });
+
+  app.delete('/api/v1/interview-preparation/items/:id', async (request, reply) => {
+    const params = idParamsSchema.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
+    const removed = await database.delete(interviewPreparationItems)
+      .where(and(eq(interviewPreparationItems.workspaceId, workspace(request)), eq(interviewPreparationItems.id, params.data.id))).returning({ id: interviewPreparationItems.id });
+    if (!removed.length) return reply.code(404).send({ error: 'NOT_FOUND' });
+    return { ok: true };
   });
 
   app.get('/api/v1/interview-preparation/:id', async (request, reply) => {

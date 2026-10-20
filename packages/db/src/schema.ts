@@ -173,6 +173,8 @@ export const interviewPreparationItems = pgTable('interview_preparation_items', 
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), planId: uuid('plan_id').notNull(),
   kind: varchar('kind', { length: 20 }).notNull(), origin: varchar('origin', { length: 20 }).notNull(), position: integer('position').notNull(),
   content: text('content').notNull(), evidenceId: uuid('evidence_id'),
+  // Requirements only: whether approved facts back it, and which. Unsupported requirements are shown as unknown, never guessed.
+  support: varchar('support', { length: 10 }), factIds: jsonb('fact_ids').$type<string[]>().notNull().default([]),
   createdAt: created(), updatedAt: changed(),
 }, (t) => [
   unique('interview_preparation_items_workspace_id_uq').on(t.workspaceId, t.id),
@@ -182,6 +184,7 @@ export const interviewPreparationItems = pgTable('interview_preparation_items', 
   check('interview_preparation_items_kind_check', sql`${t.kind} in ('REQUIREMENT', 'EXERCISE', 'STUDY', 'QUESTION', 'NOTE')`),
   check('interview_preparation_items_origin_check', sql`${t.origin} in ('JOB_SNAPSHOT', 'APPROVED_FACT', 'USER_NOTE', 'USER_RESEARCH', 'FIXED_TEMPLATE', 'ASSISTANT')`),
   check('interview_preparation_items_position_check', sql`${t.position} >= 0`),
+  check('interview_preparation_items_support_check', sql`${t.support} is null or (${t.support} in ('SUPPORTED', 'UNKNOWN') and ${t.kind} = 'REQUIREMENT')`),
 ]);
 
 export const interviewPreparationSessions = pgTable('interview_preparation_sessions', {
