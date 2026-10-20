@@ -169,6 +169,8 @@ export const patchScenarios: Scenario[] = [
       assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, 'A closed application keeps one in-app job link');
       // Let the panels finish their requests (the expected 404 above) before the next scenario starts listening for errors.
       await page.waitForLoadState('networkidle');
+      // The page is shared with the next scenario, which expects the desktop viewport the harness starts with.
+      await page.setViewportSize({ width: 1440, height: 1000 });
     },
   },
 ];
