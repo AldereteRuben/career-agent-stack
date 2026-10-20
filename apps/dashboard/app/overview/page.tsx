@@ -186,10 +186,6 @@ export default function OverviewPage() {
         <h2>{dailyAction.title}</h2>
         <p>{dailyAction.detail}</p>
         <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
-        <div className="overview-totals" role="status" aria-live="polite">
-          <div className="overview-total"><strong>{inbox?.total ?? '—'}</strong><span>{inbox?.total === 1 ? c('oferta nueva', 'new job') : c('ofertas nuevas', 'new jobs')}</span></div>
-          <div className="overview-total"><strong>{pendingResumes}</strong><span>{pendingResumes === 1 ? c('CV por revisar', 'resume needing review') : c('CV por revisar', 'resumes needing review')}</span></div>
-        </div>
         {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
       </Card>
       <Card className="overview-inbox-panel">
@@ -220,7 +216,7 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ totalJobs: summary.totalJobs, totalApplications, pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
+    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
       <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>
