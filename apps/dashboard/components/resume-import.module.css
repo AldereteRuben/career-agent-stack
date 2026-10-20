@@ -78,11 +78,7 @@
 }
 
 .itemLabel input {
-  flex: none;
-  width: 20px;
-  height: 20px;
   margin-top: 2px;
-  accent-color: #4667bc;
 }
 
 .itemBody {

@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { ApiError, api, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
-import { Button, Card } from '@/components/ui';
+import { Button, ButtonLink, Card, Notice, SelectField, Tag } from '@/components/ui';
 import { labelFor } from '@/lib/labels';
 import { ApplicationDocumentReword } from './application-document-reword';
 import styles from './application-cover-letter.module.css';
@@ -122,7 +121,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
   if (noOffer) return <Card className={`${styles.card} application-resume`}>
     <h3>{copy('Documentos para esta solicitud', 'Documents for this application')}</h3>
     <p>{labelFor.applicationDocumentMessage('APPLICATION_HAS_NO_OFFER', locale)}</p>
-    <Link className="button button-quiet" href="/jobs">{copy('Ver ofertas guardadas', 'View saved jobs')}</Link>
+    <ButtonLink variant="quiet" href="/jobs">{copy('Ver ofertas guardadas', 'View saved jobs')}</ButtonLink>
   </Card>;
 
   const approve = async () => {
@@ -167,19 +166,19 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
   const unsupportedClaimIds = stored?.revision.claims.filter((sentence) => sentence.origin === 'USER_UNSUPPORTED').map((sentence) => sentence.sentenceId) ?? [];
 
   return <Card className={`${styles.card} application-resume`}>
-    <div className={styles.heading}><h3>{title}</h3><label>{copy('Idioma del documento', 'Document language')} <select value={language} disabled={busy || assistantActive} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></select></label></div>
+    <div className={styles.heading}><h3>{title}</h3><SelectField className={styles.languageSelect} label={copy('Idioma del documento', 'Document language')} value={language} disabled={busy || assistantActive} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}><option value="es">Español</option><option value="en">English</option></SelectField></div>
     <p>{copy('Borrador local basado en la oferta guardada y tus hechos aprobados. Nada se envía a la empresa.', 'A local draft based on the saved offer and your approved facts. Nothing is sent to the employer.')}</p>
-    {loading ? <p role="status">{copy('Preparando el borrador…', 'Preparing draft…')}</p> : error && !draft ? <p role="alert" className={styles.error}>{error} <Button variant="quiet" onClick={() => void load()}>{copy('Reintentar', 'Retry')}</Button></p> : null}
-    {draft?.profileNotice && <p className={styles.notice} role="status">{draft.profileNotice}</p>}
+    {loading ? <p role="status">{copy('Preparando el borrador…', 'Preparing draft…')}</p> : error && !draft ? <Notice tone="error" actions={<Button variant="quiet" onClick={() => void load()}>{copy('Reintentar', 'Retry')}</Button>}>{error}</Notice> : null}
+    {draft?.profileNotice && <Notice role="status">{draft.profileNotice}</Notice>}
     {draft && !loading && <>
-      {draft.unconfirmedRequirements.length > 0 && <div className={styles.notice}><strong>{copy('Requisitos sin evidencia aprobada', 'Requirements without approved evidence')}</strong><ul>{draft.unconfirmedRequirements.map((item) => <li key={item.text}>{item.text}</li>)}</ul></div>}
+      {draft.unconfirmedRequirements.length > 0 && <Notice tone="warning" role={null}><strong>{copy('Requisitos sin evidencia aprobada', 'Requirements without approved evidence')}</strong><ul>{draft.unconfirmedRequirements.map((item) => <li key={item.text}>{item.text}</li>)}</ul></Notice>}
       <div className={styles.sentences}>
         {sentences.map((sentence) => <fieldset key={sentence.sentenceId} className={styles.sentence}>
           <legend>{sentence.kind === 'CANDIDATE_CLAIM' ? copy('Afirmación basada en tu perfil', 'Profile-based claim') : sentence.kind === 'OFFER_REFERENCE' ? copy('Referencia a la oferta', 'Offer reference') : copy('Saludo o cierre', 'Greeting or closing')}</legend>
           <label className="sr-only" htmlFor={`${kind}-${sentence.sentenceId}`}>{copy('Texto de la frase', 'Sentence text')}</label>
-          <textarea id={`${kind}-${sentence.sentenceId}`} rows={3} maxLength={4000} value={sentence.text} disabled={busy || assistantActive} onChange={(event) => updateSentence(sentence.sentenceId, event.target.value)}/>
+          <textarea className="field-control" id={`${kind}-${sentence.sentenceId}`} rows={3} maxLength={4000} value={sentence.text} disabled={busy || assistantActive} onChange={(event) => updateSentence(sentence.sentenceId, event.target.value)}/>
           {sentence.kind === 'CANDIDATE_CLAIM' && <details><summary>{copy('Evidencia que respalda esta frase', 'Evidence supporting this sentence')}</summary><ul>{sentence.sourceFactIds.map((id) => <li key={id}>{facts.find((fact) => fact.id === id)?.statement ?? copy('La evidencia ya no está disponible en el perfil actual.', 'This evidence is no longer available in the current profile.')}</li>)}</ul><fieldset><legend>{copy('Vincular hechos aprobados', 'Link approved facts')}</legend>{facts.map((fact) => <label key={fact.id} className={styles.confirm}><input type="checkbox" checked={sentence.sourceFactIds.includes(fact.id)} disabled={busy || assistantActive} onChange={(event) => updateCitations(sentence.sentenceId, fact.id, event.target.checked)}/>{fact.statement}</label>)}</fieldset></details>}
-          <span className="tag tag-blue">{sentence.origin === 'USER_EDITED' ? 'USER_EDITED' : sentence.origin === 'USER_UNSUPPORTED' ? 'USER_UNSUPPORTED' : sentence.origin}</span>
+          <Tag tone="blue">{sentence.origin === 'USER_EDITED' ? 'USER_EDITED' : sentence.origin === 'USER_UNSUPPORTED' ? 'USER_UNSUPPORTED' : sentence.origin}</Tag>
           {sentence.kind === 'CANDIDATE_CLAIM' && (sentence.sourceFactIds.length === 0 || unsupportedSentenceId === sentence.sentenceId) && <label className={styles.confirm}><input type="checkbox" checked={confirmIds.includes(sentence.sentenceId)} disabled={busy || assistantActive} onChange={(event) => setConfirmIds((current) => event.target.checked ? [...current, sentence.sentenceId] : current.filter((id) => id !== sentence.sentenceId))}/>{copy('Confirmo que revisé esta afirmación aunque no esté respaldada por hechos aprobados.', 'I confirm I reviewed this claim even though approved facts do not support it.')}</label>}
           <Button type="button" variant="quiet" disabled={busy || assistantActive} onClick={() => setSentences((current) => current.filter((item) => item.sentenceId !== sentence.sentenceId))}>{copy('Quitar frase', 'Remove sentence')}</Button>
         </fieldset>)}
@@ -188,8 +187,8 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         <Button variant="secondary" disabled={busy || assistantActive || !sentences.length || !changed} onClick={() => void save()}>{busy ? copy('Guardando…', 'Saving…') : copy('Guardar nueva versión', 'Save new version')}</Button>
         <Button variant="quiet" disabled={busy || assistantActive} onClick={restore}>{copy('Restaurar borrador base', 'Restore base draft')}</Button>
       </div>
-      {error && <p role="alert" className={styles.error}>{error}</p>}
-      {message && <p role="status" className={styles.success}>{message}</p>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {message && <Notice tone="success">{message}</Notice>}
       {stored && <section aria-label={copy(`Revisión de ${title}`, `${title} review`)} className={styles.preview}>
         <h4>{copy(`Revisión ${stored.revision.revision}`, `Revision ${stored.revision.revision}`)}</h4>
         <p>{stored.revision.approvedAt ? copy('Aprobada', 'Approved') : copy('Pendiente de aprobación', 'Awaiting approval')}</p>
@@ -198,7 +197,7 @@ export function ApplicationDocumentEditor({ applicationId, kind, hideNoOfferMess
         <dl className={styles.hashes}>{[[copy('Contenido', 'Content'), stored.revision.contentHash], [copy('Perfil', 'Profile'), stored.revision.factsHash], [copy('Oferta', 'Job'), stored.revision.offerHash], [copy('Texto', 'Text'), stored.revision.textSha256], ['PDF', stored.revision.pdfSha256]].map(([label, hash]) => <div key={label}><dt>{label}</dt><dd><code>{hash}</code></dd></div>)}</dl>
         <p>{copy('Estos hashes muestran qué fuentes y archivos se comprobarán al aprobar. Si algo cambia, la aprobación se bloquea.', 'These hashes show which sources and files will be checked on approval. If anything changes, approval is blocked.')}</p>
         {pdfUrl && <iframe title={copy(`Vista previa de ${title} en PDF`, `${title} PDF preview`)} src={pdfUrl} />}
-        {textUrl && <a className="button button-quiet" href={textUrl}>{copy('Descargar texto', 'Download text')}</a>}
+        {textUrl && <a className="button button-quiet" href={textUrl} download>{copy('Descargar texto', 'Download text')}</a>}
         {!stored.revision.approvedAt && unsupportedClaimIds.length > 0 && <label className={styles.confirm}><input type="checkbox" checked={approveUnsupported} disabled={busy} onChange={(event) => setApproveUnsupported(event.target.checked)}/>{copy('Confirmo que revisé las afirmaciones marcadas como no respaldadas.', 'I confirm that I reviewed the claims marked as unsupported.')}</label>}
         {!stored.revision.approvedAt && <Button disabled={busy || assistantActive || confirmIds.length > 0 || stale || stored.revision.currentness?.status === 'NEEDS_REVIEW' || (unsupportedClaimIds.length > 0 && !approveUnsupported)} onClick={() => void approve()}>{copy('Aprobar esta versión', 'Approve this version')}</Button>}
       </section>}

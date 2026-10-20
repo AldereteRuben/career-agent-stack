@@ -130,8 +130,8 @@
 }
 
 .scopeChoices { display: flex; flex-wrap: wrap; gap: 8px; }
-.scopeChoices button { min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #fff); color: var(--ink); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
-.scopeChoices button[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft, #eef2ff); color: var(--blue); font-weight: 650; }
+.scopeChoices button { min-height: var(--control); max-width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--white); color: var(--ink); font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.scopeChoices button[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-pale); color: var(--blue); font-weight: 650; }
 .scopeChoices button:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
 
 /* One saved search: its own edit/pause controls next to the results instead of a one-option selector. */
@@ -157,7 +157,7 @@
 .aiHelp li + li { margin-top: 8px; }
 .aiHelp a { color: var(--blue-dark); }
 .entryModes { display: flex; flex-wrap: wrap; gap: 8px; }
-.entryModes [aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); color: var(--blue-dark); }
+.entryModes [aria-pressed="true"] { background: var(--blue-pale); border-color: var(--blue); color: var(--blue-dark); }
 .scopeChoices small { display: block; font-weight: 400; font-size: .75rem; color: var(--muted); }
 @media (max-width: 620px) {
   .scopeChoices { flex-wrap: nowrap; overflow-x: auto; padding: 3px; }

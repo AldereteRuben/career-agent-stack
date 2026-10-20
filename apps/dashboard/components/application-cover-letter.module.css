@@ -15,6 +15,11 @@
   margin: 0;
 }
 
+.languageSelect {
+  flex: 0 1 14rem;
+  margin: 0;
+}
+
 .sentences {
   display: grid;
   gap: 0.75rem;
@@ -25,29 +30,20 @@
   min-width: 0;
   margin: 0;
   padding: 0.875rem;
-  border: 1px solid var(--border, #d7dde5);
-  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .sentence legend {
   padding-inline: 0.3rem;
-  color: var(--muted-foreground, #526171);
+  color: var(--muted);
   font-size: 0.875rem;
   font-weight: 650;
 }
 
 .sentence textarea {
-  display: block;
-  width: 100%;
   min-height: 5rem;
   resize: vertical;
-  border: 1px solid var(--border, #d7dde5);
-  border-radius: 0.5rem;
-  padding: 0.7rem;
-  color: inherit;
-  background: var(--surface, #fff);
-  font: inherit;
-  line-height: 1.5;
 }
 
 .confirm {
@@ -61,31 +57,6 @@
 .confirm input {
   margin-top: 0.25rem;
   flex: 0 0 auto;
-}
-
-.notice,
-.error,
-.success {
-  border-radius: 0.65rem;
-  padding: 0.75rem 0.9rem;
-}
-
-.notice {
-  background: var(--notice-info-bg, #f1f6fa);
-}
-
-.notice ul {
-  margin-block: 0.4rem 0;
-  padding-left: 1.25rem;
-}
-
-.error {
-  color: var(--danger-foreground, #8d2020);
-  background: var(--danger-background, #fff0f0);
-}
-
-.success {
-  background: var(--success-background, #edf8f1);
 }
 
 .preview {
@@ -121,7 +92,7 @@
   min-width: 0;
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--border, #d7dde5);
+  border-top: 1px solid var(--line);
 }
 
 .assistant h4,
@@ -151,17 +122,8 @@
 }
 
 .assistantSentences textarea {
-  display: block;
-  width: 100%;
   min-height: 5rem;
   resize: vertical;
-  border: 1px solid var(--border, #d7dde5);
-  border-radius: 0.5rem;
-  padding: 0.7rem;
-  color: inherit;
-  background: var(--surface, #fff);
-  font: inherit;
-  line-height: 1.5;
 }
 
 .promptPreview {
@@ -179,8 +141,8 @@
   max-height: 24rem;
   overflow: auto;
   padding: 0.75rem;
-  border-radius: 0.5rem;
-  background: var(--surface-muted, #f4f6f8);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -189,9 +151,9 @@
 .preview iframe {
   width: 100%;
   min-height: 32rem;
-  border: 1px solid var(--border, #d7dde5);
-  border-radius: 0.6rem;
-  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
 }
 
 @media (max-width: 640px) {
