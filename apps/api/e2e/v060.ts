@@ -47,6 +47,8 @@ export const v060Scenario: Scenario = {
         await db.query('update jobs set seen_at = null where id = $1', [job.id]);
       }
       await page.setViewportSize({ width: 1280, height: 900 }); await goTo(page, '/overview');
+      const overviewDetails = page.locator('.overview-details');
+      if (!(await overviewDetails.evaluate((details) => (details as HTMLDetailsElement).open))) await overviewDetails.getByText(locale === 'es' ? 'Ver más cifras y otras tareas' : 'See more figures and other tasks', { exact: true }).click();
       await page.locator('.discovery-panel').getByRole('heading').waitFor();
       assert.equal(await hasHorizontalOverflow(page), false);
       note('Real API, persisted opt-in/pause, new-job review, ES/EN, 320/390px. Fictional DB rows; source execution is verified separately with injected feeds.');

@@ -3521,10 +3521,6 @@ main:focus {
 .page-header h1 { letter-spacing: -0.035em; }
 .page-header .eyebrow { letter-spacing: 0.045em; }
 .card { box-shadow: var(--shadow); }
-.overview-totals { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
-.overview-total { display: flex; align-items: baseline; gap: 8px; min-height: 46px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; background: #f8faff; color: var(--muted); }
-.overview-total strong { color: var(--ink); font-size: 1.2rem; font-variant-numeric: tabular-nums; }
-.overview-total span { font-size: var(--text-sm); }
 .overview-top-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: var(--space-5); align-items: stretch; margin-bottom: var(--space-6); }
 .getting-started > .muted-label { max-width: 72ch; }
 .overview-inbox-panel { min-width: 0; padding: 20px; display: grid; align-content: start; }

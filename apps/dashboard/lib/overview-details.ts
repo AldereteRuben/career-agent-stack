@@ -7,8 +7,10 @@ export type OverviewDetailsState = {
   needsReview: number;
   /** Prepared resumes waiting for review. */
   pendingResumes: number;
+  /** Essential next steps that should not be hidden from the person. */
+  hasNextStep: boolean;
 };
 
-/** The "more figures and other tasks" block stays closed unless something awaits the person's review, so it is not missed. */
+/** Keep the section open when a review or essential next step needs attention. */
 export const overviewDetailsOpen = (state: OverviewDetailsState) =>
-  state.pendingFacts > 0 || state.unansweredItems > 0 || state.needsReview > 0 || state.pendingResumes > 0;
+  state.pendingFacts > 0 || state.unansweredItems > 0 || state.needsReview > 0 || state.pendingResumes > 0 || state.hasNextStep;

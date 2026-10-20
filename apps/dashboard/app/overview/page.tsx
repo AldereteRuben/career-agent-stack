@@ -189,7 +189,7 @@ export default function OverviewPage() {
         {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
       </Card>
       <Card className="overview-inbox-panel">
-        <div className="panel-heading"><h2>{c('Ofertas nuevas para revisar', 'New jobs to review')}</h2>{inboxCount > 0 && <span className="tag tag-blue">{inboxCount}</span>}</div>
+        <div className="panel-heading"><h2>{c('Ofertas nuevas para revisar', 'New jobs to review')}</h2>{inbox && <span className={inboxCount > 0 ? 'tag tag-blue' : 'sr-only'} role="status" aria-live="polite" aria-atomic="true"><span aria-hidden="true">{inboxCount}</span><span className="sr-only">{inboxCount === 1 ? c('1 oferta nueva', '1 new job') : c(`${inboxCount} ofertas nuevas`, `${inboxCount} new jobs`)}</span></span>}</div>
         {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')}>
           {inbox.items.slice(0, 3).map((job) => <li key={job.id}><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(returnToInbox)}`} className="list-row">
             <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
@@ -216,7 +216,7 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
+    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes, hasNextStep: steps.some(({ key }) => key === 'identity' || key === 'first-fact' || key === 'choose-job') }))}>
       <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>

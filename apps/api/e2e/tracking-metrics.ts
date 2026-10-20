@@ -76,6 +76,8 @@ export const trackingMetricsScenario: Scenario = {
       await page.setViewportSize({ width: 1280, height: 900 });
       await setLocale(page, locale);
       await page.goto(new URL('/overview', uiUrl).toString());
+      const overviewDetails = page.locator('.overview-details');
+      if (!(await overviewDetails.evaluate((details) => (details as HTMLDetailsElement).open))) await overviewDetails.getByText(c('Ver más cifras y otras tareas', 'See more figures and other tasks'), { exact: true }).click();
       const source = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por fuente', 'By source'), exact: true }) });
       const role = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por puesto', 'By role'), exact: true }) });
       const country = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por país', 'By country'), exact: true }) });
