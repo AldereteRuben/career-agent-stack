@@ -51,9 +51,10 @@ export const jobReportsScenario: Scenario = {
     await report.getByRole('heading', { name: '¿Vale la pena presentar la solicitud?' }).waitFor();
     await eventually(() => report.innerText(), (text) => text.includes('Conclusión: Buena opción'), 'Spanish conclusion appears');
     const reportText = await report.innerText();
-    for (const expected of ['1. Lo que pide la oferta y tu experiencia confirmada lo respalda', 'La oferta dice:', `Built a Playwright suite for Example Shop ${marker}`, '3. Revisa antes de presentar la solicitud', 'Salary: 40.000 € gross per year.', '4. Lo que no sabemos', 'No es la probabilidad de que te contraten']) {
+    for (const expected of ['1. Lo que pide la oferta y tu experiencia confirmada lo respalda', 'La oferta dice:', `Built a Playwright suite for Example Shop ${marker}`, '3. Revisa antes de presentar la solicitud', 'Salary: 40.000 € gross per year.', '4. Lo que no sabemos']) {
       assert.ok(reportText.includes(expected), `The report shows “${expected}”`);
     }
+    assert.ok(reportText.toLocaleLowerCase('es').includes('no es la probabilidad de que te contraten'), 'The report explains that match is not a hiring probability');
     assert.doesNotMatch(reportText, /\/\s?100|%/, 'The report never shows a score or a percentage');
     // The availability card keeps its inner spacing (regression for a heading flush with the card border).
     const inset = await page.evaluate(() => {
@@ -63,7 +64,7 @@ export const jobReportsScenario: Scenario = {
     });
     assert.ok(inset >= 16, `The availability heading sits inside the card padding (inset ${inset}px)`);
     await setLocale(page, 'en');
-    await eventually(() => report.innerText(), (text) => text.includes('Is it worth applying?') && text.includes('Conclusion: Good option') && text.includes('It is not the probability of being hired'), 'English report');
+    await eventually(() => report.innerText(), (text) => text.includes('Is it worth applying?') && text.includes('Conclusion: Good option') && text.toLocaleLowerCase('en').includes('is not the probability of being hired'), 'English report');
 
     await page.goto(new URL(`/jobs/${review}`, uiUrl).toString());
     await eventually(() => page.getByTestId('job-report').innerText(), (text) => text.includes('Conclusion: Worth reviewing') && text.includes('We found no specific requirements in the description.'), 'A job without clear requirements says so');

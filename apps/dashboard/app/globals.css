@@ -3276,6 +3276,18 @@ main:focus {
 .document-builder, .document-history, .document-builder .form-stack { grid-template-columns: minmax(0, 1fr); }
 .document-builder > *, .document-builder .form-stack > * { min-width: 0; }
 .document-builder .form-submit { flex-wrap: wrap; gap: 8px; }
+.document-format-fields { gap: 12px; }
+.document-contact-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.document-contact-fields legend, .document-contact-fields > p { flex-basis: 100%; }
+.document-contact-fields legend { margin-bottom: 0; }
+.document-contact-fields > p { margin-bottom: 2px; }
+.document-contact-fields .checkbox-line { flex: 0 1 auto; align-items: center; padding: 7px 10px; }
+.document-contact-fields .checkbox-line input { margin-top: 0; }
+.document-preparation-note { display: block; margin-top: -8px; }
+.selection-heading { flex-wrap: wrap; gap: 8px 12px; }
+.selection-heading .detail-actions { margin-left: auto; }
+.fact-pick-list { max-height: min(370px, 50vh); }
+.fact-pick-list:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 
 .profile-fieldset { border: 0; padding: 0; margin: 0 0 12px; min-width: 0; }
 .profile-fieldset legend { font-weight: 650; font-size: var(--text-base); margin-bottom: 12px; }
@@ -3357,10 +3369,10 @@ main:focus {
 .documents-layout { grid-template-columns: minmax(0, 1fr); }
 .document-builder[hidden], .document-history[hidden] { display: none; }
 .document-history .section-heading { margin-bottom: 0; }
-.document-history .document-card { padding: 18px; }
+.document-history .document-card { padding: 12px; }
 .document-history .document-card-top { justify-content: flex-start; gap: 8px 16px; }
-.document-history .document-actions { gap: 8px; }
-.document-history .technical-detail { margin-top: 8px; }
+.document-history .document-actions { gap: 6px; margin-top: 8px; }
+.document-history .technical-detail { margin-top: 4px; }
 .board-collection { padding: 20px; min-width: 0; }
 .board-collection > .section-heading { align-items: flex-start; margin: 0; }
 .board-collection > .section-heading > .muted-label { flex-basis: 100%; }
