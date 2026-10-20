@@ -1,0 +1,3 @@
+ALTER TABLE "interview_preparation_items" ADD COLUMN "support" varchar(10);--> statement-breakpoint
+ALTER TABLE "interview_preparation_items" ADD COLUMN "fact_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "interview_preparation_items" ADD CONSTRAINT "interview_preparation_items_support_check" CHECK ("interview_preparation_items"."support" is null or ("interview_preparation_items"."support" in ('SUPPORTED', 'UNKNOWN') and "interview_preparation_items"."kind" = 'REQUIREMENT'));

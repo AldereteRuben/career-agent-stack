@@ -9,6 +9,7 @@ export * from './profile.js';
 export * from './application-dates.js';
 export * from './application-follow-up-template.js';
 export * from './interview-preparation.js';
+export * from './interview-preparation-plan.js';
 export * from './documents.js';
 export * from './application-documents-builder.js';
 export * from './application-document-lifecycle.js';

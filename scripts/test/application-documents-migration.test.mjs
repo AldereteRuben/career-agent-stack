@@ -255,3 +255,43 @@ test('0030 adds workspace-scoped interview preparation tables without inventing 
     await admin.end().catch(() => {});
   }
 });
+
+test('0031 stores whether approved facts back a requirement, only on requirements, and keeps existing items', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
+  assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
+  const database = `career_interviewsupport_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let client;
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
+    maintenance.pathname = `/${database}`;
+    client = new Client({ connectionString: maintenance.toString() });
+    await client.connect();
+
+    const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
+    const targetMigration = migrations.indexOf('0031_interview_preparation_item_support.sql');
+    assert.notEqual(targetMigration, -1, '0031 interview preparation support migration is present');
+    for (const file of migrations.slice(0, targetMigration)) await applyMigration(client, file);
+
+    const workspaceId = randomUUID(); const applicationId = randomUUID(); const planId = randomUUID();
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [workspaceId]);
+    await client.query('INSERT INTO applications(id,workspace_id,company,role) VALUES ($1,$2,$3,$4)', [applicationId, workspaceId, 'Fictional Co', 'Designer']);
+    await client.query("INSERT INTO interview_preparation_plans(id,workspace_id,application_id,language) VALUES($1,$2,$3,'en')", [planId, workspaceId, applicationId]);
+    await client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content) VALUES($1,$2,'NOTE','USER_NOTE',0,'Existing note')", [workspaceId, planId]);
+
+    await applyMigration(client, migrations[targetMigration]);
+    assert.deepEqual((await client.query('SELECT content, support, fact_ids FROM interview_preparation_items')).rows, [{ content: 'Existing note', support: null, fact_ids: [] }], 'existing items keep their data and gain empty support');
+    const insert = (kind, support, position) => client.query('INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content,support,fact_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+      [workspaceId, planId, kind, 'JOB_SNAPSHOT', position, 'typescript', support, JSON.stringify([randomUUID()])]);
+    await insert('REQUIREMENT', 'SUPPORTED', 1);
+    await insert('REQUIREMENT', 'UNKNOWN', 2);
+    await assert.rejects(insert('REQUIREMENT', 'GUESSED', 3), (error) => error.code === '23514' && error.constraint === 'interview_preparation_items_support_check', 'only known support values are stored');
+    await assert.rejects(insert('STUDY', 'SUPPORTED', 4), (error) => error.code === '23514' && error.constraint === 'interview_preparation_items_support_check', 'only requirements carry support');
+  } finally {
+    await client?.end().catch(() => {});
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
+    await admin.end().catch(() => {});
+  }
+});
