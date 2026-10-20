@@ -3,13 +3,14 @@ import { pool } from '@career/db';
 type QueryClient = { query: typeof pool.query };
 import { evaluateSearchMatch, providerSearchRole } from '@career/domain';
 import { normalizeHimalayasCountry, readHimalayasSearch } from './himalayas-source.js';
+import { adzunaQueryHash, ADZUNA_CACHE_HOURS, ADZUNA_MAX_PAGES, ADZUNA_MAX_REQUESTS_PER_DAY, ADZUNA_MAX_REQUESTS_PER_MONTH, ADZUNA_MAX_REQUESTS_PER_WEEK, readAdzunaCredentials, readAdzunaSearch } from './adzuna-source.js';
 import { reevaluateJobs, type Queryable } from './job-availability.js';
 import { loadProviderFeed, type OnPrepare } from './job-search.js';
 import { readPublicFeed, type PublicJob, type SearchWorkMode, ProviderReadError } from './job-search-sources.js';
 import { identityUrl, jobIdentity } from './job-identity.js';
 import { isNewJobSql } from './review-state.js';
 
-export const SEARCH_PROVIDERS = ['remotive', 'arbeitnow', 'himalayas', 'boards'] as const;
+export const SEARCH_PROVIDERS = ['remotive', 'arbeitnow', 'himalayas', 'boards', 'adzuna'] as const;
 export type SearchProvider = typeof SEARCH_PROVIDERS[number];
 export type SearchCriteria = { role: string | null; company: string | null; location: string | null; workMode: SearchWorkMode; matcherVersion: number; includeRelated: boolean; providerIds: SearchProvider[]; language: 'en' | 'es'; frequencyHours: number };
 type Run = { id: string; workspace_id: string; search_id: string; revision: number; criteria: SearchCriteria; manual: boolean; owner: string };
@@ -17,7 +18,7 @@ type SourceItem = PublicJob & { existingJobId?: string; sourceName?: string; che
 type Feed = { jobs: SourceItem[]; state: string; coverage: 'COMPLETE' | 'BOUNDED' | 'PARTIAL'; fetchedAt: Date | null; nextFetchAt?: Date | null };
 export type SearchReader = (provider: SearchProvider, criteria: SearchCriteria, workspaceId: string) => Promise<Feed>;
 const DAY = 86_400_000;
-const sourceName = (provider: string) => ({ remotive: 'Remotive', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', boards: 'Company website' })[provider] ?? provider;
+const sourceName = (provider: string) => ({ remotive: 'Remotive', arbeitnow: 'Arbeitnow', himalayas: 'Himalayas', boards: 'Company website', adzuna: 'Adzuna' })[provider] ?? provider;
 
 export async function enqueueSearch(client: QueryClient, workspaceId: string, searchId: string, manual = false): Promise<string | null> {
   const { rows } = await client.query(`INSERT INTO search_runs(workspace_id,search_id,revision,criteria,manual)
@@ -86,6 +87,7 @@ async function himalayasFeed(criteria: SearchCriteria): Promise<Feed> {
 
 export const readSearchSource: SearchReader = async (provider, criteria, workspaceId) => {
   if (provider === 'himalayas') return himalayasFeed(criteria);
+  if (provider === 'adzuna') return adzunaFeed(criteria);
   if (provider !== 'boards') {
     const feed = await loadProviderFeed(provider, (id) => readPublicFeed(id));
     const next = (await pool.query('SELECT next_fetch_at FROM job_search_provider_cache WHERE provider=$1', [provider])).rows[0];
@@ -102,6 +104,58 @@ export const readSearchSource: SearchReader = async (provider, criteria, workspa
   return { state: selected.some((r) => !r.last_successful_refresh_at || Date.now() - r.last_successful_refresh_at.getTime() > DAY) ? 'STALE' : 'CACHED', coverage: bounded ? 'BOUNDED' : 'COMPLETE', fetchedAt: null,
     jobs: selected.map((r) => ({ existingJobId: r.id, sourceName: r.company_name, externalId: r.external_job_id, title: r.title, company: r.company, location: r.location, workMode: /hybrid|hibrid/i.test(r.location ?? '') ? 'hybrid' : /remote|remoto|teletrabajo/i.test(r.location ?? '') ? 'remote' : 'unknown', url: r.job_url, description: r.description_text, postedAt: r.source_posted_at?.toISOString() ?? null, checkedAt: r.last_successful_refresh_at?.toISOString() ?? null, raw: r.source_payload })) };
 };
+
+/** Adzuna is query-specific, so cache each bounded search independently and reserve account-wide limits. */
+async function adzunaFeed(criteria: SearchCriteria): Promise<Feed> {
+  const credentials = readAdzunaCredentials();
+  if (!credentials) throw new ProviderReadError('SOURCE_NOT_CONFIGURED');
+  const key = adzunaQueryHash(criteria, credentials.country); const client = await pool.connect(); let locked = false;
+  try {
+    locked = (await client.query(`SELECT pg_try_advisory_lock(hashtextextended('search-adzuna-host',0)) AS locked`)).rows[0]?.locked === true;
+    const cached = (await client.query(`SELECT * FROM search_query_cache WHERE provider='adzuna' AND query_hash=$1`, [key])).rows[0];
+    const stale = (row: typeof cached, retryAt?: Date | null): Feed & { nextFetchAt?: Date | null } => ({ jobs: (row?.payload ?? []) as PublicJob[], state: 'STALE', coverage: 'BOUNDED', fetchedAt: row?.fetched_at ?? null, nextFetchAt: retryAt ?? row?.next_fetch_at ?? null });
+    if (!locked) {
+      if (cached?.fetched_at) return { ...stale(cached), state: Date.now() - cached.fetched_at.getTime() <= ADZUNA_CACHE_HOURS * 3_600_000 ? 'CACHED' : 'STALE' };
+      throw new ProviderReadError('SOURCE_WAITING', Date.now() + 3_000);
+    }
+    if (cached?.next_fetch_at && cached.next_fetch_at > new Date()) {
+      if (!cached.fetched_at) throw new ProviderReadError(cached.error ?? 'SOURCE_WAITING', cached.next_fetch_at.getTime());
+      return { ...stale(cached), state: cached.error || Date.now() - cached.fetched_at.getTime() > ADZUNA_CACHE_HOURS * 3_600_000 ? 'STALE' : 'CACHED' };
+    }
+    const now = Date.now();
+    const rate = (await client.query(`SELECT max(last_used_at) AS last_used FROM search_query_cache WHERE provider='adzuna'`)).rows[0]?.last_used as Date | null;
+    if (rate && now - rate.getTime() < 2_500) throw new ProviderReadError('SOURCE_WAITING', rate.getTime() + 2_500);
+    const limits = (await client.query(`SELECT
+      coalesce(sum(requests) FILTER (WHERE day >= (now() AT TIME ZONE 'UTC')::date - 6),0)::int AS week,
+      coalesce(sum(requests) FILTER (WHERE day >= date_trunc('month', now() AT TIME ZONE 'UTC')::date),0)::int AS month
+      FROM search_provider_budget WHERE provider='adzuna'`)).rows[0];
+    if (Number(limits?.week ?? 0) + ADZUNA_MAX_PAGES > ADZUNA_MAX_REQUESTS_PER_WEEK || Number(limits?.month ?? 0) + ADZUNA_MAX_PAGES > ADZUNA_MAX_REQUESTS_PER_MONTH) throw new ProviderReadError('SOURCE_DAILY_LIMIT', now + 24 * 60 * 60_000);
+    const reserved = await client.query(`INSERT INTO search_provider_budget(provider,day,requests) VALUES('adzuna',(now() AT TIME ZONE 'UTC')::date,$2)
+      ON CONFLICT(provider,day) DO UPDATE SET requests=search_provider_budget.requests+$2
+      WHERE search_provider_budget.requests+$2<=$1 RETURNING requests`, [ADZUNA_MAX_REQUESTS_PER_DAY, ADZUNA_MAX_PAGES]);
+    if (!reserved.rowCount) throw new ProviderReadError('SOURCE_DAILY_LIMIT', now + 24 * 60 * 60_000);
+    await client.query(`INSERT INTO search_query_cache(provider,query_hash,next_fetch_at,last_used_at) VALUES('adzuna',$1,now()+($2 * interval '1 hour'),now())
+      ON CONFLICT(provider,query_hash) DO UPDATE SET next_fetch_at=excluded.next_fetch_at,last_used_at=now(),error=NULL`, [key, ADZUNA_CACHE_HOURS]);
+    try {
+      const result = await readAdzunaSearch(criteria, { credentials });
+      const stored = (await client.query(`UPDATE search_query_cache SET payload=$2::jsonb,coverage='BOUNDED',fetched_at=now(),next_fetch_at=now()+($3 * interval '1 hour'),error=NULL,failures=0 WHERE provider='adzuna' AND query_hash=$1 RETURNING *`, [key, JSON.stringify(result.jobs), ADZUNA_CACHE_HOURS])).rows[0];
+      return { jobs: result.jobs, state: 'FRESH', coverage: 'BOUNDED', fetchedAt: stored.fetched_at, nextFetchAt: stored.next_fetch_at };
+    } catch (error) {
+      const code = error instanceof ProviderReadError ? error.code : 'SOURCE_UNAVAILABLE';
+      const retryAt = error instanceof ProviderReadError && error.retryAt > now ? new Date(error.retryAt) : new Date(now + ADZUNA_CACHE_HOURS * 3_600_000);
+      await client.query(`UPDATE search_query_cache SET error=$2,failures=failures+1,next_fetch_at=$3 WHERE provider='adzuna' AND query_hash=$1`, [key, code, retryAt]);
+      if (cached?.fetched_at) return stale(cached, retryAt);
+      throw error;
+    }
+  } finally {
+    let destroyClient = false;
+    if (locked) {
+      try { await client.query(`SELECT pg_advisory_unlock(hashtextextended('search-adzuna-host',0))`); }
+      catch { destroyClient = true; }
+    }
+    client.release(destroyClient);
+  }
+}
 
 async function ingest(run: Run, provider: SearchProvider, feed: Feed): Promise<number> {
   const client = await pool.connect();
@@ -121,7 +175,7 @@ async function ingest(run: Run, provider: SearchProvider, feed: Feed): Promise<n
     }
     let found = 0;
     // A fresh Himalayas result is presence; so is a fresh complete feed for the jobs it lists (ADR 021).
-    const freshPresence = feed.state === 'FRESH' && provider === 'himalayas';
+    const freshPresence = feed.state === 'FRESH' && (provider === 'himalayas' || provider === 'adzuna');
     const seenJobs = new Set<string>();
     for (const item of feed.jobs) {
       const outcome = evaluateSearchMatch({ ...item, ...(Array.isArray(item.raw.__careerStackCountries) ? {countries: item.raw.__careerStackCountries as string[]} : {}), worldwide: item.raw.__careerStackWorldwide === true }, run.criteria);
@@ -141,7 +195,7 @@ async function ingest(run: Run, provider: SearchProvider, feed: Feed): Promise<n
         }
       }
       const posted = item.postedAt && Number.isFinite(Date.parse(item.postedAt)) ? new Date(item.postedAt) : null;
-      const attributionUrl = provider === 'himalayas' && typeof item.raw.__careerStackSourceUrl === 'string' ? item.raw.__careerStackSourceUrl : item.url;
+      const attributionUrl = provider === 'himalayas' && typeof item.raw.__careerStackSourceUrl === 'string' ? item.raw.__careerStackSourceUrl : item.attributionUrl ?? item.url;
       // ADR 021: a new source records when its listing was really read. An existing one is marked seen only by a
       // newly downloaded Himalayas result; Remotive and Arbeitnow presence is counted once per download elsewhere.
       if (provider !== 'boards') await client.query(`INSERT INTO job_search_sources(workspace_id,job_id,provider,external_id,source_url,posted_at,raw,last_seen_at) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$9)
@@ -256,6 +310,11 @@ export async function runSearchExecutionTick(reader: SearchReader = readSearchSo
         await client.query(`UPDATE search_runs SET status=$3,error=$4,finished_at=now(),lease_until=NULL WHERE id=$1 AND owner=$2`, [run.id,owner,status,allFailed ? 'SOURCE_READ_FAILED' : partial ? 'SOURCE_PARTIAL_FAILURE' : null]);
         await client.query(`UPDATE saved_job_searches SET last_run_at=now(),last_run_status=$3,last_result_count=$4,last_new_count=$5,last_error=$6,
           next_run_at=CASE WHEN enabled THEN now()+frequency_hours*interval '1 hour' ELSE NULL END,updated_at=now() WHERE workspace_id=$1 AND id=$2 AND revision=$7`, [run.workspace_id,run.search_id,status,count.total,count.fresh,allFailed ? 'SOURCE_READ_FAILED' : partial ? 'SOURCE_PARTIAL_FAILURE' : null,run.revision]);
+        if (!run.manual && status === 'SUCCEEDED' && count.fresh > 0) {
+          await client.query(`INSERT INTO desktop_notification_events(workspace_id,search_id,run_id,new_count,language)
+            SELECT $1,$2,$3,$4,n.language FROM desktop_notification_settings n WHERE n.workspace_id=$1 AND n.enabled
+            ON CONFLICT(workspace_id,run_id) WHERE run_id IS NOT NULL DO NOTHING`, [run.workspace_id,run.search_id,run.id,count.fresh]);
+        }
       }
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }

@@ -1,7 +1,41 @@
+import { randomUUID } from 'node:crypto';
 import type { ProviderId } from './types.js';
 
 /** A job posting on one of the public boards the app can read, taken from a link a person pasted. */
 export type PostingRef = { provider: ProviderId; region: string; tenant: string; id: string };
+
+type PostingLookupHandle<T> = { workspaceId: string; ref: PostingRef; jobUrl: string; value: T; expiresAt: number; bytes: number };
+
+/** Short-lived, server-held proof that this workspace explicitly looked up this exact supported posting. */
+export function createPostingLookupHandleStore<T>(options: { ttlMs?: number; maxEntries?: number; maxBytes?: number; maxEntryBytes?: number; now?: () => number } = {}) {
+  const entries = new Map<string, PostingLookupHandle<T>>();
+  const ttlMs = options.ttlMs ?? 10 * 60_000;
+  const maxEntries = options.maxEntries ?? 50;
+  const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
+  const maxEntryBytes = options.maxEntryBytes ?? 1024 * 1024;
+  const now = options.now ?? Date.now;
+  let bytesUsed = 0;
+  const remove = (token: string) => { const entry = entries.get(token); if (entry) bytesUsed -= entry.bytes; entries.delete(token); };
+  const expire = () => { for (const [token, entry] of entries) if (entry.expiresAt <= now()) remove(token); };
+  return {
+    issue(workspaceId: string, ref: PostingRef, jobUrl: string, value: T): string | null {
+      expire();
+      const bytes = Buffer.byteLength(JSON.stringify(value) ?? 'null');
+      if (bytes > maxEntryBytes) return null;
+      while (entries.size >= maxEntries || bytesUsed + bytes > maxBytes) remove(entries.keys().next().value!);
+      const token = randomUUID();
+      entries.set(token, { workspaceId, ref: { ...ref }, jobUrl, value, expiresAt: now() + ttlMs, bytes });
+      bytesUsed += bytes;
+      return token;
+    },
+    get(token: string, workspaceId: string, ref: PostingRef, jobUrl: string): T | null {
+      expire();
+      const entry = entries.get(token);
+      if (!entry || entry.workspaceId !== workspaceId || entry.jobUrl !== jobUrl || entry.ref.provider !== ref.provider || entry.ref.region !== ref.region || entry.ref.tenant !== ref.tenant || entry.ref.id !== ref.id) return null;
+      return entry.value;
+    },
+  };
+}
 
 /**
  * Hosts of the public pages whose links are recognised, and the region each one belongs to. A link on any other host

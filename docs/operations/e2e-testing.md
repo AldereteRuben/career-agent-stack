@@ -39,9 +39,11 @@ Every record the tests create carries the run marker. Cleanup does **not** use b
 | `es-en-labels-on-every-page` | No Spanish interface words in English mode and vice versa (text, `aria-label`, `placeholder`, `title`), plus `html[lang]`, on every main route. |
 | `draft-preserved-when-save-fails` | An intercepted 500 on fact and profile saves keeps the typed draft and creates nothing. Retrying saves exactly once. |
 | `facts-not-duplicated-after-profile-revision` | After two profile revisions, an approved fact appears once in the API, the profile page and the document picker, and stays approved. |
+| `manual-profile-improvement-uses-approved-evidence-and-copies-with-citations` | ES/EN profile suggestions use only approved evidence, keyboard copy includes the source text, pending claims are excluded, no LinkedIn request is made, and 390 px has no horizontal overflow. |
 | `same-name-pdf-creates-distinct-versions` | Generating two PDFs with the same name gives distinct records, files and revision numbers, and two working downloads that contain the fact. |
 | `manual-job-and-application-tracking` | Manual job import, job detail, creating an application and adding a note. |
 | `application-deep-link-and-stage-correction` | `/applications?id=…` opens that application, including after a reload. A mistaken stage can be corrected back, with history, without affecting other records, and `?id` is kept. |
+| `tracking-metrics-confirmation-cohort-stage-corrections-and-no-response-age` | Confirmed applications are grouped separately by explicit source and normalized role; uncertain countries stay unidentified; groups under five show counts without a conversion percentage. |
 | `source-review-and-partial-results` | Both confirmations required, partial results explained, source can be disabled; refresh response is mocked, all other requests use the isolated API. |
 | `export-download-and-error-recovery` | Failed export shows actionable feedback; retry downloads JSON with a matching checksum and disabled source permissions. |
 | `mobile-drawer-keyboard-and-focus` | At 390 px: the drawer opens with the keyboard and focus moves into it, Tab stays inside, Escape closes it and returns focus, navigating closes it, and there is no horizontal overflow. |

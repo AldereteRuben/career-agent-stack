@@ -1,4 +1,4 @@
-// Creates a disposable loopback database and applies migrations through 0019 in order.
+// Creates a disposable loopback database and applies migrations in order to each target version.
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -141,6 +141,56 @@ test('0019 adds application documents without changing attached resumes and enfo
   } finally {
     await client?.end().catch(() => {});
     if (files) await rm(files, { recursive: true, force: true });
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
+    await admin.end().catch(() => {});
+  }
+});
+
+test('0029 adds one workspace-scoped follow-up draft per existing application without altering application data', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
+  assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
+  const database = `career_followup_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let client;
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
+    maintenance.pathname = `/${database}`;
+    client = new Client({ connectionString: maintenance.toString() });
+    await client.connect();
+
+    const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
+    const targetMigration = migrations.indexOf('0029_application_follow_up_drafts.sql');
+    assert.notEqual(targetMigration, -1, '0029 follow-up draft migration is present');
+    for (const file of migrations.slice(0, targetMigration)) await applyMigration(client, file);
+
+    const workspaceId = randomUUID(); const applicationId = randomUUID();
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [workspaceId]);
+    await client.query('INSERT INTO applications(id,workspace_id,company,role) VALUES ($1,$2,$3,$4)', [applicationId, workspaceId, 'Fictional Co', 'Designer']);
+    const applicationBefore = (await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0];
+
+    await applyMigration(client, migrations[targetMigration]);
+    assert.deepEqual((await client.query('SELECT * FROM applications WHERE id=$1', [applicationId])).rows[0], applicationBefore, 'existing application data is unchanged');
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM application_follow_up_drafts')).rows[0].n, 0, 'existing applications do not receive invented drafts');
+    const columns = (await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='application_follow_up_drafts' ORDER BY ordinal_position`)).rows.map((row) => row.column_name);
+    assert.deepEqual(columns, ['id', 'workspace_id', 'application_id', 'language', 'subject', 'body', 'created_at', 'updated_at']);
+
+    const draftId = randomUUID();
+    const insertDraft = (id, appId = applicationId, workspace = workspaceId, language = 'en') => client.query(
+      'INSERT INTO application_follow_up_drafts(id,workspace_id,application_id,language,subject,body) VALUES($1,$2,$3,$4,$5,$6)',
+      [id, workspace, appId, language, 'Fictional follow-up', 'Synthetic editable draft.']);
+    await insertDraft(draftId);
+    await assert.rejects(insertDraft(randomUUID()), (error) => error.code === '23505', 'only one draft is allowed per application');
+    await assert.rejects(insertDraft(randomUUID(), applicationId, randomUUID()), foreignKey('application_follow_up_drafts_workspace_application_fk'), 'cross-workspace application references are rejected');
+    await assert.rejects(insertDraft(randomUUID(), applicationId, workspaceId, 'fr'), (error) => error.code === '23514' && error.constraint === 'application_follow_up_drafts_language_check', 'only supported languages are stored');
+    await assert.rejects(client.query('DELETE FROM applications WHERE id=$1', [applicationId]), foreignKey('application_follow_up_drafts_workspace_application_fk'), 'the draft restricts parent deletion until explicit child removal');
+    await client.query('UPDATE application_follow_up_drafts SET subject=$2, body=$3 WHERE id=$1', [draftId, 'Edited subject', 'Edited synthetic draft.']);
+    assert.deepEqual((await client.query('SELECT subject,body FROM application_follow_up_drafts WHERE id=$1', [draftId])).rows[0], { subject: 'Edited subject', body: 'Edited synthetic draft.' });
+    await client.query('DELETE FROM application_follow_up_drafts WHERE id=$1', [draftId]);
+    await client.query('DELETE FROM applications WHERE id=$1', [applicationId]);
+  } finally {
+    await client?.end().catch(() => {});
     await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
     await admin.end().catch(() => {});
   }

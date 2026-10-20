@@ -44,6 +44,28 @@ export const jobLinkLookupScenario: Scenario = {
       await page.unroute('**/api/v1/jobs/lookup');
     }
 
+    // A successful explicit lookup carries its short-lived source handle only with the person's confirmed save.
+    await setLocale(page, 'es');
+    await page.goto(new URL('/jobs', uiUrl).toString());
+    await page.getByRole('button', { name: 'Añadir oferta', exact: true }).first().click();
+    const trackedUrl = `https://job-boards.greenhouse.io/fictional-${marker}/jobs/777`;
+    const lookupToken = '00000000-0000-4000-8000-000000000161';
+    await page.route('**/api/v1/jobs/lookup', (route) => route.fulfill({ json: { supported: true, provider: 'greenhouse', region: 'global', tenant: `fictional-${marker}`, externalId: '777', title: `Tracked role ${marker}`, company: 'Fictional Labs', companyConfirmed: true, location: 'Remote', description: 'Synthetic source description.', jobUrl: trackedUrl, applyUrl: trackedUrl, lookupToken } }));
+    const savedBody: { value?: Record<string, unknown> } = {};
+    await page.route('**/api/v1/jobs/import', async (route) => {
+      savedBody.value = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ status: 201, json: { id: '00000000-0000-4000-8000-000000000161', company: 'Fictional Labs', title: `Tracked role ${marker}`, canonicalUrl: trackedUrl, alreadySaved: false, sourceTracked: true } });
+    });
+    await page.getByLabel('URL oficial de la oferta').fill(trackedUrl);
+    await page.getByRole('button', { name: 'Rellenar desde el enlace', exact: true }).click();
+    await page.getByText('Datos rellenados desde la página pública').waitFor();
+    await page.locator('.import-card').getByRole('button', { name: 'Guardar oferta', exact: true }).click();
+    await page.getByText('Oferta añadida. Abre sus detalles para preparar tu solicitud.').waitFor();
+    assert.equal(savedBody.value?.postingLookupToken, lookupToken, 'only the confirmed save sends the server-held source handle');
+    assert.equal(savedBody.value?.jobUrl, trackedUrl);
+    await page.unroute('**/api/v1/jobs/lookup');
+    await page.unroute('**/api/v1/jobs/import');
+
     // The lookup never overwrites what the person already wrote, and an answer for an old link fills nothing.
     await setLocale(page, 'es');
     await page.goto(new URL('/jobs', uiUrl).toString());

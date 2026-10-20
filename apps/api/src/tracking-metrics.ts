@@ -22,8 +22,48 @@ export function trackingMetricsStart(period: TrackingPeriod, now: Date): Date | 
   return period === 'all' ? null : new Date(now.getTime() - (period === '30d' ? 30 : 90) * dayMs);
 }
 
-type Application = { id: string; state: string; recruitmentStage: string };
+type Application = { id: string; state: string; recruitmentStage: string; role?: string; sourceProviders?: string[] };
 type ApplicationEvent = { applicationId: string; eventType: string; priorState?: string | null; newState: string | null; createdAt: Date | string };
+
+const minimumBreakdownSampleSize = 5;
+
+function breakdown(
+  cohort: Array<{ application: Application; confirmedAt: Date }>,
+  interviewedIds: Set<string>,
+  getGroup: (application: Application) => { key: string; label: string },
+) {
+  const groups = new Map<string, { key: string; label: string; confirmed: number; interviewed: number }>();
+  for (const { application } of cohort) {
+    const { key, label } = getGroup(application);
+    const group = groups.get(key) ?? { key, label, confirmed: 0, interviewed: 0 };
+    // The label for a normalized title stays deterministic when casing differs between applications.
+    if (label.localeCompare(group.label) < 0) group.label = label;
+    group.confirmed += 1;
+    if (interviewedIds.has(application.id)) group.interviewed += 1;
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .sort((a, b) => b.confirmed - a.confirmed || a.key.localeCompare(b.key))
+    .map((group) => ({
+      ...group,
+      interviewConversionPercent: group.confirmed >= minimumBreakdownSampleSize
+        ? Math.round((group.interviewed / group.confirmed) * 100)
+        : null,
+      smallSample: group.confirmed < minimumBreakdownSampleSize,
+    }));
+}
+
+function sourceGroup(application: Application) {
+  const providers = [...new Set(application.sourceProviders ?? [])].sort();
+  if (providers.length === 1) return { key: providers[0]!, label: providers[0]! };
+  if (providers.length > 1) return { key: 'multiple', label: 'multiple' };
+  return { key: 'unidentified', label: 'unidentified' };
+}
+
+function roleGroup(application: Application) {
+  const label = (application.role ?? '').trim().replace(/\s+/g, ' ') || 'unidentified';
+  return { key: label.toLocaleLowerCase('en-US'), label };
+}
 
 function reachedInterview(events: ApplicationEvent[], currentStage: string) {
   const stageEvents = events.filter((event) => stageEventTypes.has(event.eventType))
@@ -72,7 +112,10 @@ export function calculateTrackingMetrics(input: {
     list.push(event);
     eventsByApplication.set(event.applicationId, list);
   }
-  const interviewed = cohort.filter(({ application }) => reachedInterview(eventsByApplication.get(application.id) ?? [], application.recruitmentStage)).length;
+  const interviewedIds = new Set(cohort
+    .filter(({ application }) => reachedInterview(eventsByApplication.get(application.id) ?? [], application.recruitmentStage))
+    .map(({ application }) => application.id));
+  const interviewed = interviewedIds.size;
   const noResponse = cohort.filter(({ application }) => application.recruitmentStage === 'NO_RESPONSE');
   const noResponseYet = noResponse.filter(({ confirmedAt }) => input.now.getTime() - confirmedAt.getTime() < noResponseDays * dayMs).length;
 
@@ -85,5 +128,11 @@ export function calculateTrackingMetrics(input: {
     noResponseYet,
     noResponseAfter14Days: noResponse.length - noResponseYet,
     noResponseThresholdDays: noResponseDays,
+    breakdowns: {
+      source: breakdown(cohort, interviewedIds, sourceGroup),
+      role: breakdown(cohort, interviewedIds, roleGroup),
+      // `location` is free text, not a validated country. Keep all rows unidentified instead of guessing.
+      country: breakdown(cohort, interviewedIds, () => ({ key: 'unidentified', label: 'unidentified' })),
+    },
   };
 }

@@ -100,6 +100,92 @@
   margin: 0;
 }
 
+.hashes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.5rem 1rem;
+  width: 100%;
+  margin: 0;
+}
+
+.hashes code {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+
+.hashes dd {
+  margin: 0.2rem 0 0;
+}
+
+.assistant {
+  min-width: 0;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, #d7dde5);
+}
+
+.assistant h4,
+.assistant p {
+  margin-block: 0.5rem;
+}
+
+.assistantPanel {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.assistantSentences {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.assistantSentences > li {
+  min-width: 0;
+  padding-left: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.assistantSentences textarea {
+  display: block;
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+  border: 1px solid var(--border, #d7dde5);
+  border-radius: 0.5rem;
+  padding: 0.7rem;
+  color: inherit;
+  background: var(--surface, #fff);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.promptPreview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.promptPreview section {
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.promptPreview pre {
+  max-width: 100%;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--surface-muted, #f4f6f8);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 0.8rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
 .preview iframe {
   width: 100%;
   min-height: 32rem;

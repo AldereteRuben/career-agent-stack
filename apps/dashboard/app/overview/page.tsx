@@ -6,6 +6,8 @@ import { useLocalRefresh } from '@/lib/local-refresh';
 import { DiscoveryPanel } from '@/components/discovery-panel';
 import { overviewDetailsOpen } from '@/lib/overview-details';
 import { ActivityCalendar, viewerTimeZone, type DailyActivity } from '@/components/activity-calendar';
+import { ApplicationPatterns } from '@/components/application-patterns';
+import { OverviewReminders } from '@/components/overview-reminders';
 import type { Search } from '@/components/search-types';
 import { searchHealth, summarize } from '@/components/lib/search-status';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -31,6 +33,7 @@ type Summary = {
   profileCompletion: { percent: number; completed: number; total: number; missing: ProfileCheck[]; approvedFactCount: number; pendingFactCount: number };
 };
 type TrackingPeriod = '30d' | '90d' | 'all';
+type TrackingBreakdown = Array<{ key: string; label: string; confirmed: number; interviewed: number; interviewConversionPercent: number | null; smallSample: boolean }>;
 type TrackingMetrics = {
   period: TrackingPeriod;
   periodStart: string | null;
@@ -40,6 +43,7 @@ type TrackingMetrics = {
   noResponseYet: number;
   noResponseAfter14Days: number;
   noResponseThresholdDays: number;
+  breakdowns: { source: TrackingBreakdown; role: TrackingBreakdown; country: TrackingBreakdown };
 };
 
 type ProfileCheck = 'fullName' | 'email' | 'country' | 'targetTitles' | 'workModes' | 'approvedFact';
@@ -203,6 +207,7 @@ export default function OverviewPage() {
       </Card>
     </div>}
     {summary && <ActivityCalendar activity={summary.activityByDay ?? []}/>}
+    <OverviewReminders />
 
     <details className="search-guide" open={Boolean(summary && summary.totalJobs === 0 && totalApplications === 0)}>
       <summary id="search-guide-heading">{c('Cómo usar Career Stack', 'How to use Career Stack')}</summary>
@@ -246,6 +251,7 @@ export default function OverviewPage() {
               <li><Link href="/applications?view=all" className="metric"><span className="metric-label">{c(`Sin respuesta tras ${trackingMetrics.noResponseThresholdDays} días`, `No response after ${trackingMetrics.noResponseThresholdDays} days`)} </span><strong className="metric-value">{trackingMetrics.noResponseAfter14Days}</strong><span className="metric-label">{c('etapa actual: sin respuesta', 'current stage: no response')}</span></Link></li>
             </ul>}
     </section>
+    {trackingMetrics && <ApplicationPatterns breakdowns={trackingMetrics.breakdowns}/>}
     <div className="home-grid">
       <Card className="home-panel">
         <div className="panel-heading"><h2>{c('Otros pendientes y opciones', 'Other tasks and options')}</h2></div>
@@ -291,7 +297,7 @@ export default function OverviewPage() {
           <span className="row-main"><strong>{job.title}</strong><span>{job.company} · {job.location ?? t('Location to be confirmed')}</span></span>
           {job.fitScore !== null && <span className="row-score">{job.provisional ? c('Encaje por valorar', 'Fit not yet assessed') : c(`Encaje ${job.fitScore}`, `Fit ${job.fitScore}`)}</span>}
           <Tag tone={job.eligibility === 'PASS' ? 'green' : job.eligibility === 'FAIL' ? 'red' : 'amber'}>{labelFor.eligibility(job.eligibility, locale)}</Tag>
-        </Link>{job.searchSources?.map((source) => <small key={source.url}>{c('Fuente: ', 'Source: ')}<a href={source.url} target="_blank" rel="noopener noreferrer">{source.provider === 'remotive' ? 'Remotive' : 'Arbeitnow'}</a></small>)}</li>)}</ul>
+        </Link>{job.searchSources?.map((source) => <small key={source.url}>{c('Fuente: ', 'Source: ')}<a className={source.provider === 'adzuna' ? 'adzuna-attribution' : undefined} href={source.url} target="_blank" rel="noopener noreferrer">{source.provider === 'remotive' ? 'Remotive' : source.provider === 'himalayas' ? 'Himalayas' : source.provider === 'adzuna' ? 'Adzuna' : 'Arbeitnow'}</a></small>)}</li>)}</ul>
           : !loading && <Empty title={t('Tu lista aún está en blanco')} detail={c('Guarda una búsqueda para encontrar ofertas de las fuentes integradas.', 'Save a search to find jobs from the integrated sources.')} action={<Link href="/searches" className="text-link">{c('Ir a buscar empleo', 'Find jobs')} <Icon name="arrow" size={16}/></Link>}/>}
         {summary && summary.totalJobs > summary.recentJobs.length && <p className="panel-foot">{c(`Mostrando ${summary.recentJobs.length} de ${summary.totalJobs} ofertas guardadas`, `Showing ${summary.recentJobs.length} of ${summary.totalJobs} saved jobs`)}</p>}
       </Card>

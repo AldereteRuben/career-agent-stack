@@ -6,9 +6,13 @@ Choose **Settings and privacy → Create backup**. Wait for verification, then d
 
 En **Ajustes y privacidad → Crear copia de seguridad**, espera la comprobación y descarga **la copia y la clave**. El archivo de comprobación es opcional. Se utiliza la configuración de la instalación abierta.
 
-Download before creating another backup or restarting the API. Completed originals remain in `data/backups/<id>/`, with the separate key under `keys/`. Old copies are not deleted automatically. Failed attempts are removed. One backup can run at a time, with a five-minute limit; leave and return to Settings to see its progress. Downloads require the local session and are never cached. PostgreSQL client tools are still required. Restoring still uses the terminal instructions below.
+Download before creating another backup or restarting the API. Completed originals remain in `data/backups/<id>/`, with the separate key under `keys/`. Old copies are not deleted automatically. Failed attempts are removed. One backup can run at a time, with a five-minute limit; leave and return to Settings to see its progress. Downloads require the local session and are never cached. PostgreSQL client tools are still required.
 
-Descarga antes de crear otra copia o reiniciar la API. Los originales quedan en `data/backups/<id>/`, con la clave en `keys/`; gestiona las copias antiguas desde esa carpeta. Las copias fallidas se eliminan. Puedes salir de Ajustes y volver mientras se prepara. La restauración sigue requiriendo la terminal.
+Descarga antes de crear otra copia o reiniciar la API. Los originales quedan en `data/backups/<id>/`, con la clave en `keys/`; gestiona las copias antiguas desde esa carpeta. Las copias fallidas se eliminan. Puedes salir de Ajustes y volver mientras se prepara.
+
+To enable the guided restore in Settings, add `CAREER_RESTORE_ADMIN_URL` to this installation's private `.env`. It must point to the same local PostgreSQL server as `DATABASE_URL` and use a role that can create databases. Keep the file private; the dashboard never asks for or displays this credential. The restore wizard first verifies the encrypted archive and key, then creates a separate database and private data folder. It does not replace this installation, and starts the restored copy only when you choose **Open restored copy**.
+
+Para habilitar la restauración guiada en Ajustes, añade `CAREER_RESTORE_ADMIN_URL` al `.env` privado de esta instalación. Debe apuntar al mismo servidor local de PostgreSQL que `DATABASE_URL` y usar un rol que pueda crear bases de datos. Mantén privado ese archivo; el panel nunca pide ni muestra esta credencial. El asistente verifica primero la copia cifrada y su clave; después crea otra base de datos y una carpeta privada. No sustituye esta instalación y solo inicia la copia restaurada cuando pulsas **Abrir copia restaurada**.
 
 ## Backup from a terminal
 
@@ -30,6 +34,20 @@ The command reports success only after it decrypts the written archive again and
 | Manifest | `manifest.json` records versions, row counts, migrations, and the size and SHA-256 of each entry. `manifest.hmac` is an HMAC-SHA-256 keyed with a value derived from `APP_ENCRYPTION_KEY`, so tampering is detected even if someone recomputes the checksums. |
 | Excluded | `.env`, the database password, `APP_SESSION_SECRET`, sign-in tokens, logs, process records and browser state. `APP_ENCRYPTION_KEY` goes only into the separate key file (0600). That file is reused when the key is the same. |
 | Permissions | The folders are 0700. The archive, `.sha256` and key file are 0600. The plain tar only exists in a private temporary folder (0700; on Windows, a folder restricted to the current user by ACL), which is removed afterwards, also on failure. |
+
+## Application documents and exports / Documentos de candidatura y exportaciones
+
+Offer-specific resumes and cover letters are stored with the application and included in workspace JSON export and verified backups. Importing an older, attached resume does **not** convert it into an offer-specific document. Create a new application document from a saved offer instead; a job-less application reports `APPLICATION_HAS_NO_OFFER` and cannot generate one.
+
+The application materials ZIP is a convenience download, **not an encrypted backup**. It contains at most 20 selected documents and is limited to 30 MB. Store it as carefully as the unencrypted documents inside it.
+
+Workspace JSON export includes the text and metadata for every document revision. It embeds PDF bytes only for approved revisions and the newest pending revision of each logical document; other revisions keep their text and `pdf_sha256` without PDF bytes. Approved historical PDFs remain available because each explicitly approved revision is retained. A materials ZIP selection is temporary and is not stored in the export.
+
+Los CV y las cartas de presentación específicos de una oferta quedan vinculados a la solicitud y se incluyen en la exportación JSON del espacio y en las copias verificadas. Un CV adjunto antiguo **no** se convierte en un documento específico de una oferta. Crea uno nuevo desde una oferta guardada; si la solicitud no tiene oferta, aparece `APPLICATION_HAS_NO_OFFER` y no se puede generar.
+
+El ZIP de documentos de una candidatura es una descarga práctica, **no una copia cifrada**. Admite hasta 20 documentos seleccionados y un máximo de 30 MB. Protege el archivo igual que los documentos sin cifrar que contiene.
+
+La exportación JSON del espacio incluye el texto y los metadatos de todas las revisiones. Solo incorpora los PDF de las revisiones aprobadas y de la revisión pendiente más reciente de cada documento lógico; las demás revisiones conservan texto y `pdf_sha256`, pero no bytes PDF. Los PDF históricos aprobados se mantienen porque cada aprobación explícita conserva su revisión. La selección de un ZIP es temporal y no se guarda en la exportación.
 
 **The archive is encrypted; the key file is what opens it.** Keep the key file **separately** from the backups, for example in a password manager: anyone with both can read your data, and without the key file nobody can read or restore the backup, including you. There is no way to recover a lost key file.
 
@@ -82,7 +100,7 @@ pnpm run restore --archive <backup.tar.age> --key-file <career-key.json> --targe
 - It then verifies row counts and document hashes. Applications in `IN_PROGRESS`/`UNKNOWN` are reported for manual reconciliation; nothing is resubmitted.
 - If restore fails, it removes only the database and folder that this run created. The live installation is never written to.
 
-To open the restored copy, use another checkout of the same version:
+To open a manually restored copy, use another checkout of the same version:
 
 ```sh
 git worktree add ../career-restored && cd ../career-restored && pnpm install --frozen-lockfile
@@ -105,5 +123,5 @@ The integration tests create only disposable `career_bkt_*` databases and a role
 - Las copias anteriores al cifrado (`.tar`) nunca estuvieron protegidas. Se restauran con `--allow-unencrypted`, tras un aviso; haz una copia nueva y borra las antiguas.
 - El archivo de clave incluye la identidad age, así que la herramienta oficial `age` puede descifrar una copia sin la app (ver «Decrypt without the app»).
 - `pnpm run restore --verify-only …` descifra la copia en una carpeta temporal privada y la comprueba sin crear nada.
-- La restauración crea siempre una base de datos y una carpeta **nuevas** y nunca toca la instalación activa.
+- La restauración guiada o manual crea siempre una base de datos y una carpeta **nuevas** y nunca toca la instalación activa.
 - La copia restaurada tiene un secreto de sesión nuevo, los tableros desactivados y los permisos en UNKNOWN. Ábrela con `CAREER_ENV_FILE=<carpeta>/.env pnpm start`, desde otra copia del código.

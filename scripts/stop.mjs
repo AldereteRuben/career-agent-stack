@@ -8,17 +8,42 @@
 // exact start time, working directory, and entry point (or Next's "next-server" title). Anything else,
 // including records written by older launcher versions, is left running (fail closed).
 import { spawnSync } from 'node:child_process';
-import { readFile, readdir, unlink } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import process from 'node:process';
-import { ok, printRecovery, processIdentity, projectRoot, runDir, say, warn } from './lib/local-env.mjs';
+import { ok, printRecovery, processIdentity, projectRoot, runDir, say, warn, writePrivateFileAtomic } from './lib/local-env.mjs';
 import { windowsStopTree } from './lib/windows-process.mjs';
 
 const stopDatabase = process.argv.includes('--database');
 const forget = process.argv.includes('--forget');
 
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
+const isStopFile = (record) => typeof record.stopFile === 'string'
+  && dirname(resolve(record.stopFile)) === resolve(runDir)
+  && /^api-stop-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.signal$/i.test(basename(record.stopFile));
+
+async function claimStopSignal(path, owner) {
+  const content = JSON.stringify(owner);
+  try { await writeFile(path, content, { flag: 'wx', mode: 0o600 }); return 'owned'; }
+  catch (error) { if (error.code !== 'EEXIST') throw error; }
+
+  // Allow the exclusive creator to finish writing JSON before checking it.
+  let existingOwner;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    existingOwner = await readFile(path, 'utf8').then((text) => JSON.parse(text)).catch(() => null);
+    const identity = Number.isInteger(existingOwner?.pid) ? await processIdentity(existingOwner.pid) : null;
+    if (identity && identity.lstart === existingOwner.lstart) return 'already-stopping';
+    if (existingOwner) break;
+    await delay(25);
+  }
+
+  // Replacing a stale owner atomically keeps the signal visible to the API,
+  // publishes complete JSON, and lets a later retry recover if this caller exits.
+  await writePrivateFileAtomic(path, content);
+  return 'owned';
+}
 
 /** Returns null when the running process is exactly the recorded one, otherwise the reason it is not. */
 async function mismatch(record) {
@@ -49,6 +74,33 @@ async function stopProcess(record) {
   if (!Number.isInteger(record.pid) || !alive(record.pid)) return { outcome: 'gone' };
   const reason = await mismatch(record);
   if (reason) return { outcome: 'refused', reason };
+  if (process.platform === 'win32' && record.name === 'api' && record.stopFile) {
+    if (!isStopFile(record)) return { outcome: 'refused', reason: 'invalid cooperative stop-file path' };
+    if (await mismatch(record)) return { outcome: 'refused', reason: 'process identity changed before stop request' };
+    const ownIdentity = await processIdentity(process.pid);
+    const owner = { pid: process.pid, lstart: ownIdentity?.lstart ?? null, token: randomUUID() };
+    let claim;
+    try { claim = await claimStopSignal(record.stopFile, owner); }
+    catch { return { outcome: 'failed', reason: 'could not claim the cooperative stop signal' }; }
+    if (claim === 'failed') return { outcome: 'failed', reason: 'could not claim the cooperative stop signal' };
+    if (claim === 'already-stopping') return { outcome: 'already-stopping' };
+    for (let attempt = 0; attempt < 60 && alive(record.pid); attempt += 1) await delay(250);
+    if (!alive(record.pid)) return { outcome: 'stopped' };
+    warn('La API no respondió a la parada ordenada en 15 s; se usará taskkill como último recurso.', 'The API did not stop gracefully within 15 s; using taskkill as a last resort.');
+    if (await mismatch(record)) return { outcome: 'refused', reason: 'process identity changed before forced stop' };
+    let currentOwner = await readFile(record.stopFile, 'utf8').then((text) => JSON.parse(text)).catch(() => null);
+    if (currentOwner?.token !== owner.token) {
+      const identity = Number.isInteger(currentOwner?.pid) ? await processIdentity(currentOwner.pid) : null;
+      if (identity && identity.lstart === currentOwner.lstart) return { outcome: 'already-stopping' };
+      try { await writePrivateFileAtomic(record.stopFile, JSON.stringify(owner)); }
+      catch { return { outcome: 'failed', reason: 'could not recover the cooperative stop request' }; }
+      currentOwner = await readFile(record.stopFile, 'utf8').then((text) => JSON.parse(text)).catch(() => null);
+      if (currentOwner?.token !== owner.token) return { outcome: 'already-stopping' };
+    }
+    if (await mismatch(record)) return { outcome: 'refused', reason: 'process identity changed before forced stop' };
+    if (!windowsStopTree(record.pid) && alive(record.pid)) return { outcome: 'failed', reason: 'taskkill could not stop the API process tree' };
+    return { outcome: 'forced' };
+  }
   await signal(record, 'SIGTERM');
   for (let attempt = 0; attempt < 40 && alive(record.pid); attempt += 1) await delay(250);
   if (alive(record.pid) && process.platform === 'win32') return { outcome: 'failed' }; // the first step was already forceful (taskkill /F), so there is nothing stronger to try
@@ -69,7 +121,10 @@ async function main() {
   let refused = 0;
   for (const file of files) {
     const path = resolve(runDir, file);
-    const record = JSON.parse(await readFile(path, 'utf8'));
+    let recordText;
+    try { recordText = await readFile(path, 'utf8'); }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    const record = JSON.parse(recordText);
     if (record.name === 'postgres') {
       if (!stopDatabase) { say('PostgreSQL sigue en marcha (usa --database para detenerlo; los datos se conservan).', 'PostgreSQL keeps running (use --database to stop it; data is kept).'); continue; }
       const result = record.method === 'homebrew-pg_ctl'
@@ -80,6 +135,10 @@ async function main() {
       continue;
     }
     const { outcome, reason } = await stopProcess(record);
+    if (outcome === 'already-stopping') {
+      say(`${record.name}: ya se está deteniendo; se deja terminar la parada ordenada.`, `${record.name}: shutdown is already in progress; letting the original request finish.`);
+      continue;
+    }
     if (outcome === 'refused') {
       if (forget) {
         await unlink(path);
@@ -97,8 +156,12 @@ async function main() {
       process.exitCode = 1;
       continue;
     }
-    ok(`${record.name}: ${outcome === 'stopped' ? 'detenido' : 'ya no estaba en marcha'}`, `${record.name}: ${outcome === 'stopped' ? 'stopped' : 'was not running'}`);
-    await unlink(path);
+    if (outcome === 'forced') warn('API detenida a la fuerza; revisa su registro si había trabajo en curso.', 'API was force-stopped; check its log if work was in progress.');
+    const stoppedText = outcome === 'forced' ? 'detenida a la fuerza' : outcome === 'stopped' ? 'detenido' : 'ya no estaba en marcha';
+    const stoppedTextEn = outcome === 'forced' ? 'force-stopped' : outcome === 'stopped' ? 'stopped' : 'was not running';
+    ok(`${record.name}: ${stoppedText}`, `${record.name}: ${stoppedTextEn}`);
+    if (isStopFile(record)) await unlink(record.stopFile).catch(() => {});
+    await unlink(path).catch((error) => { if (error.code !== 'ENOENT') throw error; });
   }
   if (refused) process.exitCode = 1;
 }

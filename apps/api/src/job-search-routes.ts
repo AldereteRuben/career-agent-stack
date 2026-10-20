@@ -3,6 +3,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { pool, db, jobs, jobSearchProviderCache, jobSearchSources, savedJobSearches, savedJobSearchMatches } from '@career/db';
 import { type JobSearchInput, type OnPrepare, JobSearchError, matchesSearch, processPendingJobPreparations, refreshSavedJobSearch } from './job-search.js';
 import { MAX_ARBEITNOW_PAGES, PROVIDERS, type PublicJob, type SearchWorkMode } from './job-search-sources.js';
+import { adzunaAttributionUrl, readAdzunaCredentials, ADZUNA_CACHE_HOURS, ADZUNA_MAX_PAGES, ADZUNA_MAX_REQUESTS_PER_DAY, ADZUNA_MAX_REQUESTS_PER_MONTH, ADZUNA_MAX_REQUESTS_PER_WEEK, ADZUNA_RESULTS_PER_PAGE } from './adzuna-source.js';
 
 import { enqueueSearch, latestSearchRun, SEARCH_PROVIDERS } from './search-execution.js';
 import { searchResults, searchUnreadCounts, reviewSearchResult, type ResultQuery } from './search-results.js';
@@ -43,7 +44,7 @@ function parseInput(value: unknown, partial = false): Partial<SearchInput> | nul
     result.language = body.language;
   }
   if ('matcherVersion' in body) { if (body.matcherVersion !== 1 && body.matcherVersion !== 2) return null; result.matcherVersion = body.matcherVersion; }
-  if ('providerIds' in body) { if (!Array.isArray(body.providerIds) || !body.providerIds.length || body.providerIds.length > 4 || body.providerIds.some((p) => !SEARCH_PROVIDERS.includes(p))) return null; result.providerIds = [...new Set(body.providerIds)]; }
+  if ('providerIds' in body) { if (!Array.isArray(body.providerIds) || !body.providerIds.length || body.providerIds.length > 5 || body.providerIds.some((p) => !SEARCH_PROVIDERS.includes(p))) return null; result.providerIds = [...new Set(body.providerIds)]; }
   if ('includeRelated' in body) { if (typeof body.includeRelated !== 'boolean') return null; result.includeRelated = body.includeRelated; }
   if ('expectedRevision' in body) { if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) return null; result.expectedRevision = Number(body.expectedRevision); }
   if ('idempotencyKey' in body) { if (typeof body.idempotencyKey !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(body.idempotencyKey)) return null; result.idempotencyKey = body.idempotencyKey; }
@@ -63,7 +64,8 @@ export function registerJobSearchRoutes(app: FastifyInstance, workspace: (reques
       db.select().from(savedJobSearches).where(eq(savedJobSearches.workspaceId, workspaceId)).orderBy(asc(savedJobSearches.createdAt)),
       db.select({ provider: jobSearchProviderCache.provider, listings: sql<number>`jsonb_array_length(${jobSearchProviderCache.payload})`, coverage: jobSearchProviderCache.coverage, fetchedAt: jobSearchProviderCache.fetchedAt, lastError: jobSearchProviderCache.lastError }).from(jobSearchProviderCache),
     ]);
-    return { searches: await Promise.all(rows.map(async (row) => ({ ...row, lastNewCount: unread.get(row.id) ?? 0, latestRun: row.matcherVersion === 2 ? await latestSearchRun(workspaceId,row.id) : null }))), coverage: { providers: {...PROVIDERS,himalayas:{name:'Himalayas',attribution:'https://himalayas.app',cacheHours:24,maxPages:3,maxRequestsPerDay:100},boards:{name:'Followed companies',localSnapshotsOnly:true}}, feeds, maxRefreshesPerProviderPerDay: 4, remotiveMaxRequestsPerDay: 4, arbeitnowMaxPagesPerRefresh: MAX_ARBEITNOW_PAGES, cacheHours: 6, sources: 'Public listings from Remotive, Arbeitnow and Himalayas, plus local snapshots from confirmed followed companies; no API keys are required.' } };
+    const adzunaCredentials = readAdzunaCredentials();
+    return { searches: await Promise.all(rows.map(async (row) => ({ ...row, lastNewCount: unread.get(row.id) ?? 0, latestRun: row.matcherVersion === 2 ? await latestSearchRun(workspaceId,row.id) : null }))), coverage: { providers: {...PROVIDERS,himalayas:{name:'Himalayas',attribution:'https://himalayas.app',cacheHours:24,maxPages:3,maxRequestsPerDay:100},boards:{name:'Followed companies',localSnapshotsOnly:true},adzuna:{name:'Adzuna',attribution:adzunaAttributionUrl(adzunaCredentials?.country ?? 'es'),configured:Boolean(adzunaCredentials),cacheHours:ADZUNA_CACHE_HOURS,maxRequestsPerDay:ADZUNA_MAX_REQUESTS_PER_DAY,maxRequestsPerWeek:ADZUNA_MAX_REQUESTS_PER_WEEK,maxRequestsPerMonth:ADZUNA_MAX_REQUESTS_PER_MONTH,maxPages:ADZUNA_MAX_PAGES,resultsPerPage:ADZUNA_RESULTS_PER_PAGE}}, feeds, maxRefreshesPerProviderPerDay: 4, remotiveMaxRequestsPerDay: 4, arbeitnowMaxPagesPerRefresh: MAX_ARBEITNOW_PAGES, cacheHours: 6, sources: 'Public listings from Remotive, Arbeitnow, Himalayas and optional Adzuna, plus local snapshots from confirmed followed companies.' } };
   });
 
   app.post('/api/v1/job-searches', async (request, reply) => {

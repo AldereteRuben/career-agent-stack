@@ -614,7 +614,7 @@ Avoid rules such as “never apply below 78” learned from a handful of outcome
 
 `none` is a supported provider mode, not an error. Manual editing, discovery, ranking rules, templates, tracking, and export must not depend on AI.
 
-Implement a fake provider for tests, then local Ollama, then **one** reviewed hosted BYOK provider. Additional providers are adapters, not MVP requirements.
+The local Ollama adapter is specified in [ADR 026](decisions/026-local-ollama-ai.md). Tests use an Ollama-compatible fake transport; no model is downloaded in CI. A hosted BYOK provider remains a separate reviewed decision.
 
 ```ts
 export interface StructuredRequest<T> {
@@ -664,7 +664,7 @@ Budget exhaustion produces `status=BLOCKED, reason=BUDGET`; work waits or switch
 
 Local inference avoids a per-token API bill but consumes memory, electricity, disk space, and maintenance time. Do not promise that an arbitrary model will run well on an 8 GB machine alongside a browser and development servers.
 
-Ollama supports cloud features as well as local models. For the strict local profile, use downloaded local models and disable cloud features in the **Ollama server process**, for example with `OLLAMA_NO_CLOUD=1` as documented. Setting a variable only in this application's environment is not enough if Ollama runs separately. [R19]
+Ollama supports cloud features as well as local models. For the strict local profile, use downloaded local models and disable cloud features in the **Ollama server process**, for example with `OLLAMA_NO_CLOUD=1` as documented. Career Stack only accepts a configured loopback endpoint and cannot verify the Ollama process setting; the person must confirm it in Settings. See [ADR 026](decisions/026-local-ollama-ai.md) and the [local Ollama setup guide](operations/ai-local-ollama.md). Setting a variable only in this application's environment is not enough if Ollama runs separately. [R19]
 
 ### Hosted provider consent
 
@@ -1129,7 +1129,6 @@ AI_BUDGET_TIMEZONE=UTC
 
 # Optional; validate as a separately configured trusted local integration.
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=
 
 AUTOMATION_DEFAULT_LEVEL=2
 APPLICATION_WRITES_ENABLED=false
