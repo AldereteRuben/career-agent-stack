@@ -494,6 +494,7 @@
   margin-bottom: var(--space-5);
   padding: clamp(20px, 3vw, 30px);
   overflow-wrap: anywhere;
+  container: job-report / inline-size;
 }
 
 .report > :global(.panel-heading) {
@@ -560,6 +561,26 @@
   border-top: 1px solid var(--line);
 }
 
+.reportEvidence {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.reportEvidenceWithQuote {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container job-report (max-width: 680px) {
+  .reportEvidenceWithQuote {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.reportEvidenceFull {
+  grid-column: 1 / -1;
+}
+
 .reportList p {
   display: flex;
   flex-wrap: wrap;
@@ -577,9 +598,7 @@
   color: var(--ink-2);
 }
 
-.reportQuote span,
-.reportFacts span {
-  display: block;
+.reportQuote span {
   color: var(--muted);
   font-size: var(--text-sm);
   font-weight: 600;
@@ -720,6 +739,10 @@
 
 @media (max-width: 720px) {
   .reportChecks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reportEvidenceWithQuote {
     grid-template-columns: minmax(0, 1fr);
   }
 
