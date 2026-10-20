@@ -67,6 +67,9 @@ export const resumeImportScenarios: Scenario[] = [{
       const resumeInput = page.getByLabel('CV en PDF', { exact: true });
       await eventually(() => resumeInput.isDisabled(), (disabled) => !disabled, 'profile loads before the import accepts a file');
       await resumeInput.setInputFiles({ name: 'cv-ficticio.pdf', mimeType: 'application/pdf', buffer: pdf });
+      await page.getByRole('heading', { name: '¿Cómo quieres preparar las propuestas?', exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Preparar con Codex', exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Continuar sin IA', exact: true }).click();
       await page.getByRole('heading', { name: 'Elige qué guardar', exact: true }).waitFor();
       await page.getByText('No se importan estas secciones: AFICIONES').waitFor();
 

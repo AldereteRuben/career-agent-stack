@@ -1,6 +1,6 @@
 # 018 — Importing an existing resume into the profile
 
-Status: **accepted**. The path without AI is implemented (T1–T5, T7, T10, T11: `packages/domain/src/resume-sections.ts`, `/profile/import`); the Codex path (T6) is still pending (tracking issue [#23](https://github.com/AldereteRuben/career-agent-stack/issues/23)). Date: 2026-10-08.
+Status: **accepted**. The local path and optional Codex path are implemented (T1–T11: `packages/domain/src/resume-sections.ts`, `/profile/import`, `RESUME_IMPORT`). Date: 2026-10-19.
 
 ## Context
 
@@ -14,13 +14,11 @@ A resume contains more personal data than the profile needs (phone, home address
 
 The first release imports **without AI**: the browser extracts the text and splits it into sections (Experience, Education, Skills… in Spanish and English), then proposes editable entries. It is always available and nothing leaves the device.
 
-This path builds every shared piece: the batch import API (T1), batch approval (T2), PDF text extraction (T3), section splitting (T4) and the review screen (T5). The Codex path (T6) comes later as a second way to produce suggestions for the same review screen. It needs its own AI operation, data category and notice version, removes contact details locally before sending, and drops any suggestion that does not cite the exact resume excerpt it comes from.
+This path builds every shared piece: the batch import API (T1), batch approval (T2), PDF text extraction (T3), section splitting (T4) and the review screen (T5). The Codex path (T6) is an optional second way to produce suggestions for the same review screen. It uses a separate `RESUME_IMPORT` operation and `RESUME_TEXT` category, a new notice version, local contact redaction, a visible preview and one-time consent. It is Codex-only; resume text cannot use the Ollama route or remembered consent. The server validates every output quote against the redacted text and rejects unsupported quotes.
 
 ### 2. The extracted text is discarded
 
-The extracted or pasted text lives **only in the browser's memory** while the person imports. It is never sent as a whole to the API, stored in the database, written to browser storage or kept in logs. Only the resulting entries are sent to the API, where they are stored as suggestions (see 4). To import again, the person selects the file again.
-
-Because the raw text is never stored, exports, backups and deletion need no new handling. The suggestions are ordinary profile facts and are already covered.
+For the local path, extracted or pasted text lives **only in the browser's memory**. It is not sent to the API or stored in the database, browser storage or logs. For the optional Codex path, the browser sends text to the local API for redaction, then the user reviews and explicitly allows the redacted text to go to OpenAI. The redacted snapshot and result are stored in local AI history for up to 30 days, included in data export and backups, and removed when AI history is cleared. Clearing history does not rewrite backup or export files already created. Original PDFs and unredacted text are not persisted by the feature.
 
 ### 3. Limits
 
@@ -53,7 +51,7 @@ Name, email and country found in the resume are shown apart from the facts and a
 
 The one to three most recent job titles are offered as optional **target titles**, shown separately and **unchecked by default**. They are added to the person's target titles only if checked, and never replace existing ones.
 
-Detection and application are pure functions in `@career/domain` (`profile-import.ts`: `detectIdentity`, `suggestTargetTitles`, `profileProposals`, `applyProfileProposals`) that run in the browser, next to the resume text. The chosen result is saved with the existing `PUT /api/v1/profile`, which validates the profile shape and the revision; no new API route is involved, and the resume text still never leaves the browser. A country is proposed only when exactly one country is named in the resume header, and anything uncertain is left out rather than guessed.
+Detection and application are pure functions in `@career/domain` (`profile-import.ts`: `detectIdentity`, `suggestTargetTitles`, `profileProposals`, `applyProfileProposals`) that run in the browser. The chosen result is saved with the existing `PUT /api/v1/profile`, which validates the profile shape and the revision; no new profile API route is involved. The local path never sends resume text. The optional Codex path sends only text with supported contact details redacted. A country is proposed only when exactly one country is named in the resume header, and anything uncertain is left out rather than guessed.
 
 ### 7. Professional summary and links are not imported yet
 
@@ -61,8 +59,8 @@ There are no profile fields for a professional summary or links. They are left o
 
 ## Consequences
 
-- T1 (batch import with `import_id` and the migration) and T2 (batch approval) can start. T3, T4 and T8 are open to contributors and can start in parallel with T1.
-- T5 (review screen) waits for T1, T2 and T3. T6 (Codex) waits for T1 and T3 and follows the no-AI release.
+- T1 (batch import with `import_id` and the migration), T2 (batch approval), and T3–T11 are implemented. The local path remains usable without Codex.
+- T6 shares the same final review screen as the local parser. It is opt-in per import and does not approve profile facts.
 - The review screen works from stored suggestions, so it survives a reload without keeping any draft in browser storage.
 - Repeating an import requires selecting the file again. This is deliberate: the raw resume is never kept.
 

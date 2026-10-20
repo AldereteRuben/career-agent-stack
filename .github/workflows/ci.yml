@@ -197,6 +197,8 @@ jobs:
         run: node --test scripts/test/uninstall-paths.test.mjs
       - name: Verify Windows process inspection
         run: pnpm run test:windows-process
+      - name: Verify cooperative API shutdown on Windows
+        run: pnpm run test:cooperative-stop
       - name: Verify the backup archive format on every platform
         run: pnpm run test:backup
   browser:

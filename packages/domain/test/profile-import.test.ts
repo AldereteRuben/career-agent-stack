@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { profileDataSchema } from '../src/contracts.js';
 import type { StructuredEntry } from '../src/entries.js';
-import { applyProfileProposals, detectIdentity, profileProposals, suggestTargetTitles } from '../src/profile-import.js';
+import { applyProfileProposals, detectIdentity, profileProposals, redactResumeContactDetails, suggestTargetTitles } from '../src/profile-import.js';
 
 // Fictional resumes only.
 const spanish = `ANA GARCÍA LÓPEZ
@@ -40,6 +40,26 @@ test('uncertain values are left out instead of guessed', () => {
 
 test('the phone number is never part of the detected identity', () => {
   assert.equal(Object.keys(detectIdentity(spanish)).some((key) => /phone|tel/i.test(key)), false);
+});
+
+test('contact redaction removes direct contact details while keeping dates and experience text', () => {
+  const text = 'Ruben Alderete\nruben@example.test\n+34 (600) 111-222\n12 Calle Mayor, Madrid\nhttps://example.test/profile\nWorked from 2019-2021.';
+  const redacted = redactResumeContactDetails(text);
+  assert.doesNotMatch(redacted, /Ruben Alderete|ruben@example\.test|\+34 \(600\) 111-222|Calle Mayor|https:\/\/example\.test/iu);
+  assert.match(redacted, /\[redacted name\]/u);
+  assert.match(redacted, /2019-2021/u);
+  assert.match(redacted, /Worked from/u);
+});
+
+test('contact redaction hides a detected name beside a role and is idempotent', () => {
+  for (const separator of ['—', '-', ',']) {
+    const header = separator === ',' ? 'Ruben Alderete, Product Designer' : `Ruben Alderete ${separator} Product Designer`;
+    const text = `${header}\nruben@example.test\nWorked from 2019-2021.`;
+    const redacted = redactResumeContactDetails(text);
+    assert.doesNotMatch(redacted, /Ruben Alderete|ruben@example\.test/iu);
+    assert.match(redacted, new RegExp(`\\[redacted name\\]${separator === ',' ? ', ' : ` ${separator} `}Product Designer`, 'u'));
+    assert.equal(redactResumeContactDetails(redacted), redacted);
+  }
 });
 
 const job = (title: string, startMonth: string, extra: Partial<StructuredEntry> = {}): StructuredEntry => ({ type: 'employment', title, organization: 'Fictional Co', startMonth, current: false, description: '', locale: 'es', ...extra });

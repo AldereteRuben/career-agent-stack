@@ -26,7 +26,7 @@ test('every test script cited in the change tasks is declared and run by CI', ()
 test('planned document test families are covered by scripts that CI runs', () => {
   const coverage = [
     { taskPath: 'packages/domain/test/application-documents*.test.ts', script: 'test:unit', input: '../../packages/domain/test/*.test.ts' },
-    { taskPath: 'apps/api/test/application-documents-routes.test.ts', script: 'test:application-documents', input: 'test/application-documents*.test.ts' },
+    { taskPath: 'apps/api/test/application-documents-resume-routes.test.ts', script: 'test:application-documents', input: 'test/application-documents*.test.ts' },
     { taskPath: 'apps/api/test/ai-application-documents.test.ts', script: 'test:ai', input: 'test/ai-*.test.ts' },
     { taskPath: 'scripts/test/application-documents-migration.test.mjs', script: 'test:integration', input: 'scripts/test/application-documents-migration.test.mjs' },
     { taskPath: 'scripts/test/ci-wiring.test.mjs', script: 'test:integration', input: 'scripts/test/ci-wiring.test.mjs' },
@@ -57,6 +57,12 @@ test('company research database tests are enabled in CI', () => {
   assert.ok(step, 'company research persistence test is not run by CI');
   assert.match(step, /run: pnpm run test:company-research/, 'CI invokes the wrong company research test');
   assert.match(step, /CAREER_COMPANY_RESEARCH_TEST_ADMIN_URL:/, 'company research test would silently skip without a database admin URL');
+});
+
+test('cooperative API shutdown integration runs on Windows CI', () => {
+  const root = workflow.split(/^ {2}platform-build:/m)[1] ?? '';
+  assert.ok(scripts['test:cooperative-stop']?.includes('scripts/test/cooperative-stop.integration.test.mjs'), 'cooperative shutdown test script is missing');
+  assert.match(root, /name: Verify cooperative API shutdown on Windows[\s\S]{0,100}run: pnpm run test:cooperative-stop/, 'real-process shutdown tests are not wired into platform CI');
 });
 
 test('document API tests run in the database job after Chromium and Poppler are installed', () => {

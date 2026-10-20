@@ -16,11 +16,12 @@ La interfaz está disponible en **español e inglés**. Cada persona utiliza una
 ## Qué puedes hacer
 
 - Completar experiencia laboral y formación con fechas editables; corregir, archivar y confirmar los datos que se usan en tu CV.
-- Importar un CV en PDF (o pegar su texto) desde **Perfil → Importar desde un CV**. El navegador lo lee y propone entradas; nada se usa hasta que lo confirmas, y ni el PDF ni su texto se envían o se guardan. Aún no se admiten PDF escaneados, DOCX ni la importación con IA.
+- Importar un CV en PDF (o pegar su texto) desde **Perfil → Importar desde un CV**. El análisis local es la opción inicial; también puedes pedir a Codex que organice propuestas tras revisar y autorizar un único envío del texto con datos de contacto ocultos. Las propuestas siguen sin aprobar hasta que las confirmes. Aún no se admiten PDF escaneados ni DOCX.
 - Mantener respuestas reutilizables con su pregunta y contexto de país.
 - Guardar búsquedas por puesto o empresa y encontrar coincidencias automáticamente en Remotive, Arbeitnow e Himalayas. También puedes añadir ofertas manualmente o seguir empresas de Greenhouse, Lever y Ashby.
 - Entender el encaje de una vacante con tus preferencias y hechos aprobados.
 - Generar, visualizar, revisar y descargar versiones de tu CV en A4 o Carta (EE. UU.); la preparación automática sigue usando A4. Reutilizar contenido tras cambiar tu perfil sin alterar los PDF anteriores.
+- Crear CV y cartas específicos para una oferta con datos aprobados del perfil. Revisa la evidencia, edita y aprueba cada versión; hace falta una oferta guardada y los CV adjuntos antiguos no se convierten automáticamente.
 - Registrar candidaturas, notas y etapas del proceso, con historial de correcciones.
 - Exportar tu espacio en JSON o crear una copia verificada de la base de datos y los PDF, con restauración aislada.
 
@@ -34,6 +35,7 @@ En **Perfil y herramientas → Ajustes y privacidad → Asistente**, conecta Cod
 - Resume una oferta y la compara con la experiencia confirmada que selecciones.
 - Revisa propuestas para tu CV junto a sus fuentes; después genera y aprueba el PDF exacto.
 - Prepara respuestas apoyadas en tus datos. Las decisiones personales o legales requieren tu respuesta.
+- Organiza opcionalmente entradas del CV con Codex tras un permiso de un solo uso; el texto redactado queda en el historial local de IA hasta 30 días y puede aparecer en exportaciones y copias de seguridad.
 - Tras un análisis manual, puedes activar el análisis de ofertas futuras de las búsquedas elegidas. Empieza desactivado, tiene un máximo de cinco por consulta y diez por día UTC, y se puede pausar sin detener la búsqueda de empleo.
 
 La ejecución de IA está soportada únicamente en **macOS con Codex CLI 0.160.0 o 0.163.0** y autenticación de un plan de ChatGPT. Las funciones habituales siguen disponibles en otros sistemas o versiones; esa integración aún no está certificada. Desconectar revoca el acceso de Career Stack sin cerrar tu sesión de Codex en otras aplicaciones. Claude queda aplazado. [Configuración, privacidad y límites](docs/operations/assistant.md).
@@ -59,6 +61,8 @@ Las búsquedas existentes conservan sus fuentes y reglas hasta que aceptes las m
 ## Solicitudes asistidas
 
 Abre **Mis solicitudes → Por revisar** para revisar el PDF generado y los datos pendientes. En una candidatura de Lever, sigue **Revisar datos → Revisar navegador** y elige continuar manualmente o autorizar por separado el envío compatible. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Las páginas públicas de Lever inspeccionadas para esta versión requirieron intervención manual; no se ha verificado un envío a una empresa real. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
+
+Los documentos quedan vinculados a su solicitud. El ZIP de materiales no está cifrado (hasta 20 documentos seleccionados y 30 MB); no se puede borrar una sola solicitud y, al borrar el espacio, se eliminan sus documentos y se vacía toda la carpeta local de archivos. Consulta [copias, exportación y restauración](docs/operations/backup-restore.md).
 
 ## Empieza aquí
 

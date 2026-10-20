@@ -133,6 +133,17 @@ export const applicationDocumentRevisions = pgTable('application_document_revisi
   check('application_document_revisions_approved_check', sql`${t.approvedAt} is null or ${t.approvedBy} is not null`),
 ]);
 
+export const applicationFollowUpDrafts = pgTable('application_follow_up_drafts', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), applicationId: uuid('application_id').notNull(),
+  language: varchar('language', { length: 2 }).notNull(), subject: text('subject').notNull(), body: text('body').notNull(),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  unique('application_follow_up_drafts_workspace_id_uq').on(t.workspaceId, t.id),
+  uniqueIndex('application_follow_up_drafts_application_uq').on(t.workspaceId, t.applicationId),
+  foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'application_follow_up_drafts_workspace_application_fk' }).onDelete('restrict'),
+  check('application_follow_up_drafts_language_check', sql`${t.language} in ('es', 'en')`),
+]);
+
 // AI persistence is deliberately inert until G0 enables an adapter. These tables contain metadata and
 // explicitly consented snapshots only; they never contain provider credentials.
 export const aiConnections = pgTable('ai_connections', {
@@ -164,7 +175,7 @@ export const aiRuns = pgTable('ai_runs', {
   priority: integer('priority').notNull().default(0), reservationPassId: uuid('reservation_pass_id'), reservedAt: timestamp('reserved_at', { withTimezone: true }).notNull().defaultNow(), reservedDay: date('reserved_day').notNull(),
   leaseToken: uuid('lease_token'), leaseOwner: varchar('lease_owner', { length: 160 }), leaseUntil: timestamp('lease_until', { withTimezone: true }), attempt: integer('attempt').notNull().default(0),
   retryOf: uuid('retry_of'), error: jsonb('error').$type<Record<string, unknown>>(), startedAt: timestamp('started_at', { withTimezone: true }), completedAt: timestamp('completed_at', { withTimezone: true }), createdAt: created(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'ai_runs_workspace_search_fk' }), foreignKey({ columns: [t.workspaceId, t.automationPolicyId], foreignColumns: [aiAutomationPolicies.workspaceId, aiAutomationPolicies.id], name: 'ai_runs_workspace_policy_fk' }), unique('ai_runs_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('ai_runs_idempotency_uq').on(t.workspaceId, t.idempotencyKey), foreignKey({ columns: [t.workspaceId, t.connectionId], foreignColumns: [aiConnections.workspaceId, aiConnections.id], name: 'ai_runs_workspace_connection_fk' }).onDelete('cascade'), foreignKey({ columns: [t.workspaceId, t.consentId], foreignColumns: [aiConsents.workspaceId, aiConsents.id], name: 'ai_runs_workspace_consent_fk' }).onDelete('restrict'), index('ai_runs_queue_idx').on(t.status, t.priority, t.reservedAt), index('ai_runs_account_idx').on(t.accountLockKey, t.status), check('ai_runs_operation_check', sql`${t.operation} in ('SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'DOCUMENT_REWORD')`)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'ai_runs_workspace_search_fk' }), foreignKey({ columns: [t.workspaceId, t.automationPolicyId], foreignColumns: [aiAutomationPolicies.workspaceId, aiAutomationPolicies.id], name: 'ai_runs_workspace_policy_fk' }), unique('ai_runs_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('ai_runs_idempotency_uq').on(t.workspaceId, t.idempotencyKey), foreignKey({ columns: [t.workspaceId, t.connectionId], foreignColumns: [aiConnections.workspaceId, aiConnections.id], name: 'ai_runs_workspace_connection_fk' }).onDelete('cascade'), foreignKey({ columns: [t.workspaceId, t.consentId], foreignColumns: [aiConsents.workspaceId, aiConsents.id], name: 'ai_runs_workspace_consent_fk' }).onDelete('restrict'), index('ai_runs_queue_idx').on(t.status, t.priority, t.reservedAt), index('ai_runs_account_idx').on(t.accountLockKey, t.status), check('ai_runs_operation_check', sql`${t.operation} in ('SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'DOCUMENT_REWORD', 'RESUME_IMPORT')`)]);
 export const aiDocumentRewordProposals = pgTable('ai_document_reword_proposals', {
   workspaceId: uuid('workspace_id').notNull(), runId: uuid('run_id').notNull(), sentenceId: varchar('sentence_id', { length: 80 }).notNull(), proposalSha256: varchar('proposal_sha256', { length: 64 }).notNull(),
 }, (t) => [
@@ -239,7 +250,7 @@ export const jobSearchSources = pgTable('job_search_sources', {
   // Consecutive complete, freshly downloaded feeds of this provider that did not list this job (ADR 021).
   missedCompleteReads: integer('missed_complete_reads').notNull().default(0),
   raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_search_sources_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_search_sources_identity_uq').on(t.workspaceId, t.provider, t.externalId), index('job_search_sources_job_idx').on(t.workspaceId, t.jobId)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.jobId], foreignColumns: [jobs.workspaceId, jobs.id], name: 'job_search_sources_workspace_job_fk' }).onDelete('cascade'), uniqueIndex('job_search_sources_identity_uq').on(t.workspaceId, t.provider, t.externalId), index('job_search_sources_job_idx').on(t.workspaceId, t.jobId), check('job_search_sources_provider_check', sql`${t.provider} in ('remotive','arbeitnow','himalayas','adzuna')`)]);
 
 export const savedJobSearchMatches = pgTable('saved_job_search_matches', {
   workspaceId: uuid('workspace_id').notNull(), searchId: uuid('search_id').notNull(), jobId: uuid('job_id').notNull(),
@@ -297,6 +308,24 @@ export const searchRunSources = pgTable('search_run_sources', {
   status:varchar('status',{length:16}).notNull().default('QUEUED'),coverage:varchar('coverage',{length:16}),
   fetchedAt:timestamp('fetched_at',{withTimezone:true}),nextFetchAt:timestamp('next_fetch_at',{withTimezone:true}),error:varchar('error',{length:80}),found:integer('found').notNull().default(0),
 },t=>[primaryKey({columns:[t.workspaceId,t.runId,t.provider]}),foreignKey({columns:[t.workspaceId,t.runId],foreignColumns:[searchRuns.workspaceId,searchRuns.id]}).onDelete('cascade')]);
+/** Desktop alerts are opt-in and carry no job names, companies, URLs, or salary data. */
+export const desktopNotificationSettings = pgTable('desktop_notification_settings', {
+  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(false), language: varchar('language', { length: 2 }).notNull().default('en'),
+  lastStatus: varchar('last_status', { length: 24 }).notNull().default('NOT_TESTED'), lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }), updatedAt: changed(),
+}, t => [check('desktop_notification_settings_language_check', sql`${t.language} in ('en','es')`), check('desktop_notification_settings_status_check', sql`${t.lastStatus} in ('NOT_TESTED','ACCEPTED','UNAVAILABLE','FAILED')`)]);
+/** Durable, privacy-safe queue of automatic-search alerts; run_id makes v2 enqueue idempotent. */
+export const desktopNotificationEvents = pgTable('desktop_notification_events', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), searchId: uuid('search_id').notNull(), runId: uuid('run_id'),
+  newCount: integer('new_count').notNull(), language: varchar('language', { length: 2 }).notNull(), status: varchar('status', { length: 16 }).notNull().default('PENDING'),
+  attempts: integer('attempts').notNull().default(0), leaseUntil: timestamp('lease_until', { withTimezone: true }), lastError: varchar('last_error', { length: 64 }),
+  createdAt: created(), deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+}, t => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'desktop_notification_events_search_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.runId], foreignColumns: [searchRuns.workspaceId, searchRuns.id], name: 'desktop_notification_events_run_fk' }).onDelete('cascade'),
+  check('desktop_notification_events_count_check', sql`${t.newCount} > 0`), check('desktop_notification_events_language_check', sql`${t.language} in ('en','es')`),
+  check('desktop_notification_events_status_check', sql`${t.status} in ('PENDING','SENDING','SENT','FAILED','DISABLED')`),
+  uniqueIndex('desktop_notification_events_workspace_run_uq').on(t.workspaceId, t.runId).where(sql`${t.runId} is not null`),
+  index('desktop_notification_events_queue_idx').on(t.status, t.leaseUntil, t.createdAt)]);
 export const searchQueryCache = pgTable('search_query_cache', {
   provider:varchar('provider',{length:24}).notNull(),queryHash:varchar('query_hash',{length:64}).notNull(),payload:jsonb('payload').$type<Record<string,unknown>[]>().notNull().default([]),
   coverage:varchar('coverage',{length:16}).notNull().default('BOUNDED'),fetchedAt:timestamp('fetched_at',{withTimezone:true}),nextFetchAt:timestamp('next_fetch_at',{withTimezone:true}),

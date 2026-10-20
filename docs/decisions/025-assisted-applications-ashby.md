@@ -1,6 +1,6 @@
 # 025 — Ashby hosted-form assistance
 
-Status: proposed; implement only after maintainer approval and provider-specific terms review. Date: 2026-10-18.
+Status: proposed; implementation deferred under [ADR 027](027-assisted-applications-manual-only.md) pending maintainer approval and provider-specific terms review. Date: 2026-10-18.
 
 ## Context
 
