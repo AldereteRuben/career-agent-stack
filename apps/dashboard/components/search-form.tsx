@@ -22,6 +22,7 @@ type Props = {
   hasSearches: boolean;
   /** The provider set a new search starts with; used to tell whether options were changed. */
   defaultProviders: ProviderId[];
+  adzunaConfigured: boolean;
   t: (es: string, en: string) => string;
 };
 
@@ -30,6 +31,7 @@ const providers: Array<{ id: ProviderId; es: string; en: string }> = [
   { id: 'arbeitnow', es: 'Arbeitnow', en: 'Arbeitnow' },
   { id: 'himalayas', es: 'Himalayas', en: 'Himalayas' },
   { id: 'boards', es: 'Empresas que sigues', en: 'Companies you follow' },
+  { id: 'adzuna', es: 'Adzuna', en: 'Adzuna' },
 ];
 
 /** Disclosures that hold changed values open themselves; the person can still close them. */
@@ -101,7 +103,7 @@ export function SearchForm(props: Props) {
             {(!oldMatcher || draft.improveMatching) && <fieldset className={styles.providerFieldset} disabled={disabled}>
               <legend>{t('Portales donde buscamos', 'Job portals we search')}</legend>
               <p className={styles.automationHint}>{t('Portales de empleo con ofertas públicas. Himalayas es un portal de empleo en remoto: si lo incluyes, recibe solo el puesto, la empresa o el país que escribas; nunca tu CV ni tus datos de contacto.', 'Job portals with public listings. Himalayas is a remote-jobs portal: if you include it, it receives only the role, company or country you enter; never your resume or contact details.')}</p>
-              <div className={styles.providerOptions}>{providers.map((provider) => <label className={styles.check} key={provider.id}><input type="checkbox" id={`search-provider-${provider.id}`} checked={draft.providerIds.includes(provider.id)} onChange={(event) => toggleProvider(provider.id, event.target.checked)} /><span>{t(provider.es, provider.en)}</span></label>)}</div>
+              <div className={styles.providerOptions}>{providers.map((provider) => <label className={styles.check} key={provider.id}><input type="checkbox" id={`search-provider-${provider.id}`} checked={draft.providerIds.includes(provider.id)} disabled={disabled || (provider.id === 'adzuna' && !props.adzunaConfigured && !draft.providerIds.includes('adzuna'))} onChange={(event) => toggleProvider(provider.id, event.target.checked)} /><span>{t(provider.es, provider.en)}{provider.id === 'adzuna' && !props.adzunaConfigured ? <small>{t('Añade ADZUNA_APP_ID y ADZUNA_APP_KEY al .env local para activarlo.', 'Add ADZUNA_APP_ID and ADZUNA_APP_KEY to the local .env file to enable it.')}</small> : null}</span></label>)}</div>
               <label className={styles.check}><input type="checkbox" checked={draft.includeRelated} onChange={(event) => change('includeRelated', event.target.checked)} /><span>{t('Incluir puestos relacionados', 'Include related roles')}<small>{t('Los mostraremos identificados para que decidas si encajan.', 'We label them so you can decide whether they fit.')}</small></span></label>
             </fieldset>}
             <SelectField disabled={disabled} label={t('Frecuencia de actualización', 'Refresh frequency')} value={draft.frequencyHours} onChange={(event) => change('frequencyHours', Number(event.target.value) as SearchDraft['frequencyHours'])}><option value={6}>{t('Cada 6 horas', 'Every 6 hours')}</option><option value={12}>{t('Cada 12 horas', 'Every 12 hours')}</option><option value={24}>{t('Cada 24 horas', 'Every 24 hours')}</option></SelectField>

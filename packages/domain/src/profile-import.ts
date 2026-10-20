@@ -1,7 +1,7 @@
 /**
- * Identity and target-title proposals from an imported resume (ADR 018, task T7). Everything here is pure and runs in
- * the browser, where the resume text lives: the text is never sent to the API. Proposals are shown apart from the
- * facts and applied only when the person picks them; applying never removes anything the profile already has.
+ * Identity and target-title proposals from an imported resume (ADR 018, task T7). Detection and application are pure
+ * and run in the browser. Optional Codex import shares only a separately contact-redacted text after explicit review.
+ * Proposals are shown apart from facts and applied only when the person picks them; applying never removes profile data.
  */
 import type { StructuredEntry } from './entries.js';
 
@@ -95,10 +95,14 @@ export function detectIdentity(resume: string): DetectedIdentity {
   if (email) detected.email = email;
   const header = headerOf(resume);
   for (const line of header) {
-    const candidate = line.replace(/\s+/g, ' ');
-    if (candidate.length > 80 || !namePattern.test(candidate) || documentTitle.test(fold(candidate))) continue;
-    detected.fullName = candidate === candidate.toLocaleUpperCase() ? candidate.toLocaleLowerCase().replace(/(^|[\s'’-])\p{L}/gu, (letter) => letter.toLocaleUpperCase()) : candidate;
-    break;
+    const normalized = line.replace(/\s+/g, ' ');
+    const candidates = [normalized, (normalized.split(/(?:\s+[—–|•·-]\s+|,\s+)/u, 1)[0] ?? normalized).trim()];
+    for (const candidate of candidates) {
+      if (candidate.length > 80 || !namePattern.test(candidate) || documentTitle.test(fold(candidate))) continue;
+      detected.fullName = candidate === candidate.toLocaleUpperCase() ? candidate.toLocaleLowerCase().replace(/(^|[\s'’-])\p{L}/gu, (letter) => letter.toLocaleUpperCase()) : candidate;
+      break;
+    }
+    if (detected.fullName) break;
   }
   const headerText = ` ${fold(header.join(' ')).replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
   const found = new Set<string>();
@@ -162,4 +166,34 @@ export function applyProfileProposals(profile: Record<string, unknown>, choice: 
   const next: Record<string, unknown> = identityChanged ? { ...profile, identity } : { ...profile };
   if (added.length) next.preferences = { ...preferences, targetTitles: [...existing, ...added].slice(0, maxTargetTitles) };
   return next;
+}
+
+
+/** Remove direct contact channels and street-address lines before optional AI sharing. */
+export function redactResumeContactDetails(resume: string): string {
+  const detectedName = detectIdentity(resume).fullName;
+  const addressLine = /^\s*(?:(?:home\s+)?address|direcci[oó]n|domicilio|postal\s+address|street\s+address|calle|carrer|rue|straße|strasse|via)\s*[:：].*$/iu;
+  const streetLine = /^\s*\d{1,6}\s+.{0,100}?\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|calle|carrer|rue|straße|strasse|via|plaza|postcode|postal\s+code|zip\s+code)\b.*$/iu;
+  const phoneLike = /(?<![\p{L}\p{N}])\+?\d[\d\s()./-]{5,}\d(?![\p{L}\p{N}])/gu;
+  return resume.split(/\r?\n/u).map((line) => {
+    if (detectedName) {
+      if (fold(line.trim()) === fold(detectedName)) return '[redacted name]';
+      // Resumes commonly put a role beside the name, e.g. "Name — Product Designer".
+      // Only redact a delimited prefix when the same local name detector recognizes it.
+      const parts = line.split(/(?<=\s)[—–|•·-](?=\s)|,\s*/u);
+      const namePart = parts[0]?.trim();
+      if (namePart && fold(namePart) === fold(detectedName)) {
+        const nameStart = line.indexOf(namePart);
+        return `${line.slice(0, nameStart)}[redacted name]${line.slice(nameStart + namePart.length)}`;
+      }
+    }
+    if (addressLine.test(line) || streetLine.test(line)) return '[redacted address]';
+    return line
+      .replace(/\b[A-Z0-9._%+-]{1,64}@[A-Z0-9.-]{1,190}\.[A-Z]{2,}\b/giu, '[redacted email]')
+      .replace(/\b(?:https?:\/\/|www\.)\S+/giu, '[redacted link]')
+      .replace(phoneLike, (match) => {
+        const digits = match.replace(/\D/gu, '');
+        return digits.length >= 7 && digits.length <= 15 && !/^(?:19|20)\d{2}[-/.](?:19|20)\d{2}$/u.test(match.trim()) ? '[redacted phone]' : match;
+      });
+  }).join('\n');
 }

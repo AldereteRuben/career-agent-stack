@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { getTableName, sql, type SQL, type SQLWrapper, type Table } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { Executor } from '../src/workspace-data.js';
 import { AiSourceReadError, checkCurrentAiSnapshot, createCurrentAiSnapshot, loadAiSourceRecords } from '../src/ai/source-reader.js';
 import { buildAiSourceSnapshot, type AiSourceRequest } from '../src/ai/source-snapshot.js';
+import { hashAiInputContent } from '../src/ai/prompts.js';
+import { redactResumeContactDetails } from '@career/domain';
 
 const uuid = (n: number) => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const workspace = uuid(1); const profileId = uuid(2); const factId = uuid(3); const jobId = uuid(4); const questionId = uuid(5);
@@ -85,6 +88,25 @@ test('creating a snapshot uses a short consistent transaction and the shared pro
   assert.deepEqual(fake.locks, [`profile:${workspace}`]);
   assert.equal((await checkCurrentAiSnapshot(fake.executor, workspace, snapshot)).ok, true);
   assert.equal(fake.transactionOptions.length, 1, 'currentness does not start a nested transaction');
+});
+
+test('resume import redacts locally, reads no profile records, and rejects changed CV text', async () => {
+  const fake = fixture();
+  const resumeText = 'Ruben Alderete — Senior designer\nruben@example.test\n+34 600 111 222\n12 Calle Mayor\nExperience: 2019-2021.';
+  const snapshot = await createCurrentAiSnapshot(fake.database, workspace, { operation: 'RESUME_IMPORT', locale: 'en', resumeText });
+  assert.equal(snapshot.operation, 'RESUME_IMPORT');
+  assert.ok(snapshot.resume?.text.includes('[redacted email]'));
+  assert.ok(snapshot.resume?.text.includes('[redacted phone]'));
+  assert.ok(snapshot.resume?.text.includes('[redacted address]'));
+  assert.ok(snapshot.resume?.text.includes('2019-2021'));
+  assert.ok(!snapshot.resume?.text.includes('Ruben Alderete'));
+  const clientSafeText = redactResumeContactDetails(resumeText).trim();
+  assert.equal(snapshot.resume?.contentHash, createHash('sha256').update(JSON.stringify(clientSafeText), 'utf8').digest('hex'));
+  assert.equal(fake.queries.length, 0);
+  assert.equal((await checkCurrentAiSnapshot(fake.executor, workspace, snapshot)).ok, true);
+  const changed = { ...snapshot, resume: { ...snapshot.resume!, text: `${snapshot.resume!.text} altered` } };
+  changed.snapshotHash = hashAiInputContent(changed);
+  assert.equal((await checkCurrentAiSnapshot(fake.executor, workspace, changed)).ok, false);
 });
 
 test('currentness requests historical facts only for missing reference IDs, still workspace scoped', async () => {

@@ -235,7 +235,7 @@ export async function createIsolatedStack() {
     const marker = `e2e-${runId}`;
 
     return {
-      runId, marker, apiUrl, uiUrl, db, databaseName, logsDir,
+      runId, marker, apiUrl, uiUrl, db, databaseName, logsDir, filesDir,
       /** The isolated, single-use sign-in token. Only ever passed to the isolated UI. */
       readToken: async () => (await readFile(isolatedTokenPath, 'utf8')).trim(),
       /** Fails if the live token, live files or shared Next build changed, or if run markers reached the live database. */

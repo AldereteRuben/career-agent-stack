@@ -1,0 +1,66 @@
+.panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.eyebrow,
+.heading h2,
+.evidence,
+.note {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.panel section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel section h3,
+.panel section p {
+  margin: 0;
+}
+
+.items {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items > li {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  overflow-wrap: anywhere;
+}
+
+.evidence,
+.note {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.items a {
+  overflow-wrap: anywhere;
+}

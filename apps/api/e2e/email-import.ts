@@ -17,7 +17,7 @@ export const emailImportScenario: Scenario = {
     const paste = page.getByLabel(any('Texto del mensaje', 'Message text'));
     await paste.fill(`Hello ${marker}. We would like to invite you to an interview next week.`);
     await page.getByRole('button', { name: any('Revisar mensaje', 'Review message') }).click();
-    await page.getByText(any('Usar la etapa sugerida', 'Apply the suggested stage')).waitFor();
+    await page.getByText(any('Usar la etapa sugerida', 'Apply suggested stage')).waitFor();
     assert.equal(await applicationStage(), 'NO_RESPONSE', 'Preview must not change the stage');
     await page.getByRole('button', { name: any('Guardar sin cambiar etapa', 'Save without changing stage') }).click();
     await eventually(applicationStage, (stage) => stage === 'NO_RESPONSE', 'Saving without checking the stage option keeps the current stage');

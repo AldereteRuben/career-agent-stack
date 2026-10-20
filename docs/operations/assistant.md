@@ -18,9 +18,9 @@ ES: revisa los datos antes de continuar. La aplicación excluye los campos de no
 
 ## Resume import / Importar un CV
 
-Importing a resume (**Profile → Import from a resume**) never uses the assistant. The browser reads the PDF or pasted text, splits it into sections and proposes entries; only the entries you tick are saved, as suggestions waiting for your confirmation. The PDF and its text are not sent to the API, to Codex or to OpenAI, and are not kept in the database, browser storage or logs. A Codex-assisted import (ADR 018, task T6) is not available yet.
+Importing a resume (**Profile → Import from a resume**) defaults to local analysis. The browser reads the PDF or pasted text and proposes entries; only the entries you tick are saved, as suggestions waiting for your confirmation. You may optionally choose Codex. Before that task starts, the app previews the contact-redacted text and asks for one-time permission. It removes the detected header name, email, phone-like numbers, addresses and links locally; review the preview because automatic redaction cannot guarantee that all personal details are found. Codex results include exact source excerpts and remain unapproved until you select and confirm entries in your profile. The resume import permission cannot be remembered. Redacted source text is stored in local AI history for up to 30 days and is included in AI export and backups; clearing AI history does not remove it from backups already created.
 
-ES: importar un CV (**Perfil → Importar desde un CV**) no usa el asistente. El navegador lee el PDF o el texto pegado, lo separa por secciones y propone entradas; solo se guardan las que marques, pendientes de tu confirmación. Ni el PDF ni su texto se envían a la API, a Codex ni a OpenAI, y no se guardan en la base de datos, el almacenamiento del navegador ni los registros. La importación con Codex (ADR 018, tarea T6) aún no está disponible.
+ES: importar un CV (**Perfil → Importar desde un CV**) usa por defecto el análisis local. El navegador lee el PDF o el texto pegado y propone entradas; solo se guardan las que marques, pendientes de tu confirmación. Puedes elegir Codex de forma opcional. Antes de empezar, la app muestra el texto con datos de contacto ocultos y pide permiso para ese único envío. Elimina localmente el nombre detectado en la cabecera, correo, números similares a teléfonos, direcciones y enlaces; revisa la vista previa porque la redacción automática no garantiza encontrar todos los datos personales. Los resultados de Codex incluyen fragmentos exactos como evidencia y siguen sin aprobar hasta que selecciones y confirmes las entradas en tu perfil. El permiso de esta importación no se puede recordar. El texto redactado se conserva en el historial local de IA hasta 30 días y se incluye en la exportación de IA y en las copias de seguridad; borrar el historial no lo elimina de copias creadas anteriormente.
 
 ## Review results / Revisar resultados
 
@@ -39,6 +39,20 @@ After a successful manual job analysis, choose whether to analyze future jobs. S
 The installation caps automatic starts at **five per pass and ten per UTC day**, with a lower daily maximum if chosen. Manual work has priority. These are local task counts, not a guarantee of subscription availability or a monetary spending cap. No API-key fallback, account rotation or automatic paid upgrade is used. Pause stops further scheduling and cancels pending work. Ordinary searches keep working.
 
 ES: después de un análisis manual, selecciona búsquedas, experiencia y máximo diario; revisa y activa. Empieza desactivado. Pausar los análisis mantiene la búsqueda habitual. Los límites locales cuentan tareas: no equivalen a dinero ni garantizan cuota disponible en ChatGPT.
+
+## Application documents / Documentos para cada candidatura
+
+Each offer-specific resume or cover letter is based on a **saved offer** and approved profile facts. An application without a saved offer cannot create one and reports `APPLICATION_HAS_NO_OFFER`. An attached legacy resume is not converted automatically. Review and explicitly approve each saved revision before treating it as ready.
+
+Rewording a document with Codex asks for confirmation on every run. The run is synchronous, holds the connected account lease, and uses the workspace's single running-task slot; there is no separate manual daily task budget. Usage is recorded. A proposed rewrite exists only in the response until you accept it, after which the server rechecks the source hashes. If workspace deletion is requested during a rewording run, it returns `503 DELETION_BUSY` until that run ends.
+
+There is no per-application delete action. **Delete all workspace data** also removes its documents and empties the entire local files folder; this installation has one workspace.
+
+Cada CV o carta específicos de una oferta se basa en una **oferta guardada** y en datos aprobados del perfil. Una solicitud sin oferta guardada no puede generarlo y muestra `APPLICATION_HAS_NO_OFFER`. Los CV adjuntos antiguos no se convierten automáticamente. Revisa y aprueba expresamente cada versión guardada antes de considerarla lista.
+
+Para reformular un documento con Codex, se pide confirmación en cada ejecución. La operación es síncrona, mantiene ocupado el permiso de la cuenta conectada y usa el único espacio de ejecución del espacio; no hay un límite diario adicional para el trabajo manual. Se registra el uso. La propuesta solo existe en la respuesta hasta que la aceptes; al aceptarla, el servidor vuelve a comprobar los hashes de origen. Si se pide borrar el espacio durante una reformulación, responde `503 DELETION_BUSY` hasta que termine.
+
+La app no permite borrar una sola solicitud ni sus documentos. **Borrar todos los datos del espacio** también elimina sus documentos y vacía la carpeta local completa de archivos; esta instalación mantiene un solo espacio.
 
 ## Usage, disconnect and recovery / Uso, desconexión y recuperación
 

@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import Fastify from 'fastify';
-import { registerBackupRoutes, backupRunner, type BackupRunner } from '../src/backup-routes.js';
+import { registerBackupRoutes, backupRunner, redactSecrets, type BackupRunner } from '../src/backup-routes.js';
 
-async function fixture(run: BackupRunner) {
+async function fixture(run: BackupRunner, extra: { logs?: string[]; database?: string; key?: string; paths?: (data: string) => Promise<{ root: string; data: string; files: string }> } = {}) {
   const data = await mkdtemp(join(tmpdir(), 'career-backup-api-'));
-  const app = Fastify();
+  const paths = await extra.paths?.(data) ?? { root: data, data, files: join(data, 'files') };
+  const app = Fastify(extra.logs ? { logger: { level: 'warn', stream: { write: (line: string) => { extra.logs!.push(line); } } } } : {});
   app.addHook('onRequest', async (request, reply) => {
     if (!request.headers.authorization) return reply.code(401).send({ error: 'SESSION_REQUIRED' });
   });
-  registerBackupRoutes(app, (request) => request.headers.authorization!, { root: data, data, files: join(data, 'files'), database: 'unused', key: 'unused' }, run);
+  registerBackupRoutes(app, (request) => request.headers.authorization!, { ...paths, database: extra.database ?? 'unused', key: extra.key ?? 'unused' }, run);
   const request = (method: 'GET' | 'POST', url: string, workspace = 'one') => app.inject({ method, url, headers: { authorization: workspace } });
   const wait = async () => {
     for (let i = 0; i < 100; i++) {
@@ -114,4 +115,74 @@ test('closing the API cancels the writer and cleans the unfinished backup', asyn
     await f.request('POST', '/api/v1/backups'); await ready;
     await f.app.close(); assert.deepEqual(await readdir(join(f.data, 'backups')), []);
   } finally { await f.close(); }
+});
+
+test('a failed backup is explained in the server log without any credential, and not to the person', async () => {
+  const logs: string[] = [];
+  const database = 'postgres://career:hunter2-pw@127.0.0.1:5432/career'; const key = 'k'.repeat(40);
+  let outputDirectory = '';
+  const f = await fixture(async (directory) => {
+    outputDirectory = directory;
+    throw new Error(`pg_dump: connection to ${database} failed; key ${key}; input ${join(f.data, 'files', 'private-resume.pdf')}; output ${join(directory, 'keys')}; env ${join(directory, '.backup-env')}`);
+  }, { logs, database, key });
+  try {
+    await f.request('POST', '/api/v1/backups'); const job = await f.wait();
+    assert.equal(job.state, 'failed');
+    assert.deepEqual(Object.keys(job).sort(), ['createdAt', 'id', 'state'], 'the response carries no reason');
+    const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
+    assert.ok(entry, 'the failure is logged');
+    assert.match(entry.reason, /pg_dump: connection to \[redacted\] failed; key \[redacted\]; input \[redacted\]/);
+    assert.ok(!logs.join('').includes('hunter2-pw') && !logs.join('').includes(key), 'no credential reaches the log');
+    assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes(outputDirectory), 'no private filesystem path reaches the log');
+    assert.ok(!logs.join('').includes('private-resume.pdf') && !logs.join('').includes('.backup-env'), 'no private path suffix reaches the log');
+  } finally { await f.close(); }
+});
+test('a failed backup redacts canonical paths behind symlinked data folders', async () => {
+  const logs: string[] = [];
+  const f = await fixture(async (directory) => {
+    const canonicalDirectory = await realpath(directory);
+    throw new Error(`Could not verify that '${canonicalDirectory}/Taylor's (private) folder)/resume.pdf' is private`);
+  }, {
+    logs,
+    paths: async (data) => {
+      const target = join(data, "Taylor's (private) folder"); const link = join(data, 'data-link');
+      await mkdir(target); await symlink(target, link);
+      return { root: data, data: link, files: join(link, 'files') };
+    },
+  });
+  try {
+    await f.request('POST', '/api/v1/backups'); const job = await f.wait();
+    assert.equal(job.state, 'failed');
+    const entry = logs.map((line) => JSON.parse(line) as { msg: string; reason: string }).find((line) => line.msg === 'Backup failed');
+    assert.ok(entry, 'the failure is logged');
+    assert.match(entry.reason, /Could not verify that '\[redacted\]/);
+    assert.ok(!logs.join('').includes(f.data) && !logs.join('').includes("Taylor's (private) folder") && !logs.join('').includes('data-link') && !logs.join('').includes('resume.pdf'), 'neither the symlink path nor its target reaches the log');
+  } finally { await f.close(); }
+});
+test('redactSecrets hides every configured value and ignores trivially short ones', () => {
+  assert.equal(redactSecrets('a SECRETVALUE b SECRETVALUE', ['SECRETVALUE']), 'a [redacted] b [redacted]');
+  assert.equal(redactSecrets('abc', ['abc']), 'abc');
+});
+test('the real runner reports the message of the writer and exit code when it fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-backup-runner-'));
+  try {
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'scripts/backup.mjs'), "console.error('Could not verify that the folder is private'); process.exit(3);");
+    const directory = join(root, 'out'); await mkdir(directory);
+    const run = backupRunner({ root, data: root, files: join(root, 'files'), database: 'postgres://u:p@h/d', key: 'k'.repeat(40) });
+    await assert.rejects(run(directory, new AbortController().signal), (error: Error) => /exited with code 3/.test(error.message) && /Could not verify that the folder is private/.test(error.message));
+    assert.deepEqual(await readdir(directory), [], 'the temporary environment file is removed');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+test('a runner startup error reports its code without exposing the executable path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'career-backup-runner-'));
+  const directory = join(root, 'out'); const missingExecutable = join(root, 'private-node-binary');
+  const originalExecutable = process.execPath;
+  try {
+    await mkdir(directory);
+    process.execPath = missingExecutable;
+    const run = backupRunner({ root, data: root, files: join(root, 'files'), database: 'postgres://u:p@h/d', key: 'k'.repeat(40) });
+    await assert.rejects(run(directory, new AbortController().signal), (error: Error) => error.message === 'Backup could not run (ENOENT)' && !error.message.includes(missingExecutable));
+    assert.deepEqual(await readdir(directory), [], 'the temporary environment file is removed');
+  } finally { process.execPath = originalExecutable; await rm(root, { recursive: true, force: true }); }
 });

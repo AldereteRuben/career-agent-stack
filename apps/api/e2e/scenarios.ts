@@ -18,11 +18,16 @@ import { v040Scenarios } from './v040.js';
 import { patchScenarios } from './v031.js';
 import { v053Scenarios } from './v053.js';
 import { phase1FollowUpScenario } from './phase1-follow-up.js';
+import { jobCompensationScenario } from './job-compensation.js';
 import { applicationsCsvScenario } from './applications-csv.js';
+import { jobLinkLookupScenario } from './job-link-lookup.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
 import { emailImportScenario } from './email-import.js';
 import { trackingMetricsScenario } from './tracking-metrics.js';
+import { profileImprovementScenario } from './profile-improvement.js';
+import { applicationFollowUpDraftScenario } from './application-follow-up-draft.js';
+import { applicationDocumentsScenario } from './application-documents.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -44,6 +49,8 @@ export type ScenarioContext = {
   context: BrowserContext;
   api: ApiClient;
   db: PgClient;
+  /** Private files directory used by the disposable E2E API process. */
+  filesDir: string;
   uiUrl: string;
   marker: string;
   token: () => Promise<string>;
@@ -98,11 +105,52 @@ export const scenarios: Scenario[] = [
       assert.equal(await hasHorizontalOverflow(page), false, 'Overview overflows horizontally at desktop width');
     },
   },
+  {
+    name: 'desktop-notifications-settings-localized-mobile-and-opt-in',
+    async run({ page, api, artifacts }) {
+      const getSettings = () => api.get<{ enabled: boolean; language: 'en' | 'es'; status: string; available: boolean }>('/notifications');
+      assert.equal((await getSettings()).enabled, false, 'Desktop notifications are opt-in by default');
+
+      for (const locale of ['es', 'en'] as const) {
+        await setLocale(page, locale);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await goTo(page, '/settings');
+        const heading = locale === 'es' ? 'Avisos de ofertas nuevas' : 'New job notifications';
+        const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: heading, exact: true }) });
+        await panel.getByRole('heading', { name: heading, exact: true }).waitFor();
+        const toggle = panel.getByRole('checkbox', { name: locale === 'es' ? 'Activar notificaciones del sistema' : 'Enable system notifications', exact: true });
+        await toggle.waitFor();
+        await eventually(getSettings, (settings) => settings.language === locale, `${locale}: notification copy preference is saved`);
+        assert.equal(await toggle.isChecked(), false, `${locale}: notifications must remain disabled until opted in`);
+        assert.equal(await hasHorizontalOverflow(page), false, `${locale}: Settings overflows at phone width`);
+        await page.screenshot({ animations: 'disabled', path: join(artifacts, `desktop-notifications-settings-${locale}-mobile.png`), fullPage: true });
+
+        const native = await getSettings();
+        if (native.available) {
+          await eventually(() => toggle.isEnabled(), Boolean, `${locale}: settings save has finished`);
+          await toggle.click();
+          await eventually(getSettings, (settings) => settings.enabled, `${locale}: opt-in is saved`);
+          await eventually(() => toggle.isChecked(), Boolean, `${locale}: opted-in state is shown`);
+          await toggle.click();
+          await eventually(getSettings, (settings) => !settings.enabled, `${locale}: opt-out is saved`);
+          await eventually(async () => !(await toggle.isChecked()), Boolean, `${locale}: opted-out state is shown`);
+        } else {
+          assert.equal(await toggle.isDisabled(), true, `${locale}: unavailable native provider must not offer an unusable toggle`);
+          await panel.getByText(locale === 'es' ? 'No hay un proveedor de notificaciones del sistema disponible en este equipo.' : 'A native notification provider is unavailable on this device.', { exact: true }).waitFor();
+        }
+      }
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await setLocale(page, 'es');
+    },
+  },
   phase1FollowUpScenario,
   applicationsCsvScenario,
+  jobLinkLookupScenario,
   jobReportsScenario,
+  jobCompensationScenario,
   timelineScenario,
   emailImportScenario,
+  profileImprovementScenario,
   trackingMetricsScenario,
   {
     name: 'es-en-labels-on-every-page',
@@ -542,6 +590,7 @@ scenarios.splice(1, 0, v051First);
 scenarios.splice(1, 0, v082Scenario);
 // v053 leaves current approved PDFs behind; v052's printed-name change then restores the guide state v051Last expects.
 scenarios.push(...v053Scenarios);
+scenarios.push(applicationFollowUpDraftScenario);
 scenarios.push(v052Scenario);
 // The final sign-out scenario must remain last.
 scenarios.push(v060Scenario);
@@ -549,3 +598,5 @@ scenarios.push(v061Scenario);
 scenarios.push(v070Scenario);
 scenarios.push(...v071Scenarios);
 scenarios.push(v051Last);
+// Workspace deletion must run last because it removes the isolated fixture shared by this shard.
+scenarios.push(applicationDocumentsScenario);

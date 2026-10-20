@@ -98,6 +98,24 @@ export const documentApprovals: LabelMap = {
   REJECTED: { es: 'Descartado', en: 'Discarded' },
   SUPERSEDED: { es: 'Sustituido', en: 'Replaced' },
 };
+export const applicationDocumentMessages: LabelMap = {
+  APPLICATION_HAS_NO_OFFER: {
+    es: 'Esta solicitud no tiene una oferta guardada. Guarda primero una oferta para preparar un CV y una carta específicos; mientras tanto, no se creará ningún documento.',
+    en: 'This application has no saved job. Save a job first to prepare a tailored resume and cover letter; no document will be created yet.',
+  },
+};
+export const applicationDocumentCurrentnessReasons: LabelMap = {
+  FACTS_CHANGED: { es: 'Cambió la información de tu perfil.', en: 'Your profile information changed.' },
+  OFFER_CHANGED: { es: 'Cambió la oferta guardada.', en: 'The saved job changed.' },
+  FACT_NOT_APPROVED: { es: 'Una fuente citada ya no está aprobada.', en: 'A cited source is no longer approved.' },
+  LANGUAGE_MISMATCH: { es: 'Una frase no coincide con el idioma elegido.', en: 'A sentence does not match the selected language.' },
+  INVALID_CLAIM: { es: 'Una afirmación ya no coincide con sus fuentes.', en: 'A claim no longer matches its sources.' },
+};
+export const applicationPacketReasons: LabelMap = {
+  LEGACY_RESUME_NOT_CONVERTED: { es: 'Este CV adjunto anterior todavía no se puede incluir en el ZIP. Crea un CV adaptado a esta oferta para descargarlo aquí.', en: 'This older attached resume cannot be included in the ZIP yet. Create a resume tailored to this job to download it here.' },
+  APPLICATION_DOCUMENT_NEEDS_REVIEW: { es: 'Esta versión necesita una nueva revisión porque cambiaron la oferta, el perfil o el archivo.', en: 'This version needs review because the job, profile, or file changed.' },
+  APPLICATION_DOCUMENT_SUPERSEDED: { es: 'Hay una versión aprobada más reciente; esta ya no se puede descargar.', en: 'A newer version has been approved; this one can no longer be downloaded.' },
+};
 export const eligibilityStates: LabelMap = {
   PASS: { es: 'Compatible', en: 'Compatible' },
   FAIL: { es: 'No encaja', en: 'Not a fit' },
@@ -214,6 +232,9 @@ export const labelFor = {
   factApproval: (value: string, locale: Locale) => label(factApprovals, value, locale),
   answerApproval: (value: string, locale: Locale) => label(answerApprovals, value, locale),
   documentApproval: (value: string, locale: Locale) => label(documentApprovals, value, locale),
+  applicationDocumentMessage: (value: string, locale: Locale) => label(applicationDocumentMessages, value, locale),
+  applicationDocumentCurrentnessReason: (value: string, locale: Locale) => label(applicationDocumentCurrentnessReasons, value, locale),
+  applicationPacketReason: (value: string, locale: Locale) => label(applicationPacketReasons, value, locale),
   eligibility: (value: string, locale: Locale) => label(eligibilityStates, value, locale),
   availability: (value: string, locale: Locale) => label(jobAvailability, value, locale),
   availabilityReason: (value: string, locale: Locale) => label(jobAvailabilityReasons, value, locale),
