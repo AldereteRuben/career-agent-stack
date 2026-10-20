@@ -141,7 +141,8 @@ export function toolVersion(name) {
 /** Runs a PostgreSQL client tool with credentials in the environment only. stdout/stderr are captured, never echoed raw. */
 export function runPgTool(name, args, rawUrl, { envOverrides = {} } = {}) {
   const result = spawnSync(pgTool(name), args, { env: libpqEnv(rawUrl, envOverrides), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return { ok: !result.error && result.status === 0, stdout: result.stdout ?? '', stderr: safeMessage(result.stderr || result.error?.message || '') };
+  const stderr = result.stderr || (result.error ? `Could not start ${name} (${result.error.code ?? 'unknown error'})` : '');
+  return { ok: !result.error && result.status === 0, stdout: result.stdout ?? '', stderr: safeMessage(stderr) };
 }
 
 /** Throws unless the path is a regular file (not a symlink) readable by this user. */
@@ -247,7 +248,8 @@ export function validateManifest(manifest) {
   if (!manifest || typeof manifest !== 'object') throw bad('no es un objeto', 'not an object');
   if (manifest.format !== BACKUP_FORMAT) throw bad('formato desconocido', 'unknown format');
   if (manifest.formatVersion !== BACKUP_FORMAT_VERSION) throw bad(`versión ${manifest.formatVersion} no admitida`, `version ${manifest.formatVersion} is not supported`);
-  if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.documents)) throw bad('faltan listas', 'missing lists');
+  if (!Array.isArray(manifest.entries) || !Array.isArray(manifest.documents)
+    || (manifest.applicationDocumentRevisions !== undefined && !Array.isArray(manifest.applicationDocumentRevisions))) throw bad('faltan listas', 'missing lists');
   const names = new Set();
   for (const entry of manifest.entries) {
     if (!entry || typeof entry.path !== 'string' || !allowedArchiveName(entry.path) || entry.path === MANIFEST_NAME || entry.path === MANIFEST_MAC_NAME) throw bad('entrada no permitida', 'entry not allowed');
@@ -258,14 +260,33 @@ export function validateManifest(manifest) {
   }
   if (!names.has(DUMP_NAME)) throw bad('falta el volcado de la base de datos', 'database dump missing');
   const ids = new Set();
+  const referencedFiles = new Set();
   for (const document of manifest.documents) {
     if (!document || !UUID.test(document.id ?? '') || !UUID.test(document.workspaceId ?? '') || !SHA256.test(document.sha256 ?? '')) throw bad('documento', 'document');
     assertSafeRelativePath(document.storagePath);
     if (document.archivePath !== `${FILES_PREFIX}${document.storagePath}` || !names.has(document.archivePath.toLowerCase())) throw bad(`documento ${document.id}`, `document ${document.id}`);
+    if (referencedFiles.has(document.archivePath.toLowerCase())) throw bad(`archivo repetido del documento ${document.id}`, `duplicate file for document ${document.id}`);
+    referencedFiles.add(document.archivePath.toLowerCase());
     if (ids.has(document.id)) throw bad('documento repetido', 'duplicate document');
     ids.add(document.id);
   }
-  if (names.size !== manifest.documents.length + 1) throw bad('entradas sin documento', 'entries without a document');
+  const revisionIds = new Set();
+  for (const revision of manifest.applicationDocumentRevisions ?? []) {
+    if (!revision || !UUID.test(revision.id ?? '') || !UUID.test(revision.workspaceId ?? '') || !UUID.test(revision.documentId ?? '')
+      || !Number.isSafeInteger(revision.revision) || revision.revision < 1
+      || !SHA256.test(revision.textSha256 ?? '') || !SHA256.test(revision.pdfSha256 ?? '')) throw bad('revisión de documento', 'application document revision');
+    if (revisionIds.has(revision.id)) throw bad('revisión de documento repetida', 'duplicate application document revision');
+    revisionIds.add(revision.id);
+    for (const [storagePath, archivePath] of [[revision.textStoragePath, revision.textArchivePath], [revision.pdfStoragePath, revision.pdfArchivePath]]) {
+      assertSafeRelativePath(storagePath);
+      const expected = `${FILES_PREFIX}${storagePath}`;
+      if (archivePath !== expected || !names.has(archivePath.toLowerCase()) || referencedFiles.has(archivePath.toLowerCase())) {
+        throw bad(`archivos de la revisión ${revision.documentId}`, `files for revision ${revision.documentId}`);
+      }
+      referencedFiles.add(archivePath.toLowerCase());
+    }
+  }
+  if (names.size !== referencedFiles.size + 1) throw bad('entradas sin documento', 'entries without a document');
   if (!manifest.encryption || typeof manifest.encryption.keyFingerprint !== 'string') throw bad('falta la huella de la clave', 'key fingerprint missing');
   if (!manifest.tables || typeof manifest.tables !== 'object') throw bad('faltan los recuentos', 'row counts missing');
   for (const [table, count] of Object.entries(manifest.tables)) {
@@ -309,9 +330,15 @@ export async function appliedMigrations(client) {
 }
 
 export async function documentRows(client) {
-  if (!(await hasTable(client, 'public.document_versions'))) return [];
-  const { rows } = await client.query('select id::text, workspace_id::text as "workspaceId", storage_path as "storagePath", sha256, media_type as "mediaType" from document_versions order by id');
-  return rows;
+  const documents = (await hasTable(client, 'public.document_versions'))
+    ? (await client.query('select id::text, workspace_id::text as "workspaceId", storage_path as "storagePath", sha256, media_type as "mediaType" from document_versions order by id')).rows
+    : [];
+  const applicationDocumentRevisions = (await hasTable(client, 'public.application_document_revisions'))
+    ? (await client.query(`select id::text, workspace_id::text as "workspaceId", document_id::text as "documentId", revision,
+        text_storage_path as "textStoragePath", text_sha256 as "textSha256", pdf_storage_path as "pdfStoragePath", pdf_sha256 as "pdfSha256"
+      from application_document_revisions order by id`)).rows
+    : [];
+  return { documents, applicationDocumentRevisions };
 }
 
 /** Opens a file for exclusive creation with private permissions and writes text to it. */

@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { countCompleteFeedRead, type Queryable } from './job-availability.js';
 import * as schema from '@career/db/schema';
-import { db, jobs, jobSearchProviderCache, jobSearchSources, jobSnapshots, pool, savedJobSearches, savedJobSearchMatches } from '@career/db';
+import { db, desktopNotificationEvents, desktopNotificationSettings, jobs, jobSearchProviderCache, jobSearchSources, jobSnapshots, pool, savedJobSearches, savedJobSearchMatches } from '@career/db';
 import { JOB_SEARCH_INTERVAL_MS, JOB_SEARCH_PROVIDER_COOLDOWN_MS, JOB_SEARCH_FAILURE_MAX_MS } from './job-search-constants.js';
 import { PROVIDERS, type JobSearchProvider, type PublicJob, type SearchWorkMode, ProviderReadError, readPublicFeed, type ProviderFeed } from './job-search-sources.js';
 
@@ -190,6 +190,10 @@ export async function refreshSavedJobSearch(workspaceId: string, searchId: strin
       const coverageReason: RefreshResult['coverageReason'] = coverage === 'BOUNDED' ? 'PAGE_LIMIT' : failed ? coverage === 'STALE' ? 'STALE_CACHE' : 'SOURCE_FAILURE' : 'NONE';
       const lastError = coverageReason === 'PAGE_LIMIT' ? 'SOURCE_PAGE_LIMIT' : coverageReason === 'SOURCE_FAILURE' ? 'SOURCE_PARTIAL_FAILURE' : coverageReason === 'STALE_CACHE' ? 'SOURCE_CACHE_STALE' : null;
       await tx.update(savedJobSearches).set({ lastRunAt: now, nextRunAt: new Date(now.getTime() + latest!.frequencyHours * 60 * 60 * 1000), lastRunStatus: coverage, lastResultCount: matched, lastNewCount: added, lastError, failureCount: failed ? latest!.failureCount + 1 : 0, updatedAt: now }).where(and(eq(savedJobSearches.id, searchId), eq(savedJobSearches.workspaceId, workspaceId)));
+      if (options.automatic && ['COMPLETE','CACHED'].includes(coverage) && added > 0) {
+        const preference = (await tx.select().from(desktopNotificationSettings).where(eq(desktopNotificationSettings.workspaceId, workspaceId)).limit(1))[0];
+        if (preference?.enabled) await tx.insert(desktopNotificationEvents).values({ workspaceId, searchId, newCount: added, language: preference.language });
+      }
       return { added, matched, coverage, coverageReason };
     });
     const providerCoverage = { remotive: feeds.remotive?.coverage ?? 'UNKNOWN', arbeitnow: feeds.arbeitnow?.coverage ?? 'UNKNOWN' } as RefreshResult['providerCoverage'];

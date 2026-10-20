@@ -47,7 +47,22 @@ const goto = path => page.goto(new URL(path, ui).toString(), { waitUntil: 'domco
 const visible = async locator => { await locator.waitFor({ state: 'visible' }); return locator; };
 const click = async name => (await visible(page.getByRole('button', { name, exact: true }))).click();
 const locale = async value => { if (!(await page.locator('html').getAttribute('lang')).startsWith(value)) await click(value === 'es' ? 'Español' : 'English'); };
-const overflow = async () => assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), true, 'No horizontal page overflow');
+const overflow = async () => {
+  const dimensions = await page.evaluate(() => {
+    const root = document.documentElement;
+    const elements = [...document.querySelectorAll('body *')];
+    const candidates = elements.filter(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.right > root.clientWidth + 1 || rect.left < -1;
+    });
+    const offenders = candidates.filter(element => ![...element.children].some(child => candidates.includes(child)))
+      .map(element => ({ tag: element.tagName.toLowerCase(), className: typeof element.className === 'string' ? element.className : '', text: element.textContent?.trim().slice(0, 80), left: Math.round(element.getBoundingClientRect().left), right: Math.round(element.getBoundingClientRect().right), width: Math.round(element.getBoundingClientRect().width) }))
+      .sort((a, b) => b.right - a.right)
+      .slice(0, 5);
+    return { innerWidth: globalThis.innerWidth, screenWidth: globalThis.screen.width, scrollWidth: root.scrollWidth, clientWidth: root.clientWidth, bodyWidth: document.body.getBoundingClientRect().width, pageWrapWidth: document.querySelector('.page-wrap')?.getBoundingClientRect().width, settingsGridWidth: document.querySelector('.settings-grid')?.getBoundingClientRect().width, settingsMainWidth: document.querySelector('.settings-main')?.getBoundingClientRect().width, offenders };
+  });
+  assert.ok(dimensions.scrollWidth <= dimensions.clientWidth + 1, `No horizontal page overflow: ${JSON.stringify(dimensions)}`);
+};
 const screenshot = async name => {
   await page.evaluate(() => document.scrollingElement?.scrollTo(0, 0));
   await page.screenshot({ path: join(artifacts, name), fullPage: true, animations: 'disabled' });
@@ -62,6 +77,8 @@ try {
     const request = route.request(); const url = new URL(request.url()); const path = url.pathname.replace('/api/v1', ''); const method = request.method();
     if (path === '/session') return route.continue();
     if (path === '/capabilities') return response(route, { available: ['ai-processing'], unavailable: [] });
+    if (path === '/skill-gap-report') return response(route, { savedJobCount: 0, groups: [] });
+    if (path === '/notifications') return response(route, { enabled: false, language: 'en', status: 'NOT_TESTED', available: true });
     if (path === '/job-filters') return response(route, { excludedCompanies: [], requiredTerms: [], excludedTerms: [] });
     if (path === '/job-feedback/summary') return response(route, { periodStart: now, periodEnd: now, windowDays: 90, total: 0, interested: 0, notForMe: 0, minimumSample: 5, patterns: [] });
     if (/^\/jobs\/[^/]+\/feedback$/.test(path)) return response(route, null);
@@ -73,8 +90,11 @@ try {
     const application = { id: ids.application, documentId: ids.document, documentApprovalStatus: state.documentApproval, jobId: ids.job, company: job.company, role: job.title, location: job.location, canonicalUrl: job.canonicalUrl, state: 'REVIEW_REQUIRED', recruitmentStage: 'NOT_CONTACTED', shortlistDecision: 'UNREVIEWED', notes: '', updatedAt: now, version: 1 };
     if (path === '/applications') return response(route, { items: [application], total: 1, offset: 0, limit: 25 });
     if (path === `/applications/${ids.application}`) return response(route, application);
+    if (path === `/applications/${ids.application}/resume/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
+    if (path === `/applications/${ids.application}/resume`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
     if (path === `/applications/${ids.application}/cover-letter/draft`) return response(route, { applicationId: ids.application, language: url.searchParams.get('language') ?? 'en', sentences: [], unconfirmedRequirements: [], profileNotice: null });
     if (path === `/applications/${ids.application}/cover-letter`) return response(route, { error: 'APPLICATION_DOCUMENT_NOT_FOUND' }, 404);
+    if (path === `/applications/${ids.application}/follow-up-draft`) return response(route, { draft: null });
     if (path === `/applications/${ids.application}/events` || path === '/preparations') return response(route, []);
     if (/^\/applications\/[0-9a-f-]+\/contacts$/.test(path)) return response(route, { links: [], contacts: [] });
     if (path === `/applications/${ids.application}/assist`) return response(route, { supported: false, url: job.canonicalUrl, identity: { fullName: 'Alex Example', email: 'alex@example.test' }, application, documents: [], attempts: [] });
@@ -91,6 +111,8 @@ try {
     if (path.endsWith('/approve') && path.startsWith('/answers/')) return response(route, { ok: true });
     if (path === '/settings' || path === '/privacy' || path === '/discovery') return response(route, {});
     if (path === '/backups/current') return response(route, { state: 'idle' });
+    if (path === '/backups/restore/current') return response(route, { state: 'idle', canRestore: false });
+    if (path === '/ai/ollama') return response(route, { enabled: true, available: false, models: [], connection: null, privacy: 'NOT_VERIFIABLE' });
     if (path === '/ai/connections') return state.connectionFailure ? response(route, {error: 'AI_UNAVAILABLE'}, 503) : response(route, connectionState());
     if (path === '/ai/connections/codex/inspect') { state.observed = true; return response(route, connectionState()); }
     if (path === '/ai/connections/codex/authorize') { assert.equal(request.postDataJSON().observationId, ids.observation); state.connected = true; return response(route, connectionState()); }
@@ -114,7 +136,7 @@ try {
       return response(route, run, 202);
     }
     if (path === '/ai/runs' && method === 'GET' && state.historyFailures > 0) { state.historyFailures--; return response(route, { error: 'AI_UNAVAILABLE' }, 503); }
-    if (path === '/ai/runs' && method === 'GET') return response(route, { runs: state.runs.filter(run => run.request.operation === url.searchParams.get('operation') && run.request.locale === url.searchParams.get('locale') && (!url.searchParams.has('jobId') || run.request.jobId === url.searchParams.get('jobId')) && (!url.searchParams.has('questionId') || run.request.questionId === url.searchParams.get('questionId'))) });
+    if (path === '/ai/runs' && method === 'GET') return response(route, { runs: state.runs.filter(run => run.request.operation === url.searchParams.get('operation') && run.request.locale === url.searchParams.get('locale') && (!url.searchParams.has('provider') || (run.request.provider ?? 'codex') === url.searchParams.get('provider')) && (!url.searchParams.has('jobId') || run.request.jobId === url.searchParams.get('jobId')) && (!url.searchParams.has('questionId') || run.request.questionId === url.searchParams.get('questionId'))) });
     const runId = path.match(/^\/ai\/runs\/([^/]+)(\/cancel)?$/);
     if (runId) { const run = state.runs.find(item => item.id === runId[1]); assert.ok(run); if (runId[2]) run.state = 'CANCELLED'; return response(route, run); }
     const artifact = path.match(/^\/ai\/artifacts\/([^/]+)(\/(answer|resume))?$/);
@@ -184,7 +206,7 @@ try {
   state.mode = 'waiting'; await click('Summarize and explain with Codex'); await click('Allow this task');
   const startsBeforeReopen = state.starts.length;
   await page.close(); page = await context.newPage(); page.setDefaultTimeout(15_000);
-  await goto(`/jobs/${ids.job}`); await click('View assistance progress'); await visible(page.getByRole('button', { name: 'Cancel task', exact: true }));
+  await goto(`/jobs/${ids.job}`); await click('View Codex assistance progress'); await visible(page.getByRole('button', { name: 'Cancel task', exact: true }));
   assert.equal(state.starts.length, startsBeforeReopen, 'Reopening only polls the same run');
   await click('Cancel task'); await visible(page.getByText('Task cancelled. No new suggestion has been added.', { exact: true }));
   state.mode = 'failure'; await click('Summarize and explain with Codex'); await click('Allow this task');

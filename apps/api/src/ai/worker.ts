@@ -8,11 +8,15 @@ import { AI_PROMPT_VERSION, hashAiInputContent } from './prompts.js';
 import { checkCurrentAiSnapshot } from './source-reader.js';
 import type { AiCurrentSources } from './source-snapshot.js';
 import type { AiPgClient, AiPgPool, AiQueue, AiQueueRun } from './queue.js';
+import { executeOllama, isOllamaCloudModel, OllamaExecutionError, type OllamaResult } from './ollama.js';
 
 export const AI_WORKER_CONFIG_VERSION = 'codex-0.163.0-v1' as const;
+export const OLLAMA_WORKER_CONFIG_VERSION = 'ollama-0.1.0-v1' as const;
 export type AiWorkerEvent = 'STORAGE_UNAVAILABLE' | 'SOURCE_UNAVAILABLE' | 'EXECUTION_FAILED';
 export type AiWorkerOptions = {
   pool: AiPgPool; queue: AiQueue; identitySalt: string;
+  /** Administrator-configured loopback Ollama endpoint; never accepted from a request or job source. */
+  ollamaBaseUrl?: string;
   /** Explicit release/runtime gate. Merely installing/signing into Codex must not start work. */
   enabled?: boolean | (() => boolean);
   workerId?: string; pollMs?: number; leaseMs?: number; heartbeatMs?: number;
@@ -34,7 +38,7 @@ type ActiveWork = { controller: AbortController; run: AiQueueRun | null; reason:
 async function currentSources(client: AiPgClient, run: AiQueueRun): Promise<AiCurrentSources> {
   return checkCurrentAiSnapshot(drizzle(client as unknown as NodePgClient), run.workspaceId, run.snapshot);
 }
-function usageOf(result: Pick<CodexExecutionResult, 'model' | 'usage'>) {
+function usageOf(result: Pick<CodexExecutionResult, 'model' | 'usage'> | Pick<OllamaResult, 'model' | 'usage'>) {
   const { inputTokens, outputTokens } = result.usage;
   return { availability: inputTokens === null && outputTokens === null ? 'UNAVAILABLE' as const : 'KNOWN' as const,
     model: result.model, inputTokens, outputTokens, costUsd: null };
@@ -43,9 +47,14 @@ function stopError(work: ActiveWork): AiError {
   return { code: work.reason === 'CONSENT_REVOKED' ? 'CONSENT_REVOKED' : work.reason === 'STORAGE_UNAVAILABLE' || work.reason === 'FENCED' ? 'INTERNAL' : 'CANCELLED', dispatched: work.dispatched };
 }
 function validVersions(run: AiQueueRun): boolean {
-  return run.provider === 'codex' && (run.model === null || CODEX_MODELS.includes(run.model as typeof CODEX_DEFAULT_MODEL))
+  const providerModelValid = run.provider === 'codex'
+    ? (run.model === null || CODEX_MODELS.includes(run.model as typeof CODEX_DEFAULT_MODEL))
+    : run.provider === 'ollama' && run.origin === 'MANUAL' && ['JOB_ANALYSIS', 'SEARCH_DRAFT'].includes(run.operation)
+      && typeof run.model === 'string' && run.model.length <= 160 && !isOllamaCloudModel(run.model);
+  const expectedConfigVersion = run.provider === 'ollama' ? OLLAMA_WORKER_CONFIG_VERSION : AI_WORKER_CONFIG_VERSION;
+  return providerModelValid
     && run.inputVersions.schemaVersion === AI_SCHEMA_VERSION && run.inputVersions.promptVersion === AI_PROMPT_VERSION
-    && run.inputVersions.configVersion === AI_WORKER_CONFIG_VERSION
+    && run.inputVersions.configVersion === expectedConfigVersion
     && run.inputVersions.connectionRevision === run.connectionRevision && run.inputVersions.consentRevision === run.consentRevision;
 }
 
@@ -69,7 +78,7 @@ export function createAiWorker(options: AiWorkerOptions, dependencies: Partial<A
     const timer = setTimeout(callback, milliseconds); timer.unref(); return timer;
   });
   const clearSchedule = dependencies.clearSchedule ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>));
-  const enabled = () => (dependencies.platform ?? process.platform) === 'darwin'
+  const enabled = () => ((dependencies.platform ?? process.platform) === 'darwin' || Boolean(options.ollamaBaseUrl))
     && (typeof options.enabled === 'function' ? options.enabled() : options.enabled === true);
   const notify = (event: AiWorkerEvent) => { try { options.onEvent?.(event); } catch { /* Diagnostics never own a task. */ } };
   let started = false;
@@ -168,8 +177,12 @@ export function createAiWorker(options: AiWorkerOptions, dependencies: Partial<A
       if (work.controller.signal.aborted) { await finish('INTERRUPTED', stopError(work)); return true; }
       // Every transaction above has committed/released before any account-backed model request is possible.
       work.dispatched = 'UNKNOWN';
-      const observed = await execute(run.snapshot, run.accountFingerprint, options.identitySalt, work.controller.signal,
-        (run.model ?? CODEX_DEFAULT_MODEL) as typeof CODEX_DEFAULT_MODEL);
+      const observed = run.provider === 'ollama'
+        ? options.ollamaBaseUrl
+          ? await executeOllama(run.snapshot, run.accountFingerprint, options.ollamaBaseUrl, run.model!, work.controller.signal)
+          : (() => { throw new OllamaExecutionError('NOT_CONNECTED', 'NO'); })()
+        : await execute(run.snapshot, run.accountFingerprint, options.identitySalt, work.controller.signal,
+          (run.model ?? CODEX_DEFAULT_MODEL) as typeof CODEX_DEFAULT_MODEL);
       observedUsage = usageOf(observed);
       work.dispatched = 'YES';
       await stopHeartbeats();
@@ -201,9 +214,10 @@ export function createAiWorker(options: AiWorkerOptions, dependencies: Partial<A
       await stopHeartbeats();
       if (!work.run) { notify('STORAGE_UNAVAILABLE'); return false; }
       if (error instanceof CodexExecutionError && error.usage) observedUsage = usageOf({ usage: error.usage, model: (work.run.model ?? CODEX_DEFAULT_MODEL) as typeof CODEX_DEFAULT_MODEL });
+      if (error instanceof OllamaExecutionError && error.usage) observedUsage = usageOf({ usage: error.usage, model: work.run.model ?? 'ollama' });
       if (work.controller.signal.aborted) await finish('INTERRUPTED', stopError(work));
-      else if (error instanceof CodexExecutionError) {
-        if (error.invalidateConnection || error.code === 'ACCOUNT_CHANGED') await revokeAppConnection();
+      else if (error instanceof CodexExecutionError || error instanceof OllamaExecutionError) {
+        if (error instanceof CodexExecutionError && (error.invalidateConnection || error.code === 'ACCOUNT_CHANGED')) await revokeAppConnection();
         await finish('FAILED', { code: error.code, dispatched: error.dispatched });
       }
       else { notify('EXECUTION_FAILED'); await finish('INTERRUPTED', { code: 'INTERNAL', dispatched: work.dispatched }); }

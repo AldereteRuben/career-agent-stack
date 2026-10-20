@@ -701,6 +701,23 @@
 
 .researchLinks a { overflow-wrap: anywhere; }
 
+/* Adzuna requires its attribution link to be at least 116 × 23 CSS pixels. */
+.adzunaAttribution {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 116px;
+  min-height: 23px;
+  box-sizing: border-box;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.adzunaAttribution:hover { text-decoration: underline; }
+
 @media (max-width: 720px) {
   .reportChecks {
     grid-template-columns: minmax(0, 1fr);

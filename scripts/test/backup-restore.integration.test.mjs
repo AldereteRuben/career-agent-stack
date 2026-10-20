@@ -11,14 +11,14 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { after, before, describe, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildHeader, extractArchive, writeArchive } from '../lib/backup-archive.mjs';
 import { keyFileContent, repoMigrations, manifestMac, withDatabase } from '../lib/backup-core.mjs';
 import { ageIdentity, decryptFile, encryptFile, isAgeFile } from '../lib/backup-crypto.mjs';
@@ -77,6 +77,14 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   let reviewAt;
   let identityKey;
   let jobId;
+  let applicationDocumentFactId;
+  let applicationDocumentRevisionId;
+  let applicationDocumentId;
+  let followUpDraftId;
+  let documentRewordRunId;
+  let profileVersionId;
+  let applicationDocumentCurrentness;
+  let applicationDocumentHashes;
   let envFile;
   let filesDir;
   let backupDir;
@@ -84,6 +92,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   let keyFile;
   let plainTar; // the decrypted contents of `archive`, for tests that tamper with the inner tar
   const documents = [];
+  const applicationDocumentRevisions = [];
 
   const dbExists = async (name) => (await admin.query('select 1 from pg_database where datname = $1', [name])).rowCount === 1;
   const query = async (database, sql, params) => {
@@ -92,6 +101,46 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     try { return await client.query(sql, params); } finally { await client.end(); }
   };
   const restoreEnv = () => ({ CAREER_RESTORE_ADMIN_URL: adminUrl, CAREER_RESTORE_APP_URL: appUrl });
+  const makeBackup = async (outDir) => {
+    const result = await run('backup.mjs', ['--env-file', envFile, '--out-dir', outDir, '--key-dir', backupDir]);
+    assert.equal(result.code, 0, result.all);
+    const names = await readdir(outDir);
+    return join(outDir, names.find((name) => name.endsWith('.tar.age')));
+  };
+  const restoreArchive = async (archivePath, suffix) => {
+    const database = `${tag}_${suffix}`;
+    databases.add(database);
+    const target = join(work, `restored-${suffix}`);
+    const result = await run('restore.mjs', ['--archive', archivePath, '--key-file', keyFile, '--target', target, '--database', database, '--web-port', '3190', '--api-port', '3191', '--env-file', envFile], restoreEnv());
+    assert.equal(result.code, 0, result.all);
+    return { database, target, result };
+  };
+  const revisionCurrentness = async (database, revisionId) => {
+    const { rows } = await query(database, `select r.id::text, r.workspace_id::text as "workspaceId", r.document_id::text as "documentId", r.revision,
+        r.parent_revision as "parentRevision", d.language, r.claims, r.content_hash as "contentHash", r.offer_snapshot_id::text as "offerSnapshotId",
+        r.offer_hash as "offerHash", r.facts_hash as "factsHash", r.paper_size as "paperSize", r.text_storage_path as "textStoragePath",
+        r.text_sha256 as "textSha256", r.pdf_storage_path as "pdfStoragePath", r.pdf_sha256 as "pdfSha256",
+        r.confirmed_unsupported_ids as "confirmedUnsupportedIds", r.approved_at as "approvedAt", r.approved_by as "approvedBy", r.created_at as "createdAt",
+        a.company, a.role, a.location, s.title as "offerTitle", s.description_text as "offerDescription"
+      from application_document_revisions r
+      join application_documents d on d.workspace_id=r.workspace_id and d.id=r.document_id
+      join applications a on a.workspace_id=d.workspace_id and a.id=d.application_id
+      join job_snapshots s on s.workspace_id=r.workspace_id and s.id=r.offer_snapshot_id
+      where r.id=$1`, [revisionId]);
+    assert.equal(rows.length, 1);
+    const revision = { ...rows[0], approvedAt: rows[0].approvedAt?.toISOString() ?? null, createdAt: rows[0].createdAt.toISOString() };
+    const factIds = [...new Set(revision.claims.flatMap((claim) => claim.sourceFactIds))];
+    const factRows = factIds.length ? (await query(database, 'select id::text, workspace_id::text as "workspaceId", statement as text, approval_status as approval from profile_facts where id = any($1::uuid[])', [factIds])).rows : [];
+    const facts = factRows.map((fact) => ({ ...fact, tags: [] }));
+    const offer = {
+      workspaceId: revision.workspaceId,
+      company: revision.company,
+      role: revision.role,
+      location: revision.location,
+      snapshot: { id: revision.offerSnapshotId, title: revision.offerTitle, descriptionText: revision.offerDescription },
+    };
+    return applicationDocumentCurrentness({ revision, facts, offer });
+  };
   const assertNoSecrets = (output) => {
     for (const [name, value] of Object.entries(secrets)) assert.ok(!output.includes(value), `output leaked ${name}`);
   };
@@ -103,6 +152,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   };
 
   before(async () => {
+    ({ applicationDocumentCurrentness, applicationDocumentHashes } = await import(pathToFileURL(join(root, 'packages/domain/dist/application-document-lifecycle.js')).href));
     work = await mkdtemp(join(tmpdir(), 'career-backup-it-'));
     admin = new Client({ connectionString: adminUrl });
     await admin.connect();
@@ -135,8 +185,9 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     filesDir = join(work, 'source-install', 'data', 'files');
     await mkdir(filesDir, { recursive: true, mode: 0o700 });
     const ws = workspaceId = (await client.query(`insert into workspaces (name) values ('Ficticia · Ada Example') returning id`)).rows[0].id;
-    const profile = (await client.query(`insert into profile_versions (workspace_id, revision, profile) values ($1, 1, '{"identity":{"fullName":"Ada Example"}}') returning id`, [ws])).rows[0].id;
+    const profile = profileVersionId = (await client.query(`insert into profile_versions (workspace_id, revision, profile) values ($1, 1, '{"identity":{"fullName":"Ada Example"}}') returning id`, [ws])).rows[0].id;
     await client.query(`insert into profile_facts (workspace_id, profile_version_id, kind, statement, approval_status) values ($1, $2, 'skill', 'Builds fictional test fixtures', 'USER_APPROVED'), ($1, $2, 'role', 'Example Engineer at Nowhere Ltd', 'SUGGESTED')`, [ws, profile]);
+    applicationDocumentFactId = (await client.query(`select id from profile_facts where workspace_id=$1 and statement='Builds fictional test fixtures'`, [ws])).rows[0].id;
     const board = (await client.query(`insert into boards (workspace_id, provider, tenant, region, company_name, company_domain, careers_url, permission_status, enabled) values ($1, 'greenhouse', 'fictional-co', 'global', 'Fictional Co', 'fictional.example.test', 'https://fictional.example.test/jobs', 'APPROVED_FOR_SCOPE', true) returning id`, [ws])).rows[0].id;
     await client.query(`insert into boards (workspace_id, provider, tenant, region, company_name, company_domain, careers_url, permission_status, enabled) values ($1, 'lever', 'imaginary', 'global', 'Imaginary Inc', 'imaginary.example.test', 'https://imaginary.example.test', 'UNKNOWN', false)`, [ws]);
     await client.query(`insert into source_policy_reviews (workspace_id, board_id, capability, access_class, permission_status, api_host, adapter_version, reviewed_at) values ($1, $2, 'discovery', 'public-api', 'APPROVED_FOR_SCOPE', 'boards-api.example.test', 'test-1', now())`, [ws, board]);
@@ -173,6 +224,35 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
         [id, ws, `doc-${index}`, profile, index === 0 ? snapshot : null, storagePath, sha(bytes)]);
       documents.push({ id, storagePath, sha256: sha(bytes) });
     }
+    applicationDocumentId = randomUUID();
+    applicationDocumentRevisionId = randomUUID();
+    const revisionText = Buffer.from('Fictional cover letter: Builds fictional test fixtures.\n', 'utf8');
+    const revisionPdf = pdf('Fictional cover letter - Ada Example');
+    const textStoragePath = `${ws}/${applicationDocumentId}/${applicationDocumentRevisionId}.txt`;
+    const pdfStoragePath = `${ws}/${applicationDocumentId}/${applicationDocumentRevisionId}.pdf`;
+    await mkdir(join(filesDir, ws, applicationDocumentId), { recursive: true, mode: 0o700 });
+    await writeFile(join(filesDir, textStoragePath), revisionText, { mode: 0o600 });
+    await writeFile(join(filesDir, pdfStoragePath), revisionPdf, { mode: 0o600 });
+    await client.query(`insert into application_documents (id, workspace_id, application_id, kind, language) values ($1,$2,$3,'COVER_LETTER','en')`, [applicationDocumentId, ws, application]);
+    const claims = [{ sentenceId: 'fixture-claim', text: 'Builds fictional test fixtures.', kind: 'CANDIDATE_CLAIM', origin: 'USER_EDITED', sourceFactIds: [applicationDocumentFactId], language: 'en' }];
+    const hashes = await applicationDocumentHashes({
+      workspaceId: ws,
+      claims,
+      facts: [{ id: applicationDocumentFactId, workspaceId: ws, approval: 'USER_APPROVED', text: 'Builds fictional test fixtures', tags: [] }],
+      offer: { workspaceId: ws, company: 'Fictional Co', role: 'Example Engineer', location: null, snapshot: { id: snapshot, title: 'Example Engineer', descriptionText: null } },
+    });
+    assert.equal(hashes.ok, true);
+    await client.query(`insert into application_document_revisions (id, workspace_id, document_id, revision, claims, content_hash, offer_snapshot_id, offer_hash, facts_hash,
+        paper_size, text_storage_path, text_sha256, pdf_storage_path, pdf_sha256, approved_at, approved_by)
+      values ($1,$2,$3,1,$4::jsonb,$5,$6,$7,$8,'A4',$9,$10,$11,$12,now(),'Ada Example')`,
+    [applicationDocumentRevisionId, ws, applicationDocumentId, JSON.stringify(claims), hashes.contentHash, snapshot, hashes.offerHash, hashes.factsHash, textStoragePath, sha(revisionText), pdfStoragePath, sha(revisionPdf)]);
+    applicationDocumentRevisions.push({
+      id: applicationDocumentRevisionId, workspaceId: ws, documentId: applicationDocumentId, revision: 1,
+      textStoragePath, textSha256: sha(revisionText), pdfStoragePath, pdfSha256: sha(revisionPdf),
+    });
+    followUpDraftId = randomUUID();
+    await client.query(`insert into application_follow_up_drafts (id, workspace_id, application_id, language, subject, body)
+      values ($1, $2, $3, 'en', 'Follow-up about Example Engineer', 'Hello. Synthetic follow-up draft for backup testing.')`, [followUpDraftId, ws, application]);
     await writeFile(join(filesDir, ws, 'orphan-render.pdf'), pdf('orphan, not referenced')); // must not be backed up
     await client.query(`insert into assisted_attempts(workspace_id, application_id, status, plan, digest, expires_at, consented_at) values ($1,$2,'HANDED_OFF','{}','test-digest',now()+interval '10 minutes',now())`,[ws,application]);
     // Synthetic AI records prove restored backups cannot restart provider work or retain live grants.
@@ -186,6 +266,11 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       if (status === 'RUNNING') await client.query(`insert into ai_account_leases(account_lock_key,workspace_id,run_id,lease_token,lease_owner,lease_until) values($1,$2,$3,$4,'fixture',now()+interval '1 minute')`, [account,ws,runId,lease]);
       if (status === 'SUCCEEDED') await client.query(`insert into ai_artifacts(workspace_id,run_id,schema_version,prompt_version,locale,output,sources,state) values($1,$2,1,'fixture','en','{"fictional":"retained result"}','{"fictional":"retained evidence"}','ACCEPTED')`, [ws,runId]);
     }
+    documentRewordRunId = randomUUID();
+    await client.query(`insert into ai_runs(id,workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,lease_token,lease_owner,lease_until)
+      values($1,$2,$3,$4,'codex',1,1,$5,'DOCUMENT_REWORD','MANUAL','SUCCEEDED',$6,$5,$5,'{"fictional":true}',$5,'{}',$7,'fixture',now())`,
+    [documentRewordRunId, ws, aiConnection, aiConsent, account, randomUUID(), randomUUID()]);
+    await client.query(`insert into ai_document_reword_proposals(workspace_id,run_id,sentence_id,proposal_sha256) values($1,$2,'fixture-claim',$3)`, [ws, documentRewordRunId, sha('fictional-proposal-hash')]);
     await client.query(`insert into ai_run_tombstones(workspace_id,run_id,consent_id,idempotency_hash,job_id,canonical_identity) values($1,$2,$3,$4,$5,$6)`, [ws,randomUUID(),aiConsent,sha('fictional-deleted-request'),jobId,sha('fictional-job-identity')]);
     await client.query(`insert into ai_daily_budgets(workspace_id,control_day,automatic_reserved,manual_reserved,automatic_started) values($1,current_date,2,1,3)`, [ws]);
     await client.query(`insert into ai_usage_snapshots(workspace_id,connection_id,availability,windows,source,observed_at) values($1,$2,'KNOWN','[{"usedPercent":15}]','PROVIDER_REPORTED',now())`, [ws,aiConnection]);
@@ -246,6 +331,15 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     const entries = await extractArchive(plainTar, staged);
     const manifest = JSON.parse(await readFile(entries.get('manifest.json').path, 'utf8'));
     assert.equal(manifest.documents.length, 3);
+    assert.equal(manifest.applicationDocumentRevisions.length, 1);
+    assert.equal(manifest.applicationDocumentRevisions[0].id, applicationDocumentRevisionId);
+    assert.equal(manifest.applicationDocumentRevisions[0].documentId, applicationDocumentId);
+    for (const revision of manifest.applicationDocumentRevisions) {
+      assert.ok(entries.has(revision.textArchivePath), 'revision text is present in the encrypted backup');
+      assert.ok(entries.has(revision.pdfArchivePath), 'revision PDF is present in the encrypted backup');
+      assert.equal(sha(await readFile(entries.get(revision.textArchivePath).path)), revision.textSha256);
+      assert.equal(sha(await readFile(entries.get(revision.pdfArchivePath).path)), revision.pdfSha256);
+    }
     assert.ok(![...entries.keys()].some((name) => name.includes('orphan')), 'unreferenced files are excluded');
     assert.equal(manifest.tables['public.boards'], 2);
     assert.equal(manifest.migrations.length, (await repoMigrations()).length);
@@ -281,6 +375,22 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     } finally { await writer.query('rollback'); await writer.end(); }
   });
 
+  test('backup SHARE-locks application documents and revisions before the snapshot', async () => {
+    for (const table of ['application_documents', 'application_document_revisions']) {
+      const writer = new Client({ connectionString: withDatabase(appUrl, sourceDb) });
+      await writer.connect();
+      await writer.query('begin');
+      await writer.query(`lock table ${table} in row exclusive mode`);
+      const outDir = join(work, `busy-${table}`);
+      try {
+        const result = await run('backup.mjs', ['--env-file', envFile, '--out-dir', outDir]);
+        assert.equal(result.code, 1, table);
+        assert.match(result.stderr, /could not be locked within 10 s/, table);
+        assert.deepEqual((await readdir(outDir)).filter((name) => name.includes('.tar')), [], `${table}: no incomplete backup`);
+      } finally { await writer.query('rollback'); await writer.end(); }
+    }
+  });
+
   test('backup fails instead of producing an incomplete copy when a document file is missing or changed', async () => {
     const victim = join(filesDir, documents[2].storagePath);
     const original = await readFile(victim);
@@ -297,11 +407,37 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     } finally { await writeFile(victim, original, { mode: 0o600 }); }
   });
 
+  test('backup refuses a document path that traverses a symlinked directory', async () => {
+    const document = documents[2];
+    const alias = `linked/${document.storagePath.split('/').at(-1)}`;
+    const outside = join(work, 'outside-files');
+    await mkdir(outside, { mode: 0o700 });
+    await writeFile(join(outside, document.storagePath.split('/').at(-1)), await readFile(join(filesDir, document.storagePath)), { mode: 0o600 });
+    await symlink(outside, join(filesDir, 'linked'), 'dir');
+    await query(sourceDb, 'update document_versions set storage_path=$1 where id=$2', [alias, document.id]);
+    try {
+      const result = await run('backup.mjs', ['--env-file', envFile, '--out-dir', join(work, 'symlink-source')]);
+      assert.equal(result.code, 1, result.all);
+      assert.match(result.stderr, /symbolic link/);
+    } finally {
+      await query(sourceDb, 'update document_versions set storage_path=$1 where id=$2', [document.storagePath, document.id]);
+      await rm(join(filesDir, 'linked'), { recursive: true, force: true });
+    }
+  });
+
   test('verify-only decrypts with the key and proves authenticity; an encrypted backup cannot be read without it', async () => {
     const withKey = await run('restore.mjs', ['--verify-only', '--archive', archive, '--key-file', keyFile]);
     assert.equal(withKey.code, 0, withKey.all);
     assert.match(withKey.stdout, /Backup decrypted with this key file/);
     assert.match(withKey.stdout, /authentic backup/);
+    const json = await run('restore.mjs', ['--verify-only', '--json', '--archive', archive, '--key-file', keyFile]);
+    assert.equal(json.code, 0, json.all);
+    const summary = JSON.parse(json.stdout);
+    assert.equal(summary.valid, true);
+    assert.equal(summary.encrypted, true);
+    assert.equal(summary.authenticated, true);
+    assert.ok(summary.tableCount > 0);
+    assert.equal(summary.documentCount, documents.length);
     const withoutKey = await run('restore.mjs', ['--verify-only', '--archive', archive]);
     assert.equal(withoutKey.code, 1, withoutKey.all);
     assert.match(withoutKey.stderr, /This backup is encrypted: its key file is needed/);
@@ -336,9 +472,14 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(sourceDb, 'select count(*)::int as n from boards where enabled')).rows[0].n, sourceBefore);
     assert.equal(sourceBefore, 1);
     // Same data, safe defaults.
-    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
+    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'application_documents', 'application_document_revisions', 'application_follow_up_drafts', 'ai_document_reword_proposals', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
       assert.deepEqual((await query(database, `select count(*)::int as n from ${table}`)).rows, (await query(sourceDb, `select count(*)::int as n from ${table}`)).rows, table);
     }
+    assert.deepEqual((await query(database, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
+      (await query(sourceDb, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
+      'follow-up draft text round-trips with its application');
+    const restoredProposal = (await query(database, `select p.proposal_sha256, r.status, r.operation from ai_document_reword_proposals p join ai_runs r on r.workspace_id=p.workspace_id and r.id=p.run_id where p.workspace_id=$1 and p.run_id=$2`, [workspaceId, documentRewordRunId])).rows[0];
+    assert.deepEqual(restoredProposal, { proposal_sha256: sha('fictional-proposal-hash'), status: 'SUCCEEDED', operation: 'DOCUMENT_REWORD' }, 'proposal hashes restore with their parent run for future accept, while restored AI stays disabled');
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, `select count(*)::int as n from source_policy_reviews where permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from workspaces where discovery_enabled')).rows[0].n, 0);
@@ -372,7 +513,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(database, `select count(*)::int as n from ai_connections where active or official_context_ref is not null or state<>'UNAVAILABLE'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from ai_consents where revoked_at is null')).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from ai_automation_policies where active or not paused')).rows[0].n, 0);
-    assert.deepEqual((await query(database, 'select status from ai_runs order by status')).rows.map(row => row.status), ['CANCELLED','INTERRUPTED','SUCCEEDED']);
+    assert.deepEqual((await query(database, 'select status from ai_runs order by status')).rows.map(row => row.status), ['CANCELLED','INTERRUPTED','SUCCEEDED','SUCCEEDED']);
     assert.equal((await query(database, 'select run_id from ai_account_leases')).rows[0].run_id, null);
     assert.deepEqual((await query(database, 'select automatic_reserved,manual_reserved,automatic_started from ai_daily_budgets')).rows[0], {automatic_reserved:0,manual_reserved:0,automatic_started:3});
     assert.equal((await query(database, 'select availability from ai_usage_snapshots')).rows[0].availability, 'UNAVAILABLE');
@@ -406,12 +547,45 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       assert.equal(sha(await readFile(file)), document.sha256);
       await assertMode(file, 0o600);
     }
+    for (const revision of applicationDocumentRevisions) {
+      for (const [storagePath, expectedHash] of [[revision.textStoragePath, revision.textSha256], [revision.pdfStoragePath, revision.pdfSha256]]) {
+        const file = join(target, 'data', 'files', storagePath);
+        assert.equal(sha(await readFile(file)), expectedHash);
+        await assertMode(file, 0o600);
+      }
+    }
+    assert.deepEqual(await revisionCurrentness(database, applicationDocumentRevisionId), { status: 'CURRENT', reasons: [] }, 'approved revision stays current after a complete round trip');
     assert.ok(!(await readdir(target)).some((name) => name.startsWith('.staging')));
     const report = JSON.parse(await readFile(join(target, 'restore-report.json'), 'utf8'));
     assert.equal(report.sanitised.boardsDisabled, 1);
     assert.equal(report.sanitised.reviewPermissionsReset, 1);
     assert.equal(report.documentsVerified, 3);
+    assert.equal(report.applicationDocumentRevisionsVerified, 1);
     assertNoSecrets(JSON.stringify(report));
+  });
+
+  test('a backup made after cited evidence is removed restores the revision as NEEDS_REVIEW', async () => {
+    await query(sourceDb, 'delete from profile_facts where id=$1', [applicationDocumentFactId]);
+    const partial = await makeBackup(join(work, 'backup-missing-cited-fact'));
+    const { database } = await restoreArchive(partial, 'missingfact');
+    const currentness = await revisionCurrentness(database, applicationDocumentRevisionId);
+    assert.equal(currentness.status, 'NEEDS_REVIEW');
+    assert.ok(currentness.reasons.includes('FACT_NOT_APPROVED'));
+    assert.ok(currentness.reasons.includes('FACTS_CHANGED'));
+  });
+
+  test('a backup with a changed offer snapshot restores the revision as NEEDS_REVIEW', async () => {
+    await query(sourceDb, `insert into profile_facts (id, workspace_id, profile_version_id, kind, statement, approval_status)
+      values ($1,$2,$3,'skill','Builds fictional test fixtures','USER_APPROVED')`, [applicationDocumentFactId, workspaceId, profileVersionId]);
+    const changedSnapshotId = randomUUID();
+    await query(sourceDb, `insert into job_snapshots (id, workspace_id, job_id, title, description_text, snapshot_hash)
+      values ($1,$2,$3,'Changed fictional role','New synthetic description',$4)`, [changedSnapshotId, workspaceId, jobId, sha('Changed fictional role\nNew synthetic description')]);
+    await query(sourceDb, 'update application_document_revisions set offer_snapshot_id=$1 where id=$2', [changedSnapshotId, applicationDocumentRevisionId]);
+    const partial = await makeBackup(join(work, 'backup-changed-offer'));
+    const { database } = await restoreArchive(partial, 'changedoffer');
+    const currentness = await revisionCurrentness(database, applicationDocumentRevisionId);
+    assert.equal(currentness.status, 'NEEDS_REVIEW');
+    assert.ok(currentness.reasons.includes('OFFER_CHANGED'));
   });
 
   test('an old unencrypted backup restores with --allow-unencrypted', async () => {
@@ -457,6 +631,20 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       assert.match(verify.stderr, /does not match the manifest/);
       assert.match((await attempt(tampered)).stderr, /does not match the manifest/);
     });
+    for (const kind of ['text', 'pdf']) {
+      test(`a modified application document ${kind} file is rejected and names its document`, async () => {
+        const revision = applicationDocumentRevisions[0];
+        const storagePath = kind === 'text' ? revision.textStoragePath : revision.pdfStoragePath;
+        const tampered = await repack(`tampered-application-${kind}.tar`, (list) => {
+          const file = list.find((entry) => entry.name === `files/${storagePath}`);
+          assert.ok(file, `found stored ${kind} entry`);
+          file.buffer[0] ^= 0xff;
+        });
+        const result = await attempt(tampered);
+        assert.match(result.stderr, /does not match the manifest/);
+        assert.ok(result.stderr.includes(applicationDocumentId), `error identifies application document ${applicationDocumentId}`);
+      });
+    }
     test('a byte flipped in the encrypted archive is rejected before anything is restored', async () => {
       const bytes = await readFile(archive);
       bytes[Math.floor(bytes.length / 2)] ^= 0x01;
