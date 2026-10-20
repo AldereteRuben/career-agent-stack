@@ -10,7 +10,7 @@ export const v070Scenario: Scenario = {
     const workspace = (await db.query<{ id: string }>('select id from workspaces limit 1')).rows[0]!.id;
     const title = `Automation designer ${marker}`;
     const company = `Fictional Search ${marker}`;
-    const fixture = { externalId: marker, title, company, location: 'Spain', workMode: 'remote', url: `https://remotive.com/remote-jobs/qa/${marker}`, postedAt: new Date().toISOString(), description: '<p>Automation designer builds Playwright tests and accessible design systems.</p><ul><li>Fictional requirement</li></ul>', raw: {} };
+    const fixture = { externalId: `v070-${marker}`, title, company, location: 'Spain', workMode: 'remote', url: `https://remotive.com/remote-jobs/qa/${marker}`, postedAt: new Date().toISOString(), description: '<p>Automation designer builds Playwright tests and accessible design systems.</p><ul><li>Fictional requirement</li></ul>', raw: {} };
     // Pin both feeds in the disposable cache: no public API calls can be made by this scenario.
     for (const provider of ['remotive', 'arbeitnow']) await db.query("insert into job_search_provider_cache(provider,payload,fetched_at,next_fetch_at) values($1,$2::jsonb,now(),now()+interval '24 hours') on conflict(provider) do update set payload=excluded.payload,fetched_at=excluded.fetched_at,next_fetch_at=excluded.next_fetch_at,last_error=null", [provider, JSON.stringify(provider === 'remotive' ? [fixture] : [])]);
     try {
