@@ -63,9 +63,14 @@ export const applicationDocumentsScenario: Scenario = {
     const workspace = (await db.query<{ id: string }>('select id from workspaces limit 1')).rows[0]!.id;
 
     const panel = page.locator('.application-resume').filter({ has: page.getByRole('heading', { name: /^(CV adaptado a esta oferta|Resume tailored to this job)$/u }) });
+    const openDisclosure = async (selector: string) => {
+      const disclosure = page.locator(selector);
+      if (!(await disclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await disclosure.locator('summary').click();
+    };
     await setLocale(page, 'es');
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
+    await openDisclosure('.application-detail-documents');
     await panel.getByRole('heading', { name: 'CV adaptado a esta oferta', exact: true }).waitFor();
     await panel.getByRole('button', { name: 'Guardar nueva versión', exact: true }).waitFor();
     const candidateClaimTextarea = await claimTextarea(panel, candidateClaim.text);
@@ -85,6 +90,7 @@ export const applicationDocumentsScenario: Scenario = {
     // Removing a fact cited by this revision makes it stale and blocks approval.
     await api.post(`/profile/facts/${candidateClaim.sourceFactIds[0]}/reject`, {});
     await page.reload();
+    await openDisclosure('.application-detail-documents');
     await panel.getByText('El contenido o sus fuentes cambiaron; crea una nueva versión para revisar los cambios.', { exact: true }).waitFor();
     const staleApprove = panel.getByRole('button', { name: 'Aprobar esta versión', exact: true });
     assert.equal(await staleApprove.isDisabled(), true, 'A stale document cannot be approved');
@@ -99,6 +105,7 @@ export const applicationDocumentsScenario: Scenario = {
 
     // An unsupported skill is refused first. A separate, keyboard-operated confirmation allows it to be saved as USER_UNSUPPORTED.
     await page.reload();
+    await openDisclosure('.application-detail-documents');
     const currentDraft = await api.get<Draft>(`/applications/${application.id}/resume/draft?language=es`);
     const currentCandidateClaim = currentDraft.sentences.find((sentence) => sentence.kind === 'CANDIDATE_CLAIM' && sentence.sourceFactIds.length > 0);
     assert.ok(currentCandidateClaim, 'The refreshed profile provides an approved evidence-linked claim');
@@ -134,6 +141,7 @@ export const applicationDocumentsScenario: Scenario = {
 
     // Remove the unsupported skill in a newer pending revision. The approved file remains downloadable with an explicit warning.
     await page.reload();
+    await openDisclosure('.application-detail-documents');
     const unsupportedCandidateClaim = unsupportedRevision.claims.find((claim) => claim.sourceFactIds.length > 0 && new RegExp(unsupportedSkill, 'iu').test(claim.text));
     assert.ok(unsupportedCandidateClaim, 'The unsupported revision retains the sentence edited for this scenario');
     const nextClaim = await claimTextarea(panel, unsupportedCandidateClaim.text);
@@ -146,6 +154,7 @@ export const applicationDocumentsScenario: Scenario = {
     let packet = await api.get<{ files: PacketFile[] }>(`/applications/${application.id}/materials`);
     const approvedBeforeNewer = packet.files.find((file) => file.revision === unsupportedRevision.revision);
     assert.ok(approvedBeforeNewer?.selectable && approvedBeforeNewer.newerPendingRevision, 'A newer pending edit does not silently replace the approved download');
+    await openDisclosure('.application-detail-materials');
     const materials = page.locator('.application-materials');
     await materials.getByText(/Hay una edición más reciente pendiente de aprobación|A newer edit is awaiting approval/u).waitFor();
     await setLocale(page, 'en');
@@ -214,6 +223,7 @@ export const applicationDocumentsScenario: Scenario = {
     await eventually(() => api.get<Saved>(`/applications/${application.id}/resume?language=en`), (value) => Boolean(value.revisions[0]?.approvedAt), 'The English revision is approved');
     await setLocale(page, 'en');
     await page.reload();
+    await openDisclosure('.application-detail-materials');
     await materials.getByRole('heading', { name: 'Application materials packet', exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await hasHorizontalOverflow(page), false, 'The English document and packet flow fits a 390 px viewport');

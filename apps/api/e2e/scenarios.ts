@@ -347,6 +347,8 @@ export const scenarios: Scenario[] = [
       const saveNote = noteForm.getByRole('button', { name: any('Añadir nota', 'Add note', 'Save note', 'Guardar nota') }).first();
       await eventually(() => saveNote.isEnabled(), Boolean, 'The note button becomes enabled after entering a note');
       await saveNote.click();
+      const activityDisclosure = page.locator('.application-detail-activity');
+      if (!(await activityDisclosure.evaluate((details) => (details as HTMLDetailsElement).open))) await activityDisclosure.locator('summary').click();
       await page.locator('.timeline-item').getByText(note, { exact: true }).waitFor();
       await eventually(() => noteField.inputValue(), (value) => value === '', 'Note field should clear after a successful save');
       await page.screenshot({ path: join(artifacts, 'application-tracker.png'), fullPage: true });
