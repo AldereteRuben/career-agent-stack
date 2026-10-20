@@ -14,11 +14,17 @@ const fixture = { externalId: 'fictional-job-42', title: 'Product Designer', com
 
 describe('saved job searches with a disposable database and cached fictional feeds', { skip: !adminUrl, concurrency: false }, () => {
   let admin: InstanceType<typeof Client>; let client: InstanceType<typeof Client>; let closePool: (() => Promise<void>) | undefined;
-  let workspace: string; let module: typeof import('../src/job-search-routes.js'); let sources: typeof import('../src/job-search.js'); let dbmod: typeof import('@career/db');
-  let calls: Array<{ workspaceId: string; jobId: string; locale: string }>; let failPrepare = false;
+  let workspace: string; let module: typeof import('../src/job-search-routes.js'); let notifications: typeof import('../src/desktop-notification-routes.js'); let sources: typeof import('../src/job-search.js'); let worker: typeof import('../src/desktop-notification-worker.js'); let dbmod: typeof import('@career/db');
+  let calls: Array<{ workspaceId: string; jobId: string; locale: string }>; let sentNotifications: string[]; let failPrepare = false;
   const originalDatabase = process.env.DATABASE_URL;
+  const originalEncryptionKey = process.env.APP_ENCRYPTION_KEY;
+  const originalSessionSecret = process.env.APP_SESSION_SECRET;
 
   before(async () => {
+    // Route dependencies validate the application configuration on first import.
+    // These disposable-test values keep the isolated route suite independent of a developer's .env file.
+    process.env.APP_ENCRYPTION_KEY ??= randomBytes(32).toString('hex');
+    process.env.APP_SESSION_SECRET ??= randomBytes(32).toString('hex');
     const url = new URL(adminUrl!);
     assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname));
     assert.ok(['postgres', 'template1'].includes(url.pathname.slice(1)), 'maintenance database required');
@@ -26,16 +32,18 @@ describe('saved job searches with a disposable database and cached fictional fee
     await admin.query(`create database "${name}"`); url.pathname = `/${name}`;
     process.env.DATABASE_URL = url.toString(); client = new Client({ connectionString: url.toString() }); await client.connect();
     for (const file of (await readdir(new URL('packages/db/migrations', root))).filter((f) => f.endsWith('.sql')).sort()) await client.query(await readFile(new URL(`packages/db/migrations/${file}`, root), 'utf8'));
-    [module, sources, dbmod] = await Promise.all([import('../src/job-search-routes.js'), import('../src/job-search.js'), import('@career/db')]);
+    [module, notifications, sources, worker, dbmod] = await Promise.all([import('../src/job-search-routes.js'), import('../src/desktop-notification-routes.js'), import('../src/job-search.js'), import('../src/desktop-notification-worker.js'), import('@career/db')]);
     closePool = trackPgPoolCleanup(dbmod.pool);
   });
   after(async () => {
     await closePool?.(); await client?.end();
     if (admin) { await admin.query(`drop database if exists "${name}" with (force)`); await admin.end(); }
     if (originalDatabase === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = originalDatabase;
+    if (originalEncryptionKey === undefined) delete process.env.APP_ENCRYPTION_KEY; else process.env.APP_ENCRYPTION_KEY = originalEncryptionKey;
+    if (originalSessionSecret === undefined) delete process.env.APP_SESSION_SECRET; else process.env.APP_SESSION_SECRET = originalSessionSecret;
   });
   beforeEach(async () => {
-    await client.query('delete from workspaces'); await client.query('delete from job_search_provider_cache'); workspace = randomUUID(); calls = []; failPrepare = false;
+    await client.query('delete from workspaces'); await client.query('delete from job_search_provider_cache'); workspace = randomUUID(); calls = []; sentNotifications = []; failPrepare = false;
     await client.query('insert into workspaces(id) values($1)', [workspace]);
     for (const provider of ['remotive', 'arbeitnow']) await client.query('insert into job_search_provider_cache(provider,payload,coverage,fetched_at,next_fetch_at) values($1,$2::jsonb,\'COMPLETE\',now(),now()+interval \'6 hours\')', [provider, JSON.stringify(provider === 'remotive' ? [fixture] : [])]);
   });
@@ -45,6 +53,7 @@ describe('saved job searches with a disposable database and cached fictional fee
       calls.push({ workspaceId, jobId, locale });
       if (failPrepare) { failPrepare = false; throw new Error('fictional preparation failure'); }
     });
+    notifications.registerDesktopNotificationRoutes(app, () => workspace, { available: async () => true, send: async alert => { sentNotifications.push(alert.message); return 'ACCEPTED'; } });
     return app;
   };
   const payload = (patch: Record<string, unknown> = {}) => ({ role: 'designer', company: null, location: 'Spain', workMode: 'remote', frequencyHours: 12, enabled: true, autoPrepare: false, language: 'en', ...patch });
@@ -61,6 +70,64 @@ describe('saved job searches with a disposable database and cached fictional fee
       }
       const rows = (await app.inject('/api/v1/job-searches')).json().searches;
       assert.equal(rows.length, 1); assert.equal(rows[0].role, 'a'.repeat(200));
+    } finally { await app.close(); }
+  });
+
+  test('notification settings default off, save the app locale, and expose the test result', async () => {
+    const app = server();
+    try {
+      const initial = await app.inject('/api/v1/notifications'); assert.equal(initial.statusCode, 200); assert.equal(initial.json().enabled, false); assert.equal(initial.json().status, 'NOT_TESTED');
+      const saved = await app.inject({ method: 'PUT', url: '/api/v1/notifications', payload: { enabled: true, language: 'es' } });
+      assert.equal(saved.statusCode, 200); assert.equal(saved.json().enabled, true); assert.equal(saved.json().language, 'es');
+      const tested = await app.inject({ method: 'POST', url: '/api/v1/notifications/test' });
+      assert.equal(tested.statusCode, 200); assert.equal(tested.json().status, 'ACCEPTED'); assert.deepEqual(sentNotifications, ['Esta es una notificación de prueba.']);
+      assert.equal((await app.inject('/api/v1/notifications')).json().status, 'ACCEPTED');
+      const search = await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload({ enabled: false }) });
+      const searchId = search.json().search.id;
+      await client.query(`insert into desktop_notification_events(workspace_id,search_id,new_count,language) values($1,$2,2,'es')`, [workspace,searchId]);
+      const disabled = await app.inject({ method: 'PUT', url: '/api/v1/notifications', payload: { enabled: false, language: 'es' } }); assert.equal(disabled.statusCode, 200); assert.equal(disabled.json().enabled, false);
+      assert.equal((await client.query(`select status from desktop_notification_events where workspace_id=$1`,[workspace])).rows[0].status, 'DISABLED');
+    } finally { await app.close(); }
+  });
+
+  test('disabling waits for an in-flight OS send and cancels the rest of the queue', async () => {
+    const app = server();
+    try {
+      const created = await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload({ enabled: false }) });
+      const searchId = created.json().search.id;
+      await client.query(`insert into desktop_notification_settings(workspace_id,enabled,language) values($1,true,'en')`, [workspace]);
+      await client.query(`insert into desktop_notification_events(workspace_id,search_id,new_count,language,created_at) values($1,$2,2,'en',now()-interval '2 seconds'),($1,$2,1,'en',now()-interval '1 second')`, [workspace,searchId]);
+      let releaseSend!: () => void; let markStarted!: () => void;
+      const sendGate = new Promise<void>((resolve) => { releaseSend = resolve; });
+      const sendStarted = new Promise<void>((resolve) => { markStarted = resolve; });
+      let sends = 0;
+      const delivery = worker.deliverOneDesktopNotification({ available: async () => true, send: async () => { sends++; markStarted(); await sendGate; return 'ACCEPTED'; } });
+      await sendStarted;
+      let disableFinished = false;
+      const disabling = app.inject({ method: 'PUT', url: '/api/v1/notifications', payload: { enabled: false, language: 'en' } }).then((response) => { disableFinished = true; return response; });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(disableFinished, false, 'opt-out waits while an OS notification is already being sent');
+      releaseSend();
+      await delivery;
+      const response = await disabling;
+      assert.equal(response.statusCode, 200);
+      assert.equal(await worker.deliverOneDesktopNotification({ available: async () => true, send: async () => { sends++; return 'ACCEPTED'; } }), false);
+      const statuses = (await client.query(`select status from desktop_notification_events where workspace_id=$1 order by created_at,id`, [workspace])).rows.map((row: {status:string}) => row.status);
+      assert.deepEqual(statuses, ['SENT','DISABLED']);
+      assert.equal(sends, 1, 'no queued notification is delivered after opt-out returns');
+    } finally { await app.close(); }
+  });
+
+  test('the legacy automatic search queues a count-only desktop alert when opted in', async () => {
+    const app = server();
+    try {
+      await client.query(`insert into desktop_notification_settings(workspace_id,enabled,language) values($1,true,'en')`, [workspace]);
+      const response = await app.inject({ method: 'POST', url: '/api/v1/job-searches', payload: payload({ enabled: false }) });
+      assert.equal(response.statusCode, 201, response.body); const searchId = response.json().search.id;
+      await client.query('update saved_job_searches set enabled=true,next_run_at=null where workspace_id=$1 and id=$2', [workspace,searchId]);
+      await sources.refreshSavedJobSearch(workspace,searchId,{ automatic: true });
+      const events = (await client.query('select new_count,language,run_id from desktop_notification_events where workspace_id=$1',[workspace])).rows;
+      assert.equal(events.length,1); assert.equal(events[0].new_count,1); assert.equal(events[0].language,'en'); assert.equal(events[0].run_id,null);
     } finally { await app.close(); }
   });
 

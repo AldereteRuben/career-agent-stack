@@ -8,6 +8,8 @@
 
 **To delete your data but keep the app**, use **Settings → Delete all my data** instead: it empties this installation, signs every browser out and leaves the app ready to start again.
 
+There is no per-application delete action. Deleting all workspace data also removes every application document and empties the installation's entire local files folder; it does not preserve files belonging to another application in this single-workspace installation.
+
 ### 1. Before you start
 
 - **Make a backup and keep it, with its key file, outside this folder** if you might want your data again ([backup guide](backup-restore.md)). Uninstalling cannot be undone.
@@ -85,6 +87,8 @@ docker compose down -v    # only if the list above is empty
 ## Español
 
 **Para borrar tus datos sin quitar la app**, usa **Ajustes → Borrar todos mis datos**: vacía esta instalación, cierra la sesión en todos los navegadores y deja la app lista para empezar de nuevo.
+
+No existe una acción para borrar una sola candidatura. Borrar todos los datos del espacio también elimina todos los documentos de candidatura y vacía la carpeta local completa de archivos; en esta instalación de un solo espacio no conserva archivos de otras solicitudes.
 
 ### 1. Antes de empezar
 

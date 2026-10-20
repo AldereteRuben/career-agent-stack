@@ -12,6 +12,14 @@ const configSchema = z.object({
   DATABASE_URL: z.string().url(), APP_ENCRYPTION_KEY: z.string().min(32), APP_SESSION_SECRET: z.string().min(32),
   FILES_LOCAL_PATH: z.string().default('./data/files'), DATA_LOCAL_PATH: z.string().default('./data'),
   CAREER_AI_ENABLED: z.enum(['true', 'false']).default('true').transform(value => value === 'true'),
+  OLLAMA_BASE_URL: z.string().default('http://127.0.0.1:11434').refine(value => {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(url.hostname)
+        && url.port === '11434' && (url.pathname === '/' || url.pathname === '')
+        && !url.username && !url.password && !url.search && !url.hash;
+    } catch { return false; }
+  }, 'OLLAMA_BASE_URL must use the local Ollama loopback address'),
 }).passthrough();
 
 const result = configSchema.safeParse(process.env);

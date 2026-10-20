@@ -38,6 +38,15 @@ describe('v0.8 persisted search execution in disposable database',{skip:!adminUr
  const himalayas=(jobs:PublicJob[],state='FRESH')=>({jobs,state,coverage:'COMPLETE' as const,fetchedAt:new Date()});
  const sourceRow=async(externalId:string)=>(await client.query(`SELECT s.last_seen_at,s.missed_complete_reads,j.availability,j.id AS job_id FROM job_search_sources s JOIN jobs j ON j.id=s.job_id WHERE s.workspace_id=$1 AND s.external_id=$2`,[workspace,externalId])).rows[0];
  const rerun=async(searchId:string,reader:Parameters<typeof execution.runSearchExecutionTick>[0])=>{await execution.enqueueSearch(client,workspace,searchId,true);await execution.runSearchExecutionTick(reader);};
+ test('an opted-in automatic run queues one locale-matched alert with only a count',async()=>{const app=server();try{
+  await client.query(`INSERT INTO desktop_notification_settings(workspace_id,enabled,language) VALUES($1,true,'es')`,[workspace]);
+  const {search}=await createSearch(app,{providerIds:['himalayas']});
+  await execution.runSearchExecutionTick(async()=>himalayas([job('notification-new')]));
+  const events=(await client.query(`SELECT new_count,language,run_id,status FROM desktop_notification_events WHERE workspace_id=$1`,[workspace])).rows;
+  assert.equal(events.length,1);assert.equal(events[0].new_count,1);assert.equal(events[0].language,'es');assert.ok(events[0].run_id);assert.equal(events[0].status,'PENDING');
+  await rerun(search.id,async()=>himalayas([job('notification-manual')]));
+  assert.equal((await client.query(`SELECT count(*)::int n FROM desktop_notification_events WHERE workspace_id=$1`,[workspace])).rows[0].n,1,'manual runs do not alert');
+ }finally{await app.close();}});
  test('a fresh Himalayas result reopens a possibly closed job, never a closed one, and its absence changes nothing',async()=>{const app=server();try{
   const {search}=await createSearch(app,{providerIds:['himalayas']});
   await execution.runSearchExecutionTick(async()=>himalayas([job('h1')]));

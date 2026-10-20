@@ -1,14 +1,52 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { chmod, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 export type BackupOptions = { root: string; data: string; files: string; database: string; key: string };
 export type BackupRunner = (directory: string, signal: AbortSignal) => Promise<void>;
 type Artifact = 'archive' | 'key' | 'checksum';
 type Job = { id: string; workspace: string; createdAt: string; state: 'running' | 'ready' | 'failed'; directory: string; artifacts?: Record<Artifact, string> };
+
+const diagnosticLimit = 4_000;
+
+/** Keeps the end of a child's output, where the reason a program stops usually is. */
+const tail = (text: string) => (text.length > diagnosticLimit ? `…${text.slice(-diagnosticLimit)}` : text).trim();
+
+/** Hides the values this API was configured with, so a reason written to the log never carries a credential. */
+export function redactSecrets(text: string, secrets: string[]): string {
+  let result = text;
+  for (const secret of [...secrets].filter((value) => value.length >= 6).sort((a, b) => b.length - a.length)) {
+    result = result.split(secret).join('[redacted]');
+  }
+  return result;
+}
+
+function redactPrivatePaths(text: string, roots: string[]): string {
+  let firstPathStart = -1;
+  for (const root of [...new Set(roots)].filter((value) => value.length >= 6).sort((a, b) => b.length - a.length)) {
+    const pathStart = text.indexOf(root);
+    if (pathStart >= 0 && (firstPathStart < 0 || pathStart < firstPathStart)) firstPathStart = pathStart;
+  }
+  return firstPathStart < 0 ? text : `${text.slice(0, firstPathStart)}[redacted]`;
+}
+
+/** Resolves symlinked ancestors too, matching the backup writer's path diagnostics. */
+async function canonicalPathForRedaction(path: string): Promise<string> {
+  const absolute = resolve(path);
+  let existing = absolute;
+  const rest: string[] = [];
+  for (;;) {
+    try { return join(await realpath(existing), ...rest.reverse()); } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return absolute;
+      rest.push(basename(existing));
+      existing = parent;
+    }
+  }
+}
 
 /** Run the already verified archive writer with this API's configuration, never the checkout's .env. */
 export function backupRunner(options: BackupOptions): BackupRunner {
@@ -20,11 +58,19 @@ export function backupRunner(options: BackupOptions): BackupRunner {
       await writeFile(envFile, Object.entries(entries).map(([key, value]) => `${key}="${value}"`).join('\n'), { mode: 0o600, flag: 'wx' });
       await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, [join(options.root, 'scripts/backup.mjs'), '--env-file', envFile, '--out-dir', directory, '--key-dir', join(directory, 'keys')], {
-          cwd: options.root, shell: false, stdio: 'ignore', signal,
+          cwd: options.root, shell: false, stdio: ['ignore', 'pipe', 'pipe'], signal,
         });
-        let failed = false;
-        child.once('error', () => { failed = true; });
-        child.once('close', (code) => !failed && code === 0 ? resolve() : reject(new Error('Backup failed')));
+        // The writer's messages are the only way to learn why a backup failed, so keep the end of them for the log.
+        let output = '';
+        const collect = (chunk: Buffer) => { output = tail(output + chunk.toString('utf8')); };
+        child.stdout?.on('data', collect); child.stderr?.on('data', collect);
+        let startError: Error | undefined;
+        child.once('error', (error) => { startError = error; });
+        child.once('close', (code) => {
+          if (!startError && code === 0) return resolve();
+          const startCode = startError && (startError as NodeJS.ErrnoException).code;
+          reject(new Error(startError ? `Backup could not run${startCode ? ` (${startCode})` : ''}` : `Backup writer exited with code ${code}${output ? `:\n${output}` : ''}`));
+        });
       });
     } finally { await rm(envFile, { force: true }); }
   };
@@ -53,10 +99,15 @@ export function registerBackupRoutes(app: FastifyInstance, workspace: (request: 
         await chmod(file, 0o600);
       }
       job.state = 'ready';
-    } catch {
-      job.state = 'failed';
+    } catch (error) {
+      // Keep the diagnostic useful while hiding credentials and private filesystem locations from server logs.
+      const privatePaths = [join(job.directory, 'keys'), job.directory, join(job.directory, '.backup-env'), options.files, options.data, options.root];
+      const message = error instanceof Error ? error.message : String(error);
+      const canonicalPrivatePaths = await Promise.all(privatePaths.map(canonicalPathForRedaction));
+      app.log.warn({ reason: redactPrivatePaths(redactSecrets(message, [options.database, options.key]), [...privatePaths, ...canonicalPrivatePaths]) }, 'Backup failed');
       // Failed archives are not recoverable. Completed copies are retained until the user removes them.
       await rm(job.directory, { recursive: true, force: true }).catch(() => undefined);
+      job.state = 'failed';
     }
   };
   app.get('/api/v1/backups/current', async (request, reply) => {

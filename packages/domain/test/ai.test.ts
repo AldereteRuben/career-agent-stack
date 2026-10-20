@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  aiConsentSchema, aiOutputSchema, aiSourceSnapshotSchema, applyAiRunEvent, canAutoRetryAiRun, canonicalAiReuseKey, checkAiConsent, aiSnapshotDataCategories,
+  aiConsentSchema, aiOutputSchema, aiSourceSnapshotSchema, applyAiRunEvent, canAutoRetryAiRun, canonicalAiReuseKey, checkAiConsent, aiSnapshotDataCategories, aiOperationDataCategories,
   decideAiArtifact, normalizeAiUsage, normalizeEvidenceText, validateAiOutput, type AiConsent, type AiRunRecord, type AiSourceSnapshot,
 } from '../src/ai.js';
 
@@ -73,6 +73,26 @@ test('snapshots carry only approved facts and the inputs each operation needs', 
   assert.equal(aiSourceSnapshotSchema.safeParse(snapshot({ snapshotHash: 'not-a-hash' })).success, false);
   assert.equal(aiSourceSnapshotSchema.safeParse(snapshot({ facts: [snapshot().facts[0]!, snapshot().facts[0]!] })).success, false);
   assert.equal(aiSourceSnapshotSchema.safeParse(snapshot({ operation: 'SEARCH_DRAFT', searchRequest: { text: 'designer', contentHash: h('e') } })).success, false);
+});
+
+test('document reword snapshots expose only candidate claims and validate every proposal against its original citations', () => {
+  const input=snapshot({operation:'DOCUMENT_REWORD',job:null,facts:[],profileRevision:null,identityFingerprint:null,documentReword:{
+    documentId:'document-1',revisionId:'revision-2',revision:2,kind:'RESUME',
+    offer:{company:'Example Ltd',role:'Support Agent',location:'Madrid',title:'Customer Support Agent',description:'Help customers use the product.'},
+    sentences:[{sentenceId:'claim-1',text:'I helped customers resolve product issues.',kind:'CANDIDATE_CLAIM',citedFacts:[{factId:'fact-1',text:'I helped customers use the product.'}]}],
+  }});
+  const output={schemaVersion:1,operation:'DOCUMENT_REWORD',locale:'en',proposals:[{sentenceId:'claim-1',text:'I supported customers with product issues.',sourceFactIds:['fact-1']}]};
+  assert.equal(aiSourceSnapshotSchema.safeParse(input).success,true);
+  assert.deepEqual(aiOperationDataCategories.DOCUMENT_REWORD,['APPROVED_FACTS','JOB_POSTING']);
+  assert.equal(validateAiOutput(output,input,{workspaceId:'ws-a',operation:'DOCUMENT_REWORD',locale:'en'}).ok,true);
+  for(const bad of [
+    { ...output,proposals:[{...output.proposals[0],sourceFactIds:['fact-from-another-run']}] },
+    { ...output,proposals:[{...output.proposals[0],sentenceId:'not-in-draft'}] },
+    { ...output,proposals:[] },
+    { ...output,proposals:[{...output.proposals[0],approved:true}] },
+  ]) assert.equal(validateAiOutput(bad,input,{workspaceId:'ws-a',operation:'DOCUMENT_REWORD',locale:'en'}).ok,false);
+  assert.equal(aiSourceSnapshotSchema.safeParse({...input,documentReword:{...input.documentReword!,sentences:[{...input.documentReword!.sentences[0]!,kind:'BOILERPLATE'}]}}).success,false);
+  assert.equal(aiSourceSnapshotSchema.safeParse({...input,facts:[...snapshot().facts]}).success,false);
 });
 
 test('search drafts keep supported filters and list unsupported constraints instead of dropping them', () => {
@@ -244,4 +264,19 @@ test('individually valid facts cannot bypass the composed input size limit', () 
   })) };
   assert.equal(aiSourceSnapshotSchema.safeParse(oversized).success, false);
   assert.equal(aiSourceSnapshotSchema.safeParse(base).success, true);
+});
+
+test('resume import accepts only quoted statements grounded in contact-redacted resume text', () => {
+  const input = snapshot({ operation: 'RESUME_IMPORT', searchRequest: null, job: null, question: null, facts: [], profileRevision: null, identityFingerprint: null,
+    resume: { text: 'Senior designer at Fictional Studio, 2019-2021. Led a design system for 40 engineers.', contentHash: h('e') } });
+  const output = { schemaVersion: 1, operation: 'RESUME_IMPORT', locale: 'en', warnings: [], proposals: [
+    { key: 'resume-1', kind: 'experience', statement: 'Senior designer at Fictional Studio from 2019 to 2021.', sourceQuote: 'Senior designer at Fictional Studio, 2019-2021.' },
+  ] };
+  const result = validateAiOutput(output, input, { workspaceId: 'ws-a', operation: 'RESUME_IMPORT', locale: 'en' });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const unsupported = validateAiOutput({ ...output, proposals: [{ ...output.proposals[0], sourceQuote: 'Owned global product strategy.' }] }, input,
+    { workspaceId: 'ws-a', operation: 'RESUME_IMPORT', locale: 'en' });
+  assert.ok(!unsupported.ok && unsupported.issues.some(issue => issue.code === 'QUOTE_NOT_IN_SOURCE'));
+  assert.equal(aiSourceSnapshotSchema.safeParse({ ...input, resume: undefined }).success, false);
+  assert.equal(aiSnapshotDataCategories(input).join(','), 'RESUME_TEXT');
 });

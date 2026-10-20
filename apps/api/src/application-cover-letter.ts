@@ -6,6 +6,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { applications, applicationDocuments, applicationDocumentRevisions, db, jobSnapshots, profileFacts, profileVersions } from '@career/db';
 import { applicationDocumentHashes, approveApplicationDocumentRevision, buildApplicationCoverLetter, createApplicationDocumentRevision, latestApplicationDocumentOffer, saveApplicationDocumentSentenceEdit, type ApplicationDocumentLanguage, type ApplicationDocumentRevision, type ApplicationDocumentRevisionClaim } from '@career/domain';
 import { renderApplicationCoverLetter, type ResumePaperSize } from './document-renderer.js';
+import { applicationDocumentDownloadFileName } from './application-document-download.js';
 import { lockKey, profileLockKey } from './workspace-data.js';
 import { lockJobIdentity } from './job-identity.js';
 import { z } from 'zod';
@@ -263,7 +264,11 @@ export function registerApplicationCoverLetterRoutes(
       const isPdf = query.data.format === 'pdf';
       const bytes = await readVerifiedApplicationFile(options.storageRoot, isPdf ? revision.pdfStoragePath : revision.textStoragePath, isPdf ? revision.pdfSha256 : revision.textSha256, isPdf ? 'PDF' : 'TEXT');
       reply.type(isPdf ? 'application/pdf' : 'text/plain; charset=utf-8');
-      reply.header('Content-Disposition', `attachment; filename="cover-letter-${revision.revision}.${isPdf ? 'pdf' : 'txt'}"`);
+      reply.header('X-Content-SHA256', isPdf ? revision.pdfSha256 : revision.textSha256);
+      reply.header('Content-Disposition', `attachment; filename="${applicationDocumentDownloadFileName({
+        applicationId: application.id, company: application.company, role: application.role, kind: 'COVER_LETTER',
+        language: document.language as 'es' | 'en', revision: revision.revision, format: query.data.format,
+      })}"`);
       return reply.send(bytes);
     } catch (error) {
       return reply.code(409).send({ error: error instanceof Error ? error.message : 'APPLICATION_DOCUMENT_FILE_UNAVAILABLE' });

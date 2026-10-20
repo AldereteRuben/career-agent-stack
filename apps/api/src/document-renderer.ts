@@ -65,6 +65,52 @@ export async function renderResume(input: { path: string; fullName: string; emai
   return { absolutePath, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.byteLength };
 }
 
+/** Renders a saved, offer-specific resume revision without deriving or adding claims. */
+export async function renderApplicationResume(input: {
+  path: string; fullName: string; email?: string; phone?: string; city?: string; role: string;
+  locale: 'es' | 'en'; paperSize?: ResumePaperSize; sentences: ApplicationDocumentSentence[];
+}) {
+  if (!input.sentences.length || input.sentences.length > 50) throw new Error('APPLICATION_DOCUMENT_SENTENCE_LIMIT');
+  const expectedText = renderApplicationDocumentText(input.sentences);
+  if (expectedText.length > 40_000) throw new Error('APPLICATION_DOCUMENT_SIZE_LIMIT');
+  const locale = input.locale;
+  const paperSize = input.paperSize === 'LETTER' ? 'LETTER' : 'A4';
+  const pageSize = paperSize === 'LETTER' ? 'Letter' : 'A4';
+  const pageMargins = paperSize === 'LETTER'
+    ? { top: '17.78mm', right: '19.05mm', bottom: '19.05mm', left: '19.05mm' }
+    : { top: '19mm', right: '20mm', bottom: '21mm', left: '20mm' };
+  const labels = resumeLabels(locale);
+  const contactItems = [input.email, input.phone, input.city].filter((value): value is string => Boolean(value?.trim()));
+  const claims = input.sentences.map((sentence) => `<p>${escapeHtml(sentence.text)}</p>`).join('');
+  const html = `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
+    @page { size: ${pageSize}; margin: ${pageMargins.top} ${pageMargins.right} ${pageMargins.bottom} ${pageMargins.left}; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #263344; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.58; }
+    header { border-top: 4px solid #244d64; padding-top: 20px; padding-bottom: 22px; margin-bottom: 25px; border-bottom: 1px solid #ccd6dd; break-inside: avoid; }
+    h1 { color: #172b3b; font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 34pt; line-height: 1.1; letter-spacing: -0.8px; margin: 0; overflow-wrap: anywhere; }
+    .role { color: #244d64; font-size: 12pt; line-height: 1.4; margin: 12px 0 0; overflow-wrap: anywhere; }
+    .contact { color: #485867; font-size: 9.5pt; margin: 10px 0 0; overflow-wrap: anywhere; }
+    h2 { color: #244d64; font-size: 9pt; font-weight: 700; line-height: 1.3; letter-spacing: 1.4px; text-transform: uppercase; padding-bottom: 8px; margin: 0 0 12px; border-bottom: 1px solid #dce3e8; break-after: avoid; }
+    p { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; orphans: 3; widows: 3; }
+    </style></head><body><header><h1>${escapeHtml(input.fullName || labels.defaultName)}</h1><p class="role">${escapeHtml(input.role || labels.defaultRole)}</p>${contactItems.length ? `<p class="contact">${contactItems.map(escapeHtml).join(' · ')}</p>` : ''}</header><main><h2>${escapeHtml(labels.defaultName)}</h2>${claims}</main></body></html>`;
+  const footer = `<div style="width:100%;margin:0 ${pageMargins.right};padding-top:7px;border-top:1px solid #dce3e8;font-family:Arial,Helvetica,sans-serif;font-size:7px;color:#526171;display:flex;justify-content:flex-end;gap:12px"><span style="white-space:nowrap"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
+  const absolutePath = resolve(input.path);
+  await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({ acceptDownloads: false, javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.route('**/*', (route) => route.abort());
+    await page.setContent(html, { waitUntil: 'load', timeout: 10_000 });
+    const extractedText = await page.locator('body').innerText();
+    for (const sentence of input.sentences) if (!extractedText.includes(sentence.text)) throw new Error('APPLICATION_DOCUMENT_TEXT_CHECK_FAILED');
+    await page.pdf({ path: absolutePath, format: pageSize, printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: pageMargins });
+  } finally { await browser.close(); }
+  const bytes = await readFile(absolutePath);
+  if (bytes.byteLength < 1_000 || bytes.byteLength > 20_000_000 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('PDF_OUTPUT_INVALID');
+  return { absolutePath, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.byteLength };
+}
+
 /** Renders an offer-specific cover letter offline; the checked PDF contains the same sentence text as its companion file. */
 export async function renderApplicationCoverLetter(input: { path: string; locale: 'es' | 'en'; paperSize?: ResumePaperSize; sentences: ApplicationDocumentSentence[] }) {
   if (!input.sentences.length || input.sentences.length > 50) throw new Error('APPLICATION_DOCUMENT_SENTENCE_LIMIT');

@@ -1,16 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
-  AI_LIMITS, aiErrorSchema, aiOperationDataCategories, aiSnapshotDataCategories, aiSourceSnapshotSchema, canAutoRetryAiRun, validateAiOutput,
-  type AiError, type AiOperation, type AiRunOrigin, type AiSourceSnapshot,
+  AI_LIMITS, aiErrorSchema, aiOperationDataCategories, aiSnapshotDataCategories, aiSourceSnapshotSchema, canAutoRetryAiRun, validateAiOutput, aiProviderSchema,
+  type AiError, type AiOperation, type AiProvider, type AiRunOrigin, type AiSourceSnapshot,
 } from '@career/domain';
 import { hashAiInputContent } from './prompts.js';
 
-export type AiQueueErrorCode = 'INVALID_INPUT' | 'STORAGE_UNAVAILABLE' | 'CONSENT_INVALID' | 'IDEMPOTENCY_CONFLICT' | 'EQUIVALENT_ACTIVE' | 'QUEUE_FULL' | 'MANUAL_QUEUE_FULL' | 'PASS_LIMIT' | 'DAILY_LIMIT' | 'CLOCK_INVALID' | 'INVALID_OUTPUT' | 'RETRY_INVALID';
+export type AiQueueErrorCode = 'INVALID_INPUT' | 'STORAGE_UNAVAILABLE' | 'CONSENT_INVALID' | 'IDEMPOTENCY_CONFLICT' | 'EQUIVALENT_ACTIVE' | 'QUEUE_FULL' | 'MANUAL_QUEUE_FULL' | 'PASS_LIMIT' | 'DAILY_LIMIT' | 'CLOCK_INVALID' | 'INVALID_OUTPUT' | 'RETRY_INVALID' | 'AI_BUSY';
 export class AiQueueError extends Error { constructor(readonly code: AiQueueErrorCode) { super(code); this.name = 'AiQueueError'; } }
 export type EnqueueAiRunInput = {
   workspaceId: string; connectionId: string; consentId: string; connectionRevision: number; consentRevision: number;
-  provider: 'codex' | 'claude-code'; model?: string; accountFingerprint: string; operation: AiOperation; origin: AiRunOrigin;
+  provider: AiProvider; model?: string; accountFingerprint: string; operation: AiOperation; origin: AiRunOrigin;
   idempotencyKey: string; contentIdentity: string;
   /** Derived by the server from the official account/context, never accepted from a browser. */
   accountLockKey: string; snapshot: AiSourceSnapshot; snapshotHash: string; inputVersions: Record<string, unknown>;
@@ -18,7 +18,7 @@ export type EnqueueAiRunInput = {
 };
 export type AiQueueRun = {
   id: string; workspaceId: string; connectionId: string; consentId: string; connectionRevision: number; consentRevision: number;
-  provider: 'codex' | 'claude-code'; accountFingerprint: string; model: string | null; operation: AiOperation; origin: AiRunOrigin;
+  provider: AiProvider; accountFingerprint: string; model: string | null; operation: AiOperation; origin: AiRunOrigin;
   status: string; snapshot: AiSourceSnapshot; snapshotHash: string; inputVersions: Record<string, unknown>;
   searchId: string | null; automationPolicyId: string | null; leaseToken?: string;
 };
@@ -54,12 +54,13 @@ const uuid = z.string().uuid(); const hash = z.string().regex(/^[a-f0-9]{64}$/u)
 const usageSchema = z.object({ availability: z.enum(['KNOWN', 'STALE', 'UNAVAILABLE']), model: z.string().min(1).max(160).nullable().optional(), inputTokens: z.number().int().nonnegative().nullable().optional(), outputTokens: z.number().int().nonnegative().nullable().optional(), costUsd: z.string().regex(/^\d+(?:\.\d+)?$/u).nullable().optional() }).strict();
 const enqueueSchema = z.object({
   workspaceId: uuid, connectionId: uuid, consentId: uuid, connectionRevision: z.number().int().positive(), consentRevision: z.number().int().positive(),
-  provider: z.enum(['codex', 'claude-code']), model: z.string().min(1).max(160).optional(), accountFingerprint: hash, operation: z.enum(['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT']), origin: z.enum(['MANUAL', 'AUTOMATIC']),
+  provider: aiProviderSchema, model: z.string().min(1).max(160).optional(), accountFingerprint: hash, operation: z.enum(['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'RESUME_IMPORT']), origin: z.enum(['MANUAL', 'AUTOMATIC']),
   idempotencyKey: z.string().min(1).max(200), contentIdentity: hash, accountLockKey: hash, snapshot: aiSourceSnapshotSchema, snapshotHash: hash, inputVersions: z.record(z.string(), z.unknown()),
   searchId: uuid.optional(), automationPolicyId: uuid.optional(), automationPolicyRevision: z.number().int().positive().optional(), reservationPassId: uuid.optional(), now: z.date().optional(), retryOf: uuid.optional(),
 }).strict();
 function day(now: Date): string { if (!Number.isFinite(now.getTime())) throw new AiQueueError('INVALID_INPUT'); return now.toISOString().slice(0, 10); }
 function leaseDuration(value = 30_000): number { if (!Number.isFinite(value) || value < 5_000 || value > 120_000) throw new AiQueueError('INVALID_INPUT'); return Math.floor(value); }
+function documentLeaseDuration(value = 180_000): number { if (!Number.isFinite(value) || value < 125_000 || value > 300_000) throw new AiQueueError('INVALID_INPUT'); return Math.floor(value); }
 function runRecord(row: Row): AiQueueRun {
   return { id: row.id, workspaceId: row.workspace_id, connectionId: row.connection_id, consentId: row.consent_id, connectionRevision: row.connection_revision, consentRevision: row.consent_revision, provider: row.provider, accountFingerprint: row.account_fingerprint, model: row.model ?? null, operation: row.operation, origin: row.origin, status: row.status, snapshot: row.snapshot, snapshotHash: row.snapshot_hash, inputVersions: row.input_versions, searchId: row.search_id ?? null, automationPolicyId: row.automation_policy_id ?? null, ...(row.lease_token ? { leaseToken: row.lease_token } : {}) };
 }
@@ -129,7 +130,11 @@ async function expireLeases(client: AiPgClient, now: Date): Promise<number> {
 }
 async function cancelInvalid(client: AiPgClient, now: Date, workspaceId?: string) {
   const pending = await client.query(`SELECT * FROM ai_runs WHERE status IN ('QUEUED','RUNNING') ${workspaceId ? 'AND workspace_id=$1' : ''} ORDER BY workspace_id,id FOR UPDATE`, workspaceId ? [workspaceId] : []);
-  for (const run of pending.rows) if (!(await authorization(client, run))) await requestCancellation(client, run, now);
+  for (const run of pending.rows) {
+    // A synchronous document run has no queue snapshot and owns a route-specific consent/heartbeat contract.
+    if (run.operation === 'DOCUMENT_REWORD') continue;
+    if (!(await authorization(client, run))) await requestCancellation(client, run, now);
+  }
 }
 async function startsToday(client: AiPgClient, workspaceId: string, now: Date): Promise<number> {
   const today = day(now);
@@ -155,6 +160,81 @@ const validLease = (run: Row | undefined, token: string, now: Date) => run && ['
 /** Persistent queue with short serialized writes. Source checks and provider work are distinct: no inference in tx. */
 export function createAiQueue(pool: AiPgPool) {
   return {
+    /** Starts the synchronous, one-off document path without creating a queued reservation or storing source text. */
+    async beginDocumentRun(input: { workspaceId: string; connectionId: string; connectionRevision: number; accountFingerprint: string;
+      model: string; idempotencyKey: string; contentIdentity: string; payloadSha256: string; baseRevisionId: string;
+      citedFactIds: string[]; inputVersions: Record<string, unknown>; noticeVersion: string; now?: Date; leaseMs?: number }) {
+      const now = input.now ?? new Date(); const today = day(now); const leaseMs = documentLeaseDuration(input.leaseMs ?? 180_000);
+      if (![input.workspaceId,input.connectionId,input.baseRevisionId].every(value => uuid.safeParse(value).success)
+        || !hash.safeParse(input.accountFingerprint).success || !hash.safeParse(input.contentIdentity).success || !hash.safeParse(input.payloadSha256).success
+        || !input.idempotencyKey || input.idempotencyKey.length > 200 || !input.model || input.model.length > 160
+        || !input.noticeVersion || input.noticeVersion.length > 64 || new Set(input.citedFactIds).size !== input.citedFactIds.length
+        || input.citedFactIds.some(id => !uuid.safeParse(id).success)) throw new AiQueueError('INVALID_INPUT');
+      return tx(pool, async client => {
+        await expireLeases(client, now);
+        const connection = (await client.query(`SELECT * FROM ai_connections WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, [input.workspaceId,input.connectionId])).rows[0];
+        if (!connection || !connection.active || connection.state !== 'CONNECTED' || connection.provider !== 'codex'
+          || connection.revision !== input.connectionRevision || connection.account_fingerprint !== input.accountFingerprint
+          || (connection.selected_model && connection.selected_model !== input.model)) throw new AiQueueError('CONSENT_INVALID');
+        const busy = await client.query(`SELECT 1 FROM ai_runs WHERE workspace_id=$1 AND status IN ('RUNNING','CANCEL_REQUESTED')
+          UNION ALL SELECT 1 FROM ai_account_leases WHERE account_lock_key=$2 AND lease_until>$3 LIMIT 1`, [input.workspaceId,input.accountFingerprint,now]);
+        if (busy.rowCount) throw new AiQueueError('AI_BUSY');
+        const prior = await client.query('SELECT 1 FROM ai_runs WHERE workspace_id=$1 AND idempotency_key=$2', [input.workspaceId,input.idempotencyKey]);
+        if (prior.rowCount) throw new AiQueueError('IDEMPOTENCY_CONFLICT');
+        const consentRevision = Number((await client.query(`SELECT coalesce(max(revision),0)::int AS revision FROM ai_consents
+          WHERE workspace_id=$1 AND connection_id=$2 AND operation='DOCUMENT_REWORD'`, [input.workspaceId,input.connectionId])).rows[0]!.revision) + 1;
+        const consent = (await client.query(`INSERT INTO ai_consents(workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,search_ids,notice_version,remembered)
+          VALUES($1,$2,'codex',$3,$4,$5,'DOCUMENT_REWORD',$6::jsonb,NULL,$7,false) RETURNING id`,
+          [input.workspaceId,input.connectionId,input.accountFingerprint,input.connectionRevision,consentRevision,JSON.stringify(['APPROVED_FACTS','JOB_POSTING']),input.noticeVersion])).rows[0];
+        const id = randomUUID(); const leaseToken = randomUUID(); const leaseUntil = new Date(now.getTime()+leaseMs);
+        const snapshot = { payloadSha256: input.payloadSha256, baseRevisionId: input.baseRevisionId, citedFactIds: input.citedFactIds };
+        const run = (await client.query(`INSERT INTO ai_runs(id,workspace_id,connection_id,consent_id,provider,model,connection_revision,consent_revision,account_fingerprint,
+          operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,reserved_day,lease_token,lease_owner,lease_until,started_at)
+          VALUES($1,$2,$3,$4,'codex',$5,$6,$7,$8,'DOCUMENT_REWORD','MANUAL','RUNNING',$9,$10,$8,$11::jsonb,$12,$13::jsonb,$14,$15,$16,$17,$18)
+          RETURNING id,workspace_id,connection_id,consent_id,connection_revision,consent_revision,account_fingerprint,model,account_lock_key`,
+          [id,input.workspaceId,input.connectionId,consent!.id,input.model,input.connectionRevision,consentRevision,input.accountFingerprint,input.idempotencyKey,
+            input.contentIdentity,JSON.stringify(snapshot),input.payloadSha256,JSON.stringify(input.inputVersions),today,leaseToken,`document-reword:${process.pid}`,leaseUntil,now])).rows[0];
+        await client.query(`INSERT INTO ai_account_leases(account_lock_key,run_id,workspace_id,lease_token,lease_owner,lease_until)
+          VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(account_lock_key) DO UPDATE SET run_id=EXCLUDED.run_id,workspace_id=EXCLUDED.workspace_id,
+          lease_token=EXCLUDED.lease_token,lease_owner=EXCLUDED.lease_owner,lease_until=EXCLUDED.lease_until`,
+          [input.accountFingerprint,id,input.workspaceId,leaseToken,`document-reword:${process.pid}`,leaseUntil]);
+        return { ...run, id, leaseToken, snapshot, snapshotHash: input.payloadSha256, reservedDay: today, leaseUntil };
+      });
+    },
+    /** Route-specific heartbeat: deliberately does not run generic authorization over the hash-only snapshot. */
+    async heartbeatDocumentRun(runId: string, leaseToken: string, leaseMs = 180_000, now = new Date()): Promise<boolean> {
+      const until = new Date(now.getTime()+documentLeaseDuration(leaseMs));
+      return tx(pool, async client => {
+        const run = (await client.query(`SELECT * FROM ai_runs WHERE id=$1 FOR UPDATE`, [runId])).rows[0];
+        if (!run || run.operation !== 'DOCUMENT_REWORD' || run.status !== 'RUNNING' || run.lease_token !== leaseToken) return false;
+        const account = (await client.query(`SELECT 1 FROM ai_account_leases WHERE account_lock_key=$1 AND run_id=$2 AND lease_token=$3 FOR UPDATE`, [run.account_lock_key,runId,leaseToken])).rowCount;
+        if (!account) return false;
+        await client.query(`UPDATE ai_runs SET lease_until=$3 WHERE id=$1 AND status='RUNNING' AND lease_token=$2`, [runId,leaseToken,until]);
+        await client.query(`UPDATE ai_account_leases SET lease_until=$4 WHERE account_lock_key=$1 AND run_id=$2 AND lease_token=$3`, [run.account_lock_key,runId,leaseToken,until]);
+        return true;
+      });
+    },
+    /** Commits output hashes and terminal status atomically; lease-token fencing protects recovery/cancellation. */
+    async finishDocumentRun(runId: string, leaseToken: string, result: { status: 'SUCCEEDED'|'FAILED'; proposalHashes?: Array<{ sentenceId: string; proposalSha256: string }>;
+      error?: AiError; usage?: AiRunUsage; now?: Date }): Promise<'SUCCEEDED'|'FAILED'|'CANCELLED'|null> {
+      const now = result.now ?? new Date();
+      if (result.error && !aiErrorSchema.safeParse(result.error).success) throw new AiQueueError('INVALID_INPUT');
+      for (const row of result.proposalHashes ?? []) if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u.test(row.sentenceId) || !hash.safeParse(row.proposalSha256).success) throw new AiQueueError('INVALID_INPUT');
+      return tx(pool, async client => {
+        const run = (await client.query(`SELECT * FROM ai_runs WHERE id=$1 FOR UPDATE`, [runId])).rows[0];
+        if (!run || run.operation !== 'DOCUMENT_REWORD' || run.lease_token !== leaseToken || !['RUNNING','CANCEL_REQUESTED'].includes(run.status)) return null;
+        const status = run.status === 'CANCEL_REQUESTED' ? 'CANCELLED' : result.status;
+        if (status === 'SUCCEEDED') {
+          for (const row of result.proposalHashes ?? []) await client.query(`INSERT INTO ai_document_reword_proposals(workspace_id,run_id,sentence_id,proposal_sha256) VALUES($1,$2,$3,$4)`, [run.workspace_id,run.id,row.sentenceId,row.proposalSha256]);
+        }
+        const updated = await client.query(`UPDATE ai_runs SET status=$3,error=$4::jsonb,completed_at=$5,lease_token=NULL,lease_owner=NULL,lease_until=NULL
+          WHERE id=$1 AND lease_token=$2 AND status IN ('RUNNING','CANCEL_REQUESTED')`, [runId,leaseToken,status,status === 'CANCELLED' ? JSON.stringify({code:'CANCELLED',dispatched:'UNKNOWN'}) : JSON.stringify(result.error ?? null),now]);
+        if (!updated.rowCount) throw new AiQueueError('STORAGE_UNAVAILABLE');
+        await client.query(`DELETE FROM ai_account_leases WHERE account_lock_key=$1 AND run_id=$2 AND lease_token=$3`, [run.account_lock_key,runId,leaseToken]);
+        await writeUsage(client,run,status,status === 'CANCELLED' ? {availability:'UNAVAILABLE'} : result.usage);
+        return status;
+      });
+    },
     async enqueue(input: EnqueueAiRunInput): Promise<AiQueueRun> {
       const parsed = enqueueSchema.safeParse(input);
       if (!parsed.success) throw new AiQueueError('INVALID_INPUT');

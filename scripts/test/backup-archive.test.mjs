@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { ARCHIVE_ROOT, ArchiveError, assertSafeRelativePath, buildHeader, extractArchive, safeJoin, writeArchive } from '../lib/backup-archive.mjs';
-import { allowedArchiveName, keyFingerprint, manifestMac, validateManifest, verifyManifestMac } from '../lib/backup-core.mjs';
+import { allowedArchiveName, keyFingerprint, manifestMac, runPgTool, validateManifest, verifyManifestMac } from '../lib/backup-core.mjs';
 
 let work;
 before(async () => { work = await mkdtemp(join(tmpdir(), 'career-archive-test-')); });
@@ -34,6 +34,21 @@ async function expectRejected(bytes, code, allowName) {
   await assert.rejects(extractArchive(file, dest, { allowName }), (error) => error instanceof ArchiveError && error.code === code);
   return dest;
 }
+
+test('a PostgreSQL spawn error reports its code without exposing the configured executable path', () => {
+  const original = process.env.CAREER_PG_BIN;
+  const privateBinaryPath = join(work, 'Private Ruben', 'postgres tools');
+  process.env.CAREER_PG_BIN = privateBinaryPath;
+  try {
+    const result = runPgTool('pg_dump', [], 'postgres://user:secret@127.0.0.1/career');
+    assert.equal(result.ok, false);
+    assert.equal(result.stderr, 'Could not start pg_dump (ENOENT)');
+    assert.ok(!result.stderr.includes(privateBinaryPath), 'the executable path stays private');
+  } finally {
+    if (original === undefined) delete process.env.CAREER_PG_BIN;
+    else process.env.CAREER_PG_BIN = original;
+  }
+});
 
 describe('path guards', () => {
   for (const name of ['../evil', 'a/../../evil', '/etc/passwd', 'C:/x', 'a\\b', '', 'a//b', './a', 'a/.', '.hidden', 'a/b\0c', 'ä/b', `${'a'.repeat(300)}`]) {
@@ -154,6 +169,37 @@ describe('manifest authentication', () => {
       change(value);
       assert.throws(() => validateManifest(value), ArchiveError);
     }
+  });
+  test('application document revisions bind both stored files and remain backward compatible with old manifests', () => {
+    const value = manifest();
+    const documentId = '33333333-3333-4333-8333-333333333333';
+    const revisionId = '44444444-4444-4444-8444-444444444444';
+    const textStoragePath = `${documentId}/${revisionId}.txt`;
+    const pdfStoragePath = `${documentId}/${revisionId}.pdf`;
+    const textArchivePath = `files/${textStoragePath}`;
+    const pdfArchivePath = `files/${pdfStoragePath}`;
+    value.applicationDocumentRevisions = [{
+      id: revisionId, workspaceId: '22222222-2222-4222-8222-222222222222', documentId, revision: 1,
+      textStoragePath, textSha256: 'c'.repeat(64), textArchivePath,
+      pdfStoragePath, pdfSha256: 'd'.repeat(64), pdfArchivePath,
+    }];
+    value.entries.push({ path: textArchivePath, size: 1, sha256: 'c'.repeat(64) }, { path: pdfArchivePath, size: 1, sha256: 'd'.repeat(64) });
+    assert.ok(validateManifest(value));
+
+    const variants = [
+      (m) => { m.applicationDocumentRevisions[0].textStoragePath = '../../private.txt'; },
+      (m) => { m.applicationDocumentRevisions[0].textSha256 = 'not-a-hash'; },
+      (m) => { m.applicationDocumentRevisions[0].pdfArchivePath = 'files/other.pdf'; },
+      (m) => { m.entries = m.entries.filter((entry) => entry.path !== pdfArchivePath); },
+      (m) => { m.applicationDocumentRevisions.push({ ...m.applicationDocumentRevisions[0] }); },
+    ];
+    for (const change of variants) {
+      const hostile = JSON.parse(JSON.stringify(value));
+      change(hostile);
+      assert.throws(() => validateManifest(hostile), ArchiveError);
+    }
+    const legacy = manifest();
+    assert.ok(validateManifest(legacy), 'previous backup manifests without application document revisions remain accepted');
   });
 });
 

@@ -46,6 +46,11 @@ test('tracking metrics count only currently confirmed applications and retain ea
   assert.deepEqual(calculateTrackingMetrics({ period: '30d', now, applications: apps, events }), {
     period: '30d', periodStart: '2026-09-18T12:00:00.000Z', confirmed: 5, interviewed: 2,
     interviewConversionPercent: 40, noResponseYet: 1, noResponseAfter14Days: 1, noResponseThresholdDays: 14,
+    breakdowns: {
+      source: [{ key: 'unidentified', label: 'unidentified', confirmed: 5, interviewed: 2, interviewConversionPercent: 40, smallSample: false }],
+      role: [{ key: 'unidentified', label: 'unidentified', confirmed: 5, interviewed: 2, interviewConversionPercent: 40, smallSample: false }],
+      country: [{ key: 'unidentified', label: 'unidentified', confirmed: 5, interviewed: 2, interviewConversionPercent: 40, smallSample: false }],
+    },
   });
 });
 
@@ -54,4 +59,31 @@ test('an interview stage corrected away is not counted even if a later event clo
   const result = calculateTrackingMetrics({ period: 'all', now, applications: [apps[1]!], events: inputEvents });
   assert.equal(result.interviewed, 0);
   assert.equal(result.interviewConversionPercent, 0);
+});
+
+test('tracking breakdowns group explicit sources exclusively, normalize only role case and spaces, and suppress small-sample percentages', () => {
+  const groupedApps = Array.from({ length: 5 }, (_, index) => ({
+    id: `group-${index}`,
+    state: 'CONFIRMED',
+    recruitmentStage: index < 2 ? 'INTERVIEW' : 'REJECTED',
+    role: index % 2 ? 'Product Engineer' : '  product   engineer  ',
+    sourceProviders: index < 3 ? ['greenhouse'] : index === 3 ? ['ashby', 'greenhouse'] : [],
+  }));
+  const groupedEvents = groupedApps.flatMap((application, index) => [
+    { applicationId: application.id, eventType: 'MANUAL_APPLICATION_RECORDED', newState: 'CONFIRMED', createdAt: `2026-10-${10 + index}T12:00:00Z` },
+    ...(index < 2 ? [{ applicationId: application.id, eventType: 'RECRUITMENT_STAGE_CHANGED', newState: 'INTERVIEW', createdAt: `2026-10-${11 + index}T12:00:00Z` }] : []),
+  ]);
+  const result = calculateTrackingMetrics({ period: 'all', now, applications: groupedApps, events: groupedEvents });
+
+  assert.deepEqual(result.breakdowns.source.map(({ key, confirmed, interviewed, interviewConversionPercent, smallSample }) => ({ key, confirmed, interviewed, interviewConversionPercent, smallSample })), [
+    { key: 'greenhouse', confirmed: 3, interviewed: 2, interviewConversionPercent: null, smallSample: true },
+    { key: 'multiple', confirmed: 1, interviewed: 0, interviewConversionPercent: null, smallSample: true },
+    { key: 'unidentified', confirmed: 1, interviewed: 0, interviewConversionPercent: null, smallSample: true },
+  ]);
+  assert.deepEqual(result.breakdowns.role.map(({ key, confirmed, interviewed, interviewConversionPercent, smallSample }) => ({ key, confirmed, interviewed, interviewConversionPercent, smallSample })), [
+    { key: 'product engineer', confirmed: 5, interviewed: 2, interviewConversionPercent: 40, smallSample: false },
+  ]);
+  assert.deepEqual(result.breakdowns.country.map(({ key, confirmed, interviewed, interviewConversionPercent, smallSample }) => ({ key, confirmed, interviewed, interviewConversionPercent, smallSample })), [
+    { key: 'unidentified', confirmed: 5, interviewed: 2, interviewConversionPercent: 40, smallSample: false },
+  ]);
 });
