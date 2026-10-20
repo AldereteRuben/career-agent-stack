@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0
+
+- Import resume facts with optional Codex assistance while keeping every suggestion unapproved until the person reviews it; improve first-run profile and search guidance.
+- Add bounded Adzuna discovery and connect imported jobs, availability, salary details, saved-job filters and match feedback.
+- Make job reports clearer about evidence, unknowns and skill gaps; add opt-in local Ollama help and desktop job notifications.
+- Prepare offer-specific resumes and evidence-based cover letters from approved profile facts. Review, edit, approve, download and export versioned application materials; inspect generated PDFs and include document revisions in encrypted backups.
+- Add application contacts, email import, follow-up drafts, outcome metrics and timeline reminders; improve application tracking and the job-to-application path.
+- Add guided isolated backup restore, safer Windows lifecycle and file permissions, clearer backup diagnostics, and additional accessibility, browser, migration and document-flow coverage.
+- Reduce unnecessary dashboard scrolling and unify shared controls across the interface.
+- No unattended application submission or automatic external sharing. Optional assistance remains consent-based; platform and source limits are documented in [release verification and limits](docs/releases/v0.10.0.md).
+
 ## 0.9.2
 
 - One search creation method at a time: describe the role with Codex or choose filters. Switching methods keeps the draft; account connection stays inside the search.
