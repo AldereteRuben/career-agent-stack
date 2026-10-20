@@ -14,7 +14,7 @@ type Attempt = { id: string; status: string; digest: string; expiresAt: string; 
 type Data = { supported: boolean; url: string | null; identity: { fullName: string; email: string }; application: { canonicalUrl?: string | null; state: string; recruitmentStage: string; documentId: string | null; jobId: string | null }; documents: Array<{ id: string; name: string; revision: number; assistReady: boolean }>; attempts: Attempt[] };
 const activeStates = ['PREPARED', 'STARTING', 'REVIEW', 'HANDOFF_REQUIRED', 'HANDED_OFF', 'UNKNOWN'];
 
-export function AssistedApplication({ applicationId, applicationState, recruitmentStage, returnTo, onChanged }: { applicationId: string; applicationState?: string; recruitmentStage?: string; returnTo?: string; onChanged: () => void }) {
+export function AssistedApplication({ applicationId, applicationState, recruitmentStage, returnTo, onChanged, onOriginalLink }: { applicationId: string; applicationState?: string; recruitmentStage?: string; returnTo?: string; onChanged: () => void; onOriginalLink?: (shown: boolean) => void }) {
   const { locale } = useLocale(); const c = copy(locale);
   const [data, setData] = useState<Data | null>(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const [documentId, setDocumentId] = useState(''); const [phone, setPhone] = useState(''); const [organization, setOrganization] = useState('');
@@ -27,6 +27,10 @@ export function AssistedApplication({ applicationId, applicationState, recruitme
   }, [applicationId]);
   const attempt = data?.attempts.find((item) => activeStates.includes(item.status));
   const attemptId = attempt?.id;
+  const closedPanel = Boolean(data && !attempt && isApplicationClosedForPreparation({ state: applicationState ?? data.application.state, recruitmentStage: recruitmentStage ?? data.application.recruitmentStage }));
+  // Tell the page when this block really shows "Continue on the original job page", so the header keeps its own link otherwise (loading, failure, closed or assisted Lever applications).
+  const offersOriginalLink = Boolean(data && !closedPanel && !data.supported && (data.application.canonicalUrl ?? data.url));
+  useEffect(() => { onOriginalLink?.(offersOriginalLink); return () => onOriginalLink?.(false); }, [offersOriginalLink, onOriginalLink]);
   useEffect(() => { setConsent(false); setSubmitConsent(false); setReviewed(false); setAttested(false); setReason(''); }, [attemptId]);
   useEffect(() => {
     alive.current = true; const controller = new AbortController(); void load(controller.signal);
@@ -85,9 +89,9 @@ export function AssistedApplication({ applicationId, applicationState, recruitme
   const availableDocuments = data?.documents.filter((doc) => doc.assistReady) ?? [];
   const selectedDocument = availableDocuments.some((doc) => doc.id === documentId) ? documentId : availableDocuments.find((doc) => doc.id === data?.application.documentId)?.id ?? availableDocuments[0]?.id ?? '';
   const hasOutdatedDocuments = data?.documents.some((doc) => !doc.assistReady);
-  if (data && !attempt && isApplicationClosedForPreparation({ state: applicationState ?? data.application.state, recruitmentStage: recruitmentStage ?? data.application.recruitmentStage })) return <section className="assist-panel"><h3>{c('Sigue la respuesta de la empresa', 'Track the employer’s response')}</h3><p>{c('Esta solicitud ya está enviada o cerrada. Puedes actualizar su seguimiento y añadir notas abajo.', 'This application is already submitted or closed. You can update its progress and add notes below.')}</p></section>;
+  if (closedPanel) return <section className="assist-panel"><h3>{c('Sigue la respuesta de la empresa', 'Track the employer’s response')}</h3><p>{c('Esta solicitud ya está enviada o cerrada. Puedes actualizar su seguimiento y añadir notas abajo.', 'This application is already submitted or closed. You can update its progress and add notes below.')}</p></section>;
   return <section className="assist-panel" aria-labelledby={`assist-title-${applicationId}`} aria-busy={busy}>
-    <div className="panel-heading"><div><div className="eyebrow">{data?.supported ? c('SOLICITUD ASISTIDA · LEVER', 'ASSISTED APPLICATION · LEVER') : c('SIGUIENTE PASO', 'NEXT STEP')}</div><h3 id={`assist-title-${applicationId}`}>{data?.supported ? c('Prepara el formulario, conserva el control', 'Prepare the form, stay in control') : c('Continúa en la página de la empresa', 'Continue on the employer’s page')}</h3></div><Button variant="quiet" disabled={busy} onClick={() => { setError(''); void load(); }}>{c('Actualizar', 'Refresh')}</Button></div>
+    <div className="panel-heading"><div><div className="eyebrow">{data?.supported ? c('SOLICITUD ASISTIDA · LEVER', 'ASSISTED APPLICATION · LEVER') : c('SIGUIENTE PASO', 'NEXT STEP')}</div><h3 id={`assist-title-${applicationId}`}>{data?.supported ? c('Prepara el formulario, conserva el control', 'Prepare the form, stay in control') : c('Continúa en la página de la empresa', 'Continue on the employer’s page')}</h3></div></div>
     {error && <Notice tone="error">{error}</Notice>}
     {!data ? <p>{c('Cargando opciones…', 'Loading options…')}</p> : !data.supported ? <><p>{c('Este enlace requiere completar la solicitud en la página original. Prepara y revisa tu CV, abre la oferta y sigue sus instrucciones. Después puedes registrar el envío aquí.', 'This link requires completing the application on the original page. Prepare and review your resume, open the job and follow its instructions. Afterwards you can record the submission here.')}</p>{(data.application.canonicalUrl ?? data.url) && <a className={`button ${data.application.documentId ? 'button-primary' : 'button-secondary'}`} href={data.application.canonicalUrl ?? data.url ?? undefined} target="_blank" rel="noopener noreferrer">{c('Continuar en la oferta original', 'Continue on the original job page')}</a>}</> : <>
       <p>{c('Autocompletamos los datos de contacto. Tras revisar el formulario, puedes autorizar por separado que adjuntemos el CV aprobado y enviemos esta solicitud. Los formularios con preguntas obligatorias, declaraciones legales, CAPTCHA o autenticación requieren intervención manual.', 'We fill your contact details. After reviewing the form, you can separately authorize us to attach the approved resume and submit this application. Forms with required questions, legal statements, CAPTCHA or authentication need manual help.')}</p>
@@ -132,5 +136,6 @@ export function AssistedApplication({ applicationId, applicationState, recruitme
       </div>}
       {!attempt && data.attempts[0] && <Notice tone={data.attempts[0].status === 'CONFIRMED' ? 'success' : 'info'}>{c('Último intento', 'Last attempt')}: {data.attempts[0].result.reason === 'ASSIST_VISIBLE_RECEIPT' ? c('Confirmación visible en la página', 'Visible confirmation on the page') : stateLabel[data.attempts[0].status] ?? data.attempts[0].status}.{data.attempts[0].result.receipt && <><br/>{c('Confirmación visible', 'Visible confirmation')}: {data.attempts[0].result.receipt}</>}</Notice>}
     </>}
+    <Button variant="quiet" disabled={busy} onClick={() => { setError(''); void load(); }}>{data?.supported ? c('Actualizar', 'Refresh') : c('Volver a comprobar CV y datos', 'Re-check resume and details')}</Button>
   </section>;
 }

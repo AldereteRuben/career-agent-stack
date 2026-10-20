@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { Route } from 'playwright';
 import type { Scenario } from './scenarios.js';
-import { clickWithResumeReplacement, eventually, goTo, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
 
 type Fact = { id: string; statement: string; approvalStatus: string };
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Fact[] };
@@ -107,6 +108,69 @@ export const patchScenarios: Scenario[] = [
       await page.waitForURL((url) => url.searchParams.get('id') === two.id);
       assert.equal(await note.inputValue(), 'Draft for second application');
       await page.screenshot({ path: join(artifacts, 'v031-note-drafts.png'), fullPage: true });
+    },
+  },
+  {
+    name: 'v031-application-detail-has-one-job-link-and-clear-refresh-action',
+    async run({ page, api, marker, artifacts, allowConsole }) {
+      const canonicalUrl = `https://example.test/jobs/${marker}/application-detail`;
+      // An application without a cover letter answers 404, which is how the cover-letter panel learns there is none yet.
+      allowConsole(/status of 404/);
+      const job = await api.post<{ id: string }>('/jobs/import', { company: `Fictional ${marker}`, title: `QA role ${marker}`, jobUrl: canonicalUrl });
+      const application = await api.post<{ id: string }>('/applications', { jobId: job.id, company: `Fictional ${marker}`, role: `QA role ${marker}`, canonicalUrl, state: 'DRAFT', notes: '' });
+
+      for (const locale of ['es', 'en'] as const) {
+        await setLocale(page, locale);
+        for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+          await page.setViewportSize(viewport);
+          await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+          await page.locator('.tracker-detail').getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
+          const detail = page.locator('.tracker-detail');
+          assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, `${locale} has one in-app job link at ${viewport.width}px`);
+          await eventually(() => detail.locator(`a[href="${canonicalUrl}"]`).count(), (count) => count === 1, `${locale} has one employer link at ${viewport.width}px`);
+          await detail.getByRole('button', { name: locale === 'es' ? 'Volver a comprobar CV y datos' : 'Re-check resume and details', exact: true }).waitFor();
+          assert.equal(await hasHorizontalOverflow(page), false, `${locale} application detail overflows at ${viewport.width}px`);
+          await page.screenshot({ path: join(artifacts, `v031-application-detail-${locale}-${viewport.width}.png`), fullPage: true, animations: 'disabled' });
+        }
+      }
+
+      // The header keeps its employer link whenever "Next step" does not offer one itself: while the block cannot load, and once the application is closed.
+      const detail = page.locator('.tracker-detail');
+      const employerLinks = () => detail.locator(`a[href="${canonicalUrl}"]`).count();
+      await setLocale(page, 'es');
+      await page.setViewportSize({ width: 390, height: 844 });
+      const failAssist = (route: Route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'INTERNAL', message: 'forced failure' } }) });
+      allowConsole(/status of 500/);
+      await page.route('**/api/v1/applications/*/assist', failAssist);
+      try {
+        await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+        await detail.getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
+        await detail.getByRole('link', { name: /Abrir oferta original/ }).waitFor();
+        assert.equal(await employerLinks(), 1, 'An open application whose next step cannot load still links to the original post');
+      } finally { await page.unroute('**/api/v1/applications/*/assist', failAssist); }
+
+      // An assisted Lever application has no "Continue on the original job page" button, so the header link must stay.
+      const assistedLever = async (route: Route) => { const response = await route.fetch(); const body = await response.json() as Record<string, unknown>; await route.fulfill({ response, json: { ...body, supported: true } }); };
+      await page.route('**/api/v1/applications/*/assist', assistedLever);
+      try {
+        await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+        await detail.getByText('SOLICITUD ASISTIDA · LEVER').waitFor();
+        await detail.getByRole('button', { name: 'Actualizar', exact: true }).waitFor();
+        assert.equal(await detail.getByRole('button', { name: 'Volver a comprobar CV y datos' }).count(), 0, 'An assisted application keeps the Refresh label');
+        assert.equal(await employerLinks(), 1, 'An assisted Lever application links once to the original post, from the header');
+        assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, 'An assisted Lever application keeps one in-app job link');
+      } finally { await page.unroute('**/api/v1/applications/*/assist', assistedLever); }
+
+      await api.patch(`/applications/${application.id}`, { state: 'CANCELLED' });
+      await page.goto(new URL(`/applications?id=${application.id}`, page.url()).toString());
+      await detail.getByRole('heading', { name: `QA role ${marker}`, exact: true }).waitFor();
+      await detail.getByRole('link', { name: /Abrir oferta original/ }).waitFor();
+      assert.equal(await employerLinks(), 1, 'A closed application links once to the original post');
+      assert.equal(await detail.locator(`a[href^="/jobs/${job.id}"]`).count(), 1, 'A closed application keeps one in-app job link');
+      // Let the panels finish their requests (the expected 404 above) before the next scenario starts listening for errors.
+      await page.waitForLoadState('networkidle');
+      // The page is shared with the next scenario, which expects the desktop viewport the harness starts with.
+      await page.setViewportSize({ width: 1440, height: 1000 });
     },
   },
 ];
