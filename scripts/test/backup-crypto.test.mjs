@@ -4,10 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import process from 'node:process';
 import { test } from 'node:test';
 import { keyFileContent, keyFingerprint, readKeyFile } from '../lib/backup-core.mjs';
+import { windowsTool } from '../lib/private-files.mjs';
 import { AGE_HEADER, ageIdentity, decryptFile, encryptFile, isAgeFile, parseIcacls, privateTempDir, restrictToCurrentUser } from '../lib/backup-crypto.mjs';
 
 const key = 'fictional-installation-key-0123456789abcdef0123456789';
@@ -81,6 +82,8 @@ test('key file version 2 carries the age identity; versions 1 and 2 are read, ot
   await assert.rejects(readKeyFile(join(dir, 'v3.json')));
 }));
 
+const isTool = (command, name) => win32.basename(command, '.exe').toLowerCase() === name;
+
 test('icacls output is parsed into the principals that have access', () => {
   const path = 'C:\\Users\\Ana\\AppData\\Local\\Temp\\career-restore-abc';
   assert.deepEqual(parseIcacls(`${path} DESKTOP-1\\Ana:(OI)(CI)(F)\n\nSuccessfully processed 1 files; Failed processing 0 files\n`, path), ['DESKTOP-1\\Ana']);
@@ -93,12 +96,12 @@ test('a Windows folder is accepted only when its ACL lists the current user alon
   const calls = [];
   const fake = (listing) => (command, args) => {
     calls.push([command, ...args].join(' '));
-    if (command === 'whoami') return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
+    if (isTool(command, 'whoami')) return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
     return args.length === 1 ? listing : 'processed';
   };
   const path = 'C:\\Temp\\career-restore-abc';
   restrictToCurrentUser(path, fake(`${path} DESKTOP-1\\Ana:(OI)(CI)(F)\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n`));
-  assert.ok(calls.some((call) => call === `icacls ${path} /inheritance:r /grant:r *S-1-5-21-1-2-3-1001:(OI)(CI)F`), 'Inheritance removed and access granted by SID');
+  assert.ok(calls.some((call) => call === `${windowsTool('icacls')} ${path} /inheritance:r /grant:r *S-1-5-21-1-2-3-1001:(OI)(CI)F`), 'Inheritance removed and access granted by SID');
   assert.throws(() => restrictToCurrentUser(path, fake(`${path} DESKTOP-1\\ana:(OI)(CI)(F)\r\n         Everyone:(R)\r\n`)), /could not be restricted/);
   assert.throws(() => restrictToCurrentUser(path, fake('')), /could not be restricted/);
 });
@@ -108,17 +111,17 @@ test('a single file gets full control for the user without folder inheritance fl
   const path = 'C:\\Temp\\.uninstall-progress.json';
   restrictToCurrentUser(path, (command, args) => {
     calls.push([command, ...args].join(' '));
-    if (command === 'whoami') return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
+    if (isTool(command, 'whoami')) return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
     return args.length === 1 ? `${path} DESKTOP-1\\ana:(F)\r\n\r\nSuccessfully processed 1 files; Failed processing 0 files\r\n` : 'processed';
   }, { file: true });
-  assert.ok(calls.includes(`icacls ${path} /inheritance:r /grant:r *S-1-5-21-1-2-3-1001:F`));
+  assert.ok(calls.includes(`${windowsTool('icacls')} ${path} /inheritance:r /grant:r *S-1-5-21-1-2-3-1001:F`));
 });
 
 test('explicit entries for other principals, which /inheritance:r keeps, are removed one by one', () => {
   const path = 'C:\\Temp\\career-restore-abc';
   const removed = [];
   const run = (command, args) => {
-    if (command === 'whoami') return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
+    if (isTool(command, 'whoami')) return '"DESKTOP-1\\ana","S-1-5-21-1-2-3-1001"\r\n';
     if (args[1] === '/remove:g') { removed.push(args[2]); return 'processed'; }
     if (args.length > 1) return 'processed';
     const entries = ['NT AUTHORITY\\SYSTEM:(OI)(CI)(F)', 'BUILTIN\\Administrators:(OI)(CI)(F)', 'DESKTOP-1\\ana:(OI)(CI)(F)'].filter((entry) => !removed.some((name) => entry.startsWith(`${name}:`)));
@@ -132,8 +135,8 @@ test('the temporary folder for decrypted backups is private on this system', asy
   const folder = await privateTempDir('career-crypto-private-');
   try {
     if (process.platform === 'win32') {
-      const principals = parseIcacls(execFileSync('icacls', [folder], { encoding: 'utf8' }), folder);
-      const user = execFileSync('whoami', { encoding: 'utf8' }).trim();
+      const principals = parseIcacls(execFileSync(windowsTool('icacls'), [folder], { encoding: 'utf8' }), folder);
+      const user = execFileSync(windowsTool('whoami'), { encoding: 'utf8' }).trim();
       assert.deepEqual(principals.map((name) => name.toLowerCase()), [user.toLowerCase()], 'Only the current user has access');
     } else {
       assert.equal((await stat(folder)).mode & 0o777, 0o700);

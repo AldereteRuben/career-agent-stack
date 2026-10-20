@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { test } from 'node:test';
 import { parseIcacls } from '../lib/backup-crypto.mjs';
+import { windowsTool } from '../lib/private-files.mjs';
 import { RESERVED, checkDeletablePath, identityOf, installMark, measure, progressPath, readProgress, restoreMark, writeProgress } from '../lib/uninstall-core.mjs';
 
 async function installation(run) {
@@ -83,8 +84,8 @@ test('the progress file is private, round-trips and refuses anything that is not
   assert.deepEqual(await readProgress(root), progress);
   assert.equal((await readFile(progressPath(root), 'utf8')).includes('postgresql://'), false, 'No connection string');
   if (process.platform === 'win32') {
-    const principals = parseIcacls(execFileSync('icacls', [progressPath(root)], { encoding: 'utf8' }), progressPath(root));
-    assert.deepEqual(principals.map((name) => name.toLowerCase()), [execFileSync('whoami', { encoding: 'utf8' }).trim().toLowerCase()], 'Only the current user');
+    const principals = parseIcacls(execFileSync(windowsTool('icacls'), [progressPath(root)], { encoding: 'utf8' }), progressPath(root));
+    assert.deepEqual(principals.map((name) => name.toLowerCase()), [execFileSync(windowsTool('whoami'), { encoding: 'utf8' }).trim().toLowerCase()], 'Only the current user');
   } else {
     assert.equal((await stat(progressPath(root))).mode & 0o777, 0o600);
   }
