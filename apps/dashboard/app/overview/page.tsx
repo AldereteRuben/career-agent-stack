@@ -139,6 +139,7 @@ export default function OverviewPage() {
   }
 
   const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers', 'preferences'].includes(step.key));
+  const profileNextStep = steps.find(({ key }) => key === 'identity' || key === 'first-fact');
 
   const searchSummary = summarize(searches);
   const inProgress = searchSummary.active.length > 0;
@@ -186,14 +187,11 @@ export default function OverviewPage() {
         <h2>{dailyAction.title}</h2>
         <p>{dailyAction.detail}</p>
         <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
-        <div className="overview-totals" role="status" aria-live="polite">
-          <div className="overview-total"><strong>{inbox?.total ?? '—'}</strong><span>{inbox?.total === 1 ? c('oferta nueva', 'new job') : c('ofertas nuevas', 'new jobs')}</span></div>
-          <div className="overview-total"><strong>{pendingResumes}</strong><span>{pendingResumes === 1 ? c('CV por revisar', 'resume needing review') : c('CV por revisar', 'resumes needing review')}</span></div>
-        </div>
+        {profileNextStep && profileNextStep.href !== dailyAction.href && <p className="muted-label"><Link href={profileNextStep.href}>{profileNextStep.title}</Link></p>}
         {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
       </Card>
       <Card className="overview-inbox-panel">
-        <div className="panel-heading"><h2>{c('Ofertas nuevas para revisar', 'New jobs to review')}</h2>{inboxCount > 0 && <span className="tag tag-blue">{inboxCount}</span>}</div>
+        <div className="panel-heading"><h2>{c('Ofertas nuevas para revisar', 'New jobs to review')}</h2>{inbox && <span className={inboxCount > 0 ? 'tag tag-blue' : 'sr-only'} role="status" aria-live="polite" aria-atomic="true"><span aria-hidden="true">{inboxCount}</span><span className="sr-only">{inboxCount === 1 ? c('1 oferta nueva', '1 new job') : c(`${inboxCount} ofertas nuevas`, `${inboxCount} new jobs`)}</span></span>}</div>
         {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')}>
           {inbox.items.slice(0, 3).map((job) => <li key={job.id}><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(returnToInbox)}`} className="list-row">
             <span className="company-monogram" aria-hidden="true">{job.company.slice(0, 1)}</span>
@@ -220,7 +218,7 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ totalJobs: summary.totalJobs, totalApplications, pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
+    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
       <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>

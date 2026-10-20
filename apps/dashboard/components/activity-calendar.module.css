@@ -1,14 +1,14 @@
 .card {
   max-width: 760px;
-  padding: 22px;
+  padding: 16px 18px;
 }
 
 .heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
 .heading h2 {
@@ -30,9 +30,9 @@
 }
 
 .monthControls button {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
   padding: 0;
   font-size: 20px;
 }
@@ -48,11 +48,11 @@
 .calendar {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 5px;
+  gap: 3px;
 }
 
 .weekday {
-  padding: 0 0 4px;
+  padding: 0 0 2px;
   color: var(--muted);
   font-size: var(--text-xs);
   font-weight: 650;
@@ -64,7 +64,7 @@
   min-width: 0;
   width: 100%;
   max-width: 66px;
-  height: 54px;
+  height: 44px;
   justify-self: center;
 }
 
@@ -131,7 +131,7 @@
 }
 
 .summary {
-  margin-top: 13px;
+  margin-top: 10px;
   color: var(--muted);
   font-size: var(--text-sm);
 }
@@ -142,8 +142,8 @@
 }
 
 .legend {
-  margin-top: 13px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: var(--text-xs);
@@ -168,8 +168,8 @@
 .bothMark { background: linear-gradient(90deg, #315fce 0 50%, #27815d 50%); }
 
 .dayDetails {
-  margin-top: 16px;
-  padding-top: 14px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
 }
 
@@ -218,8 +218,8 @@
   .card { max-width: none; padding: 16px; }
   .heading { flex-direction: column; }
   .monthControls { width: 100%; justify-content: space-between; }
-  .calendar { gap: 5px; }
-  .day, .blank { max-width: none; height: 46px; }
+  .calendar { gap: 3px; }
+  .day, .blank { max-width: none; height: 44px; }
   .detailGroup li { align-items: flex-start; flex-direction: column; gap: 0; }
   .detailGroup li span { text-align: left; }
 }
