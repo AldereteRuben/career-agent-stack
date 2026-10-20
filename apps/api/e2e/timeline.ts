@@ -23,11 +23,11 @@ export const timelineScenario: Scenario = {
       const c = (es: string, en: string) => locale === 'es' ? es : en;
       await setLocale(page, locale); await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(new URL('/applications', uiUrl).toString());
-      await page.getByRole('link', { name: c('Cronología', 'Timeline'), exact: true }).click();
+      await mainNavigation(page).getByRole('link', { name: c('Calendario', 'Calendar'), exact: true }).click();
       await page.waitForURL((url) => url.pathname === '/timeline');
-      await page.getByRole('heading', { level: 1, name: c('Cronología', 'Timeline') }).waitFor();
-      assert.equal(await mainNavigation(page).getByRole('link').count(), 4, 'the timeline does not add a primary destination');
-      assert.equal(await mainNavigation(page).locator('a[href="/applications"]').getAttribute('aria-current'), 'page', 'the timeline sits under Applications');
+      await page.getByRole('heading', { level: 1, name: c('Calendario', 'Calendar') }).waitFor();
+      assert.equal(await mainNavigation(page).locator(':scope > a').count(), 4, 'the timeline does not add a primary destination');
+      assert.equal(await mainNavigation(page).locator('a[href="/timeline"]').getAttribute('aria-current'), 'page', 'the timeline is a primary destination');
 
       const overdue = page.locator('section').filter({ has: page.getByRole('heading', { name: new RegExp(c('Recordatorios vencidos', 'Overdue follow-ups')) }) });
       await eventually(() => overdue.innerText(), (text) => text.includes(`Timeline QA ${marker}`) && text.includes(`Call back ${marker}`), 'the overdue follow-up is listed whatever month is shown');

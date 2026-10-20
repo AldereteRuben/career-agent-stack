@@ -489,12 +489,20 @@
 /* Job evaluation report (#109) and evaluation of several saved jobs (#110). */
 .report {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: start;
   gap: var(--space-5);
   min-width: 0;
   margin-bottom: var(--space-5);
   padding: clamp(20px, 3vw, 30px);
   overflow-wrap: anywhere;
   container: job-report / inline-size;
+}
+
+.report > :global(.panel-heading),
+.reportVerdict,
+.reportFoot {
+  grid-column: 1 / -1;
 }
 
 .report > :global(.panel-heading) {
@@ -532,11 +540,16 @@
   display: grid;
   gap: var(--space-3);
   min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
 }
 
 .reportSection h3 {
   margin: 0;
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
+  line-height: 1.4;
 }
 
 .reportSection > ul:not(.reportList) {
@@ -606,7 +619,7 @@
 
 .reportChecks {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-3);
   margin: 0;
 }
@@ -745,7 +758,6 @@
   .reportEvidenceWithQuote {
     grid-template-columns: minmax(0, 1fr);
   }
-
   .batchResults li {
     grid-template-columns: minmax(0, 1fr);
   }

@@ -50,8 +50,10 @@ export const uxReviewScenarios: Scenario[] = [{
     await page.screenshot({ path: join(artifacts, 'ux-resume-mobile.png'), animations: 'disabled' });
     await api.post(`/profile/facts/${fact.id}/reject`);
     await page.reload();
-    await page.getByText('Algunos datos de tu selección cambiaron o dejaron de estar confirmados.', { exact: false }).waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Generar y revisar', exact: false }).isDisabled(), true);
+    await page.getByText(/(?:Uno o varios datos que elegiste ya no están confirmados|Algunos datos de tu selección cambiaron o dejaron de estar confirmados)/).waitFor();
+    await page.getByRole('heading', { name: 'Prepara tu CV', exact: true }).waitFor();
+    const generateButton = page.getByRole('button', { name: /Generar y revisar|Generate and review/i });
+    assert.ok((await generateButton.count()) === 0 || !(await generateButton.isEnabled()), 'A resume cannot be generated when the selected experience is no longer confirmed');
     await page.setViewportSize({ width: 1440, height: 1000 });
     await api.post(`/jobs/${job.id}/shortlist`, { decision: 'SHORTLISTED' });
     const query = new URLSearchParams({ q: company, scope: 'favorites', page: '1' });
@@ -105,8 +107,10 @@ uxReviewScenarios.push({
         }
         const previewPane = panes.nth(1);
         await previewPane.getByRole('heading', { name: secondTitle, exact: true }).waitFor();
-        await previewPane.getByRole('heading', { name: labels.description, exact: true }).waitFor();
+        const previewDescription = previewPane.getByRole('heading', { name: labels.description, exact: true });
+        await previewDescription.waitFor();
         await previewPane.getByRole('link', { name: labels.full, exact: true }).waitFor();
+        await eventually(() => previewDescription.locator('xpath=following-sibling::p').innerText(), (text) => text.includes(marker), 'job description finishes loading before the responsive review');
         const selectedUrl = new URL(page.url());
         assert.equal(selectedUrl.searchParams.get('q'), company, `${locale} ${viewport} selection must preserve search`);
         assert.equal(selectedUrl.searchParams.get('scope'), 'active', `${locale} ${viewport} selection must preserve scope`);
@@ -120,6 +124,7 @@ uxReviewScenarios.push({
           await page.getByRole('heading', { name: 'Prepara tu solicitud', exact: true }).waitFor();
           await page.locator('.back-link').click();
           await page.waitForURL((url) => url.pathname === '/jobs' && url.searchParams.get('selected') === second.id && url.searchParams.get('q') === company);
+          await eventually(() => previewDescription.locator('xpath=following-sibling::p').innerText(), (text) => text.includes(marker), 'job preview is settled after returning from full details');
           await page.screenshot({ path: join(artifacts, 'job-detail-overview-es.png'), animations: 'disabled' });
         }
         if (locale === 'en' && viewport === 'desktop') {
@@ -162,11 +167,20 @@ uxReviewScenarios.push({
         await page.getByRole('heading', { name: role, exact: true }).waitFor();
         await page.locator('.tracker-row[aria-current="true"]').filter({ hasText: role }).waitFor({ state: 'attached' });
         await page.getByRole('heading', { name: trackingHeading, exact: true }).waitFor();
+        await page.getByText(locale === 'es' ? 'Cargando opciones…' : 'Loading options…', { exact: true }).waitFor({ state: 'hidden', timeout: 15_000 });
         const activityDisclosure = page.locator('.application-detail-activity');
         if (!(await activityDisclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await activityDisclosure.locator('summary').click();
         await page.getByRole('heading', { name: activityHeading, exact: true }).waitFor();
+        await eventually(() => activityDisclosure.locator('summary').innerText(), (text) => !/\((cargando|loading)\)/i.test(text), 'application history has finished loading before the visual review');
+        await activityDisclosure.locator('.timeline-item').first().waitFor();
         const list = page.locator('.tracker-list');
         await list.waitFor({ state: viewport === 'desktop' ? 'visible' : 'hidden' });
+        if (viewport === 'mobile') {
+          await page.locator('.tracker-filter').waitFor({ state: 'hidden' });
+          await page.locator('.tracker-export').waitFor({ state: 'hidden' });
+          await page.locator('.applications-page-selection > .page-header > .page-header-action').waitFor({ state: 'hidden' });
+          await page.locator('.applications-page-selection > .application-sections').waitFor({ state: 'hidden' });
+        }
         assert.equal(await hasHorizontalOverflow(page), false, `${locale} application detail overflows at ${viewport} width`);
         if (locale === 'es' && viewport === 'desktop') {
           await page.screenshot({ path: join(artifacts, 'application-tracker-detail-es.png'), animations: 'disabled' });
@@ -179,6 +193,10 @@ uxReviewScenarios.push({
           await page.getByRole('button', { name: backName, exact: true }).click();
           await page.waitForURL((url) => url.pathname === '/applications' && !url.searchParams.has('id'));
           await list.waitFor({ state: 'visible' });
+          await page.locator('.tracker-filter').waitFor({ state: 'visible' });
+          await page.locator('.tracker-export').waitFor({ state: 'visible' });
+          await page.locator('.page-header-action').waitFor({ state: 'visible' });
+          await page.locator('.application-sections').waitFor({ state: 'visible' });
           assert.equal(await hasHorizontalOverflow(page), false, `${locale} application list overflows at mobile width`);
         }
       }
@@ -215,6 +233,10 @@ uxReviewScenarios.push({
     for (const locale of ['es', 'en'] as const) {
       await setLocale(page, locale);
       await page.goto(new URL('/overview', page.url()).toString());
+      const activityDisclosure = page.locator('.overview-details');
+      if (!(await activityDisclosure.evaluate((node) => (node as HTMLDetailsElement).open))) {
+        await activityDisclosure.locator('summary').click();
+      }
       await page.getByRole('heading', { name: locale === 'es' ? 'Calendario de actividad' : 'Activity calendar', exact: true }).waitFor();
       const today = page.locator('button[aria-current="date"]');
       await today.waitFor();

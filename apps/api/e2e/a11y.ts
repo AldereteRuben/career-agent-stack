@@ -11,7 +11,7 @@ async function auditWithAxe(page: import('playwright').Page, flow: string) {
     id: violation.id,
     impact: violation.impact,
     help: violation.help,
-    nodes: violation.nodes.map((node) => node.target.join(' ')).slice(0, 6),
+    nodes: violation.nodes.map((node) => ({ target: node.target.join(' '), summary: node.failureSummary, html: node.html })).slice(0, 6),
   }));
   assert.deepEqual(violations, [], `axe accessibility violations in ${flow}: ${JSON.stringify(violations)}`);
 }

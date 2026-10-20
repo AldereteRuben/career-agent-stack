@@ -45,14 +45,14 @@ async function runScenarios(stack: IsolatedStack, artifacts: string): Promise<Re
     const page = await context.newPage();
     let allowed: RegExp[] = [];
     let browserErrors: string[] = [];
-    page.on('pageerror', (error) => browserErrors.push(error.message));
-    page.on('console', (message) => { if (message.type() === 'error' && !allowed.some((pattern) => pattern.test(message.text()))) browserErrors.push(message.text()); });
+    page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.stack ?? error.message}`));
+    page.on('console', (message) => { if (message.type() === 'error' && !allowed.some((pattern) => pattern.test(message.text()))) browserErrors.push(`console: ${message.text()}`); });
 
     for (const scenario of selected) {
       const notes: string[] = [];
       allowed = []; browserErrors = [];
       const ctx: ScenarioContext = {
-        page, context, db: stack.db, filesDir: stack.filesDir, api: apiClient(context, stack.uiUrl, pace), uiUrl: stack.uiUrl, marker: stack.marker, token: stack.readToken, artifacts,
+        page, context, db: stack.db, filesDir: stack.filesDir, api: apiClient(context, stack.uiUrl, pace), uiUrl: stack.uiUrl, marker: stack.marker, token: stack.readToken, issueToken: stack.issueToken, artifacts,
         allowConsole: (pattern) => { allowed.push(pattern); }, note: (message) => { notes.push(message); },
       };
       const started = Date.now();

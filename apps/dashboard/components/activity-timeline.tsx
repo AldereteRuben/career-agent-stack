@@ -84,7 +84,6 @@ export function ActivityTimeline() {
           </label>)}
         </fieldset>
       </div>
-      <p className={styles.hint}>{c(`Horas en tu zona horaria (${timeZone}). Los recordatorios usan la fecha que elegiste.`, `Times in your time zone (${timeZone}). Follow-ups use the date you chose.`)}</p>
 
       <section aria-live="polite" aria-busy={state === 'loading'} aria-label={c(`Actividad de ${monthLabel}`, `Activity for ${monthLabel}`)}>
         {!selected.length ? <Empty title={c('Ningún tipo seleccionado', 'No type selected')} detail={c('Elige al menos un tipo de actividad para verla.', 'Choose at least one kind of activity to see it.')}/>
@@ -99,7 +98,11 @@ export function ActivityTimeline() {
                 </ol>}
         {timeline?.truncated && <p className={styles.hint}>{c('Hay más actividad este mes de la que se muestra. Filtra por tipo para verla.', 'There is more activity this month than shown. Filter by type to see it.')}</p>}
       </section>
-      <p className={styles.hint}>{c('Las ofertas guardadas antes de esta versión no tienen fecha de guardado y no aparecen aquí.', 'Jobs saved before this version have no saved date and do not appear here.')}</p>
+      <details className={styles.dataNotes}>
+        <summary>{c('Sobre las fechas y la zona horaria', 'About dates and time zones')}</summary>
+        <p className={styles.hint}>{c(`Las horas se muestran en tu zona horaria (${timeZone}). Los recordatorios usan la fecha que elegiste.`, `Times are shown in your time zone (${timeZone}). Follow-ups use the date you chose.`)}</p>
+        <p className={styles.hint}>{c('Las ofertas guardadas antes de esta versión no tienen fecha de guardado y no aparecen aquí.', 'Jobs saved before this version have no saved date and do not appear here.')}</p>
+      </details>
     </Card>
   </div>;
 }

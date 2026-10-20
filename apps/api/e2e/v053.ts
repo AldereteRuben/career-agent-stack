@@ -73,6 +73,7 @@ export const v053Scenarios: Scenario[] = [
           await confirmation.getByRole('button', { name: t(locale, 'Cancelar', 'Cancel'), exact: true }).click();
           await confirmation.waitFor({ state: 'detached' });
           if (locale === 'es') {
+            await page.getByRole('button', { name: 'Volver a la lista de solicitudes', exact: true }).click();
             await page.getByRole('button', { name: 'Añadir solicitud', exact: true }).click();
             await page.getByLabel('Empresa', { exact: true }).fill(`Notice ${marker}`);
           }
@@ -161,21 +162,22 @@ export const v053Scenarios: Scenario[] = [
     },
   },
   {
-    name: 'v053-home-pending-review-lands-on-saved-list',
+    name: 'v053-home-pending-review-remains-accessible-with-collapsed-details',
     async run({ page, api, marker, artifacts }) {
       const profile = await api.get<Profile>('/profile');
       await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Landing Example', email: 'landing@example.com' }, preferences: { targetTitles: ['QA'], workModes: ['remote'] } } });
       const confirmed = await api.post<{ id: string }>('/profile/facts', { kind: 'achievement', statement: `Confirmed landing ${marker}` });
       await api.post(`/profile/facts/${confirmed.id}/approve`);
       await api.post('/profile/facts', { kind: 'achievement', statement: `Pending landing ${marker}` });
-      // The home details are expanded because a detail is waiting for review, whether or not any job exists yet.
+      // Keep dense home details collapsed while retaining a direct next-step link to pending profile facts.
       for (const [width, height] of [[390, 844], [1440, 1000]] as const) {
         await page.setViewportSize({ width, height });
         for (const locale of ['es', 'en'] as const) {
           await page.goto(new URL('/overview', page.url()).toString()); await setLocale(page, locale);
-          const link = page.locator('a[href="/profile#saved-experience-heading"]:visible').first();
-          await link.waitFor();
-          assert.equal(await page.locator('details.overview-details').evaluate((node) => (node as HTMLDetailsElement).open), true, 'Pending review keeps the other tasks open');
+          const details = page.locator('details.overview-details');
+          assert.equal(await details.evaluate((node) => (node as HTMLDetailsElement).open), false, 'Pending review does not auto-expand dense overview details');
+          const link = page.locator('.getting-started a[href="/profile#saved-experience-heading"]');
+          await link.waitFor({ state: 'visible' });
           assert.equal(await page.locator('a[href="/profile#experience"]:visible').count(), 0, 'Pending review is not sent to the add form');
           await link.click();
           await page.waitForURL((url) => url.pathname === '/profile' && url.hash === '#saved-experience-heading');

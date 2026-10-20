@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+import { eventually, hasHorizontalOverflow, setLocale, signIn } from './ui.js';
 
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Array<{ id: string; kind: string; statement: string; tags: string[]; approvalStatus: string }> };
 type Revision = {
@@ -43,9 +43,10 @@ async function claimTextarea(panel: import('playwright').Locator, claimText: str
 
 export const applicationDocumentsScenario: Scenario = {
   name: 'application-documents-lifecycle-and-deletion',
-  async run({ page, api, db, filesDir, uiUrl, marker, allowConsole, note }) {
+  async run({ page, api, db, filesDir, uiUrl, marker, issueToken, allowConsole, note }) {
     // Expected API rejections: absent documents (including after workspace deletion), an unsupported claim, and a superseded ZIP item.
-    allowConsole(/Failed to load resource: the server responded with a status of (404 \(Not Found\)|409 \(Conflict\)|422 \(Unprocessable Entity\))/u);
+    allowConsole(/Failed to load resource: the server responded with a status of (401 \(Unauthorized\)|404 \(Not Found\)|409 \(Conflict\)|422 \(Unprocessable Entity\))/u);
+    if (!(await api.get<{ authenticated: boolean }>('/session')).authenticated) await signIn(page, uiUrl, await issueToken());
     const claimSentinel = `DOCUMENT_E2E_${marker}`;
     const profile = await api.get<Profile>('/profile');
     await api.put('/profile', { expectedRevision: profile.revision, profile: { ...profile.profile, identity: { fullName: 'Fictional Candidate', email: 'candidate@example.test', country: 'ES' } } });
@@ -235,6 +236,7 @@ export const applicationDocumentsScenario: Scenario = {
     for (const path of storedFiles) assert.ok(path.startsWith(`${resolve(filesDir)}${sep}`), 'Stored paths remain inside the disposable files directory');
     await setLocale(page, 'es');
     await page.goto(new URL('/settings', uiUrl).toString());
+    await page.waitForLoadState('networkidle');
     await page.getByText('Borrar todos mis datos', { exact: true }).first().click();
     const phrase = page.getByLabel(/Para confirmar, escribe BORRAR TODOS MIS DATOS/u);
     const remove = page.getByRole('button', { name: 'Borrar todos mis datos', exact: true });
@@ -243,6 +245,9 @@ export const applicationDocumentsScenario: Scenario = {
     await remove.click();
     assert.equal((await deletion).status(), 200);
     await page.getByText('Se borraron todos tus datos de esta instalación', { exact: false }).waitFor();
+    await page.goto(new URL('/login', uiUrl).toString());
+    await page.getByRole('heading', { name: /Entra en tu espacio|Open your workspace/i }).waitFor();
+    await page.waitForLoadState('networkidle');
     assert.equal(Number((await db.query('select count(*)::int as n from application_documents where workspace_id=$1', [workspace])).rows[0]!.n), 0);
     assert.equal(Number((await db.query('select count(*)::int as n from application_document_revisions where workspace_id=$1', [workspace])).rows[0]!.n), 0);
     for (const path of storedFiles) assert.equal(await access(path).then(() => true, () => false), false, 'Workspace deletion removes generated text and PDF files');

@@ -74,7 +74,7 @@ export const v040Scenarios: Scenario[] = [
       await page.getByRole('button', { name: 'Guardar corrección para revisar', exact: true }).click();
       await page.locator('.fact-row').filter({ hasText: editedLanguage }).getByRole('button', { name: 'Confirmar', exact: true }).click();
       const saved = await eventually(() => api.get<Profile>('/profile'), (p) => p.facts.some((fact) => fact.kind === 'language' && fact.statement === editedLanguage && fact.approvalStatus === 'USER_APPROVED'), 'Edited language confirmed');
-      const entries = saved.facts.filter((fact) => fact.details?.organization.endsWith(marker));
+      const entries = saved.facts.filter((fact) => ['Studio', 'School'].some((prefix) => fact.details?.organization === `${prefix} ${marker}`));
       assert.equal(entries.length, 2); assert.equal(entries.find((fact) => fact.details?.type === 'employment')?.details?.title, 'Senior designer');
       assert.ok(saved.facts.some((fact) => fact.kind === 'certification' && fact.statement === editedCertification && fact.approvalStatus === 'USER_APPROVED'));
       assert.ok(saved.facts.some((fact) => fact.kind === 'language' && fact.statement === editedLanguage && fact.approvalStatus === 'USER_APPROVED'));

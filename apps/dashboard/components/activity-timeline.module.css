@@ -88,6 +88,25 @@
   font-size: var(--text-sm);
 }
 
+.dataNotes {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.dataNotes > summary {
+  min-height: 44px;
+  padding-block: 12px 4px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dataNotes > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .days {
   display: grid;
   gap: 18px;
@@ -157,6 +176,24 @@
   .card,
   .overdue {
     padding: 16px;
+  }
+
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 8px;
+  }
+
+  .filters legend {
+    grid-column: 1 / -1;
+    margin-bottom: 2px;
+  }
+
+  .filter {
+    align-items: flex-start;
+    min-width: 0;
+    padding-block: 12px;
+    line-height: 1.4;
   }
 
   .entry,
