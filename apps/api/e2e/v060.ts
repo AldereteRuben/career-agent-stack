@@ -48,7 +48,9 @@ export const v060Scenario: Scenario = {
       }
       await page.setViewportSize({ width: 1280, height: 900 }); await goTo(page, '/overview');
       const overviewDetails = page.locator('.overview-details');
-      await overviewDetails.locator('section[aria-labelledby="metrics-heading"][aria-busy="false"]').waitFor();
+      const metricsSection = overviewDetails.locator('section[aria-labelledby="metrics-heading"]');
+      await metricsSection.waitFor({ state: 'attached' });
+      await eventually(async () => (await metricsSection.getAttribute('aria-busy')) === 'false', Boolean, 'Overview metrics finish loading');
       if (!(await overviewDetails.evaluate((details) => (details as HTMLDetailsElement).open))) await overviewDetails.locator('summary').click();
       await page.locator('.discovery-panel').getByRole('heading').waitFor();
       assert.equal(await hasHorizontalOverflow(page), false);
