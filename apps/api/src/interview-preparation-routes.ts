@@ -7,8 +7,8 @@ import {
   interviewPreparationSessions, interviewPreparationTurns, jobSnapshots, jobs, profileFacts,
 } from '@career/db';
 import {
-  buildInterviewPreparationItems, buildJobReport, INTERVIEW_PLAN_LIMITS, interviewEvidenceKinds, interviewEvidenceStatus, interviewPlanFactIds, interviewPlanNeedsReview,
-  type InterviewEvidenceCurrent, type InterviewEvidenceKind,
+  buildInterviewPreparationItems, buildJobReport, INTERVIEW_PLAN_LIMITS, interviewEvidenceKinds, interviewEvidenceStatus, interviewPlanFactIds, interviewPlanNeedsReview, interviewTurnVerdict,
+  type InterviewEvidenceCurrent, type InterviewEvidenceKind, type InterviewTurnFeedback,
 } from '@career/domain';
 import { readableDescriptions } from './job-report-routes.js';
 import { loadMatchingContext, type Executor } from './workspace-data.js';
@@ -61,6 +61,12 @@ export const itemView = (item: typeof interviewPreparationItems.$inferSelect) =>
   evidenceId: item.evidenceId, support: item.support, factIds: item.factIds, hints: item.hints,
 });
 
+/** A turn as the person sees it. An empty answer means the question was skipped; the verdict never calls an answer correct unless they rated it so. */
+export const turnView = (turn: typeof interviewPreparationTurns.$inferSelect) => ({
+  id: turn.id, position: turn.position, kind: turn.kind, itemId: turn.itemId, question: turn.question, answer: turn.answer, skipped: turn.answer === '',
+  feedback: turn.feedback, verdict: turn.answer ? interviewTurnVerdict(turn.feedback as InterviewTurnFeedback | null) : null, learningItems: turn.learningItems,
+});
+
 /** Plans with their evidence status, items and sessions. Nothing here returns profile text or resume content. */
 async function describePlans(database: PreparationDatabase, workspaceId: string, plans: Array<typeof interviewPreparationPlans.$inferSelect>) {
   if (!plans.length) return [];
@@ -86,7 +92,7 @@ async function describePlans(database: PreparationDatabase, workspaceId: string,
       items: items.filter((item) => item.planId === plan.id).map(itemView),
       sessions: sessions.filter((session) => session.planId === plan.id).map((session) => ({
         id: session.id, status: session.status, createdAt: session.createdAt, endedAt: session.endedAt,
-        turns: turns.filter((turn) => turn.sessionId === session.id).map((turn) => ({ id: turn.id, position: turn.position, question: turn.question, answer: turn.answer, feedback: turn.feedback, learningItems: turn.learningItems })),
+        turns: turns.filter((turn) => turn.sessionId === session.id).map(turnView),
       })),
     };
   });
@@ -254,16 +260,6 @@ export function registerInterviewPreparationRoutes(app: FastifyInstance, workspa
       .where(and(eq(interviewPreparationPlans.workspaceId, workspace(request)), eq(interviewPreparationPlans.id, params.data.id))).returning({ id: interviewPreparationPlans.id });
     if (!removed.length) return reply.code(404).send({ error: 'NOT_FOUND' });
     return { ok: true };
-  });
-
-  app.post('/api/v1/interview-preparation/:id/sessions', async (request, reply) => {
-    const params = idParamsSchema.safeParse(request.params);
-    if (!params.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
-    const workspaceId = workspace(request);
-    const plan = (await database.select({ id: interviewPreparationPlans.id }).from(interviewPreparationPlans).where(and(eq(interviewPreparationPlans.workspaceId, workspaceId), eq(interviewPreparationPlans.id, params.data.id))).limit(1))[0];
-    if (!plan) return reply.code(404).send({ error: 'NOT_FOUND' });
-    const session = (await database.insert(interviewPreparationSessions).values({ workspaceId, planId: plan.id }).returning())[0]!;
-    return reply.code(201).send({ session: { id: session.id, status: session.status, createdAt: session.createdAt, endedAt: session.endedAt, turns: [] } });
   });
 
   app.delete('/api/v1/interview-preparation/sessions/:id', async (request, reply) => {
