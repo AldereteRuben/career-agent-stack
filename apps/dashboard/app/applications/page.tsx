@@ -95,6 +95,7 @@ function ApplicationsView() {
   const sort = searchParams.get('sort') === 'follow-up' ? 'follow-up' : 'recent';
   const [filter, setFilter] = useState(query);
   const [pagination, setPagination] = useState({ total: 0, offset: 0, limit: 25 });
+  const [stepOffersOriginal, setStepOffersOriginal] = useState(false);
   const listRequest = useRef(0);
   useEffect(() => { setFilter(query); }, [query]);
   const [rows, setRows] = useState<Application[]>([]); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -332,9 +333,9 @@ function ApplicationsView() {
         </Card>
         <Card className="tracker-detail">{selected ? <><Button variant="quiet" onClick={() => select(null)}>{c('Volver a la lista de solicitudes', 'Back to application list')}</Button>
           <div className="tracker-detail-head"><div><div className="eyebrow"><span className="eyebrow-mark"/> {c('TU HISTORIAL', 'YOUR HISTORY')}</div><h2 className="focus-heading" ref={detailHeading} tabIndex={-1}>{selected.role}</h2><p>{selected.company}{selected.location ? ` · ${selected.location}` : ''}</p>
-            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={withSearchOrigin(`/jobs/${selected.jobId}`, returnTo)}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}{selected.jobAvailability && selected.jobAvailability !== 'OPEN' && <Tag tone={selected.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(selected.jobAvailability, locale)}</Tag>}</div>
+            <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={withSearchOrigin(`/jobs/${selected.jobId}`, returnTo)}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && !stepOffersOriginal && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}{selected.jobAvailability && selected.jobAvailability !== 'OPEN' && <Tag tone={selected.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(selected.jobAvailability, locale)}</Tag>}</div>
           </div><Tag tone={stateTone(selected.state)}>{labelFor.applicationState(selected.state, locale)}</Tag></div>
-          {!isApplicationClosedForPreparation(selected) && <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application" returnTo={returnTo}/>}
+          {!isApplicationClosedForPreparation(selected) && <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application" returnTo={returnTo} hideJobLink/>}
           {canAutoPrepare && selected.jobId && <ApplicationPreparationAction key={`prepare:${selected.id}`} jobId={selected.jobId} applicationId={selected.id} returnTo={returnTo} availability={selected.jobAvailability} disabled={busy !== null}/>}
           {!canAutoPrepare && <div className="application-resume"><h3>{c('CV para esta solicitud', 'Resume for this application')}</h3>
             {selected.documentId ? <><Tag tone={selected.documentApprovalStatus === 'USER_APPROVED' ? 'green' : 'amber'}>{selected.documentApprovalStatus ? labelFor.documentApproval(selected.documentApprovalStatus, locale) : c('Comprueba este CV antes de usarlo', 'Check this resume before using it')}</Tag><p>{selected.documentApprovalStatus === 'USER_APPROVED' ? c('Ya revisaste este CV. Puedes descargarlo para continuar en la página de la empresa.', 'You reviewed this resume. Download it to continue on the employer’s page.') : c('Este CV necesita tu revisión antes de usarlo en la solicitud.', 'This resume needs your review before you use it for the application.')}</p></> : <p>{c('Todavía no has elegido un CV para esta solicitud.', 'You have not selected a resume for this application yet.')}</p>}
@@ -349,7 +350,7 @@ function ApplicationsView() {
             <ApplicationResumeDocument key={`application-resume:${selected.id}`} applicationId={selected.id}/>
             <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id} hideNoOfferMessage/>
           </> : <Card className="application-resume"><h3>{c('Documentos para esta solicitud', 'Documents for this application')}</h3><p>{labelFor.applicationDocumentMessage('APPLICATION_HAS_NO_OFFER', locale)}</p><Link className="button button-quiet" href="/jobs">{c('Ver ofertas guardadas', 'View saved jobs')}</Link></Card>}
-          <AssistedApplication key={`assisted:${selected.id}`} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
+          <AssistedApplication key={`assisted:${selected.id}`} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onOriginalLink={setStepOffersOriginal} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
           <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
           <ApplicationFollowUpDraft key={`follow-up-draft:${selected.id}`} applicationId={selected.id} company={selected.company} role={selected.role}/>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
