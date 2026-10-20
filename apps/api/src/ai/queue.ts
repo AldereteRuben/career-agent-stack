@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
-  AI_LIMITS, aiErrorSchema, aiOperationDataCategories, aiSnapshotDataCategories, aiSourceSnapshotSchema, canAutoRetryAiRun, validateAiOutput, aiProviderSchema,
+  AI_LIMITS, aiDataCategories, aiErrorSchema, aiOperationDataCategories, aiSnapshotDataCategories, aiSourceSnapshotSchema, canAutoRetryAiRun, validateAiOutput, aiProviderSchema,
   type AiError, type AiOperation, type AiProvider, type AiRunOrigin, type AiSourceSnapshot,
 } from '@career/domain';
 import { hashAiInputContent } from './prompts.js';
@@ -131,8 +131,8 @@ async function expireLeases(client: AiPgClient, now: Date): Promise<number> {
 async function cancelInvalid(client: AiPgClient, now: Date, workspaceId?: string) {
   const pending = await client.query(`SELECT * FROM ai_runs WHERE status IN ('QUEUED','RUNNING') ${workspaceId ? 'AND workspace_id=$1' : ''} ORDER BY workspace_id,id FOR UPDATE`, workspaceId ? [workspaceId] : []);
   for (const run of pending.rows) {
-    // A synchronous document run has no queue snapshot and owns a route-specific consent/heartbeat contract.
-    if (run.operation === 'DOCUMENT_REWORD') continue;
+    // A synchronous run has no queue snapshot and owns a route-specific consent/heartbeat contract.
+    if (synchronousOperations.includes(run.operation)) continue;
     if (!(await authorization(client, run))) await requestCancellation(client, run, now);
   }
 }
@@ -155,6 +155,8 @@ async function endRun(client: AiPgClient, run: Row, status: string, now: Date, e
   await client.query(`DELETE FROM ai_account_leases WHERE account_lock_key=$1 AND run_id=$2 AND lease_token=$3`, [run.account_lock_key,run.id,run.lease_token]);
   await writeUsage(client,run,status,usage);
 }
+/** Operations run by their own route, in the person's request, with a one-off consent and no queued reservation. */
+const synchronousOperations: readonly string[] = ['DOCUMENT_REWORD', 'INTERVIEW_PREP'];
 const validLease = (run: Row | undefined, token: string, now: Date) => run && ['RUNNING','CANCEL_REQUESTED'].includes(run.status) && run.lease_token === token && run.lease_until instanceof Date && run.lease_until > now;
 
 /** Persistent queue with short serialized writes. Source checks and provider work are distinct: no inference in tx. */
@@ -163,7 +165,12 @@ export function createAiQueue(pool: AiPgPool) {
     /** Starts the synchronous, one-off document path without creating a queued reservation or storing source text. */
     async beginDocumentRun(input: { workspaceId: string; connectionId: string; connectionRevision: number; accountFingerprint: string;
       model: string; idempotencyKey: string; contentIdentity: string; payloadSha256: string; baseRevisionId: string;
-      citedFactIds: string[]; inputVersions: Record<string, unknown>; noticeVersion: string; now?: Date; leaseMs?: number }) {
+      citedFactIds: string[]; inputVersions: Record<string, unknown>; noticeVersion: string; now?: Date; leaseMs?: number;
+      /** Defaults to the document path. Interview preparation names its own operation and the data categories the person confirmed. */
+      operation?: 'DOCUMENT_REWORD' | 'INTERVIEW_PREP'; dataCategories?: string[] }) {
+      const operation = input.operation ?? 'DOCUMENT_REWORD';
+      const dataCategories = input.dataCategories ?? ['APPROVED_FACTS', 'JOB_POSTING'];
+      if (!dataCategories.length || dataCategories.some(category => !(aiDataCategories as readonly string[]).includes(category))) throw new AiQueueError('INVALID_INPUT');
       const now = input.now ?? new Date(); const today = day(now); const leaseMs = documentLeaseDuration(input.leaseMs ?? 180_000);
       if (![input.workspaceId,input.connectionId,input.baseRevisionId].every(value => uuid.safeParse(value).success)
         || !hash.safeParse(input.accountFingerprint).success || !hash.safeParse(input.contentIdentity).success || !hash.safeParse(input.payloadSha256).success
@@ -182,18 +189,18 @@ export function createAiQueue(pool: AiPgPool) {
         const prior = await client.query('SELECT 1 FROM ai_runs WHERE workspace_id=$1 AND idempotency_key=$2', [input.workspaceId,input.idempotencyKey]);
         if (prior.rowCount) throw new AiQueueError('IDEMPOTENCY_CONFLICT');
         const consentRevision = Number((await client.query(`SELECT coalesce(max(revision),0)::int AS revision FROM ai_consents
-          WHERE workspace_id=$1 AND connection_id=$2 AND operation='DOCUMENT_REWORD'`, [input.workspaceId,input.connectionId])).rows[0]!.revision) + 1;
+          WHERE workspace_id=$1 AND connection_id=$2 AND operation=$3`, [input.workspaceId,input.connectionId,operation])).rows[0]!.revision) + 1;
         const consent = (await client.query(`INSERT INTO ai_consents(workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,search_ids,notice_version,remembered)
-          VALUES($1,$2,'codex',$3,$4,$5,'DOCUMENT_REWORD',$6::jsonb,NULL,$7,false) RETURNING id`,
-          [input.workspaceId,input.connectionId,input.accountFingerprint,input.connectionRevision,consentRevision,JSON.stringify(['APPROVED_FACTS','JOB_POSTING']),input.noticeVersion])).rows[0];
+          VALUES($1,$2,'codex',$3,$4,$5,$8,$6::jsonb,NULL,$7,false) RETURNING id`,
+          [input.workspaceId,input.connectionId,input.accountFingerprint,input.connectionRevision,consentRevision,JSON.stringify(dataCategories),input.noticeVersion,operation])).rows[0];
         const id = randomUUID(); const leaseToken = randomUUID(); const leaseUntil = new Date(now.getTime()+leaseMs);
         const snapshot = { payloadSha256: input.payloadSha256, baseRevisionId: input.baseRevisionId, citedFactIds: input.citedFactIds };
         const run = (await client.query(`INSERT INTO ai_runs(id,workspace_id,connection_id,consent_id,provider,model,connection_revision,consent_revision,account_fingerprint,
           operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,reserved_day,lease_token,lease_owner,lease_until,started_at)
-          VALUES($1,$2,$3,$4,'codex',$5,$6,$7,$8,'DOCUMENT_REWORD','MANUAL','RUNNING',$9,$10,$8,$11::jsonb,$12,$13::jsonb,$14,$15,$16,$17,$18)
+          VALUES($1,$2,$3,$4,'codex',$5,$6,$7,$8,$19,'MANUAL','RUNNING',$9,$10,$8,$11::jsonb,$12,$13::jsonb,$14,$15,$16,$17,$18)
           RETURNING id,workspace_id,connection_id,consent_id,connection_revision,consent_revision,account_fingerprint,model,account_lock_key`,
           [id,input.workspaceId,input.connectionId,consent!.id,input.model,input.connectionRevision,consentRevision,input.accountFingerprint,input.idempotencyKey,
-            input.contentIdentity,JSON.stringify(snapshot),input.payloadSha256,JSON.stringify(input.inputVersions),today,leaseToken,`document-reword:${process.pid}`,leaseUntil,now])).rows[0];
+            input.contentIdentity,JSON.stringify(snapshot),input.payloadSha256,JSON.stringify(input.inputVersions),today,leaseToken,`document-reword:${process.pid}`,leaseUntil,now,operation])).rows[0];
         await client.query(`INSERT INTO ai_account_leases(account_lock_key,run_id,workspace_id,lease_token,lease_owner,lease_until)
           VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(account_lock_key) DO UPDATE SET run_id=EXCLUDED.run_id,workspace_id=EXCLUDED.workspace_id,
           lease_token=EXCLUDED.lease_token,lease_owner=EXCLUDED.lease_owner,lease_until=EXCLUDED.lease_until`,
@@ -206,7 +213,7 @@ export function createAiQueue(pool: AiPgPool) {
       const until = new Date(now.getTime()+documentLeaseDuration(leaseMs));
       return tx(pool, async client => {
         const run = (await client.query(`SELECT * FROM ai_runs WHERE id=$1 FOR UPDATE`, [runId])).rows[0];
-        if (!run || run.operation !== 'DOCUMENT_REWORD' || run.status !== 'RUNNING' || run.lease_token !== leaseToken) return false;
+        if (!run || !synchronousOperations.includes(run.operation) || run.status !== 'RUNNING' || run.lease_token !== leaseToken) return false;
         const account = (await client.query(`SELECT 1 FROM ai_account_leases WHERE account_lock_key=$1 AND run_id=$2 AND lease_token=$3 FOR UPDATE`, [run.account_lock_key,runId,leaseToken])).rowCount;
         if (!account) return false;
         await client.query(`UPDATE ai_runs SET lease_until=$3 WHERE id=$1 AND status='RUNNING' AND lease_token=$2`, [runId,leaseToken,until]);
@@ -222,7 +229,7 @@ export function createAiQueue(pool: AiPgPool) {
       for (const row of result.proposalHashes ?? []) if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u.test(row.sentenceId) || !hash.safeParse(row.proposalSha256).success) throw new AiQueueError('INVALID_INPUT');
       return tx(pool, async client => {
         const run = (await client.query(`SELECT * FROM ai_runs WHERE id=$1 FOR UPDATE`, [runId])).rows[0];
-        if (!run || run.operation !== 'DOCUMENT_REWORD' || run.lease_token !== leaseToken || !['RUNNING','CANCEL_REQUESTED'].includes(run.status)) return null;
+        if (!run || !synchronousOperations.includes(run.operation) || run.lease_token !== leaseToken || !['RUNNING','CANCEL_REQUESTED'].includes(run.status)) return null;
         const status = run.status === 'CANCEL_REQUESTED' ? 'CANCELLED' : result.status;
         if (status === 'SUCCEEDED') {
           for (const row of result.proposalHashes ?? []) await client.query(`INSERT INTO ai_document_reword_proposals(workspace_id,run_id,sentence_id,proposal_sha256) VALUES($1,$2,$3,$4)`, [run.workspace_id,run.id,row.sentenceId,row.proposalSha256]);

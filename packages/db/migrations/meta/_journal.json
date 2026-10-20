@@ -225,6 +225,13 @@
       "when": 1792533942808,
       "tag": "0031_interview_preparation_item_support",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792534646099,
+      "tag": "0032_interview_preparation_assistant",
+      "breakpoints": true
     }
   ]
 }

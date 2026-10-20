@@ -1,0 +1,3 @@
+ALTER TABLE "ai_runs" DROP CONSTRAINT "ai_runs_operation_check";--> statement-breakpoint
+ALTER TABLE "interview_preparation_items" ADD COLUMN "hints" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "ai_runs" ADD CONSTRAINT "ai_runs_operation_check" CHECK ("ai_runs"."operation" in ('SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'DOCUMENT_REWORD', 'RESUME_IMPORT', 'INTERVIEW_PREP'));
