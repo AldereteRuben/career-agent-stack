@@ -354,7 +354,7 @@ function ApplicationsView() {
             </div>
           </div>}
 
-          <ApplicationDetailDisclosure key={`materials:${selected.id}`} className="application-detail-materials" summary={c('Descargar materiales de la solicitud', 'Download application materials')}>
+          <ApplicationDetailDisclosure key={`materials-disclosure:${selected.id}`} className="application-detail-materials" summary={c('Descargar materiales de la solicitud', 'Download application materials')}>
             <ApplicationMaterialsPacket key={`materials:${selected.id}`} applicationId={selected.id}/>
           </ApplicationDetailDisclosure>
           <ApplicationDetailDisclosure key={`documents:${selected.id}`} className="application-detail-documents" initiallyOpen={!canAutoPrepare && (!selected.documentId || selected.documentApprovalStatus !== 'USER_APPROVED')} summary={canAutoPrepare ? c('Crear CV y carta manualmente', 'Create resume and cover letter manually') : c('CV para esta oferta y carta', 'Resume for this job and cover letter')}>
@@ -364,10 +364,10 @@ function ApplicationsView() {
             </> : <Card className="application-resume"><h3>{c('Documentos para esta solicitud', 'Documents for this application')}</h3><p>{labelFor.applicationDocumentMessage('APPLICATION_HAS_NO_OFFER', locale)}</p><Link className="button button-quiet" href="/jobs">{c('Ver ofertas guardadas', 'View saved jobs')}</Link></Card>}
           </ApplicationDetailDisclosure>
           <AssistedApplication key={`assisted:${selected.id}`} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onOriginalLink={setStepOffersOriginal} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
-          <ApplicationDetailDisclosure key={`contacts:${selected.id}`} className="application-detail-contacts" summary={c('Contactos de esta solicitud', 'Contacts for this application')}>
+          <ApplicationDetailDisclosure key={`contacts-disclosure:${selected.id}`} className="application-detail-contacts" summary={c('Contactos de esta solicitud', 'Contacts for this application')}>
             <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
           </ApplicationDetailDisclosure>
-          <ApplicationDetailDisclosure key={`follow-up:${selected.id}`} className="application-detail-follow-up" summary={c('Redactar correo de seguimiento', 'Draft a follow-up email')}>
+          <ApplicationDetailDisclosure key={`follow-up-disclosure:${selected.id}`} className="application-detail-follow-up" summary={c('Redactar correo de seguimiento', 'Draft a follow-up email')}>
             <ApplicationFollowUpDraft key={`follow-up-draft:${selected.id}`} applicationId={selected.id} company={selected.company} role={selected.role}/>
           </ApplicationDetailDisclosure>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
