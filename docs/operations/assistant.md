@@ -54,6 +54,26 @@ Para reformular un documento con Codex, se pide confirmación en cada ejecución
 
 La app no permite borrar una sola solicitud ni sus documentos. **Borrar todos los datos del espacio** también elimina sus documentos y vacía la carpeta local completa de archivos; esta instalación mantiene un solo espacio.
 
+## Interview practice suggestions / Sugerencias para practicar entrevistas
+
+Codex can suggest practice questions, coding problems with progressive hints, questions to ask a recruiter, or study topics for one interview preparation plan. It is optional: the plan built without an assistant keeps working if you decline or Codex is unavailable.
+
+- **You see the exact message first.** The preview shows the complete text that would be sent and which kinds of data it contains. Nothing is sent by the preview.
+- **You confirm each request.** A remembered permission never covers it, and nothing automatic can start it. Every request records its own consent.
+- **Only what the plan needs is sent:** the saved offer, the stage, the approved facts the plan cites (you can leave any out), and, only if you include them, the submitted resume's content and your own notes. Never your full profile, other applications, suggested or rejected facts, or private assessment material.
+- **Stale evidence blocks it.** If the offer, the resume or a cited fact changed after the plan was made, review the plan first; nothing stale is sent or saved.
+- **Nothing is saved until you accept it.** Suggestions are labelled as generated practice material, they are not questions from a real interview, and each one you accept is saved exactly as generated, once. The server stores only hashes of the suggestions with the run.
+- Practice is for preparing. It does not help during a live interview or an employer assessment.
+
+Codex puede sugerir preguntas de práctica, problemas de código con pistas progresivas, preguntas para el reclutador o temas de estudio para un plan de preparación de entrevistas. Es opcional: el plan creado sin asistente sigue funcionando si lo rechazas o si Codex no está disponible.
+
+- **Ves el mensaje exacto antes.** La vista previa muestra el texto completo que se enviaría y qué tipos de datos contiene. La vista previa no envía nada.
+- **Confirmas cada solicitud.** Un permiso recordado nunca la cubre y nada automático puede iniciarla. Cada solicitud registra su propio consentimiento.
+- **Solo se envía lo que el plan necesita:** la oferta guardada, la etapa, los hechos aprobados que cita el plan (puedes dejar fuera cualquiera) y, solo si los incluyes, el contenido del CV enviado y tus propias notas. Nunca tu perfil completo, otras candidaturas, hechos sugeridos o rechazados, ni material privado de evaluaciones.
+- **La evidencia obsoleta lo bloquea.** Si la oferta, el CV o un hecho citado cambiaron después de crear el plan, revisa antes el plan; no se envía ni se guarda nada obsoleto.
+- **Nada se guarda hasta que lo aceptes.** Las sugerencias se etiquetan como material de práctica generado, no son preguntas de una entrevista real, y cada una que aceptes se guarda tal como se generó, una sola vez. El servidor solo guarda hashes de las sugerencias junto con la ejecución.
+- La práctica sirve para prepararse. No ayuda durante una entrevista en vivo ni una evaluación del empleador.
+
 ## Usage, disconnect and recovery / Uso, desconexión y recuperación
 
 Usage windows are shown only when the official interface reports them, together with observation time. Missing information means unknown, never unlimited or zero. Connection checks and refreshes are explicit. Disconnect revokes Career Stack's grant and stops its queue; it does not sign out the official CLI used elsewhere. An authoritative account change or sign-out invalidates the grant. A temporary inspection failure does not change the global login.

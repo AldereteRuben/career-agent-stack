@@ -9,7 +9,7 @@ import { AI_LIMITS } from './ai-budget.js';
 export const AI_SCHEMA_VERSION = 1 as const;
 
 export const aiProviders = ['codex', 'claude-code', 'ollama'] as const;
-export const aiOperations = ['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'RESUME_IMPORT', 'DOCUMENT_REWORD'] as const;
+export const aiOperations = ['SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'RESUME_IMPORT', 'DOCUMENT_REWORD', 'INTERVIEW_PREP'] as const;
 /** Same lowercase tags as DocumentLanguage. */
 export const aiLocales = ['es', 'en'] as const;
 export const aiConnectionStates = ['NOT_INSTALLED', 'LOGIN_REQUIRED', 'CONNECTING', 'CONNECTED', 'UNSUPPORTED_VERSION', 'UNAVAILABLE'] as const;
@@ -18,7 +18,7 @@ export const aiArtifactStates = ['PENDING_REVIEW', 'ACCEPTED', 'DISMISSED', 'STA
 export const aiUsageAvailability = ['KNOWN', 'STALE', 'UNAVAILABLE'] as const;
 export const aiRunOrigins = ['MANUAL', 'AUTOMATIC'] as const;
 /** What the provider may receive. Contact details are never a category: they are added locally. */
-export const aiDataCategories = ['SEARCH_REQUEST', 'JOB_POSTING', 'APPROVED_FACTS', 'APPLICATION_QUESTION', 'RESUME_TEXT'] as const;
+export const aiDataCategories = ['SEARCH_REQUEST', 'JOB_POSTING', 'APPROVED_FACTS', 'APPLICATION_QUESTION', 'RESUME_TEXT', 'INTERVIEW_STAGE', 'SUBMITTED_RESUME', 'USER_NOTES'] as const;
 export const aiErrorCodes = [
   'NOT_CONNECTED', 'CONSENT_MISSING', 'CONSENT_REVOKED', 'ACCOUNT_CHANGED', 'BUDGET_EXHAUSTED', 'PROVIDER_LIMIT_REACHED',
   'INPUT_TOO_LARGE', 'SOURCE_CHANGED', 'TIMEOUT', 'CANCELLED', 'PROVIDER_ERROR', 'INVALID_OUTPUT', 'UNSUPPORTED_VERSION', 'INTERNAL',
@@ -43,6 +43,8 @@ export const aiOperationDataCategories: Record<AiOperation, readonly AiDataCateg
   ANSWER_DRAFT: ['APPLICATION_QUESTION', 'APPROVED_FACTS'],
   RESUME_IMPORT: ['RESUME_TEXT'],
   DOCUMENT_REWORD: ['APPROVED_FACTS', 'JOB_POSTING'],
+  // The posting is always sent. The stage, approved facts, submitted resume and notes are sent only when the person includes them.
+  INTERVIEW_PREP: ['JOB_POSTING'],
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -136,6 +138,9 @@ export const aiSnapshotFactSchema = z.object({
 }).strict();
 export type AiSnapshotFact = z.infer<typeof aiSnapshotFactSchema>;
 
+export const aiInterviewPrepRequests = ['PRACTICE_QUESTIONS', 'CODING_HINTS', 'RECRUITER_QUESTIONS', 'STUDY_ITEMS'] as const;
+export type AiInterviewPrepRequest = (typeof aiInterviewPrepRequests)[number];
+
 export const aiSourceSnapshotSchema = z.object({
   schemaVersion: z.literal(AI_SCHEMA_VERSION),
   snapshotId: aiIdSchema, workspaceId: aiIdSchema, operation: aiOperationSchema, locale: aiLocaleSchema,
@@ -160,6 +165,15 @@ export const aiSourceSnapshotSchema = z.object({
     offer: z.object({ company: text(200), role: text(300), location: text(300).nullable(), title: text(300), description: z.string().max(50_000) }).strict(),
     sentences: z.array(z.object({ sentenceId: aiIdSchema, text: text(4000), kind: z.literal('CANDIDATE_CLAIM'),
       citedFacts: z.array(z.object({ factId: aiIdSchema, text: text(8000) }).strict()).min(1).max(50) }).strict()).min(1).max(50),
+  }).strict().optional(),
+  /** The only source shape accepted for per-request interview preparation suggestions (ADR 024). */
+  interviewPrep: z.object({
+    planId: aiIdSchema, request: z.enum(aiInterviewPrepRequests), stage: z.string().min(1).max(30).nullable(),
+    offer: z.object({ company: text(200), role: text(300), location: text(300).nullable(), title: text(300), description: z.string().max(50_000) }).strict(),
+    /** Content of the submitted resume, only when the person included it. */
+    resume: z.object({ text: text(20_000) }).strict().nullable(),
+    facts: z.array(z.object({ factId: aiIdSchema, text: text(8000) }).strict()).max(100),
+    notes: z.array(z.object({ noteId: aiIdSchema, text: text(2000) }).strict()).max(50),
   }).strict().optional(),
   facts: z.array(aiSnapshotFactSchema).max(500),
   profileRevision: z.number().int().positive().nullable(),
@@ -203,6 +217,24 @@ export const aiSourceSnapshotSchema = z.object({
       }
     }
   } else if (snapshot.documentReword) ctx.addIssue({ code: 'custom', path: ['documentReword'], message: 'Document sources are allowed only for DOCUMENT_REWORD.' });
+  if (snapshot.operation === 'INTERVIEW_PREP') {
+    if (!snapshot.interviewPrep) ctx.addIssue({ code: 'custom', path: ['interviewPrep'], message: 'INTERVIEW_PREP requires its own sources.' });
+    if (snapshot.searchRequest || snapshot.job || snapshot.question || snapshot.resume || snapshot.documentReword || snapshot.facts.length || snapshot.profileRevision !== null || snapshot.identityFingerprint !== null) {
+      ctx.addIssue({ code: 'custom', path: ['operation'], message: 'INTERVIEW_PREP receives only the offer, stage and the approved facts, resume and notes the person included.' });
+    }
+    if (snapshot.interviewPrep) {
+      const seen = new Set<string>();
+      snapshot.interviewPrep.facts.forEach((fact, index) => {
+        if (seen.has(fact.factId)) ctx.addIssue({ code: 'custom', path: ['interviewPrep', 'facts', index, 'factId'], message: 'Duplicate fact.' });
+        seen.add(fact.factId);
+      });
+      const notes = new Set<string>();
+      snapshot.interviewPrep.notes.forEach((note, index) => {
+        if (notes.has(note.noteId)) ctx.addIssue({ code: 'custom', path: ['interviewPrep', 'notes', index, 'noteId'], message: 'Duplicate note.' });
+        notes.add(note.noteId);
+      });
+    }
+  } else if (snapshot.interviewPrep) ctx.addIssue({ code: 'custom', path: ['interviewPrep'], message: 'Interview sources are allowed only for INTERVIEW_PREP.' });
   if (snapshot.operation === 'SEARCH_DRAFT' && (snapshot.facts.length || snapshot.job || snapshot.question)) {
     ctx.addIssue({ code: 'custom', path: ['operation'], message: 'A search draft receives only the written request.' });
   }
@@ -217,6 +249,13 @@ export function aiSnapshotDataCategories(snapshot: AiSourceSnapshot): AiDataCate
   if (snapshot.facts.length) categories.push('APPROVED_FACTS');
   if (snapshot.question) categories.push('APPLICATION_QUESTION');
   if (snapshot.resume) categories.push('RESUME_TEXT');
+  if (snapshot.interviewPrep) {
+    categories.push('JOB_POSTING');
+    if (snapshot.interviewPrep.stage) categories.push('INTERVIEW_STAGE');
+    if (snapshot.interviewPrep.facts.length) categories.push('APPROVED_FACTS');
+    if (snapshot.interviewPrep.resume) categories.push('SUBMITTED_RESUME');
+    if (snapshot.interviewPrep.notes.length) categories.push('USER_NOTES');
+  }
   return categories;
 }
 
@@ -316,9 +355,35 @@ export const documentRewordOutputSchema = z.object({
 });
 export type DocumentRewordOutput = z.infer<typeof documentRewordOutputSchema>;
 
-export const aiOutputSchema = z.discriminatedUnion('operation', [searchDraftOutputSchema, jobAnalysisOutputSchema, resumeDraftOutputSchema, answerDraftOutputSchema, resumeImportOutputSchema, documentRewordOutputSchema]);
+export const aiInterviewSuggestionKinds = ['PRACTICE_QUESTION', 'CODING_HINT', 'RECRUITER_QUESTION', 'STUDY_ITEM'] as const;
+/** Each request produces exactly one kind of suggestion. */
+export const aiInterviewSuggestionKindFor: Record<AiInterviewPrepRequest, (typeof aiInterviewSuggestionKinds)[number]> = {
+  PRACTICE_QUESTIONS: 'PRACTICE_QUESTION', CODING_HINTS: 'CODING_HINT', RECRUITER_QUESTIONS: 'RECRUITER_QUESTION', STUDY_ITEMS: 'STUDY_ITEM',
+};
+export const interviewPrepOutputSchema = z.object({
+  ...header('INTERVIEW_PREP'),
+  request: z.enum(aiInterviewPrepRequests),
+  suggestions: z.array(z.object({
+    key: aiIdSchema.max(80), kind: z.enum(aiInterviewSuggestionKinds), text: text(1500),
+    /** Coding hints only: from a nudge to the most revealing one. Empty for every other kind. */
+    hints: z.array(text(600)).max(5),
+    /** Approved facts the suggestion relates to, from those supplied. Empty when it relates to none. */
+    sourceFactIds: z.array(aiIdSchema).max(10),
+  }).strict()).min(1).max(20),
+  warnings: z.array(text(400)).max(10),
+}).strict().superRefine((output, ctx) => {
+  const keys = new Set<string>();
+  output.suggestions.forEach((suggestion, index) => {
+    if (keys.has(suggestion.key)) ctx.addIssue({ code: 'custom', path: ['suggestions', index, 'key'], message: 'Duplicate suggestion.' });
+    keys.add(suggestion.key);
+    if (suggestion.kind === 'CODING_HINT' ? suggestion.hints.length < 1 : suggestion.hints.length > 0) ctx.addIssue({ code: 'custom', path: ['suggestions', index, 'hints'], message: 'Only coding hints carry hints, and they need at least one.' });
+  });
+});
+export type InterviewPrepOutput = z.infer<typeof interviewPrepOutputSchema>;
+
+export const aiOutputSchema = z.discriminatedUnion('operation', [searchDraftOutputSchema, jobAnalysisOutputSchema, resumeDraftOutputSchema, answerDraftOutputSchema, resumeImportOutputSchema, documentRewordOutputSchema, interviewPrepOutputSchema]);
 export type AiOutput = z.infer<typeof aiOutputSchema>;
-export const aiOutputSchemas = { SEARCH_DRAFT: searchDraftOutputSchema, JOB_ANALYSIS: jobAnalysisOutputSchema, RESUME_DRAFT: resumeDraftOutputSchema, ANSWER_DRAFT: answerDraftOutputSchema, RESUME_IMPORT: resumeImportOutputSchema, DOCUMENT_REWORD: documentRewordOutputSchema } as const;
+export const aiOutputSchemas = { SEARCH_DRAFT: searchDraftOutputSchema, JOB_ANALYSIS: jobAnalysisOutputSchema, RESUME_DRAFT: resumeDraftOutputSchema, ANSWER_DRAFT: answerDraftOutputSchema, RESUME_IMPORT: resumeImportOutputSchema, DOCUMENT_REWORD: documentRewordOutputSchema, INTERVIEW_PREP: interviewPrepOutputSchema } as const;
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Evidence validation
@@ -404,6 +469,17 @@ export function validateAiOutput(raw: unknown, snapshotInput: unknown, expected:
         if (!proposal || proposal.sourceFactIds.length !== cited.length || !proposal.sourceFactIds.every((id, factIndex) => id === cited[factIndex])) {
           issues.push({ code: 'INVALID_OUTPUT', path: ['proposals', index] });
         }
+      });
+      break;
+    }
+    case 'INTERVIEW_PREP': {
+      const source = snapshot.interviewPrep;
+      if (!source) { issues.push({ code: 'INVALID_SNAPSHOT', path: ['interviewPrep'] }); break; }
+      if (output.request !== source.request) issues.push({ code: 'INVALID_OUTPUT', path: ['request'] });
+      const suppliedFacts = new Set(source.facts.map((fact) => fact.factId));
+      output.suggestions.forEach((suggestion, index) => {
+        if (suggestion.kind !== aiInterviewSuggestionKindFor[source.request]) issues.push({ code: 'INVALID_OUTPUT', path: ['suggestions', index, 'kind'] });
+        suggestion.sourceFactIds.forEach((id, factIndex) => { if (!suppliedFacts.has(id)) issues.push({ code: 'UNKNOWN_FACT_ID', path: ['suggestions', index, 'sourceFactIds', factIndex] }); });
       });
       break;
     }

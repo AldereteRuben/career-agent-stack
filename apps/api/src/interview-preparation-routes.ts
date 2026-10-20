@@ -31,14 +31,14 @@ const editItemSchema = z.object({ content: z.string().trim().min(1).max(INTERVIE
 const userOrigins = ['USER_NOTE', 'USER_RESEARCH'];
 
 type PreparationDatabase = typeof db;
-type EvidenceReference = { kind: InterviewEvidenceKind; sourceId: string };
+export type EvidenceReference = { kind: InterviewEvidenceKind; sourceId: string };
 
 const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 /** Facts are hashed on what the person approved: their kind and text. */
 export const factEvidenceHash = (fact: { kind: string; statement: string }) => sha256(`${fact.kind}\n${fact.statement}`);
 
 /** What each referenced record looks like now, keyed by `kind:id`. A record that no longer exists is absent. */
-async function currentEvidence(database: PreparationDatabase, workspaceId: string, references: EvidenceReference[]): Promise<Map<string, InterviewEvidenceCurrent>> {
+export async function currentEvidence(database: PreparationDatabase, workspaceId: string, references: EvidenceReference[]): Promise<Map<string, InterviewEvidenceCurrent>> {
   const current = new Map<string, InterviewEvidenceCurrent>();
   const ids = (kind: InterviewEvidenceKind) => [...new Set(references.filter((reference) => reference.kind === kind).map((reference) => reference.sourceId))];
   const [snapshotIds, resumeIds, factIds] = [ids('JOB_SNAPSHOT'), ids('RESUME_VERSION'), ids('APPROVED_FACT')];
@@ -55,6 +55,11 @@ async function currentEvidence(database: PreparationDatabase, workspaceId: strin
   }
   return current;
 }
+
+export const itemView = (item: typeof interviewPreparationItems.$inferSelect) => ({
+  id: item.id, kind: item.kind, origin: item.origin, position: item.position, content: item.content,
+  evidenceId: item.evidenceId, support: item.support, factIds: item.factIds, hints: item.hints,
+});
 
 /** Plans with their evidence status, items and sessions. Nothing here returns profile text or resume content. */
 async function describePlans(database: PreparationDatabase, workspaceId: string, plans: Array<typeof interviewPreparationPlans.$inferSelect>) {
@@ -78,7 +83,7 @@ async function describePlans(database: PreparationDatabase, workspaceId: string,
       id: plan.id, applicationId: plan.applicationId, language: plan.language, stage: plan.stage, createdAt: plan.createdAt, updatedAt: plan.updatedAt,
       needsReview: interviewPlanNeedsReview(planEvidence.map((row) => row.status)),
       evidence: planEvidence,
-      items: items.filter((item) => item.planId === plan.id).map((item) => ({ id: item.id, kind: item.kind, origin: item.origin, position: item.position, content: item.content, evidenceId: item.evidenceId, support: item.support, factIds: item.factIds })),
+      items: items.filter((item) => item.planId === plan.id).map(itemView),
       sessions: sessions.filter((session) => session.planId === plan.id).map((session) => ({
         id: session.id, status: session.status, createdAt: session.createdAt, endedAt: session.endedAt,
         turns: turns.filter((turn) => turn.sessionId === session.id).map((turn) => ({ id: turn.id, position: turn.position, question: turn.question, answer: turn.answer, feedback: turn.feedback, learningItems: turn.learningItems })),
@@ -207,8 +212,7 @@ export function registerInterviewPreparationRoutes(app: FastifyInstance, workspa
     });
     if (result.kind === 'missing') return reply.code(404).send({ error: 'NOT_FOUND' });
     if (result.kind === 'full') return reply.code(409).send({ error: 'PLAN_FULL' });
-    const { id, kind, origin, position, content, evidenceId, support, factIds } = result.item;
-    return reply.code(201).send({ item: { id, kind, origin, position, content, evidenceId, support, factIds } });
+    return reply.code(201).send({ item: itemView(result.item) });
   });
 
   app.patch('/api/v1/interview-preparation/items/:id', async (request, reply) => {
@@ -222,7 +226,7 @@ export function registerInterviewPreparationRoutes(app: FastifyInstance, workspa
     if (!userOrigins.includes(item.origin)) return reply.code(409).send({ error: 'ITEM_NOT_EDITABLE' });
     const updated = (await database.update(interviewPreparationItems).set({ content: parsed.data.content, updatedAt: new Date() })
       .where(and(eq(interviewPreparationItems.workspaceId, workspaceId), eq(interviewPreparationItems.id, item.id))).returning())[0]!;
-    return { item: { id: updated.id, kind: updated.kind, origin: updated.origin, position: updated.position, content: updated.content, evidenceId: updated.evidenceId, support: updated.support, factIds: updated.factIds } };
+    return { item: itemView(updated) };
   });
 
   app.delete('/api/v1/interview-preparation/items/:id', async (request, reply) => {
