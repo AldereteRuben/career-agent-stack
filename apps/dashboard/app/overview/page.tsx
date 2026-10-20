@@ -139,6 +139,7 @@ export default function OverviewPage() {
   }
 
   const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers', 'preferences'].includes(step.key));
+  const profileNextStep = steps.find(({ key }) => key === 'identity' || key === 'first-fact');
 
   const searchSummary = summarize(searches);
   const inProgress = searchSummary.active.length > 0;
@@ -186,6 +187,7 @@ export default function OverviewPage() {
         <h2>{dailyAction.title}</h2>
         <p>{dailyAction.detail}</p>
         <ButtonLink href={dailyAction.href}>{dailyAction.button} <Icon name="arrow" size={18}/></ButtonLink>
+        {profileNextStep && profileNextStep.href !== dailyAction.href && <p className="muted-label"><Link href={profileNextStep.href}>{profileNextStep.title}</Link></p>}
         {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
       </Card>
       <Card className="overview-inbox-panel">
@@ -216,7 +218,7 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes, hasNextStep: steps.some(({ key }) => key === 'identity' || key === 'first-fact' || key === 'choose-job') }))}>
+    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
       <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
     <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>
