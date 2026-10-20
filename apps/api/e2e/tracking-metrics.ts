@@ -80,7 +80,7 @@ export const trackingMetricsScenario: Scenario = {
       const metricsSection = overviewDetails.locator('section[aria-labelledby="metrics-heading"]');
       await metricsSection.waitFor({ state: 'attached' });
       await eventually(async () => (await metricsSection.getAttribute('aria-busy')) === 'false', Boolean, 'Overview metrics finish loading');
-      if (!(await overviewDetails.evaluate((details) => (details as HTMLDetailsElement).open))) await overviewDetails.getByText(c('Ver más cifras y otras tareas', 'See more figures and other tasks'), { exact: true }).click();
+      if (!(await overviewDetails.evaluate((details) => (details as HTMLDetailsElement).open))) await overviewDetails.getByText(c('Ver actividad, cifras y tareas', 'See activity, figures, and tasks'), { exact: true }).click();
       const source = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por fuente', 'By source'), exact: true }) });
       const role = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por puesto', 'By role'), exact: true }) });
       const country = page.locator('section').filter({ has: page.getByRole('heading', { name: c('Por país', 'By country'), exact: true }) });

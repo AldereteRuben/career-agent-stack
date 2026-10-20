@@ -15,34 +15,46 @@ import { Button, Icon, Notice } from './ui';
 type Copy = { es: string; en: string };
 type NavLink = { key: string; href: string; label: Copy; icon: string; hint?: Copy };
 
-/** The everyday destinations. Everything else lives under "Profile and tools". */
+/** The everyday destinations. */
 const primaryLinks: NavLink[] = [
-  { key: 'overview', href: '/overview', label: { es: 'Inicio', en: 'Dashboard' }, icon: 'home', hint: { es: 'Tu siguiente paso', en: 'Your next step' } },
-  { key: 'searches', href: '/searches', label: { es: 'Buscar ofertas', en: 'Find jobs' }, icon: 'search', hint: { es: 'Búsquedas automáticas', en: 'Automatic searches' } },
-  { key: 'saved', href: '/jobs?scope=favorites', label: { es: 'Ofertas guardadas', en: 'Saved jobs' }, icon: 'check', hint: { es: 'Ofertas que te interesan', en: 'Jobs you want to keep' } },
-  { key: 'applications', href: '/applications', label: { es: 'Solicitudes', en: 'Applications' }, icon: 'briefcase', hint: { es: 'Preparar, enviar y dar seguimiento', en: 'Prepare, apply, and track' } },
+  { key: 'overview', href: '/overview', label: { es: 'Inicio', en: 'Home' }, icon: 'home' },
+  { key: 'jobs', href: '/jobs?scope=new', label: { es: 'Ofertas', en: 'Jobs' }, icon: 'search' },
+  { key: 'applications', href: '/applications', label: { es: 'Solicitudes', en: 'Applications' }, icon: 'briefcase' },
+  { key: 'timeline', href: '/timeline', label: { es: 'Calendario', en: 'Calendar' }, icon: 'calendar' },
+];
+
+const profileLinks: NavLink[] = [
+  { key: 'profile', href: '/profile', label: { es: 'Perfil', en: 'Profile' }, icon: 'user' },
+  { key: 'documents', href: '/documents', label: { es: 'CV y documentos', en: 'Resumes and documents' }, icon: 'file' },
 ];
 
 const secondaryLinks: NavLink[] = [
-  { key: 'profile', href: '/profile', label: { es: 'Perfil', en: 'Profile' }, icon: 'user' },
-  { key: 'documents', href: '/documents', label: { es: 'CV y documentos', en: 'Resumes and documents' }, icon: 'file' },
-  { key: 'jobs', href: '/jobs', label: { es: 'Todas las ofertas', en: 'All jobs' }, icon: 'search' },
   { key: 'boards', href: '/boards', label: { es: 'Empresas', en: 'Companies' }, icon: 'building' },
   { key: 'settings', href: '/settings', label: { es: 'Ajustes y privacidad', en: 'Settings and privacy' }, icon: 'settings' },
 ];
 
-const toolsLabel: Copy = { es: 'Perfil y herramientas', en: 'Profile and tools' };
+const toolsLabel: Copy = { es: 'Más', en: 'More' };
+const profileGroupLabel: Copy = { es: 'Perfil y CV', en: 'Profile and resume' };
 const jobDetailLabel: Copy = { es: 'Detalle de la oferta', en: 'Job details' };
 const notFoundLabel: Copy = { es: 'Página no encontrada', en: 'Page not found' };
-const timelineLabel: Copy = { es: 'Cronología', en: 'Timeline' };
+const searchesLabel: Copy = { es: 'Búsquedas automáticas', en: 'Automatic searches' };
+const preparedApplicationsLabel: Copy = { es: 'Preparar solicitud', en: 'Prepare application' };
+const gettingStartedLabel: Copy = { es: 'Primeros pasos', en: 'Getting started' };
 
 type Route = { active: string | null; crumbs: Copy[] };
 
 const within = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
-const linkLabel = (key: string) => [...primaryLinks, ...secondaryLinks].find((link) => link.key === key)!.label;
+const linkLabel = (key: string) => [...primaryLinks, ...profileLinks, ...secondaryLinks].find((link) => link.key === key)!.label;
 
-/** Which jobs list a /jobs URL shows: saved jobs are their own destination, every other scope is "All jobs". */
-const jobsListKey = (search: URLSearchParams | null) => search?.get('scope') === 'favorites' ? 'saved' : 'jobs';
+function jobsViewLabel(search: URLSearchParams): Copy {
+  switch (search.get('scope')) {
+    case 'new': return { es: 'Nuevas', en: 'New' };
+    case 'favorites': return { es: 'Guardadas', en: 'Saved' };
+    case 'archived': return { es: 'Archivadas', en: 'Archived' };
+    case 'filtered': return { es: 'Excluidas por preferencias', en: 'Filtered by preferences' };
+    default: return { es: 'Todas', en: 'All' };
+  }
+}
 
 /** Section a job detail page was opened from, read from its bounded same-origin `returnTo`. */
 function jobOrigin(search: URLSearchParams | null): string | null {
@@ -51,26 +63,39 @@ function jobOrigin(search: URLSearchParams | null): string | null {
   try {
     const url = new URL(returnTo, 'http://career.local');
     if (within(url.pathname, '/searches')) return 'searches';
-    if (url.pathname === '/jobs') return jobsListKey(url.searchParams);
+    if (url.pathname === '/jobs') return 'jobs';
   } catch { /* An unreadable origin selects nothing. */ }
   return null;
 }
 
 /** Resolve the highlighted destination and breadcrumb from the path and, when available, the query. */
 function resolveRoute(pathname: string, search: URLSearchParams | null): Route {
-  // Before the query is read, /jobs could be saved or all jobs: select neither.
-  if (pathname === '/jobs' && !search) return { active: null, crumbs: [{ es: 'Ofertas', en: 'Jobs' }] };
-  if (pathname === '/jobs') { const key = jobsListKey(search); return { active: key, crumbs: [linkLabel(key)] }; }
-  if (pathname.startsWith('/jobs/')) { const origin = jobOrigin(search); return { active: origin, crumbs: origin ? [linkLabel(origin), jobDetailLabel] : [jobDetailLabel] }; }
-  if (pathname === '/preparations') return { active: null, crumbs: [{ es: 'Solicitudes preparadas', en: 'Prepared applications' }] };
-  // The timeline belongs to Applications, so the first menu keeps its four destinations.
-  if (pathname === '/timeline') return { active: 'applications', crumbs: [linkLabel('applications'), timelineLabel] };
-  if (pathname === '/start') return { active: null, crumbs: [{ es: 'Primeros pasos', en: 'Getting started' }] };
-  const primary = primaryLinks.find((link) => link.key !== 'saved' && within(pathname, link.href));
+  if (pathname === '/jobs') {
+    const view = search ? jobsViewLabel(search) : null;
+    return { active: 'jobs', crumbs: view ? [linkLabel('jobs'), view] : [linkLabel('jobs')] };
+  }
+  if (pathname.startsWith('/jobs/')) {
+    const origin = jobOrigin(search);
+    const crumbs = [linkLabel('jobs')];
+    if (origin === 'searches') crumbs.push(searchesLabel);
+    crumbs.push(jobDetailLabel);
+    return { active: 'jobs', crumbs };
+  }
+  if (pathname === '/searches') return { active: 'jobs', crumbs: [linkLabel('jobs'), searchesLabel] };
+  if (pathname === '/preparations') return { active: 'applications', crumbs: [linkLabel('applications'), preparedApplicationsLabel] };
+  if (pathname === '/timeline') return { active: 'timeline', crumbs: [linkLabel('timeline')] };
+  if (pathname === '/start') return { active: null, crumbs: [gettingStartedLabel] };
+
+  const profile = profileLinks.find((link) => within(pathname, link.href));
+  if (profile) return { active: profile.key, crumbs: [profileGroupLabel, profile.label] };
+
+  const primary = primaryLinks.find((link) => within(pathname, link.href.split('?')[0]!));
   if (primary) return { active: primary.key, crumbs: [primary.label] };
-  const secondary = secondaryLinks.find((link) => link.key !== 'jobs' && within(pathname, link.href));
+
+  const secondary = secondaryLinks.find((link) => within(pathname, link.href));
   if (secondary) return { active: secondary.key, crumbs: [toolsLabel, secondary.label] };
-  // Only the root address redirects to the overview (the first primary link); any other unknown address is the not-found page.
+
+  // Only the root address redirects to the overview; other unknown addresses are not found.
   if (pathname === '/') return { active: null, crumbs: [primaryLinks[0]!.label] };
   return { active: null, crumbs: [notFoundLabel] };
 }
@@ -218,7 +243,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {...(drawerOpen ? { role: 'dialog', 'aria-modal': true } : {})}
     >
       <div className="sidebar-top">
-        <Link href="/searches" className="brand" onClick={closeMenu}><Brand/></Link>
+        <Link href="/overview" className="brand" onClick={closeMenu}><Brand/></Link>
         <button type="button" className="drawer-close" onClick={closeMenu}><Icon name="close" size={20}/><span className="sr-only">{t("Cerrar menú")}</span></button>
       </div>
       <Suspense fallback={<MainNav {...navProps} route={resolveRoute(pathname, null)}/>}><QueryAwareNav {...navProps}/></Suspense>
@@ -268,18 +293,24 @@ function Breadcrumbs({ locale, route }: { locale: string; route: Route }) {
 function MainNav({ locale, route, toolsOpen, onToggleTools, onRevealTools, onNavigate }: NavProps & { route: Route }) {
   const { t } = useLocale(); const say = (copy: Copy) => locale === 'en' ? copy.en : copy.es;
   const toolsId = useId(); const toolsActive = secondaryLinks.some((link) => link.key === route.active);
+  const profileGroupId = useId();
   // Expose the current secondary destination instead of hiding it inside a collapsed group.
   useEffect(() => { if (toolsActive) onRevealTools(); }, [toolsActive, route.active, onRevealTools]);
   const item = (link: NavLink, compact = false) => {
     const active = route.active === link.key;
     return <Link key={link.key} href={link.href} onClick={onNavigate} aria-current={active ? 'page' : undefined} className={`nav-link ${compact ? 'nav-link-compact' : ''} ${active ? 'nav-active' : ''}`}><Icon name={link.icon} size={20}/><span className="nav-copy"><span>{say(link.label)}</span>{link.hint && <small>{say(link.hint)}</small>}</span></Link>;
   };
-  return <><nav className="main-nav" aria-label={t("Navegación principal")}>
-    {primaryLinks.map((link) => item(link))}
+  return <>
+    <nav className="main-nav" aria-label={t("Navegación principal")}>
+      {primaryLinks.map((link) => item(link))}
+      <div className="nav-profile-group" role="group" aria-labelledby={profileGroupId}>
+        <p className="nav-group-label" id={profileGroupId}>{say(profileGroupLabel)}</p>
+        {profileLinks.map((link) => item(link, true))}
+      </div>
     </nav>
     <div className="nav-tools">
       <button type="button" className={`nav-tools-toggle ${toolsActive ? 'nav-tools-current' : ''}`} aria-expanded={toolsOpen} aria-controls={toolsId} onClick={onToggleTools}>
-        <Icon name="settings" size={20}/><span className="nav-copy"><span>{say(toolsLabel)}</span></span><span className="nav-tools-chevron" aria-hidden="true"><Icon name="arrow" size={16}/></span>
+        <Icon name="more" size={20}/><span className="nav-copy"><span>{say(toolsLabel)}</span></span><span className="nav-tools-chevron" aria-hidden="true"><Icon name="arrow" size={16}/></span>
       </button>
       <div id={toolsId} role="group" aria-label={say(toolsLabel)} className="nav-tools-list" hidden={!toolsOpen}>
         {secondaryLinks.map((link) => item(link, true))}

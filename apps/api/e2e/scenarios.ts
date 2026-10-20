@@ -54,6 +54,7 @@ export type ScenarioContext = {
   uiUrl: string;
   marker: string;
   token: () => Promise<string>;
+  issueToken: () => Promise<string>;
   artifacts: string;
   /** Console errors matching these patterns are expected for the current scenario (e.g. an intercepted 500). */
   allowConsole: (pattern: RegExp) => void;
@@ -76,12 +77,12 @@ const profileForm = (page: Page) => page.locator('form').filter({ has: page.getB
 
 /** Tab titles per route, "Page · Career Stack". '/' redirects to the overview, which has its own entry. */
 const expectedTitles: Record<string, { en: string; es: string }> = {
-  '/searches': { en: 'Find jobs · Career Stack', es: 'Buscar ofertas · Career Stack' },
-  '/overview': { en: 'Dashboard · Career Stack', es: 'Inicio · Career Stack' },
-  '/jobs': { en: 'All jobs · Career Stack', es: 'Todas las ofertas · Career Stack' },
-  '/jobs?scope=favorites': { en: 'Saved jobs · Career Stack', es: 'Ofertas guardadas · Career Stack' },
+  '/searches': { en: 'Automatic searches · Career Stack', es: 'Búsquedas automáticas · Career Stack' },
+  '/overview': { en: 'Home · Career Stack', es: 'Inicio · Career Stack' },
+  '/jobs': { en: 'All · Career Stack', es: 'Todas · Career Stack' },
+  '/jobs?scope=favorites': { en: 'Saved · Career Stack', es: 'Guardadas · Career Stack' },
   '/applications': { en: 'Applications · Career Stack', es: 'Solicitudes · Career Stack' },
-  '/timeline': { en: 'Timeline · Career Stack', es: 'Cronología · Career Stack' },
+  '/timeline': { en: 'Calendar · Career Stack', es: 'Calendario · Career Stack' },
   '/profile': { en: 'Profile · Career Stack', es: 'Perfil · Career Stack' },
   '/documents': { en: 'Resumes and documents · Career Stack', es: 'CV y documentos · Career Stack' },
   '/boards': { en: 'Companies · Career Stack', es: 'Empresas · Career Stack' },
@@ -95,11 +96,11 @@ export const scenarios: Scenario[] = [
       await signIn(page, uiUrl, await token());
       await setLocale(page, 'es');
       await page.waitForURL((url) => url.pathname === '/overview');
-      await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Guardadas/i }).waitFor();
-      assert.equal(await mainNavigation(page).getByRole('link').count(), 4, 'Four primary destinations keep the first menu focused');
+      await mainNavigation(page).locator('a[href="/jobs?scope=new"]').filter({ hasText: /Ofertas/i }).waitFor();
+      assert.equal(await mainNavigation(page).getByRole('link').count(), 6, 'Primary destinations and the profile group are visible in the main menu');
       await setLocale(page, 'en');
-      await mainNavigation(page).locator('a[href="/jobs?scope=favorites"]').filter({ hasText: /Saved jobs/i }).waitFor();
-      await page.waitForFunction(() => document.title === 'Dashboard · Career Stack');
+      await mainNavigation(page).locator('a[href="/jobs?scope=new"]').filter({ hasText: /Jobs/i }).waitFor();
+      await page.waitForFunction(() => document.title === 'Home · Career Stack');
       await setLocale(page, 'es');
       await page.waitForFunction(() => document.title === 'Inicio · Career Stack');
       assert.equal(await hasHorizontalOverflow(page), false, 'Overview overflows horizontally at desktop width');
@@ -368,16 +369,16 @@ export const scenarios: Scenario[] = [
       await page.getByRole('heading', { name: second.role }).first().waitFor();
 
       const readSecond = async () => (await api.get<Application[]>('/applications')).find((application) => application.id === second.id)!;
-      const stage = page.getByLabel(any('Etapa de selección', 'Recruitment stage', 'Selection stage', 'Etapa', 'Stage')).first();
+      const detail = page.locator('.tracker-detail');
+      const stage = detail.getByLabel(any('Etapa del proceso', 'Hiring stage', 'Etapa de selección', 'Recruitment stage', 'Selection stage', 'Etapa', 'Stage')).first();
       await stage.selectOption('INTERVIEW');
       await eventually(async () => (await readSecond()).recruitmentStage, (value) => value === 'INTERVIEW', 'Stage should advance to INTERVIEW');
 
       // Correct a mistaken selection back to an earlier stage. The UI may ask for confirmation or a reason.
       await stage.selectOption('RECRUITER_CONTACT');
-      const reason = page.getByLabel(any('Motivo', 'Reason')).first();
-      if (await reason.isVisible().catch(() => false)) await reason.fill(`Selected the wrong stage ${marker}`);
-      const confirm = page.getByRole('button', { name: any('Corregir', 'Correct', 'Confirmar', 'Confirm') }).first();
-      if (await confirm.isVisible().catch(() => false)) await confirm.click();
+      const confirm = detail.getByRole('button', { name: any('Sí, corregir etapa', 'Yes, correct stage'), exact: true });
+      await confirm.waitFor({ state: 'visible' });
+      await confirm.click();
       await eventually(async () => (await readSecond()).recruitmentStage, (value) => value === 'RECRUITER_CONTACT', 'Stage correction to an earlier stage should be saved', 15_000);
       const events = await api.get<ApplicationEvent[]>(`/applications/${second.id}/events`);
       assert.ok(events.some((event) => event.newState === 'RECRUITER_CONTACT' && event.priorState === 'INTERVIEW'), 'The correction must be recorded in the history');

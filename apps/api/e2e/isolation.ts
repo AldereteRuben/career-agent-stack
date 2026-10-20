@@ -238,6 +238,13 @@ export async function createIsolatedStack() {
       runId, marker, apiUrl, uiUrl, db, databaseName, logsDir, filesDir,
       /** The isolated, single-use sign-in token. Only ever passed to the isolated UI. */
       readToken: async () => (await readFile(isolatedTokenPath, 'utf8')).trim(),
+      /** Issues a fresh single-use token only after a scenario has consumed the prior token and signed out. */
+      issueToken: async () => {
+        const token = randomBytes(24).toString('base64url');
+        const handle = await open(isolatedTokenPath, 'wx', 0o600);
+        try { await handle.writeFile(`${token}\n`, 'utf8'); } finally { await handle.close(); }
+        return token;
+      },
       /** Fails if the live token, live files or shared Next build changed, or if run markers reached the live database. */
       assertLiveUntouched: async () => {
         const problems: string[] = [];

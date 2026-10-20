@@ -94,6 +94,17 @@ function eventDetail(event: AppEvent, locale: Locale) {
   return event.reason ?? c('Cambio guardado', 'Change saved');
 }
 
+function interviewDisclosureSummary(application: Application, locale: Locale) {
+  const c = copy(locale);
+  if (!application.interviewAt) return c('Añadir entrevista (opcional)', 'Add interview (optional)');
+  const timeZone = application.interviewTimezone ?? 'UTC';
+  let date: string;
+  try {
+    date = new Intl.DateTimeFormat(locale === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(application.interviewAt));
+  } catch { date = application.interviewAt; }
+  return `${c('Entrevista programada', 'Interview scheduled')}: ${date} (${timeZone})`;
+}
+
 function ApplicationsView() {
   const { locale } = useLocale(); const c = copy(locale);
   const router = useRouter(); const pathname = usePathname(); const searchParams = useSearchParams(); const urlId = searchParams.get('id');
@@ -305,9 +316,9 @@ function ApplicationsView() {
   const canAutoPrepare = Boolean(selected?.jobId && !selected.documentId && !isApplicationClosedForPreparation(selected) && !['UNKNOWN', 'IN_PROGRESS'].includes(selected.state));
   const stateChoices = selected ? [selected.state, ...(transitions[selected.state] ?? []).filter((state) => (selectableApplicationStates as readonly string[]).includes(state))] : [];
 
-  return <>
+  return <div className={`applications-page ${selected ? 'applications-page-selection' : ''}`}>
     <DetailTitle name={selected?.role}/>
-    <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Solicitudes', 'Applications')} description={c('Prepara tus solicitudes y anota las respuestas de las empresas. Añadir una solicitud aquí no la envía.', 'Prepare your applications and record employer responses. Adding an application here does not submit it.')} action={<><ButtonLink variant="secondary" href="/timeline"><Icon name="calendar" size={16}/>{c('Cronología', 'Timeline')}</ButtonLink><Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir solicitud', 'Add application')}</Button></>}/>
+    <PageHeader eyebrow={c('SEGUIMIENTO, SIN PRESIÓN', 'TRACKING, WITHOUT PRESSURE')} title={c('Solicitudes', 'Applications')} description={c('Prepara tus solicitudes y anota las respuestas de las empresas. Añadir una solicitud aquí no la envía.', 'Prepare your applications and record employer responses. Adding an application here does not submit it.')} action={<><ButtonLink variant="secondary" href="/timeline"><Icon name="calendar" size={16}/>{c('Calendario', 'Calendar')}</ButtonLink><Button onClick={() => setOpen(!open)}><Icon name="plus" size={16}/>{open ? c('Cerrar', 'Close') : c('Añadir solicitud', 'Add application')}</Button></>}/>
     <ApplicationSections active="tracking"/>
     {error && <div ref={errorFocus} tabIndex={-1} className="action-error"><Notice tone="error">{error}</Notice></div>}{message && <Notice tone="success">{message}</Notice>}
     {hasFormDraft && <Notice tone={formDraft.storageFailed ? 'warning' : 'info'} actions={<><Button variant="quiet" onClick={() => setOpen(true)}>{c('Continuar borrador', 'Continue draft')}</Button><Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar esta solicitud sin guardar?', 'Discard this unsaved application?'))) formDraft.update({ company: '', role: '', url: '', location: '', applied: '' }); }}>{c('Descartar borrador', 'Discard draft')}</Button></>}>{formDraft.storageFailed ? c('No se pudo conservar el borrador. Guarda o descarta la solicitud antes de salir.', 'The draft could not be preserved. Save or discard the application before leaving.') : c('Solicitud sin guardar: el borrador se conserva en esta pestaña hasta que cierres sesión.', 'Unsaved application: the draft is kept in this tab until you sign out.')}</Notice>}
@@ -318,13 +329,13 @@ function ApplicationsView() {
         <label className="checkbox-line"><input type="checkbox" disabled={busy === 'create' || !formDraft.ready} checked={alreadyApplied} onChange={(e) => setAlreadyApplied(e.target.checked)}/><span>{c('Ya envié esta solicitud.', 'I have already sent this application.')}<small>{c('Se guarda como una declaración tuya, no como una verificación con la empresa.', 'It is saved as your own statement, not as a check with the employer.')}</small></span></label>
         <div className="form-submit"><Button type="submit" disabled={busy !== null || !formDraft.ready || !company.trim() || !role.trim()}>{busy === 'create' ? c('Guardando…', 'Saving…') : c('Guardar solicitud', 'Save application')}</Button></div>
       </form></Card>}
-    <form className="tracker-filter" onSubmit={(event) => { event.preventDefault(); navigateList(0, filter); }}>
+    <form className={`tracker-filter ${selected ? 'tracker-filter-selection' : ''}`} onSubmit={(event) => { event.preventDefault(); navigateList(0, filter); }}>
       <Field label={c('Buscar en mis solicitudes', 'Search my applications')} value={filter} maxLength={200} onChange={(event) => setFilter(event.target.value)} placeholder={c('Puesto o empresa', 'Role or company')}/>
       <Button type="submit" variant="secondary">{c('Buscar', 'Search')}</Button>
       {query && <Button type="button" variant="quiet" onClick={() => { setFilter(''); navigateList(0, ''); }}>{c('Limpiar búsqueda', 'Clear search')}</Button>}
       <Button type="button" variant="quiet" aria-pressed={sort === 'follow-up'} onClick={() => { const params = new URLSearchParams(window.location.search); if (sort === 'follow-up') params.delete('sort'); else params.set('sort', 'follow-up'); params.set('offset', '0'); router.replace(`${pathname}?${params}`, { scroll: false }); }}>{c('Ordenar por próximo paso', 'Sort by follow-up')}</Button>
     </form>
-    <div className="tracker-export">
+    <div className={`tracker-export ${selected ? 'tracker-export-selection' : ''}`}>
       <Button type="button" variant="quiet" disabled={csvBusy || loadState !== 'ready' || !pagination.total} onClick={() => void downloadCsv()}>{csvBusy ? c('Preparando CSV…', 'Preparing CSV…') : c('Descargar CSV', 'Download CSV')}</Button>
       <SelectField label={c('Separador de columnas', 'Column separator')} hint={c('Elegido según el formato regional de tu navegador. Si Excel muestra todo en una columna, prueba el otro.', 'Chosen from your browser’s regional format. If Excel shows everything in one column, try the other.')} value={csvSeparator} onChange={(event) => setCsvSeparator(event.target.value as CsvSeparator)}><option value=";">{c('Punto y coma (;): Excel de España o Argentina', 'Semicolon (;): Excel in Spain or Argentina')}</option><option value=",">{c('Coma (,): Excel de México o EE. UU., Google Sheets', 'Comma (,): Excel in Mexico or the US, Google Sheets')}</option></SelectField>
       <label className="checkbox-line"><input type="checkbox" checked={csvNotes} onChange={(event) => setCsvNotes(event.target.checked)}/><span>{c('Incluir mis notas', 'Include my notes')}<small>{c('Pueden contener datos personales. Comparte el archivo con cuidado.', 'They may contain personal data. Share the file with care.')}</small></span></label>
@@ -375,11 +386,15 @@ function ApplicationsView() {
           <div className="tracker-controls">
             <Field label={c('Siguiente paso', 'Next step')} value={nextStepDraft} maxLength={500} disabled={busy !== null} onChange={(event) => setNextStepDraft(event.target.value)} placeholder={c('Ej.: enviar mensaje de seguimiento', 'For example: send a follow-up message')}/>
             <Field label={c('Recordatorio para', 'Follow-up date')} type="date" value={followUpDateDraft} disabled={busy !== null} onChange={(event) => setFollowUpDateDraft(event.target.value)}/>
-            <Field id={`interview-time-${selected.id}`} label={c('Fecha y hora de entrevista', 'Interview date and time')} type="datetime-local" value={interviewDraft} disabled={busy !== null} aria-describedby={interviewInvalid ? `interview-error-${selected.id}` : undefined} aria-invalid={interviewInvalid || undefined} onChange={(event) => { const value = event.target.value; setInterviewDirty(true); setClearInterview(!value && Boolean(selected.interviewAt)); setInterviewDraft(value); }}/>
-            <Field id={`interview-zone-${selected.id}`} label={c('Zona horaria de la entrevista (IANA)', 'Interview time zone (IANA)')} value={interviewTimezoneDraft} maxLength={100} disabled={busy !== null} aria-describedby={interviewInvalid ? `interview-error-${selected.id}` : undefined} aria-invalid={interviewZoneInvalid || undefined} onChange={(event) => { setInterviewDirty(true); setInterviewTimezoneDraft(event.target.value); }} placeholder="Europe/Madrid"/>
-            {interviewZoneInvalid && <p className="field-hint" id={`interview-error-${selected.id}`} role="status">{c('Escribe una zona horaria IANA válida, por ejemplo Europe/Madrid.', 'Enter a valid IANA time zone, such as Europe/Madrid.')}</p>}
-            {interviewTimeInvalid && <p className="field-hint" id={`interview-error-${selected.id}`} role="status">{c('Esa hora no existe o se repite por el cambio horario. Elige otra.', 'That time does not exist or occurs twice because of daylight saving time. Choose another.')}</p>}
-            {selected.interviewAt && <Button type="button" variant="quiet" disabled={busy !== null} onClick={() => { setInterviewDirty(true); setClearInterview(true); setInterviewDraft(''); }}>{c('Quitar entrevista', 'Clear interview')}</Button>}
+            <ApplicationDetailDisclosure key={`interview:${selected.id}`} className="application-detail-interview" summary={interviewDisclosureSummary(selected, locale)} initiallyOpen={Boolean(selected.interviewAt)}>
+              <div className="tracker-controls">
+                <Field id={`interview-time-${selected.id}`} label={c('Fecha y hora de entrevista', 'Interview date and time')} type="datetime-local" value={interviewDraft} disabled={busy !== null} aria-describedby={interviewInvalid ? `interview-error-${selected.id}` : undefined} aria-invalid={interviewInvalid || undefined} onChange={(event) => { const value = event.target.value; setInterviewDirty(true); setClearInterview(!value && Boolean(selected.interviewAt)); setInterviewDraft(value); }}/>
+                <Field id={`interview-zone-${selected.id}`} label={c('Zona horaria de la entrevista (IANA)', 'Interview time zone (IANA)')} value={interviewTimezoneDraft} maxLength={100} disabled={busy !== null} aria-describedby={interviewInvalid ? `interview-error-${selected.id}` : undefined} aria-invalid={interviewZoneInvalid || undefined} onChange={(event) => { setInterviewDirty(true); setInterviewTimezoneDraft(event.target.value); }} placeholder="Europe/Madrid"/>
+                {interviewZoneInvalid && <p className="field-hint" id={`interview-error-${selected.id}`} role="status">{c('Escribe una zona horaria IANA válida, por ejemplo Europe/Madrid.', 'Enter a valid IANA time zone, such as Europe/Madrid.')}</p>}
+                {interviewTimeInvalid && <p className="field-hint" id={`interview-error-${selected.id}`} role="status">{c('Esa hora no existe o se repite por el cambio horario. Elige otra.', 'That time does not exist or occurs twice because of daylight saving time. Choose another.')}</p>}
+                {selected.interviewAt && <Button type="button" variant="quiet" disabled={busy !== null} onClick={() => { setInterviewDirty(true); setClearInterview(true); setInterviewDraft(''); }}>{c('Quitar entrevista', 'Clear interview')}</Button>}
+              </div>
+            </ApplicationDetailDisclosure>
             <Button type="button" variant="secondary" disabled={busy !== null || interviewInvalid} onClick={saveFollowUp}>{busy === 'update' ? c('Guardando…', 'Saving…') : c('Guardar seguimiento', 'Save follow-up')}</Button>
           </div>
           <div className="tracker-controls">
@@ -406,8 +421,8 @@ function ApplicationsView() {
           : selectedId && detail.status === 'missing' ? <Empty title={c('No encontramos esa solicitud', 'We could not find that application')} detail={c('Puede que se haya eliminado o que el enlace sea antiguo. Elige otra de la lista.', 'It may have been removed or the link is outdated. Choose another one from the list.')} action={<Button variant="secondary" onClick={() => select(null)}>{c('Quitar selección', 'Clear selection')}</Button>}/>
           : <Empty title={c('Elige una solicitud', 'Choose an application')} detail={c('Selecciona un registro para ver su actividad y actualizar el siguiente paso.', 'Choose an application to see its activity and update the next step.')}/>}</Card>
       </div>
-      : <Card className="jobs-empty"><Empty headingLevel="h2" title={c('Todavía no hay solicitudes', 'No applications yet')} detail={c('Empieza por buscar empleo. Abre una oferta que te interese y elige Preparar mi solicitud; la seguirás aquí. Si ya enviaste una solicitud por tu cuenta, también puedes registrarla.', 'Start by finding jobs. Open one that interests you and choose Prepare my application; you will track it here. If you already applied on your own, you can record that too.')} action={<><Link className="button button-primary" href="/searches">{c('Buscar ofertas', 'Find jobs')}</Link><Button variant="quiet" style={{ marginTop: 8, maxWidth: '100%', whiteSpace: 'normal' }} aria-expanded={open} onClick={() => setOpen(true)}>{c('Registrar una solicitud que ya enviaste', 'Record an application you already sent')}</Button></>}/></Card>}
-  </>;
+      : <Card className="jobs-empty"><Empty headingLevel="h2" title={c('Todavía no hay solicitudes', 'No applications yet')} detail={c('Empieza por buscar empleo. Abre una oferta que te interese y elige Preparar mi solicitud; la seguirás aquí. Si ya enviaste una solicitud por tu cuenta, también puedes registrarla.', 'Start by finding jobs. Open one that interests you and choose Prepare my application; you will track it here. If you already applied on your own, you can record that too.')} action={<><Link className="button button-primary" href="/jobs?scope=new">{c('Buscar ofertas', 'Find jobs')}</Link><Button variant="quiet" style={{ marginTop: 8, maxWidth: '100%', whiteSpace: 'normal' }} aria-expanded={open} onClick={() => setOpen(true)}>{c('Registrar una solicitud que ya enviaste', 'Record an application you already sent')}</Button></>}/></Card>}
+  </div>;
 }
 
 function ApplicationsContent() {

@@ -132,14 +132,14 @@ export default function OverviewPage() {
     if (needsReview > 0) steps.push({ key: 'applications', href: '/applications', icon: 'briefcase', title: needsReview === 1 ? c('1 solicitud necesita revisión', '1 application needs review') : c(`${needsReview} solicitudes necesitan revisión`, `${needsReview} applications need review`), detail: c('Confirma su estado para mantener el seguimiento al día.', 'Confirm their status to keep your tracker accurate.') });
     if (summary.savedSearchCount === 0) steps.unshift({ key: 'first-job', href: '/searches', icon: 'search', title: c('Encuentra ofertas automáticamente', 'Find jobs automatically'), detail: c('Indica un puesto o una empresa. Guardaremos las coincidencias y repetiremos tu búsqueda con la frecuencia que elijas.', 'Enter a role or company. We will save matches and repeat your search at your chosen interval.') });
     if (summary.savedSearchCount > 0 && summary.totalJobs === 0) steps.unshift({ key: 'adjust-search', href: '/searches', icon: 'search', title: summary.activeSearchCount === 0 ? c('Reanuda una búsqueda para encontrar ofertas', 'Resume a search to find jobs') : c('Revisa tu búsqueda para encontrar coincidencias', 'Review your search to find matches'), detail: c('Todavía no hay ofertas encontradas. Revisa el estado de la consulta y prueba palabras más amplias si no hay coincidencias.', 'There are no jobs found yet. Check the search status and try broader keywords if there are no matches.') });
-    if (summary.savedSearchCount > 0 && summary.totalJobs > 0 && summary.activeApplications === 0) steps.unshift({ key: 'choose-job', href: '/searches', icon: 'search', title: c('Elige una oferta para preparar tu solicitud', 'Choose a job to prepare your application'), detail: c('Abre una oferta que te interese. Te pediremos solo los datos que falten para preparar tu CV.', 'Open a job that interests you. We will only ask for the details needed to prepare your resume.') });
+    if (summary.savedSearchCount > 0 && summary.totalJobs > 0 && summary.activeApplications === 0) steps.unshift({ key: 'choose-job', href: '/jobs?scope=new', icon: 'search', title: c('Elige una oferta para preparar tu solicitud', 'Choose a job to prepare your application'), detail: c('Abre una oferta que te interese. Te pediremos solo los datos que falten para preparar tu CV.', 'Open a job that interests you. We will only ask for the details needed to prepare your resume.') });
     if (summary.approvedSourceCount === 0) steps.push(summary.boardCount
       ? { key: 'review-sources', href: '/boards', icon: 'building', title: c('Confirma la página de una empresa', 'Confirm a company careers page'), detail: c('Tienes fuentes añadidas, pero ninguna aprobada para buscar ofertas.', 'You have sources added, but none approved for job discovery yet.') }
       : { key: 'add-source', href: '/boards', icon: 'building', title: c('Opcional: sigue las ofertas de una empresa', 'Optional: follow a company’s jobs'), detail: c('Para recibir ofertas de empresas concretas. Puedes hacerlo más adelante.', 'To pull in jobs from specific companies. You can do this later.') });
   }
 
   const primaryStep = steps.find((step) => !['add-source', 'review-sources', 'answers', 'preferences'].includes(step.key));
-  const profileNextStep = steps.find(({ key }) => key === 'identity' || key === 'first-fact');
+  const profileNextStep = steps.find(({ key }) => key === 'identity' || key === 'first-fact' || key === 'facts');
 
   const searchSummary = summarize(searches);
   const inProgress = searchSummary.active.length > 0;
@@ -148,10 +148,11 @@ export default function OverviewPage() {
   const nextSearchAt = searchSummary.nextRunAt;
   const pausedSearches = searches.filter((search) => !search.enabled).length;
   const inboxReady = Boolean(inbox || searches.length || inboxError);
+  const showInboxPanel = inboxCount > 0 || searches.length > 0 || Boolean(inboxError);
   const dailyAction = pendingResumes > 0
     ? { href: '/documents?view=saved', title: pendingResumes === 1 ? c('Revisa 1 CV preparado', 'Review 1 prepared resume') : c(`Revisa ${pendingResumes} CV preparados`, `Review ${pendingResumes} prepared resumes`), detail: c('Lee el CV y aprueba la versión que quieras conservar.', 'Read the resume and approve the version you want to keep.'), button: c('Revisar CV', 'Review resumes') }
     : inbox && inbox.total > 0
-      ? { href: '/searches?search=all&view=new', title: inbox.total === 1 ? c('Tienes 1 oferta nueva', 'You have 1 new job') : c(`Tienes ${inbox.total} ofertas nuevas`, `You have ${inbox.total} new jobs`), detail: c('Guarda las que te interesen o prepara una solicitud desde la oferta.', 'Save the jobs you like or prepare an application from a job listing.'), button: c('Revisar ofertas nuevas', 'Review new jobs') }
+      ? { href: '/jobs?scope=new', title: inbox.total === 1 ? c('Tienes 1 oferta nueva', 'You have 1 new job') : c(`Tienes ${inbox.total} ofertas nuevas`, `You have ${inbox.total} new jobs`), detail: c('Guarda las que te interesen o prepara una solicitud desde la oferta.', 'Save the jobs you like or prepare an application from a job listing.'), button: c('Revisar ofertas nuevas', 'Review new jobs') }
       : inProgress
         ? { href: '/searches?search=all&view=new', title: c('Estamos buscando ofertas para ti', 'We are finding jobs for you'), detail: c('Las ofertas aparecerán aquí cuando lleguen. Puedes cerrar esta pestaña; deja Career Stack funcionando en tu equipo.', 'Jobs will appear here as they arrive. You can close this tab; keep Career Stack running on your computer.'), button: c('Ver progreso', 'View progress') }
         : sourceError
@@ -159,11 +160,11 @@ export default function OverviewPage() {
           : searches.length > 0 && pausedSearches === searches.length
             ? { href: '/searches?search=all&view=all', title: c('Tus búsquedas están en pausa', 'Your searches are paused'), detail: c(`${pausedSearches} búsqueda${pausedSearches === 1 ? '' : 's'} pausada${pausedSearches === 1 ? '' : 's'}. Puedes reanudarlas desde sus tarjetas.`, `${pausedSearches} paused search${pausedSearches === 1 ? '' : 'es'}. You can resume them from their cards.`), button: c('Ver búsquedas', 'Open searches') }
             : searches.length > 0 && inbox?.total === 0
-              ? { href: '/searches?search=all&view=all', title: summary?.totalJobs === 0 ? c('Todavía no hay coincidencias', 'No matches yet') : c('Estás al día', 'You are up to date'), detail: nextSearchAt ? c(`Próxima consulta: ${dateTime(nextSearchAt, locale)}.`, `Next search: ${dateTime(nextSearchAt, locale)}.`) : c('Prueba con un puesto más amplio o revisa tus búsquedas.', 'Try a broader job title or review your searches.'), button: c('Ver todas las ofertas', 'View all jobs') }
+              ? { href: summary?.totalJobs === 0 ? '/searches?search=all&view=all' : '/jobs?scope=active', title: summary?.totalJobs === 0 ? c('Todavía no hay coincidencias', 'No matches yet') : c('Estás al día', 'You are up to date'), detail: nextSearchAt ? c(`Próxima consulta: ${dateTime(nextSearchAt, locale)}.`, `Next search: ${dateTime(nextSearchAt, locale)}.`) : c('Prueba con un puesto más amplio o revisa tus búsquedas.', 'Try a broader job title or review your searches.'), button: c('Ver todas las ofertas', 'View all jobs') }
               : primaryStep
                 ? { href: primaryStep.href, title: primaryStep.title, detail: primaryStep.detail, button: primaryStep.href === '/searches' ? c('Buscar ofertas', 'Find jobs') : primaryStep.href.startsWith('/profile') ? c('Completar perfil', 'Complete profile') : c('Continuar', 'Continue') }
                 : { href: '/searches', title: c('Tu búsqueda, hoy', 'Your search today'), detail: c('Guarda una búsqueda para empezar a recibir ofertas.', 'Save a search to start receiving jobs.'), button: c('Crear búsqueda', 'Create a search') };
-  const returnToInbox = '/searches?search=all&view=new&sort=relevance&offset=0';
+  const returnToInbox = '/jobs?scope=new';
 
   const metrics = [
     { key: 'jobs', label: c('Ofertas encontradas', 'Found jobs'), value: summary?.totalJobs, href: '/jobs' },
@@ -181,7 +182,7 @@ export default function OverviewPage() {
     />
     {error && <Notice tone="error">{error}</Notice>}
 
-    {(summary || inboxReady) && <div className="overview-top-grid">
+    {(summary || inboxReady) && <div className={`overview-top-grid ${showInboxPanel ? '' : 'overview-top-grid-single'}`}>
       <Card className="getting-started">
         <div className="eyebrow">{c('TU SIGUIENTE PASO', 'YOUR NEXT STEP')}</div>
         <h2>{dailyAction.title}</h2>
@@ -190,7 +191,7 @@ export default function OverviewPage() {
         {profileNextStep && profileNextStep.href !== dailyAction.href && <p className="muted-label"><Link href={profileNextStep.href}>{profileNextStep.title}</Link></p>}
         {inboxError && <p className="muted-label">{c('No pudimos actualizar todos los datos. Abre tus búsquedas para comprobar el estado.', 'We could not update all details. Open your searches to check their status.')}</p>}
       </Card>
-      <Card className="overview-inbox-panel">
+      {showInboxPanel && <Card className="overview-inbox-panel">
         <div className="panel-heading"><h2>{c('Ofertas nuevas para revisar', 'New jobs to review')}</h2>{inbox && <span className={inboxCount > 0 ? 'tag tag-blue' : 'sr-only'} role="status" aria-live="polite" aria-atomic="true"><span aria-hidden="true">{inboxCount}</span><span className="sr-only">{inboxCount === 1 ? c('1 oferta nueva', '1 new job') : c(`${inboxCount} ofertas nuevas`, `${inboxCount} new jobs`)}</span></span>}</div>
         {inbox?.items.length ? <ul className="row-list" aria-label={c('Ofertas nuevas', 'New jobs')}>
           {inbox.items.slice(0, 3).map((job) => <li key={job.id}><Link href={`/jobs/${job.id}?returnTo=${encodeURIComponent(returnToInbox)}`} className="list-row">
@@ -200,11 +201,10 @@ export default function OverviewPage() {
           </Link></li>)}
         </ul> : inbox && inbox.total === 0 && searches.length > 0 && <p className="panel-status">{inProgress ? c('Estamos consultando los portales de empleo. Las ofertas aparecerán aquí.', 'We are checking job sites. Jobs will appear here.') : sourceError ? c('Conservamos las ofertas anteriores mientras revisas el estado de las fuentes.', 'Previous jobs are preserved while you check source status.') : searches.every((search) => !search.enabled) ? c('Las consultas automáticas están pausadas. Puedes reanudarlas desde Buscar ofertas.', 'Automatic searches are paused. You can resume one from Find jobs.') : c('Puedes ver la próxima consulta o ajustar lo que buscas en Buscar ofertas.', 'See the next scheduled check or adjust your criteria in Find jobs.')}</p>}
         <p className="panel-foot">{c('No necesitas completar tu perfil para buscar. Tus datos confirmados se usan al preparar solicitudes.', 'You do not need to complete your profile to search. Confirmed details are used when preparing applications.')}</p>
-        {inboxCount > 3 && <Link href="/searches?search=all&view=new" className="text-link">{c(`Ver las ${inboxCount} ofertas nuevas`, `See all ${inboxCount} new jobs`)} <Icon name="arrow" size={16}/></Link>}
+        {inboxCount > 3 && <Link href="/jobs?scope=new" className="text-link">{c(`Ver las ${inboxCount} ofertas nuevas`, `See all ${inboxCount} new jobs`)} <Icon name="arrow" size={16}/></Link>}
         {pendingResumes > 0 && inbox && inbox.total > 0 && <Link href="/documents?view=saved" className="text-link">{c('Revisar los CV preparados', 'Review prepared resumes')} <Icon name="arrow" size={16}/></Link>}
-      </Card>
+      </Card>}
     </div>}
-    {summary && <ActivityCalendar activity={summary.activityByDay ?? []}/>}
     <OverviewReminders />
 
     <details className="search-guide" open={Boolean(summary && summary.totalJobs === 0 && totalApplications === 0)}>
@@ -218,9 +218,10 @@ export default function OverviewPage() {
       </ol>
     </details>
 
-    <details className="overview-details" open={Boolean(summary && overviewDetailsOpen({ pendingFacts: summary.pendingFacts, unansweredItems: summary.unansweredItems, needsReview, pendingResumes }))}>
-      <summary>{c('Ver más cifras y otras tareas', 'See more figures and other tasks')}</summary>
-    <section aria-labelledby="metrics-heading" aria-busy={loading}>
+    <details className="overview-details" open={overviewDetailsOpen()}>
+      <summary>{c('Ver actividad, cifras y tareas', 'See activity, figures, and tasks')}</summary>
+      {summary && <ActivityCalendar activity={summary.activityByDay ?? []}/>}
+      <section aria-labelledby="metrics-heading" aria-busy={loading}>
       <h2 id="metrics-heading" className="sr-only">{c('Cifras clave', 'Key figures')}</h2>
       <ul className="metric-grid">
         {metrics.map((metric) => <li key={metric.key}><Link href={metric.href} className="metric">

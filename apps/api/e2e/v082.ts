@@ -38,12 +38,13 @@ export const v082Scenario: Scenario = {
         assert.equal(await form.getByRole('combobox').count(), 0, 'No configuration dropdown is required before the first search');
         assert.equal(await form.getByRole('checkbox').count(), 0, 'Automatic setup does not require technical choices');
         const nav = mainNavigation(page);
-        assert.deepEqual(await nav.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('href'))), ['/overview', '/searches', '/jobs?scope=favorites', '/applications']);
-        assert.equal(await page.locator('#app-sidebar a[href="/profile"]').isVisible(), false, 'Profile is available on demand instead of blocking discovery');
-        const tools = page.getByText(t('Perfil y herramientas', 'Profile and tools'), { exact: true });
+        assert.deepEqual(await nav.getByRole('link').evaluateAll((links) => links.map((link) => link.getAttribute('href'))), ['/overview', '/jobs?scope=new', '/applications', '/timeline', '/profile', '/documents']);
+        assert.equal(await page.locator('#app-sidebar a[href="/profile"]').isVisible(), true, 'Profile is grouped with the resume in the main navigation');
+        const tools = page.getByText(t('Más', 'More'), { exact: true });
         await tools.click();
-        for (const href of ['/profile', '/documents', '/jobs', '/boards', '/settings']) await page.locator(`#app-sidebar a[href="${href}"]`).waitFor({ state: 'visible' });
-        assert.equal(await nav.getByRole('link').count(), 4, 'Secondary tools do not become additional primary destinations');
+        for (const href of ['/boards', '/settings']) await page.locator(`#app-sidebar a[href="${href}"]`).waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#app-sidebar a[href="/jobs"]').count(), 0, 'Job filters remain within Offers instead of duplicating navigation destinations');
+        assert.equal(await nav.getByRole('link').count(), 6, 'Secondary tools do not become additional primary destinations');
         await tools.click();
         for (const width of [390, 320]) {
           await page.setViewportSize({ width, height: 844 });
@@ -93,18 +94,14 @@ export const v082Scenario: Scenario = {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.goto(new URL('/jobs', page.url()).toString());
         await page.getByRole('heading', { name: locale === 'es' ? 'Todas las ofertas' : 'All jobs', exact: true }).waitFor();
-        await page.getByRole('button', { name: locale === 'es' ? 'Abrir menú' : 'Open menu', exact: true }).click();
-        assert.equal(await page.locator('#app-sidebar a[href="/jobs"]').getAttribute('aria-current'), 'page');
-        await mainNavigation(page).getByRole('link', { name: locale === 'es' ? /^Ofertas guardadas/ : /^Saved jobs/ }).click();
+        await page.getByLabel(locale === 'es' ? 'Mostrar ofertas' : 'Show jobs', { exact: true }).selectOption('favorites');
         await page.waitForURL((url) => url.pathname === '/jobs' && url.searchParams.get('scope') === 'favorites');
         await page.getByRole('heading', { name: locale === 'es' ? 'Ofertas guardadas' : 'Saved jobs', exact: true }).waitFor();
-        await page.waitForFunction(() => document.querySelector('#app-sidebar')!.getBoundingClientRect().right <= 1);
-        assert.equal(await page.locator('#app-sidebar a[href="/jobs?scope=favorites"]').getAttribute('aria-current'), 'page', 'Query-only navigation highlights Saved jobs and closes the mobile menu');
-        assert.equal(await page.locator('#app-sidebar a[href="/jobs"]').getAttribute('aria-current'), null);
+        assert.equal(await page.locator('#app-sidebar a[href="/jobs?scope=new"]').getAttribute('aria-current'), 'page', 'The Offers destination stays active while its internal view changes');
         assert.equal(await hasHorizontalOverflow(page), false);
         await page.screenshot({ path: join(artifacts, `v082-saved-jobs-${locale}-390.png`), fullPage: true });
       }
-      note('ES/EN: four primary links, two initial fields, no forced profile, automatic defaults, native disclosures, restored optional criteria and mobile keyboard trap. Job replies are fictional; production API matching is tested separately.');
+      note('ES/EN: four everyday links plus a profile/resume group, two initial fields, automatic defaults, native disclosures, restored optional criteria and mobile keyboard trap. Job replies are fictional; production API matching is tested separately.');
     } finally {
       await page.unrouteAll({ behavior: 'wait' });
       await page.evaluate(() => sessionStorage.clear());

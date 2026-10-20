@@ -93,7 +93,7 @@ export function apiClient(context: BrowserContext, uiUrl: string, pace: () => Pr
     // Writes are never retried: repeating a successful mutation after a lost response could duplicate side effects.
     const response = await request.fetch(`${uiUrl}/api/v1${path}`, { method, maxRetries: method === 'GET' ? 1 : 0, headers: { Origin: uiUrl, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(data === undefined ? {} : { data: JSON.stringify(data) }) });
     const body = await response.text();
-    assert.ok(response.ok(), `${method} ${path} → ${response.status()} ${body.slice(0, 300)}`);
+    assert.ok(response.ok(), `${method} ${path} → ${response.status()} ${body.slice(0, 300)}\nAPI caller: ${new Error().stack ?? 'stack unavailable'}`);
     return (body ? JSON.parse(body) : null) as T;
   };
   return {

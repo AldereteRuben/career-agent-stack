@@ -45,6 +45,27 @@ export const phase1FollowUpScenario: Scenario = {
     assert.equal((await saved).status(), 200);
     assert.equal((await api.get<Application>(`/applications/${application.id}`)).nextStep, 'Contactar a la reclutadora');
 
+    const noInterview = await api.post<Application>('/applications', { company: `No interview ${marker}`, role: `No interview QA ${marker}`, state: 'DRAFT', notes: '' });
+    await page.goto(new URL(`/applications?id=${noInterview.id}`, uiUrl).toString());
+    await page.getByLabel('Siguiente paso', { exact: true }).waitFor();
+    const interviewDisclosure = page.locator('.application-detail-interview');
+    await interviewDisclosure.waitFor();
+    assert.equal(await interviewDisclosure.getAttribute('open'), null, 'interview controls start collapsed when no interview is scheduled');
+    await page.getByLabel('Fecha y hora de entrevista', { exact: true }).waitFor({ state: 'hidden' });
+    await interviewDisclosure.locator('summary').click();
+    const interviewTime = page.getByLabel('Fecha y hora de entrevista', { exact: true });
+    const interviewZone = page.getByLabel('Zona horaria de la entrevista (IANA)', { exact: true });
+    await interviewTime.waitFor();
+    await interviewTime.fill('2026-12-03T10:00');
+    await interviewZone.fill('Europe/Madrid');
+    const savedInterview = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/applications/${noInterview.id}`);
+    await page.getByRole('button', { name: 'Guardar seguimiento', exact: true }).click();
+    assert.equal((await savedInterview).status(), 200);
+    const scheduledInterview = await api.get<Application>(`/applications/${noInterview.id}`);
+    assert.equal(scheduledInterview.interviewAt, '2026-12-03T09:00:00.000Z');
+    assert.equal(scheduledInterview.interviewTimezone, 'Europe/Madrid');
+    await eventually(() => interviewDisclosure.locator('summary').innerText(), (value) => /Entrevista programada/.test(value), 'scheduled interview is summarized in the collapsed control');
+
     assert.equal((await api.get<Application>(`/applications/${application.id}`)).state, 'CONFIRMED', 'a confirmed application remains active for follow-up purposes');
   },
 };
