@@ -185,7 +185,7 @@ Never delete `.env` to "reset" the installation: it holds the database connectio
 
 ## No-AI operation
 
-Profile editing, answer management, job discovery, ranking, application tracking, and export work without an AI account. v0.9.2 offers optional Codex integration on macOS with CLI 0.160.0 or 0.163.0. Nothing is shared until an account is connected and processing is authorized. `CAREER_AI_ENABLED=false` hides and disables execution; the legacy `AI_PROVIDER` setting no longer controls this feature. See [assistant setup and limits](assistant.md).
+Profile editing, answer management, job discovery, ranking, application tracking, and export work without an AI account. v0.10.0 offers optional Codex integration on macOS with CLI 0.160.0 or 0.163.0. Nothing is shared until an account is connected and processing is authorized. `CAREER_AI_ENABLED=false` hides and disables execution; the legacy `AI_PROVIDER` setting no longer controls this feature. See [assistant setup and limits](assistant.md).
 
 ## Export
 
