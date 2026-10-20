@@ -921,8 +921,8 @@ input[type="radio"] {
 .field select:focus-visible,
 .field-control:focus-visible {
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(53, 92, 201, 0.25);
-  outline: 0;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .field small {
