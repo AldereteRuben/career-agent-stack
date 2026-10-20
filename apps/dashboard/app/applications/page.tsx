@@ -20,7 +20,7 @@ import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
 import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { AppShell, DetailTitle, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, ButtonLink, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
@@ -39,6 +39,15 @@ const todayLocalDate = () => {
 };
 
 const formatCalendarDate = (value: string, locale: Locale) => new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'es-ES', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+
+function ApplicationDetailDisclosure({ className, summary, children, initiallyOpen = false, openWhen = false }: { className: string; summary: string; children: ReactNode; initiallyOpen?: boolean; openWhen?: boolean }) {
+  const [isOpen, setIsOpen] = useState(initiallyOpen || openWhen);
+  useEffect(() => { if (openWhen) setIsOpen(true); }, [openWhen]);
+  return <details className={`application-detail-disclosure ${className}`} open={isOpen} onToggle={(event) => setIsOpen(event.currentTarget.open)}>
+    <summary>{summary}</summary>
+    {children}
+  </details>;
+}
 
 /** Mirrors allowedApplicationTransitions in @career/domain, limited to states a person can set by hand in v0.3. */
 const transitions: Record<string, string[]> = {
@@ -345,14 +354,22 @@ function ApplicationsView() {
             </div>
           </div>}
 
-          <ApplicationMaterialsPacket key={`materials:${selected.id}`} applicationId={selected.id}/>
-          {selected.jobId ? <>
-            <ApplicationResumeDocument key={`application-resume:${selected.id}`} applicationId={selected.id}/>
-            <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id} hideNoOfferMessage/>
-          </> : <Card className="application-resume"><h3>{c('Documentos para esta solicitud', 'Documents for this application')}</h3><p>{labelFor.applicationDocumentMessage('APPLICATION_HAS_NO_OFFER', locale)}</p><Link className="button button-quiet" href="/jobs">{c('Ver ofertas guardadas', 'View saved jobs')}</Link></Card>}
+          <ApplicationDetailDisclosure key={`materials-disclosure:${selected.id}`} className="application-detail-materials" summary={c('Descargar materiales de la solicitud', 'Download application materials')}>
+            <ApplicationMaterialsPacket key={`materials:${selected.id}`} applicationId={selected.id}/>
+          </ApplicationDetailDisclosure>
+          <ApplicationDetailDisclosure key={`documents:${selected.id}`} className="application-detail-documents" initiallyOpen={!canAutoPrepare && (!selected.documentId || selected.documentApprovalStatus !== 'USER_APPROVED')} summary={canAutoPrepare ? c('Crear CV y carta manualmente', 'Create resume and cover letter manually') : c('CV para esta oferta y carta', 'Resume for this job and cover letter')}>
+            {selected.jobId ? <>
+              <ApplicationResumeDocument key={`application-resume:${selected.id}`} applicationId={selected.id}/>
+              <ApplicationCoverLetter key={`cover-letter:${selected.id}`} applicationId={selected.id} hideNoOfferMessage/>
+            </> : <Card className="application-resume"><h3>{c('Documentos para esta solicitud', 'Documents for this application')}</h3><p>{labelFor.applicationDocumentMessage('APPLICATION_HAS_NO_OFFER', locale)}</p><Link className="button button-quiet" href="/jobs">{c('Ver ofertas guardadas', 'View saved jobs')}</Link></Card>}
+          </ApplicationDetailDisclosure>
           <AssistedApplication key={`assisted:${selected.id}`} applicationId={selected.id} applicationState={selected.state} recruitmentStage={selected.recruitmentStage} returnTo={returnTo} onOriginalLink={setStepOffersOriginal} onChanged={() => { void loadRows(); void loadSelected(selected.id); void loadEvents(selected.id); }}/>
-          <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
-          <ApplicationFollowUpDraft key={`follow-up-draft:${selected.id}`} applicationId={selected.id} company={selected.company} role={selected.role}/>
+          <ApplicationDetailDisclosure key={`contacts-disclosure:${selected.id}`} className="application-detail-contacts" summary={c('Contactos de esta solicitud', 'Contacts for this application')}>
+            <ApplicationContacts key={`contacts:${selected.id}`} applicationId={selected.id}/>
+          </ApplicationDetailDisclosure>
+          <ApplicationDetailDisclosure key={`follow-up-disclosure:${selected.id}`} className="application-detail-follow-up" summary={c('Redactar correo de seguimiento', 'Draft a follow-up email')}>
+            <ApplicationFollowUpDraft key={`follow-up-draft:${selected.id}`} applicationId={selected.id} company={selected.company} role={selected.role}/>
+          </ApplicationDetailDisclosure>
           <section aria-labelledby={`tracking-title-${selected.id}`}><h3 id={`tracking-title-${selected.id}`}>{c('Seguimiento', 'Tracking')}</h3>
           <ApplicationEmailImport key={selected.id} applicationId={selected.id} onImported={() => { void loadEvents(selected.id); void loadSelected(selected.id); void loadRows(); }}/>
           <div className="tracker-controls">
@@ -377,11 +394,13 @@ function ApplicationsView() {
           </section>
           <form className="note-form" onSubmit={(event) => void addNote(event)}><TextareaField label={c('Añadir nota al historial', 'Add a note to the history')} rows={3} value={note} disabled={busy === 'note' || !notes.ready} onChange={(e) => setNote(e.target.value)} placeholder={c('Próximo paso, preguntas o contexto…', 'Next step, questions, or context…')} maxLength={10000}/><Button type="submit" variant="secondary" disabled={busy !== null || !notes.ready || !note.trim()}>{busy === 'note' ? c('Guardando…', 'Saving…') : c('Añadir nota', 'Add note')}</Button></form>
           {note && <Notice tone={notes.storageFailed ? 'warning' : 'info'} actions={<Button variant="quiet" disabled={busy !== null} onClick={() => { if (window.confirm(c('¿Descartar el borrador de esta nota?', 'Discard this note draft?'))) notes.update((drafts) => { const next = { ...drafts }; delete next[selected!.id]; return next; }); }}>{c('Descartar nota', 'Discard note')}</Button>}>{notes.storageFailed ? c('No se pudo conservar el borrador. Añade la nota o descártala antes de salir.', 'The draft could not be preserved. Add the note or discard it before leaving.') : c('Borrador de esta solicitud conservado en esta pestaña hasta que cierres sesión. Pulsa Añadir nota para guardarlo en el historial.', 'This application draft is kept in this tab until you sign out. Select Add note to save it to the history.')}</Notice>}
+          <ApplicationDetailDisclosure key={`activity:${selected.id}`} className="application-detail-activity" openWhen={eventsState === 'error'} summary={eventsState === 'loading' || eventsState === 'idle' ? c('Actividad (cargando)', 'Activity (loading)') : eventsState === 'error' ? c('Actividad (no disponible)', 'Activity (unavailable)') : events.length === 1 ? c('Actividad (1)', 'Activity (1)') : c(`Actividad (${events.length})`, `Activity (${events.length})`)}>
           <div className="timeline"><h3>{c('Actividad', 'Activity')}</h3>
             {eventsState === 'loading' && !events.length && <p className="muted-label">{c('Cargando actividad…', 'Loading activity…')}</p>}
             {eventsState === 'error' && <p className="muted-label">{c('No se pudo cargar la actividad.', 'The activity could not be loaded.')} <Button variant="quiet" onClick={() => void loadEvents(selected.id)}>{c('Reintentar', 'Try again')}</Button></p>}
             {events.map((event) => <div className="timeline-item" key={event.id}><span className="timeline-dot"/><div><strong>{labelFor.applicationEvent(event.eventType, locale)}</strong><p>{eventDetail(event, locale)}</p><small>{formatDate(event.createdAt)}</small></div></div>)}
           </div>
+          </ApplicationDetailDisclosure>
         </> : selectedId && (detail.id !== selectedId || detail.status === 'loading') ? <Notice>{c('Cargando solicitud…', 'Loading application…')}</Notice>
           : selectedId && detail.status === 'error' ? <Empty title={c('No pudimos cargar esta solicitud', 'We could not load this application')} detail={c('Comprueba la conexión y vuelve a intentarlo.', 'Check your connection and try again.')} action={<Button onClick={() => void loadSelected(selectedId)}>{c('Reintentar', 'Try again')}</Button>}/>
           : selectedId && detail.status === 'missing' ? <Empty title={c('No encontramos esa solicitud', 'We could not find that application')} detail={c('Puede que se haya eliminado o que el enlace sea antiguo. Elige otra de la lista.', 'It may have been removed or the link is outdated. Choose another one from the list.')} action={<Button variant="secondary" onClick={() => select(null)}>{c('Quitar selección', 'Clear selection')}</Button>}/>

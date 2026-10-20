@@ -162,6 +162,8 @@ uxReviewScenarios.push({
         await page.getByRole('heading', { name: role, exact: true }).waitFor();
         await page.locator('.tracker-row[aria-current="true"]').filter({ hasText: role }).waitFor({ state: 'attached' });
         await page.getByRole('heading', { name: trackingHeading, exact: true }).waitFor();
+        const activityDisclosure = page.locator('.application-detail-activity');
+        if (!(await activityDisclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await activityDisclosure.locator('summary').click();
         await page.getByRole('heading', { name: activityHeading, exact: true }).waitFor();
         const list = page.locator('.tracker-list');
         await list.waitFor({ state: viewport === 'desktop' ? 'visible' : 'hidden' });

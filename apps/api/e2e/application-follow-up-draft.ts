@@ -10,6 +10,7 @@ export const applicationFollowUpDraftScenario: Scenario = {
     });
     await setLocale(page, 'en');
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
+    await page.locator('.application-detail-follow-up > summary').click();
     const editor = page.locator('.application-follow-up-draft');
     await editor.getByRole('heading', { name: 'Follow-up email draft' }).waitFor();
     await editor.getByRole('button', { name: 'Start from a template' }).click();

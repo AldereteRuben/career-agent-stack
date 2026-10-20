@@ -130,6 +130,8 @@ export const v071Scenarios: Scenario[] = [
       assert.equal(new URL(page.url()).searchParams.get('returnTo'), origin);
       await page.locator('.pdf-preview canvas:not([hidden])').waitFor({ state: 'visible' });
       await page.goto(new URL(href, page.url()).toString()); await setLocale(page, 'es');
+      const activityDisclosure = page.locator('.application-detail-activity');
+      if (!(await activityDisclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await activityDisclosure.locator('summary').click();
       await page.getByText('Preparación de la solicitud revisada', { exact: true }).waitFor();
       assert.equal(await page.getByText('Preparation Created', { exact: true }).count(), 0);
       await api.patch(`/applications/${application.id}`, { state: 'CANCELLED' });
