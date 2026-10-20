@@ -29,7 +29,7 @@ No necesitas una suscripción de IA ni una clave de API. La app prepara candidat
 
 ## Ayuda opcional de Codex
 
-En **Perfil y herramientas → Ajustes y privacidad → Asistente**, conecta Codex oficial con tu propia cuenta de ChatGPT. También puedes conectar al pedir ayuda en una búsqueda, oferta, CV o pregunta guardada. Career Stack muestra el texto seleccionado antes de compartirlo. Consume la cuota de tu plan; no utiliza una API de pago alternativa.
+En **Más → Ajustes y privacidad → Asistente**, conecta Codex oficial con tu propia cuenta de ChatGPT. También puedes conectar al pedir ayuda en una búsqueda, oferta, CV o pregunta guardada. Career Stack muestra el texto seleccionado antes de compartirlo. Consume la cuota de tu plan; no utiliza una API de pago alternativa.
 
 - Convierte lo que buscas en criterios editables. Los filtros que no se pueden aplicar quedan visibles para que los compruebes.
 - Resume una oferta y la compara con la experiencia confirmada que selecciones.
@@ -48,10 +48,10 @@ En las ofertas puedes buscar por puesto o empresa, filtrar guardadas y disponibi
 
 ## Búsqueda automática de ofertas
 
-1. La app abre directamente en **Buscar empleo**. Indica un puesto y, si quieres, un país o ubicación. **Añadir empresa o modalidad** muestra esos filtros opcionales. No necesitas perfil ni CV.
+1. Desde **Inicio**, abre **Ofertas** y crea una búsqueda. Indica un puesto y, si quieres, un país o ubicación. **Añadir empresa o modalidad** muestra esos filtros opcionales. No necesitas perfil ni CV.
 2. Pulsa **Buscar ofertas**. Los resultados aparecen tras la primera consulta y la búsqueda se repite cada día mientras el servicio local esté encendido. **Opciones de búsqueda** permite elegir portales e intervalos de 6, 12 o 24 horas.
 3. Si tienes una búsqueda, verás **Editar** y **Pausar** directamente. Con varias, usa **Todas mis búsquedas**, el botón de una búsqueda o **Gestionar búsquedas**. Revisa ofertas **Nuevas**, **Todas**, **Guardadas** o **Archivadas**. Las nuevas llegadas esperan tras un aviso mientras lees.
-4. Abre una oferta para preparar la candidatura. La preparación automática es opcional y empieza desactivada en búsquedas nuevas; las búsquedas mejoradas permiten cinco intentos por consulta y diez al día. Los puestos relacionados o con restricciones geográficas desconocidas requieren revisión.
+4. Abre una oferta para ver primero su informe de evaluación: qué respalda tu experiencia confirmada, qué no está confirmado y qué datos no aparecen en el anuncio. Empieza a preparar la candidatura solo si te parece relevante. La preparación automática es opcional y empieza desactivada en búsquedas nuevas; las búsquedas mejoradas permiten cinco intentos por consulta y diez al día. Los puestos relacionados o con restricciones geográficas desconocidas requieren revisión.
 5. Mantén el servicio local encendido. Puedes cerrar la pestaña; un equipo suspendido o apagado no puede buscar.
 
 Las fuentes son **Remotive**, **Arbeitnow**, **Himalayas** y las ofertas locales de empresas que has confirmado. La cobertura varía por país y profesión, y puede ser parcial. Himalayas recibe puesto, empresa y país reconocido; buscar nunca transmite tu CV ni tus datos de contacto. Su caché dura 24 horas, con un máximo de tres páginas por consulta y 100 peticiones diarias por instalación. Remotive/Arbeitnow conservan su caché compartida de seis horas. Actualizar resultados locales respeta estas esperas.
@@ -60,7 +60,7 @@ Las búsquedas existentes conservan sus fuentes y reglas hasta que aceptes las m
 
 ## Solicitudes asistidas
 
-Abre **Mis solicitudes → Por revisar** para revisar el PDF generado y los datos pendientes. En una candidatura de Lever, sigue **Revisar datos → Revisar navegador** y elige continuar manualmente o autorizar por separado el envío compatible. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Las páginas públicas de Lever inspeccionadas para esta versión requirieron intervención manual; no se ha verificado un envío a una empresa real. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
+Abre **Solicitudes → Por revisar** para revisar el PDF generado y los datos pendientes. En una candidatura de Lever, sigue **Revisar datos → Revisar navegador** y elige continuar manualmente o autorizar por separado el envío compatible. Necesitas un CV aprobado y vigente. Los resultados inciertos bloquean otro intento hasta que los compruebes. Las páginas públicas de Lever inspeccionadas para esta versión requirieron intervención manual; no se ha verificado un envío a una empresa real. Consulta [el recorrido y sus límites](docs/operations/assisted-applications.md).
 
 Los documentos quedan vinculados a su solicitud. El ZIP de materiales no está cifrado (hasta 20 documentos seleccionados y 30 MB); no se puede borrar una sola solicitud y, al borrar el espacio, se eliminan sus documentos y se vacía toda la carpeta local de archivos. Consulta [copias, exportación y restauración](docs/operations/backup-restore.md).
 
@@ -113,17 +113,17 @@ Después de la preparación inicial, en macOS puedes abrir **Start Career Agent 
 ### 4. Primer recorrido
 
 1. Elige **Español** o **English** con el botón de idioma.
-2. En **Buscar empleo**, indica un puesto y pulsa **Buscar ofertas**. La ubicación y los demás filtros son opcionales.
-3. Las ofertas aparecen automáticamente. Pulsa **Guardar oferta** en las que te interesen; las encontrarás en **Guardadas**. Desde los resultados puedes editar o pausar tu búsqueda.
-4. Abre una oferta y pulsa **Preparar mi solicitud**. Si faltan datos, la guía pide lo necesario y conserva la oferta elegida.
-5. Revisa y aprueba el CV preparado; después pulsa **Continuar con la solicitud**. El PDF aprobado sigue vinculado a ella.
-6. Lleva el seguimiento en **Mis solicitudes**. Lever requiere autorización separada; los formularios no compatibles se completan en la web de la empresa. Puedes añadir ofertas a mano en **Perfil y herramientas → Todas las ofertas**.
+2. Si ya tienes un CV, abre **Perfil → Importar desde un CV**. Elige el análisis local para mantener el texto en el navegador, revisa las propuestas y guarda solo las que quieras. No se usan en el encaje ni en nuevos CV hasta que las confirmes. También puedes omitir la importación y completar el perfil a mano.
+3. Abre **Ofertas**, indica un puesto e inicia una búsqueda. La ubicación y los demás filtros son opcionales. Los resultados aparecen automáticamente; guarda las ofertas que quieras volver a consultar.
+4. Abre una oferta y lee su informe de evaluación: evidencia de los datos confirmados del perfil, requisitos aún sin confirmar y datos desconocidos. Comprueba el anuncio original antes de decidir.
+5. Si quieres continuar, elige **Preparar mi solicitud**. Completa los datos que falten, revisa y aprueba el CV y después pulsa **Continuar con la solicitud**. El PDF aprobado queda vinculado a la candidatura; enviarla sigue requiriendo tu acción.
+6. Sigue la candidatura en **Solicitudes** y consulta **Calendario** para ver la actividad de ofertas y candidaturas. Lever requiere autorización separada; los formularios no compatibles se completan en la web de la empresa. Puedes añadir ofertas a mano desde **Más → Todas las ofertas**.
 
-El menú principal tiene tres destinos: **Buscar empleo**, **Guardadas** y **Mis solicitudes**. En **Perfil y herramientas** están tu perfil, CV, todas las ofertas, empresas seguidas, ajustes y resumen. Cada oferta muestra primero su descripción; **Encaje con tu perfil (opcional)** abre el análisis detallado.
+El menú principal enlaza a **Inicio**, **Ofertas**, **Solicitudes** y **Calendario**. **Perfil y CV** contiene tu perfil y documentos; **Más** abre las búsquedas, empresas seguidas y ajustes. El informe de evaluación aparece en la oferta antes de preparar una candidatura, para que decidas si quieres continuar.
 
 La preparación del CV conserva nombre, idioma y selección por oferta en esta pestaña, para que puedas volver después de editar tu perfil. Es temporal: se borra al cerrar sesión y puede perderse al cerrar la pestaña; genera el PDF para guardar una versión. Si cambian los datos seleccionados, la app te pide revisarlos. Al volver de una oferta a la lista, se conservan la búsqueda y los filtros.
 
-Para guardar una copia, abre **Perfil y herramientas → Ajustes y privacidad → Crear copia de seguridad** y descarga tanto la copia verificada como su clave. Descárgalas antes de reiniciar la app o crear otra copia. Los originales quedan en `data/backups/<id>/` (la clave en `keys/`). Restaurar todavía requiere la terminal; las copias antiguas no se eliminan automáticamente.
+Para guardar una copia, abre **Más → Ajustes y privacidad → Crear copia de seguridad** y descarga tanto la copia verificada como su clave. Descárgalas antes de reiniciar la app o crear otra copia. Los originales quedan en `data/backups/<id>/` (la clave en `keys/`). Restaurar todavía requiere la terminal; las copias antiguas no se eliminan automáticamente.
 
 ## Uso diario
 

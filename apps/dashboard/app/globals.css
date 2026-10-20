@@ -875,7 +875,8 @@ main:focus {
 
 .field input,
 .field textarea,
-.field select {
+.field select,
+.field-control {
   width: 100%;
   min-height: var(--control);
   padding: 10px 12px;
@@ -888,21 +889,24 @@ main:focus {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.field input[type="checkbox"],
-.field input[type="radio"] {
+input[type="checkbox"],
+input[type="radio"] {
   width: 20px;
-  min-height: 20px;
   height: 20px;
+  min-height: 20px;
   padding: 0;
+  flex: 0 0 auto;
   accent-color: var(--blue);
 }
 
 .field input::placeholder,
-.field textarea::placeholder {
+.field textarea::placeholder,
+.field-control::placeholder {
   color: #636d7a;
 }
 
-.field textarea {
+.field textarea,
+.field-control:is(textarea) {
   min-height: 96px;
   resize: vertical;
   line-height: 1.5;
@@ -914,7 +918,8 @@ main:focus {
 
 .field input:focus-visible,
 .field textarea:focus-visible,
-.field select:focus-visible {
+.field select:focus-visible,
+.field-control:focus-visible {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(53, 92, 201, 0.25);
   outline: 0;
@@ -1477,12 +1482,6 @@ main:focus {
   font-weight: 650;
 }
 
-.settings-notification-toggle input {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--accent);
-}
-
 .form-heading {
   display: flex;
   align-items: center;
@@ -1700,7 +1699,7 @@ main:focus {
 
 .checkbox-line input {
   margin-top: 3px;
-  accent-color: #4667bc;
+  accent-color: var(--blue);
 }
 
 .checkbox-line small {
@@ -2430,7 +2429,7 @@ main:focus {
 }
 
 .fact-pick input {
-  accent-color: #4969ba;
+  accent-color: var(--blue);
 }
 
 .fact-pick-copy {
@@ -3262,10 +3261,10 @@ main:focus {
 }
 
 /* Assisted applications: readable consent and recovery in the tracker detail. */
-.assist-panel { border-block: 1px solid var(--border, #ddd); margin-block: 1.5rem; padding-block: 1.5rem; }
+.assist-panel { border-block: 1px solid var(--line); margin-block: 1.5rem; padding-block: 1.5rem; }
 .assist-panel .form-stack { gap: 1rem; }
 .assist-panel .checkbox-row { display: flex; align-items: flex-start; gap: .65rem; line-height: 1.55; cursor: pointer; }
-.assist-panel .checkbox-row input { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .25rem; }
+.assist-panel .checkbox-row input { margin-top: .25rem; }
 .assist-summary { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(0, 3fr); gap: .5rem 1rem; font-size: .9rem; }
 .assist-summary dt { font-weight: 600; }
 .assist-summary dd { margin: 0; overflow-wrap: anywhere; }
@@ -3275,7 +3274,7 @@ main:focus {
 .assist-guidance > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .assist-guidance > .notice { margin-top: .75rem; }
 .assist-guidance .assist-steps { margin-bottom: 0; }
-.assist-resolution { display: grid; gap: 1rem; border: 1px solid var(--border, #ddd); border-radius: .75rem; padding: 1rem; min-width: 0; }
+.assist-resolution { display: grid; gap: 1rem; border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; min-width: 0; }
 .assist-resolution legend { font-weight: 600; padding-inline: .35rem; }
 @media (max-width: 640px) { .assist-summary { grid-template-columns: 1fr; } .assist-summary dd { margin-bottom: .5rem; } }
 
@@ -3389,7 +3388,7 @@ main:focus {
 .login-help summary, .technical-detail summary { cursor: pointer; }
 .login-help strong, .help-steps strong { overflow-wrap: anywhere; }
 .focus-heading { scroll-margin-top: 6rem; }
-.focus-heading:focus-visible { outline: 2px solid var(--accent, #3659cb); outline-offset: 5px; }
+.focus-heading:focus-visible { outline: 2px solid var(--focus); outline-offset: 5px; }
 
 /* Shared identity: a clear wordmark and a progress symbol at small sizes. */
 .brand { gap: 10px; padding: 4px; }
@@ -3465,7 +3464,7 @@ main:focus {
 
 /* v0.5.1: compact optional controls and explicit session action. */
 .profile-chip { cursor: default; }
-.profile-chip .signout { color: inherit; background: transparent; border: 1px solid var(--sidebar-muted, #8c9dab); border-radius: 6px; padding: 8px; cursor: pointer; font: inherit; }
+.profile-chip .signout { color: inherit; background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 8px; cursor: pointer; font: inherit; }
 .profile-preferences > summary { font-weight: 600; cursor: pointer; }
 .profile-preferences[open] > summary { margin-bottom: 16px; }
 .profile-aside details > summary { cursor: pointer; }
@@ -3482,7 +3481,7 @@ main:focus {
 .discovery-actions > * { max-width: 100%; white-space: normal; }
 .discovery-details { margin-top: 1rem; }
 .discovery-details ul { list-style: none; padding: 0; }
-.discovery-details li { border-top: 1px solid var(--border, #dfe4df); padding-block: .8rem; overflow-wrap: anywhere; }
+.discovery-details li { border-top: 1px solid var(--line); padding-block: .8rem; overflow-wrap: anywhere; }
 .discovery-details p { margin-block: .35rem; }
 .board-collection { grid-template-columns: minmax(0, 1fr); }
 .board-collection > * { min-width: 0; }
@@ -3640,7 +3639,7 @@ main:focus {
 .application-material-list { display: grid; gap: 10px; border: 0; padding: 0; margin: 16px 0; min-width: 0; }
 .application-material-list legend { font-weight: 650; margin-bottom: 4px; }
 .application-material-choice { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); cursor: pointer; }
-.application-material-choice input { width: 18px; height: 18px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--blue); }
+.application-material-choice input { margin: 2px 0 0; }
 .application-material-choice > span { display: grid; gap: 4px; min-width: 0; }
 .application-material-choice strong { overflow-wrap: anywhere; }
 .application-material-choice small { color: var(--muted); }
@@ -3669,7 +3668,7 @@ main:focus {
 }
 
 .status-page h1:focus-visible {
-  outline: 2px solid var(--focus, currentColor);
+  outline: 2px solid var(--focus);
   outline-offset: 4px;
 }
 
@@ -3686,5 +3685,5 @@ main:focus {
 }
 
 .job-compensation { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.job-compensation small { color: var(--muted, #526171); }
+.job-compensation small { color: var(--muted); }
 .tracker-export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 16px; }

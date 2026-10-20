@@ -29,7 +29,7 @@ No AI subscription or API key is required. The app prepares application drafts f
 
 ## Optional help from Codex
 
-In **Profile and tools → Settings and privacy → Assistant**, connect the official Codex app using your own ChatGPT account. You can also connect while asking for help in a search, job, resume or saved question. Career Stack shows the exact selected text before sharing it. This consumes your plan allowance; no separate paid API fallback is used.
+In **More → Settings and privacy → Assistant**, connect the official Codex app using your own ChatGPT account. You can also connect while asking for help in a search, job, resume or saved question. Career Stack shows the exact selected text before sharing it. This consumes your plan allowance; no separate paid API fallback is used.
 
 - Turn a description of the job you want into editable search criteria. Unsupported filters remain visible for you to check.
 - Summarize a job and compare it with selected, confirmed experience.
@@ -42,10 +42,10 @@ Native AI execution is currently supported only on **macOS with Codex CLI 0.160.
 
 ## Automatic job search
 
-1. The app opens directly in **Find jobs**. Enter a role and, optionally, a country or location. **Add company or work mode** reveals those optional filters. No profile or resume is required.
+1. From **Home**, open **Jobs** and create a search. Enter a role and, optionally, a country or location. **Add company or work mode** reveals those optional filters. No profile or resume is required.
 2. Choose **Find jobs**. Results appear automatically after the first check; the search repeats daily while the local service is running. **Search options** lets you choose sources and a 6, 12 or 24 hour interval.
 3. With one search, **Edit** and **Pause** are immediately available. With several, use **All my searches**, a visible search button or **Manage searches**. Review **New**, **All**, **Saved** or **Archived** jobs. New arrivals wait behind an update notice while you read.
-4. Open an offer to prepare an application. Optional automatic preparation is off by default for new searches; enhanced searches allow at most five attempts per pass and ten per day. Related or geographically uncertain matches require review.
+4. Open an offer to see its evaluation report first: what your confirmed experience supports, what is not confirmed and what the offer does not tell you. Start application preparation only if the offer looks relevant. Optional automatic preparation is off by default for new searches; enhanced searches allow at most five attempts per pass and ten per day. Related or geographically uncertain matches require review.
 5. Keep the local service running. Closing the browser tab is fine; a sleeping or powered-off computer cannot search.
 
 Sources are **Remotive**, **Arbeitnow**, **Himalayas** and locally stored jobs from companies you have confirmed. Coverage varies by country/profession and can be partial. Himalayas receives role, company and recognized country criteria; it never receives your resume or contact details for a search. Its cache lasts 24 hours with at most three pages per query and 100 upstream requests per day for the installation. Remotive/Arbeitnow retain their six-hour shared caches. A local refresh respects these waits and does not force new upstream requests.
@@ -54,7 +54,7 @@ Existing searches retain their sources and matching rules until you opt into enh
 
 ## Assisted applications
 
-Open **My applications → To review** to review a generated PDF and any missing details. For a Lever application in **My applications**, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
+Open **Applications → To review** to review a generated PDF and any missing details. For a Lever application, follow **Review data → Review browser**, then choose manual control or separately authorize supported submission. A current approved resume is required. Unknown results block another attempt until you check them. Public Lever pages inspected for this release required manual intervention; real-employer submission is not verified. See [the walkthrough and limits](docs/operations/assisted-applications.md).
 
 Application documents remain linked to their application. A materials ZIP is unencrypted (up to 20 selected documents and 30 MB); deleting a single application is not available, and deleting the workspace removes its documents and empties the local files folder. See [backup, export and restore details](docs/operations/backup-restore.md).
 
@@ -107,13 +107,13 @@ After initial setup, macOS users can double-click **Start Career Agent Stack.com
 ### 4. Take your first steps
 
 1. Choose **English** or **Español** using the language button.
-2. In **Find jobs**, enter a role and select **Find jobs**. Location and other filters are optional.
-3. Results appear automatically. Use **Save job** for jobs you want to keep; find them under **Saved jobs**. You can edit or pause your search from the results screen.
-4. Open a job and select **Prepare my application**. If details are missing, the guide asks for what is needed and keeps the job you chose.
-5. Review and approve the prepared resume, then **Continue application**. The approved PDF remains linked to it.
-6. Track progress in **My applications**. Lever assistance requires separate authorization; unsupported forms continue on the employer’s website. You can add a job manually in **Profile and tools → All jobs**.
+2. If you already have a resume, open **Profile → Import from a resume**. Choose local analysis to keep the resume text in your browser, review the proposed entries, and save only the ones you want. They do not affect matching or new resumes until you confirm them. You can also skip import and build your profile manually.
+3. Open **Jobs**, enter a role and start a search. Location and other filters are optional. Results appear automatically; save offers you want to revisit.
+4. Open an offer and read its evaluation report: evidence from confirmed profile details, unconfirmed requirements and unknowns. Check the original listing before making a decision.
+5. If you want to proceed, choose **Prepare my application**. Fill any missing details, review and approve the resume, then choose **Continue application**. The approved PDF remains linked to the application; submitting still requires your action.
+6. Follow the application in **Applications** and use **Calendar** to review offer and application activity. Lever assistance requires separate authorization; unsupported forms continue on the employer’s website. You can add a job manually from **More → All jobs**.
 
-The main menu has three destinations: **Find jobs**, **Saved jobs** and **My applications**. Open **Profile and tools** for your profile, resumes, all found jobs, followed companies, settings and the overview. A job shows its description first; **Fit with your profile (optional)** opens the detailed analysis.
+The main menu links to **Home**, **Jobs**, **Applications** and **Calendar**. **Profile and CV** contains your profile and documents; **More** opens searches, followed companies and settings. The offer’s evaluation report appears before application preparation, so you can decide whether to continue.
 
 Resume preparation keeps its name, language and content selection separately for each job in the current tab, so you can return after editing your profile. These temporary drafts are cleared on sign-out and may be lost when closing the tab; generate a PDF to save a version. If selected profile details change, the app asks you to review the selection again. Returning from a job to its list keeps your search and filters.
 
@@ -168,7 +168,7 @@ Starting a stopped API applies pending migrations and rebuilds changed code. If 
 
 ## Back up your work
 
-In **Profile and tools → Settings and privacy**, choose **Create backup**, then download both the verified archive and its recovery key. Download them before restarting the app or creating another copy; local originals remain in `data/backups/<id>/` (keys in its `keys/` folder). This screen does not restore backups or automatically delete old copies.
+In **More → Settings and privacy**, choose **Create backup**, then download both the verified archive and its recovery key. Download them before restarting the app or creating another copy; local originals remain in `data/backups/<id>/` (keys in its `keys/` folder). This screen does not restore backups or automatically delete old copies.
 
 Alternatively, on macOS double-click **Backup Career Agent Stack.command**, or run `pnpm run backup`. Wait for successful verification, then keep the archive and its separate key file in private storage. PostgreSQL client tools (`pg_dump` and `pg_restore`, version 17 or compatible with your server) are required; see the [recovery guide](docs/operations/backup-restore.md) for installation and restore instructions.
 

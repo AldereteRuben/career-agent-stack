@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildApplicationFollowUpTemplate } from '@career/domain';
-import { Button, Card } from '@/components/ui';
+import { Button, Card, Field, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 import { copy } from '@/lib/labels';
@@ -86,23 +86,18 @@ export function ApplicationFollowUpDraft({ applicationId, company, role }: { app
   return <Card className={`${styles.card} application-follow-up-draft`} aria-busy={loading || busy}>
     <div className={styles.heading}>
       <div><h3>{c('Borrador de correo de seguimiento', 'Follow-up email draft')}</h3><p>{c('Revísalo y edítalo antes de copiar. La app no envía correos.', 'Review and edit it before copying. The app does not send email.')}</p></div>
-      {saved && <span className="tag tag-green">{c('Guardado', 'Saved')}</span>}
+      {saved && <Tag tone="green">{c('Guardado', 'Saved')}</Tag>}
     </div>
     {loading ? <p role="status">{c('Cargando borrador…', 'Loading draft…')}</p> : <>
-      {error && <p role="alert" className={styles.error}>{error} <Button variant="quiet" onClick={() => void load()}>{c('Reintentar', 'Retry')}</Button></p>}
+      {error && <Notice tone="error" actions={<Button variant="quiet" onClick={() => void load()}>{c('Reintentar', 'Retry')}</Button>}>{error}</Notice>}
       <div className={styles.languageRow}>
-        <label htmlFor={`follow-up-language-${applicationId}`}>{c('Idioma del correo', 'Email language')}</label>
-        <select id={`follow-up-language-${applicationId}`} value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}>
+        <SelectField className={styles.languageSelect} label={c('Idioma del correo', 'Email language')} id={`follow-up-language-${applicationId}`} value={language} disabled={busy} onChange={(event) => setLanguage(event.target.value as 'es' | 'en')}>
           <option value="es">Español</option><option value="en">English</option>
-        </select>
+        </SelectField>
         <Button type="button" variant="quiet" disabled={busy} onClick={startTemplate}>{c('Empezar con una plantilla', 'Start from a template')}</Button>
       </div>
-      <label className={styles.field} htmlFor={`follow-up-subject-${applicationId}`}>{c('Asunto', 'Subject')}
-        <input id={`follow-up-subject-${applicationId}`} value={subject} maxLength={500} disabled={busy} onChange={(event) => setSubject(event.target.value)}/>
-      </label>
-      <label className={styles.field} htmlFor={`follow-up-body-${applicationId}`}>{c('Mensaje', 'Message')}
-        <textarea id={`follow-up-body-${applicationId}`} rows={7} maxLength={10_000} value={body} disabled={busy} onChange={(event) => setBody(event.target.value)}/>
-      </label>
+      <Field className={styles.field} label={c('Asunto', 'Subject')} id={`follow-up-subject-${applicationId}`} value={subject} maxLength={500} disabled={busy} onChange={(event) => setSubject(event.target.value)}/>
+      <TextareaField className={styles.field} label={c('Mensaje', 'Message')} id={`follow-up-body-${applicationId}`} rows={7} maxLength={10_000} value={body} disabled={busy} onChange={(event) => setBody(event.target.value)}/>
       <div className={styles.actions}>
         <Button type="button" variant="secondary" disabled={busy || !canCopy} onClick={() => void save()}>{busy ? c('Guardando…', 'Saving…') : saved ? c('Guardar cambios', 'Save changes') : c('Guardar borrador', 'Save draft')}</Button>
         <Button type="button" variant="quiet" disabled={!canCopy || busy} onClick={() => void copyEmail()}>{c('Copiar correo', 'Copy email')}</Button>
@@ -110,11 +105,12 @@ export function ApplicationFollowUpDraft({ applicationId, company, role }: { app
       </div>
       {canCopy && <details className={styles.manualCopy}>
         <summary>{c('Ver y seleccionar el correo completo', 'View and select the complete email')}</summary>
-        <label className="sr-only" htmlFor={`follow-up-complete-${applicationId}`}>{c('Correo completo para copiar manualmente', 'Complete email for manual copying')}</label>
-        <textarea ref={manualCopy} id={`follow-up-complete-${applicationId}`} rows={7} readOnly value={combined}/>
+        <div className="field"><label className="sr-only" htmlFor={`follow-up-complete-${applicationId}`}>{c('Correo completo para copiar manualmente', 'Complete email for manual copying')}</label>
+          <textarea className="field-control" ref={manualCopy} id={`follow-up-complete-${applicationId}`} rows={7} readOnly value={combined}/>
+        </div>
         <Button type="button" variant="quiet" onClick={selectAll}>{c('Seleccionar todo', 'Select all')}</Button>
       </details>}
-      {message && <p role="status" className={styles.status}>{message}</p>}
+      {message && <Notice tone="success">{message}</Notice>}
     </>}
   </Card>;
 }

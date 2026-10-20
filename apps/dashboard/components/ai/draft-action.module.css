@@ -26,7 +26,7 @@ fieldset.section > legend { font-weight: 600; padding: 0 0 10px; }
 .criteria dt { color: var(--muted); }
 .criteria dd { margin: 0; font-weight: 600; }
 .check { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-.check input { flex: 0 0 auto; width: 20px; height: 20px; margin-top: 3px; }
+.check input { margin-top: 3px; }
 .check span { min-width: 0; }
 .check small { display: block; margin-top: 4px; color: var(--muted); }
 .progress { display: grid; gap: 8px; padding: 16px; border-radius: var(--radius-sm); background: var(--blue-pale); }
