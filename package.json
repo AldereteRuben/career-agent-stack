@@ -64,7 +64,7 @@
     "test:edge-cases": "pnpm run build:shared && pnpm --filter @career/api exec tsx e2e/edge-cases.ts",
     "test:search-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v080.mts",
     "test:ai-ui": "pnpm run build:shared && pnpm --filter @career/api exec tsx ../../scripts/run-e2e-v090.mts",
-    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/application-follow-up-draft.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/detail-keys.test.ts ../dashboard/lib/applications-csv.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/profile-improvement.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts ../dashboard/lib/resume-pdf-text.test.ts ../dashboard/lib/resume-import.test.ts ../dashboard/lib/timeline.test.ts"
+    "test:ui-logic": "pnpm --filter @career/api exec tsx --test ../dashboard/components/application-continuation.test.ts ../dashboard/components/lib/search-status.test.ts ../dashboard/lib/api.test.ts ../dashboard/lib/application-follow-up-draft.test.ts ../dashboard/lib/application-review-count.test.ts ../dashboard/lib/detail-keys.test.ts ../dashboard/lib/applications-csv.test.ts ../dashboard/lib/i18n.test.ts ../dashboard/lib/profile-improvement.test.ts ../dashboard/lib/status-pages.test.ts ../dashboard/lib/labels.test.ts ../dashboard/lib/resume-pdf-text.test.ts ../dashboard/lib/resume-import.test.ts ../dashboard/lib/timeline.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
