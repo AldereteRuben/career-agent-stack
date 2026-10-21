@@ -1,7 +1,31 @@
 import assert from 'node:assert/strict';
 import { AxeBuilder } from '@axe-core/playwright';
+import type { Locator, Page } from 'playwright';
 import type { Scenario } from './scenarios.js';
 import { any, hasHorizontalOverflow, setLocale } from './ui.js';
+
+async function tabTo(page: Page, target: Locator) {
+  for (let step = 0; step < 120; step += 1) {
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error('Keyboard navigation could not reach the requested interview-preparation control');
+}
+
+async function activateWithKeyboard(page: Page, target: Locator) {
+  await tabTo(page, target);
+  await page.keyboard.press('Enter');
+}
+
+async function checkWithKeyboard(page: Page, target: Locator) {
+  await tabTo(page, target);
+  await page.keyboard.press('Space');
+}
+
+async function typeWithKeyboard(page: Page, target: Locator, value: string) {
+  await tabTo(page, target);
+  await page.keyboard.type(value);
+}
 
 export const interviewPreparationUiScenario: Scenario = {
   name: 'interview-preparation-ui-keyboard-locales-and-mobile',
@@ -21,10 +45,10 @@ export const interviewPreparationUiScenario: Scenario = {
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
     const panel = page.locator('[class*="application-interview-preparation_panel"]');
     await panel.getByRole('heading', { name: 'Preparar entrevista' }).waitFor();
-    await panel.getByRole('button', { name: 'Crear plan' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Crear plan' }));
     const planDisclosure = panel.locator('details').first();
     const planSummary = planDisclosure.locator(':scope > summary');
-    await planSummary.focus(); await page.keyboard.press('Enter');
+    await activateWithKeyboard(page, planSummary);
     assert.equal(await planDisclosure.evaluate((element) => (element as HTMLDetailsElement).open), true);
     await panel.getByText('Oferta guardada', { exact: false }).first().waitFor();
     await panel.getByText('Respaldado por experiencia aprobada', { exact: true }).first().waitFor();
@@ -34,8 +58,8 @@ export const interviewPreparationUiScenario: Scenario = {
     assert.equal(await planDisclosure.evaluate((element) => (element as HTMLDetailsElement).open), false);
     assert.equal(await planSummary.evaluate((element) => element === document.activeElement), true);
     await page.keyboard.press('Enter');
-    await panel.getByLabel('Añadir nota o pregunta').fill(`Ask about onboarding ${marker}`);
-    await panel.getByRole('button', { name: 'Añadir al plan' }).click();
+    await typeWithKeyboard(page, panel.getByLabel('Añadir nota o pregunta'), `Ask about onboarding ${marker}`);
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Añadir al plan' }));
     await panel.getByText(`Ask about onboarding ${marker}`).waitFor();
 
     const audit = async (flow: string) => {
@@ -47,21 +71,21 @@ export const interviewPreparationUiScenario: Scenario = {
     // Keyboard-only opening of the practice panel; only fictitious E2E records are used.
     const practice = panel.locator('details').nth(2);
     const practiceSummary = practice.locator(':scope > summary');
-    await practiceSummary.focus(); await page.keyboard.press('Enter');
-    await panel.getByRole('button', { name: 'Practicar preguntas' }).click();
-    await panel.getByLabel('Tu respuesta').fill(`En el proyecto ${marker}, cuando el equipo necesitaba pruebas, diseñé y construí una suite con Playwright. Como resultado reduje errores en cada entrega.`);
-    await panel.getByRole('button', { name: 'Enviar respuesta' }).click();
+    await activateWithKeyboard(page, practiceSummary);
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Practicar preguntas' }));
+    await typeWithKeyboard(page, panel.getByLabel('Tu respuesta'), `En el proyecto ${marker}, cuando el equipo necesitaba pruebas, diseñé y construí una suite con Playwright. Como resultado reduje errores en cada entrega.`);
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Enviar respuesta' }));
     await panel.getByText(/Observaciones automáticas/).waitFor();
-    await panel.getByRole('button', { name: 'Feedback opcional de Codex' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Feedback opcional de Codex' }));
     await panel.getByText(/Solo comenta esta respuesta de práctica/).waitFor();
     const mockPanel = panel.locator('[class*="mockPanel"]');
     const selectedFact = mockPanel.getByRole('checkbox', { name: 'Built a Playwright suite at' });
     assert.equal(await selectedFact.isChecked(), false, 'approved facts are not selected by default for mock feedback');
-    await panel.getByRole('button', { name: 'Revisar datos que se enviarán' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Revisar datos que se enviarán' }));
     await mockPanel.locator('dd').filter({ hasText: `En el proyecto ${marker}` }).waitFor();
     await mockPanel.getByText(/Codex no está disponible ahora/).waitFor();
     assert.equal(await mockPanel.getByRole('checkbox', { name: /Confirmo enviar esta respuesta/ }).count(), 0, 'unavailable Codex cannot receive this practice answer');
-    await mockPanel.getByRole('button', { name: 'Cancelar' }).click();
+    await activateWithKeyboard(page, mockPanel.getByRole('button', { name: 'Cancelar' }));
 
     // Exercise the connected-provider UI without enabling Codex or sending fixture data anywhere.
     // The real isolated preview still builds the exact payload; Playwright only changes its availability
@@ -108,11 +132,11 @@ export const interviewPreparationUiScenario: Scenario = {
         assistantFeedback: { ...requestBody.feedback, generated: true, provider: 'codex', acceptedAt: new Date().toISOString() },
       } }) });
     });
-    await panel.getByRole('button', { name: 'Feedback opcional de Codex' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Feedback opcional de Codex' }));
     const connectedMockPanel = panel.locator('[class*="mockPanel"]');
     const selectedForFeedback = connectedMockPanel.getByRole('checkbox', { name: 'Built a Playwright suite at' });
-    await selectedForFeedback.check();
-    await connectedMockPanel.getByRole('button', { name: 'Revisar datos que se enviarán' }).click();
+    await checkWithKeyboard(page, selectedForFeedback);
+    await activateWithKeyboard(page, connectedMockPanel.getByRole('button', { name: 'Revisar datos que se enviarán' }));
     await connectedMockPanel.locator('dd').filter({ hasText: `En el proyecto ${marker}` }).waitFor();
     assert.ok(previewPayload?.sent.answer.includes(`En el proyecto ${marker}`), 'the preview contains only the fictional practice answer');
     assert.deepEqual(previewPayload?.sent.facts.map((item) => item.factId), [fact.id], 'the real preview contains only the selected fact');
@@ -120,31 +144,31 @@ export const interviewPreparationUiScenario: Scenario = {
     const generateFeedback = connectedMockPanel.getByRole('button', { name: 'Generar feedback' });
     assert.equal(await generateFeedback.isDisabled(), true, 'feedback cannot be sent before consent');
     assert.equal(dispatchedBody, undefined, 'reviewing the payload does not dispatch it');
-    await consent.check();
-    await generateFeedback.click();
+    await checkWithKeyboard(page, consent);
+    await activateWithKeyboard(page, generateFeedback);
     await connectedMockPanel.getByText('La respuesta describe una acción concreta y cómo la aplicaste.').waitFor();
     assert.ok(dispatchedBody, 'the fake response is requested only after consent');
-    await connectedMockPanel.getByRole('button', { name: 'Descartar resultado' }).click();
+    await activateWithKeyboard(page, connectedMockPanel.getByRole('button', { name: 'Descartar resultado' }));
     assert.equal(discardRequested, true, 'discard sends the explicit discard action');
     await connectedMockPanel.getByText('La respuesta describe una acción concreta y cómo la aplicaste.').waitFor({ state: 'detached' });
     const afterDiscard = await api.get<{ plans: Array<{ sessions: Array<{ turns: Array<{ assistantFeedback?: unknown }> }> }> }>(`/applications/${application.id}/interview-preparation`);
     assert.equal(afterDiscard.plans[0]?.sessions[0]?.turns[0]?.assistantFeedback ?? null, null, 'discarded fictional feedback is absent from saved history');
 
     // A second fictional result can be accepted explicitly and displayed as practice history.
-    await panel.getByRole('button', { name: 'Feedback opcional de Codex' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Feedback opcional de Codex' }));
     const acceptedMockPanel = panel.locator('[class*="mockPanel"]');
-    await acceptedMockPanel.getByRole('checkbox', { name: 'Built a Playwright suite at' }).check();
-    await acceptedMockPanel.getByRole('button', { name: 'Revisar datos que se enviarán' }).click();
-    await acceptedMockPanel.getByRole('checkbox', { name: /Confirmo enviar esta respuesta/ }).check();
-    await acceptedMockPanel.getByRole('button', { name: 'Generar feedback' }).click();
+    await checkWithKeyboard(page, acceptedMockPanel.getByRole('checkbox', { name: 'Built a Playwright suite at' }));
+    await activateWithKeyboard(page, acceptedMockPanel.getByRole('button', { name: 'Revisar datos que se enviarán' }));
+    await checkWithKeyboard(page, acceptedMockPanel.getByRole('checkbox', { name: /Confirmo enviar esta respuesta/ }));
+    await activateWithKeyboard(page, acceptedMockPanel.getByRole('button', { name: 'Generar feedback' }));
     await acceptedMockPanel.getByText('La respuesta describe una acción concreta y cómo la aplicaste.').waitFor();
-    await acceptedMockPanel.getByRole('button', { name: 'Guardar en el historial' }).click();
+    await activateWithKeyboard(page, acceptedMockPanel.getByRole('button', { name: 'Guardar en el historial' }));
     await panel.locator('.notice-success .notice-message', { hasText: 'Feedback guardado en el historial de práctica.' }).waitFor();
     await panel.getByText('Generado por Codex · práctica').waitFor();
     assert.equal(acceptRequested, true, 'the result enters practice history only after an explicit save action');
 
-    await panel.getByRole('button', { name: 'Terminar práctica' }).click();
-    await panel.getByRole('button', { name: 'Volver al plan' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Terminar práctica' }));
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Volver al plan' }));
     await panel.getByText('Historial de prácticas', { exact: false }).waitFor();
 
     await setLocale(page, 'en');
@@ -184,7 +208,7 @@ export const interviewPreparationUiScenario: Scenario = {
 
     // Deleting the plan removes its preparation history and makes it disappear from subsequent exports.
     page.once('dialog', (dialog) => dialog.accept());
-    await panel.getByRole('button', { name: 'Eliminar plan' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Eliminar plan' }));
     await panel.locator('.notice-success .notice-message', { hasText: 'Plan eliminado.' }).waitFor();
     const remaining = await api.get<{ plans: Array<{ id: string }> }>(`/applications/${application.id}/interview-preparation`);
     assert.equal(remaining.plans.some((plan) => plan.id === planId), false, 'Deleting a plan removes it from its application');
