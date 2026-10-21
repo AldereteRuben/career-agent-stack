@@ -24,6 +24,7 @@ import { jobLinkLookupScenario } from './job-link-lookup.js';
 import { jobReportsScenario } from './job-reports.js';
 import { timelineScenario } from './timeline.js';
 import { emailImportScenario } from './email-import.js';
+import { overviewRemindersScenario } from './overview-reminders.js';
 import { trackingMetricsScenario } from './tracking-metrics.js';
 import { profileImprovementScenario } from './profile-improvement.js';
 import { applicationFollowUpDraftScenario } from './application-follow-up-draft.js';
@@ -150,6 +151,7 @@ export const scenarios: Scenario[] = [
   jobReportsScenario,
   jobCompensationScenario,
   timelineScenario,
+  overviewRemindersScenario,
   emailImportScenario,
   profileImprovementScenario,
   trackingMetricsScenario,

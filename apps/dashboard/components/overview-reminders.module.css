@@ -1,6 +1,13 @@
 .card {
   display: grid;
   gap: 1rem;
+  padding: 1.375rem;
+}
+
+@media (max-width: 540px) {
+  .card {
+    padding: 1rem;
+  }
 }
 
 .heading {
