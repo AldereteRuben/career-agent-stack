@@ -1,10 +1,8 @@
-const exactSensitiveKeys = new Set([
-  'key', 'apikey', 'xapikey', 'encryptionkey', 'privatekey', 'signingkey', 'backupkey', 'sessionkey', 'secretkey', 'recoverykey',
-]);
-
 function isSensitiveExportKey(key: string): boolean {
   const normalized = key.replaceAll(/[_-]/g, '').toLowerCase();
-  return /(?:token|secret|cookie|credential|password|authorization)$/.test(normalized) || exactSensitiveKeys.has(normalized);
+  return /(?:token|secret|cookie|credential|password|authorization)$/.test(normalized)
+    || normalized === 'key'
+    || /(?:api|encryption|private|signing|backup|session|secret|recovery)key$/.test(normalized);
 }
 
 /** Remove credentials while retaining application data whose names happen to contain “session”. */

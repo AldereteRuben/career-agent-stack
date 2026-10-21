@@ -6,7 +6,7 @@ test('workspace export keeps interview sessions and removes credential fields re
   const sanitized = scrubExport({
     interviewPreparationSessions: [{ id: 'session-id', planId: 'plan-id', status: 'COMPLETED' }],
     interviewPreparationTurns: [{ id: 'turn-id', sessionId: 'session-id', answer: 'Fictional answer' }],
-    assistant: { accessToken: 'secret-token', sessionSecret: 'secret-session', api_key: 'secret-api-key', 'X-API-Key': 'secret-header-key', cookie: 'secret-cookie', credential: 'secret-credential' },
+    assistant: { accessToken: 'secret-token', sessionSecret: 'secret-session', api_key: 'secret-api-key', 'X-API-Key': 'secret-header-key', APP_ENCRYPTION_KEY: 'secret-app-key', cookie: 'secret-cookie', credential: 'secret-credential' },
   });
 
   assert.deepEqual(sanitized, {
