@@ -63,6 +63,8 @@ export type TimelineItem = {
   correction?: boolean;
   /** The zone the interview was scheduled in, which may differ from the viewer's. */
   interviewTimeZone?: string | null;
+  /** Derived from the latest plan and mock session. Content and answers are never included. */
+  interviewPreparationStatus?: 'NO_PLAN' | 'PLAN_READY' | 'MOCK_IN_PROGRESS' | 'MOCK_COMPLETED';
   nextStep?: string | null;
   followUpStatus?: 'overdue' | 'due-today' | 'upcoming';
 };
