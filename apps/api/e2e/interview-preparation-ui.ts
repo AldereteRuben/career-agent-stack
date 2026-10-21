@@ -111,7 +111,7 @@ export const interviewPreparationUiScenario: Scenario = {
     const selectedForFeedback = connectedMockPanel.getByRole('checkbox', { name: 'Built a Playwright suite at' });
     await selectedForFeedback.check();
     await connectedMockPanel.getByRole('button', { name: 'Revisar datos que se enviarán' }).click();
-    await connectedMockPanel.getByText(`En el proyecto ${marker}`, { exact: false }).waitFor();
+    await connectedMockPanel.locator('dd').filter({ hasText: `En el proyecto ${marker}` }).waitFor();
     assert.ok(previewPayload?.sent.answer.includes(`En el proyecto ${marker}`), 'the preview contains only the fictional practice answer');
     assert.deepEqual(previewPayload?.sent.facts.map((item) => item.factId), [fact.id], 'the real preview contains only the selected fact');
     const consent = connectedMockPanel.getByRole('checkbox', { name: /Confirmo enviar esta respuesta/ });
