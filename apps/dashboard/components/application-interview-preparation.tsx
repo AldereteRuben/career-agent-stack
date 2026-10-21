@@ -22,7 +22,7 @@ const errorCopy = (error: unknown, locale: Locale) => {
   const map: Record<string, [string, string]> = {
     AI_NOT_CONNECTED: ['Conecta Codex en Ajustes para pedir sugerencias.', 'Connect Codex in Settings to request suggestions.'],
     PLAN_EVIDENCE_STALE: ['La evidencia cambió. Revisa el plan y vuelve a generarlo antes de usar Codex.', 'The evidence changed. Review and rebuild the plan before using Codex.'],
-    PLAN_HAS_NO_OFFER: ['Esta candidatura no tiene una oferta guardada para enviar a Codex.', 'This application has no saved offer to send to Codex.'],
+    PLAN_HAS_NO_OFFER: ['Esta solicitud no tiene una oferta guardada para enviar a Codex.', 'This application has no saved offer to send to Codex.'],
     PLAN_HAS_NO_RESUME: ['No hay un CV elegido con texto disponible para incluir.', 'There is no selected resume with text available to include.'],
     PAYLOAD_CHANGED: ['Los datos cambiaron. Revisa de nuevo lo que se enviará.', 'The data changed. Review what will be sent again.'],
     AI_UNAVAILABLE: ['Codex no está disponible ahora. Puedes seguir con el plan sin IA.', 'Codex is unavailable right now. You can continue with the plan without AI.'],
