@@ -1,7 +1,26 @@
 import assert from 'node:assert/strict';
 import { AxeBuilder } from '@axe-core/playwright';
+import type { Locator, Page } from 'playwright';
 import type { Scenario } from './scenarios.js';
 import { any, hasHorizontalOverflow, setLocale } from './ui.js';
+
+async function tabTo(page: Page, target: Locator) {
+  for (let step = 0; step < 120; step += 1) {
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error('Keyboard navigation could not reach the requested interview-preparation control');
+}
+
+async function activateWithKeyboard(page: Page, target: Locator) {
+  await tabTo(page, target);
+  await page.keyboard.press('Enter');
+}
+
+async function typeWithKeyboard(page: Page, target: Locator, value: string) {
+  await tabTo(page, target);
+  await page.keyboard.type(value);
+}
 
 export const interviewPreparationUiScenario: Scenario = {
   name: 'interview-preparation-ui-keyboard-locales-and-mobile',
@@ -21,10 +40,10 @@ export const interviewPreparationUiScenario: Scenario = {
     await page.goto(new URL(`/applications?id=${application.id}`, uiUrl).toString());
     const panel = page.locator('[class*="application-interview-preparation_panel"]');
     await panel.getByRole('heading', { name: 'Preparar entrevista' }).waitFor();
-    await panel.getByRole('button', { name: 'Crear plan' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Crear plan' }));
     const planDisclosure = panel.locator('details').first();
     const planSummary = planDisclosure.locator(':scope > summary');
-    await planSummary.focus(); await page.keyboard.press('Enter');
+    await activateWithKeyboard(page, planSummary);
     assert.equal(await planDisclosure.evaluate((element) => (element as HTMLDetailsElement).open), true);
     await panel.getByText('Oferta guardada', { exact: false }).first().waitFor();
     await panel.getByText('Respaldado por experiencia aprobada', { exact: true }).first().waitFor();
@@ -34,8 +53,8 @@ export const interviewPreparationUiScenario: Scenario = {
     assert.equal(await planDisclosure.evaluate((element) => (element as HTMLDetailsElement).open), false);
     assert.equal(await planSummary.evaluate((element) => element === document.activeElement), true);
     await page.keyboard.press('Enter');
-    await panel.getByLabel('Añadir nota o pregunta').fill(`Ask about onboarding ${marker}`);
-    await panel.getByRole('button', { name: 'Añadir al plan' }).click();
+    await typeWithKeyboard(page, panel.getByLabel('Añadir nota o pregunta'), `Ask about onboarding ${marker}`);
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Añadir al plan' }));
     await panel.getByText(`Ask about onboarding ${marker}`).waitFor();
 
     const audit = async (flow: string) => {
@@ -47,13 +66,13 @@ export const interviewPreparationUiScenario: Scenario = {
     // Keyboard-only opening of the practice panel; only fictitious E2E records are used.
     const practice = panel.locator('details').nth(2);
     const practiceSummary = practice.locator(':scope > summary');
-    await practiceSummary.focus(); await page.keyboard.press('Enter');
-    await panel.getByRole('button', { name: 'Practicar preguntas' }).click();
-    await panel.getByLabel('Tu respuesta').fill(`En el proyecto ${marker}, cuando el equipo necesitaba pruebas, diseñé y construí una suite con Playwright. Como resultado reduje errores en cada entrega.`);
-    await panel.getByRole('button', { name: 'Enviar respuesta' }).click();
+    await activateWithKeyboard(page, practiceSummary);
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Practicar preguntas' }));
+    await typeWithKeyboard(page, panel.getByLabel('Tu respuesta'), `En el proyecto ${marker}, cuando el equipo necesitaba pruebas, diseñé y construí una suite con Playwright. Como resultado reduje errores en cada entrega.`);
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Enviar respuesta' }));
     await panel.getByText(/Observaciones automáticas/).waitFor();
-    await panel.getByRole('button', { name: 'Terminar práctica' }).click();
-    await panel.getByRole('button', { name: 'Volver al plan' }).click();
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Terminar práctica' }));
+    await activateWithKeyboard(page, panel.getByRole('button', { name: 'Volver al plan' }));
     await panel.getByText('Historial de prácticas', { exact: false }).waitFor();
 
     await setLocale(page, 'en');
