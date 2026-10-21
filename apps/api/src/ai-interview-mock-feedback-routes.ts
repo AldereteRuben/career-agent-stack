@@ -228,6 +228,14 @@ export function registerAiInterviewMockFeedbackRoutes(app: FastifyInstance, work
     if (!params.success || !body.success) return reply.code(400).send({ error: 'INVALID_INPUT' });
     const workspaceId = workspace(request);
     const turn = await database.transaction(async (tx) => {
+      const session = (await tx.select({ planId: interviewPreparationSessions.planId }).from(interviewPreparationSessions).where(and(
+        eq(interviewPreparationSessions.workspaceId, workspaceId), eq(interviewPreparationSessions.id, params.data.sessionId),
+      )).limit(1))[0];
+      if (!session) throw new MockFeedbackError('NOT_FOUND', 404);
+      // Match dispatch's lock order so evidence cannot be revoked or changed between validation and save.
+      await lockKey(tx, profileLockKey(workspaceId));
+      await lockKey(tx, interviewPreparationPlanLockKey(workspaceId, session.planId));
+      await lockFeedbackSources(tx as unknown as Executor, workspaceId, session.planId, params.data.sessionId, params.data.turnId);
       const found = (await tx.select().from(interviewPreparationTurns).where(and(
         eq(interviewPreparationTurns.workspaceId, workspaceId), eq(interviewPreparationTurns.sessionId, params.data.sessionId), eq(interviewPreparationTurns.id, params.data.turnId),
       )).for('update').limit(1))[0];

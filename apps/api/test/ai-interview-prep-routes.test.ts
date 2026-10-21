@@ -230,6 +230,7 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     const feedbackDiscard = (payload: unknown, h = headers) => app.inject({ method: 'POST', url: `${feedbackUrl}/discard`, headers: h, payload: payload as object });
     const feedbackPreviewFor = (turnId: string, payload: unknown) => app.inject({ method: 'POST', url: `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${turnId}/assistant-feedback/preview`, headers, payload: payload as object });
     const feedbackRunFor = (turnId: string, payload: unknown) => app.inject({ method: 'POST', url: `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${turnId}/assistant-feedback`, headers, payload: payload as object });
+    const feedbackAcceptFor = (turnId: string, payload: unknown) => app.inject({ method: 'POST', url: `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${turnId}/assistant-feedback/accept`, headers, payload: payload as object });
     const practiceAnswer = 'In the fictional shop, I built TypeScript services and wrote a Playwright test suite.';
     const bareFeedback = await feedbackPreview({ factIds: [] });
     assert.equal(bareFeedback.statusCode, 200, bareFeedback.body);
@@ -322,11 +323,11 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     await client.query("INSERT INTO interview_preparation_turns(id,workspace_id,session_id,position,question,answer) VALUES($1,$2,$3,5,'How did you check the fictional output?','I compared it with the expected result.')", [blockedTurnId, owner, mockSessionId]);
     let releaseProfileLock!: () => void;
     const profileLockRelease = new Promise<void>((resolve) => { releaseProfileLock = resolve; });
-    let profileLockAcquired!: () => void;
-    const profileLockReady = new Promise<void>((resolve) => { profileLockAcquired = resolve; });
+    let blockedProfileLockAcquired!: () => void;
+    const profileLockReady = new Promise<void>((resolve) => { blockedProfileLockAcquired = resolve; });
     const holdingProfileLock = database.transaction(async (tx) => {
       await lockKey(tx, profileLockKey(owner));
-      profileLockAcquired();
+      blockedProfileLockAcquired();
       await profileLockRelease;
     });
     await profileLockReady;
@@ -367,6 +368,43 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     assert.equal(revokedFeedback.json().error, 'PLAN_EVIDENCE_STALE');
     assert.equal(providerCalls.length, callsBeforeFactRevocation, 'revoked evidence never reaches the feedback provider');
     assert.equal((await client.query("SELECT error FROM ai_runs WHERE operation='INTERVIEW_MOCK_FEEDBACK' ORDER BY created_at DESC LIMIT 1")).rows[0].error.dispatched, 'NO');
+    await client.query("UPDATE profile_facts SET approval_status='USER_APPROVED' WHERE id=$1", [fact]);
+
+    // Accepting feedback and revoking its cited fact must serialize on the profile lock.
+    const acceptanceRaceTurnId = randomUUID();
+    await client.query("INSERT INTO interview_preparation_turns(id,workspace_id,session_id,position,question,answer) VALUES($1,$2,$3,8,'How did you verify the fictional release?','I checked the regression tests and reviewed the change.')", [acceptanceRaceTurnId, owner, mockSessionId]);
+    const acceptanceRacePreview = (await feedbackPreviewFor(acceptanceRaceTurnId, { factIds: [fact] })).json();
+    const acceptanceRaceRun = (await feedbackRunFor(acceptanceRaceTurnId, { factIds: [fact], payloadSha256: acceptanceRacePreview.payloadSha256, confirmed: true })).json();
+    let releaseRevocation!: () => void;
+    let profileLockAcquired!: () => void;
+    const revocationRelease = new Promise<void>((resolve) => { releaseRevocation = resolve; });
+    const revocationReady = new Promise<void>((resolve) => { profileLockAcquired = resolve; });
+    const revocationTransaction = database.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'REJECTED' }).where(eq(schema.profileFacts.id, fact));
+      profileLockAcquired();
+      await revocationRelease;
+    });
+    await revocationReady;
+    let acceptanceSettled = false;
+    const acceptance = feedbackAcceptFor(acceptanceRaceTurnId, { runId: acceptanceRaceRun.runId, payloadSha256: acceptanceRaceRun.payloadSha256, feedback: acceptanceRaceRun.feedback })
+      .finally(() => { acceptanceSettled = true; });
+    let waitingForProfileLock = false;
+    for (let attempt = 0; attempt < 500 && !acceptanceSettled; attempt += 1) {
+      const waiting = await client.query("SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock%'");
+      if (waiting.rows[0].count > 0) { waitingForProfileLock = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    try {
+      assert.equal(waitingForProfileLock, true, 'acceptance waits for an in-flight fact revocation before validating');
+    } finally {
+      releaseRevocation();
+      await revocationTransaction;
+    }
+    const staleAcceptance = await acceptance;
+    assert.equal(staleAcceptance.statusCode, 409);
+    assert.equal(staleAcceptance.json().error, 'PLAN_EVIDENCE_STALE');
+    assert.equal((await client.query('SELECT assistant_feedback FROM interview_preparation_turns WHERE id=$1', [acceptanceRaceTurnId])).rows[0].assistant_feedback, null);
     await client.query("UPDATE profile_facts SET approval_status='USER_APPROVED' WHERE id=$1", [fact]);
 
     // Stale evidence must be reviewed first: it is never sent and never turned into items.
