@@ -205,12 +205,15 @@ export const interviewPreparationSessions = pgTable('interview_preparation_sessi
 export const interviewPreparationTurns = pgTable('interview_preparation_turns', {
   id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), sessionId: uuid('session_id').notNull(),
   position: integer('position').notNull(), question: text('question').notNull(), answer: text('answer'),
+  // QUESTION asks a practice item of the plan; PROBE follows up a weak answer once. The item is a plain reference: removing it keeps the turn.
+  kind: varchar('kind', { length: 10 }).notNull().default('QUESTION'), itemId: uuid('item_id'),
   feedback: jsonb('feedback').$type<Record<string, unknown>>(), learningItems: jsonb('learning_items').$type<string[]>().notNull().default([]),
   createdAt: created(), updatedAt: changed(),
 }, (t) => [
   uniqueIndex('interview_preparation_turns_session_position_uq').on(t.workspaceId, t.sessionId, t.position),
   foreignKey({ columns: [t.workspaceId, t.sessionId], foreignColumns: [interviewPreparationSessions.workspaceId, interviewPreparationSessions.id], name: 'interview_preparation_turns_workspace_session_fk' }).onDelete('cascade'),
   check('interview_preparation_turns_position_check', sql`${t.position} >= 0`),
+  check('interview_preparation_turns_kind_check', sql`${t.kind} in ('QUESTION', 'PROBE')`),
 ]);
 
 // AI persistence is deliberately inert until G0 enables an adapter. These tables contain metadata and
