@@ -10,6 +10,7 @@ import * as schema from '@career/db';
 import type { AiSourceSnapshot } from '@career/domain';
 import { createAiDocumentRewordCancellation } from '../src/ai-application-document-routes.js';
 import { registerAiInterviewPreparationRoutes } from '../src/ai-interview-preparation-routes.js';
+import { registerAiInterviewMockFeedbackRoutes } from '../src/ai-interview-mock-feedback-routes.js';
 import { registerInterviewPreparationRoutes } from '../src/interview-preparation-routes.js';
 import { createAiQueue } from '../src/ai/queue.js';
 import type { CodexExecutionResult } from '../src/ai/codex.js';
@@ -58,8 +59,18 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     const workspace = (request: { headers: Record<string, unknown> }) => request.headers['x-fixture-workspace'] === other ? other : owner;
     const providerCalls: AiSourceSnapshot[] = [];
     let providerMode: 'ok' | 'invalid' = 'ok';
-    const execute = (async (input: AiSourceSnapshot) => {
+    let feedbackMode: 'ok' | 'throws' | 'hang' = 'ok';
+    let feedbackSignal: AbortSignal | undefined;
+    const execute = (async (input: AiSourceSnapshot, _fingerprint?: string, _identitySalt?: string, signal?: AbortSignal) => {
       providerCalls.push(input);
+      if (input.operation === 'INTERVIEW_MOCK_FEEDBACK') {
+        feedbackSignal = signal;
+        if (feedbackMode === 'throws') throw new Error('synthetic provider failure');
+        if (feedbackMode === 'hang') await new Promise<never>((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('CANCELLED')), { once: true }));
+        const source = input.interviewMockFeedback!;
+        const output = { schemaVersion: 1, operation: 'INTERVIEW_MOCK_FEEDBACK', locale: input.locale, summary: 'A clear fictional example.', strengths: [{ answerQuote: source.answer.slice(0, 29), note: 'It names the situation and action.' }], improvements: ['Add a measurable result.'], claimsToVerify: [], evidenceFactIds: input.facts.map((item) => item.factId), warnings: [] };
+        return { output, inputContentHash: 'e'.repeat(64), model: 'gpt-5.5', cliVersion: '0.163.0', usage: { inputTokens: 10, outputTokens: 20 }, account: {} } as unknown as CodexExecutionResult;
+      }
       const source = input.interviewPrep!;
       const kind = { PRACTICE_QUESTIONS: 'PRACTICE_QUESTION', CODING_HINTS: 'CODING_HINT', RECRUITER_QUESTIONS: 'RECRUITER_QUESTION', STUDY_ITEMS: 'STUDY_ITEM' }[source.request];
       const suggestions = [1, 2, 3].map((index) => ({
@@ -71,6 +82,7 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     }) as never;
     registerInterviewPreparationRoutes(app, workspace, database);
     registerAiInterviewPreparationRoutes(app, workspace, { enabled: true, database, identitySalt: 'fixture-salt', queue, cancellation, execute });
+    registerAiInterviewMockFeedbackRoutes(app, workspace, { enabled: true, database, identitySalt: 'fixture-salt', queue, cancellation, execute });
     const headers = { 'x-fixture-workspace': owner }; const foreignHeaders = { 'x-fixture-workspace': other };
 
     const built = await app.inject({ method: 'POST', url: `/api/v1/applications/${application}/interview-preparation/build`, headers, payload: { language: 'en' } });
@@ -187,6 +199,82 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     assert.equal((await accept({ runId: recruiter.runId, suggestions: [recruiter.suggestions[0]] })).json().items[0].kind, 'QUESTION');
     const studyPreview = (await preview({ request: 'STUDY_ITEMS' })).json();
     const study = (await run({ request: 'STUDY_ITEMS', payloadSha256: studyPreview.payloadSha256, confirmed: true })).json();
+
+    // Per-answer Codex feedback remains opt-in, sends only the selected practice answer and facts, and saves nothing until accepted.
+    const mockSessionId = randomUUID(); const mockTurnId = randomUUID();
+    await client.query('INSERT INTO interview_preparation_sessions(id,workspace_id,plan_id) VALUES($1,$2,$3)', [mockSessionId, owner, plan.id]);
+    await client.query("INSERT INTO interview_preparation_turns(id,workspace_id,session_id,position,question,answer) VALUES($1,$2,$3,0,'How did you approach the fictional test suite?',$4)", [mockTurnId, owner, mockSessionId, 'In the fictional shop, I built TypeScript services and wrote a Playwright test suite.']);
+    const feedbackUrl = `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${mockTurnId}/assistant-feedback`;
+    const feedbackPreview = (payload: unknown, h = headers) => app.inject({ method: 'POST', url: `${feedbackUrl}/preview`, headers: h, payload: payload as object });
+    const feedbackRun = (payload: unknown, h = headers) => app.inject({ method: 'POST', url: feedbackUrl, headers: h, payload: payload as object });
+    const feedbackAccept = (payload: unknown, h = headers) => app.inject({ method: 'POST', url: `${feedbackUrl}/accept`, headers: h, payload: payload as object });
+    const feedbackDiscard = (payload: unknown, h = headers) => app.inject({ method: 'POST', url: `${feedbackUrl}/discard`, headers: h, payload: payload as object });
+    const practiceAnswer = 'In the fictional shop, I built TypeScript services and wrote a Playwright test suite.';
+    const bareFeedback = await feedbackPreview({ factIds: [] });
+    assert.equal(bareFeedback.statusCode, 200, bareFeedback.body);
+    assert.deepEqual([...bareFeedback.json().categories].sort(), ['INTERVIEW_QUESTION', 'MOCK_ANSWER']);
+    assert.ok(!JSON.stringify(bareFeedback.json().messages).includes('Built TypeScript services for a fictional shop'), 'approved profile facts are excluded unless selected');
+    const selectedFeedback = (await feedbackPreview({ factIds: [fact] })).json();
+    assert.deepEqual([...selectedFeedback.categories].sort(), ['APPROVED_FACTS', 'INTERVIEW_QUESTION', 'MOCK_ANSWER']);
+    assert.ok(JSON.stringify(selectedFeedback.messages).includes('Built TypeScript services for a fictional shop'));
+    const countFeedbackHashes = async () => Number((await client.query('SELECT count(*)::int AS n FROM interview_preparation_feedback_proposals')).rows[0].n);
+    assert.equal((await feedbackPreview({ factIds: [fact] }, foreignHeaders)).statusCode, 404);
+    assert.equal(providerCalls.at(-1)!.operation, 'INTERVIEW_PREP', 'preview does not call Codex');
+    assert.equal((await feedbackRun({ factIds: [fact], payloadSha256: selectedFeedback.payloadSha256, confirmed: true, origin: 'AUTOMATIC' })).statusCode, 403);
+    assert.deepEqual((await feedbackRun({ factIds: [fact], payloadSha256: selectedFeedback.payloadSha256, confirmed: false })).json(), { declined: true });
+    assert.equal((await feedbackRun({ factIds: [fact], payloadSha256: 'f'.repeat(64), confirmed: true })).json().error, 'PAYLOAD_CHANGED');
+    const mockRunResponse = await feedbackRun({ factIds: [fact], payloadSha256: selectedFeedback.payloadSha256, confirmed: true });
+    assert.equal(mockRunResponse.statusCode, 200, mockRunResponse.body);
+    const mockRun = mockRunResponse.json() as { runId: string; payloadSha256: string; feedback: Record<string, unknown> };
+    assert.equal(providerCalls.at(-1)!.operation, 'INTERVIEW_MOCK_FEEDBACK');
+    assert.deepEqual(providerCalls.at(-1)!.interviewMockFeedback, { planId: plan.id, sessionId: mockSessionId, turnId: mockTurnId, question: 'How did you approach the fictional test suite?', answer: practiceAnswer });
+    assert.equal(await countFeedbackHashes(), 1, 'only a result hash is retained before acceptance');
+    assert.equal((await client.query('SELECT assistant_feedback FROM interview_preparation_turns WHERE id=$1', [mockTurnId])).rows[0].assistant_feedback, null, 'the result is not saved to the practice history yet');
+    assert.equal((await feedbackAccept({ runId: mockRun.runId, payloadSha256: mockRun.payloadSha256, feedback: { ...mockRun.feedback, summary: 'changed by the browser' } })).json().error, 'AI_PROPOSAL_EXPIRED', 'a changed output cannot be accepted');
+    const acceptedFeedback = await feedbackAccept({ runId: mockRun.runId, payloadSha256: mockRun.payloadSha256, feedback: mockRun.feedback });
+    assert.equal(acceptedFeedback.statusCode, 201, acceptedFeedback.body);
+    assert.equal(acceptedFeedback.json().turn.assistantFeedback.generated, true);
+    assert.equal(await countFeedbackHashes(), 0, 'acceptance consumes the hash-only proposal');
+    assert.equal((await feedbackDiscard({ runId: mockRun.runId })).json().error, 'FEEDBACK_ALREADY_ACCEPTED', 'discard cannot race past a completed acceptance');
+    assert.equal((await feedbackPreview({ factIds: [fact] })).json().error, 'FEEDBACK_ALREADY_ACCEPTED', 'an accepted turn cannot spend again');
+    const discardedTurnId = randomUUID();
+    await client.query("INSERT INTO interview_preparation_turns(id,workspace_id,session_id,position,question,answer) VALUES($1,$2,$3,1,'How did you verify the fictional change?','I checked the tests and reviewed the diff.')", [discardedTurnId, owner, mockSessionId]);
+    const discardedUrl = `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${discardedTurnId}/assistant-feedback`;
+    const discardedPreview = (await app.inject({ method: 'POST', url: `${discardedUrl}/preview`, headers, payload: { factIds: [] } })).json();
+    const discardedRun = (await app.inject({ method: 'POST', url: discardedUrl, headers, payload: { factIds: [], payloadSha256: discardedPreview.payloadSha256, confirmed: true } })).json();
+    const discardResponse = await app.inject({ method: 'POST', url: `${discardedUrl}/discard`, headers, payload: { runId: discardedRun.runId } });
+    assert.equal(discardResponse.statusCode, 204);
+    assert.equal(await countFeedbackHashes(), 0, 'discard consumes the hash-only proposal');
+    assert.equal((await app.inject({ method: 'POST', url: `${discardedUrl}/accept`, headers, payload: { runId: discardedRun.runId, payloadSha256: discardedRun.payloadSha256, feedback: discardedRun.feedback } })).json().error, 'AI_PROPOSAL_EXPIRED', 'a discarded result cannot be accepted later');
+    assert.equal((await client.query('SELECT assistant_feedback FROM interview_preparation_turns WHERE id=$1', [discardedTurnId])).rows[0].assistant_feedback, null, 'discard leaves the mock history unchanged');
+    const failedTurnId = randomUUID();
+    await client.query("INSERT INTO interview_preparation_turns(id,workspace_id,session_id,position,question,answer) VALUES($1,$2,$3,2,'What changed in the fictional test?','The test now covers the empty state.')", [failedTurnId, owner, mockSessionId]);
+    const failedUrl = `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${failedTurnId}/assistant-feedback`;
+    const failedPreview = (await app.inject({ method: 'POST', url: `${failedUrl}/preview`, headers, payload: { factIds: [] } })).json();
+    feedbackMode = 'throws';
+    const failedRun = await app.inject({ method: 'POST', url: failedUrl, headers, payload: { factIds: [], payloadSha256: failedPreview.payloadSha256, confirmed: true } });
+    feedbackMode = 'ok';
+    assert.equal(failedRun.statusCode, 503);
+    assert.equal(await countFeedbackHashes(), 0, 'provider failure stores no proposal');
+    assert.equal((await client.query('SELECT assistant_feedback FROM interview_preparation_turns WHERE id=$1', [failedTurnId])).rows[0].assistant_feedback, null, 'provider failure leaves the mock history unchanged');
+    const cancelledTurnId = randomUUID();
+    await client.query("INSERT INTO interview_preparation_turns(id,workspace_id,session_id,position,question,answer) VALUES($1,$2,$3,3,'How did you check the fictional fix?','I ran the related tests.')", [cancelledTurnId, owner, mockSessionId]);
+    const cancelledUrl = `/api/v1/interview-preparation/sessions/${mockSessionId}/turns/${cancelledTurnId}/assistant-feedback`;
+    const cancelledPreview = (await app.inject({ method: 'POST', url: `${cancelledUrl}/preview`, headers, payload: { factIds: [] } })).json();
+    feedbackMode = 'hang'; feedbackSignal = undefined;
+    const pendingCancelledRun = app.inject({ method: 'POST', url: cancelledUrl, headers, payload: { factIds: [], payloadSha256: cancelledPreview.payloadSha256, confirmed: true } });
+    while (!feedbackSignal) await new Promise((resolve) => setTimeout(resolve, 1));
+    const activeFeedbackRun = (await client.query("SELECT id FROM ai_runs WHERE workspace_id=$1 AND operation='INTERVIEW_MOCK_FEEDBACK' AND status='RUNNING' ORDER BY created_at DESC LIMIT 1", [owner])).rows[0].id as string;
+    cancellation.cancelRun(activeFeedbackRun);
+    const cancelledRun = await pendingCancelledRun;
+    feedbackMode = 'ok';
+    assert.equal(cancelledRun.statusCode, 499);
+    assert.equal(await countFeedbackHashes(), 0, 'cancellation stores no proposal');
+    assert.equal((await client.query('SELECT assistant_feedback FROM interview_preparation_turns WHERE id=$1', [cancelledTurnId])).rows[0].assistant_feedback, null, 'cancellation leaves the mock history unchanged');
+    assert.deepEqual((await client.query("SELECT remembered, operation FROM ai_consents WHERE operation='INTERVIEW_MOCK_FEEDBACK' ORDER BY id")).rows, [
+      { remembered: false, operation: 'INTERVIEW_MOCK_FEEDBACK' }, { remembered: false, operation: 'INTERVIEW_MOCK_FEEDBACK' },
+      { remembered: false, operation: 'INTERVIEW_MOCK_FEEDBACK' }, { remembered: false, operation: 'INTERVIEW_MOCK_FEEDBACK' },
+    ], 'every confirmed feedback request is recorded without remembered consent');
 
     // Stale evidence must be reviewed first: it is never sent and never turned into items.
     await client.query("UPDATE profile_facts SET statement='Built TypeScript services, edited later' WHERE id=$1", [fact]);

@@ -65,6 +65,7 @@ export const itemView = (item: typeof interviewPreparationItems.$inferSelect) =>
 export const turnView = (turn: typeof interviewPreparationTurns.$inferSelect) => ({
   id: turn.id, position: turn.position, kind: turn.kind, itemId: turn.itemId, question: turn.question, answer: turn.answer, skipped: turn.answer === '',
   feedback: turn.feedback, verdict: turn.answer ? interviewTurnVerdict(turn.feedback as InterviewTurnFeedback | null) : null, learningItems: turn.learningItems,
+  assistantFeedback: turn.assistantFeedback,
 });
 
 /** Plans with their evidence status, items and sessions. Nothing here returns profile text or resume content. */

@@ -207,9 +207,11 @@ export const interviewPreparationTurns = pgTable('interview_preparation_turns', 
   position: integer('position').notNull(), question: text('question').notNull(), answer: text('answer'),
   // QUESTION asks a practice item of the plan; PROBE follows up a weak answer once. The item is a plain reference: removing it keeps the turn.
   kind: varchar('kind', { length: 10 }).notNull().default('QUESTION'), itemId: uuid('item_id'),
-  feedback: jsonb('feedback').$type<Record<string, unknown>>(), learningItems: jsonb('learning_items').$type<string[]>().notNull().default([]),
+  feedback: jsonb('feedback').$type<Record<string, unknown>>(), assistantFeedback: jsonb('assistant_feedback').$type<Record<string, unknown>>(),
+  learningItems: jsonb('learning_items').$type<string[]>().notNull().default([]),
   createdAt: created(), updatedAt: changed(),
 }, (t) => [
+  unique('interview_preparation_turns_workspace_id_uq').on(t.workspaceId, t.id),
   uniqueIndex('interview_preparation_turns_session_position_uq').on(t.workspaceId, t.sessionId, t.position),
   foreignKey({ columns: [t.workspaceId, t.sessionId], foreignColumns: [interviewPreparationSessions.workspaceId, interviewPreparationSessions.id], name: 'interview_preparation_turns_workspace_session_fk' }).onDelete('cascade'),
   check('interview_preparation_turns_position_check', sql`${t.position} >= 0`),
@@ -247,12 +249,22 @@ export const aiRuns = pgTable('ai_runs', {
   priority: integer('priority').notNull().default(0), reservationPassId: uuid('reservation_pass_id'), reservedAt: timestamp('reserved_at', { withTimezone: true }).notNull().defaultNow(), reservedDay: date('reserved_day').notNull(),
   leaseToken: uuid('lease_token'), leaseOwner: varchar('lease_owner', { length: 160 }), leaseUntil: timestamp('lease_until', { withTimezone: true }), attempt: integer('attempt').notNull().default(0),
   retryOf: uuid('retry_of'), error: jsonb('error').$type<Record<string, unknown>>(), startedAt: timestamp('started_at', { withTimezone: true }), completedAt: timestamp('completed_at', { withTimezone: true }), createdAt: created(),
-}, (t) => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'ai_runs_workspace_search_fk' }), foreignKey({ columns: [t.workspaceId, t.automationPolicyId], foreignColumns: [aiAutomationPolicies.workspaceId, aiAutomationPolicies.id], name: 'ai_runs_workspace_policy_fk' }), unique('ai_runs_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('ai_runs_idempotency_uq').on(t.workspaceId, t.idempotencyKey), foreignKey({ columns: [t.workspaceId, t.connectionId], foreignColumns: [aiConnections.workspaceId, aiConnections.id], name: 'ai_runs_workspace_connection_fk' }).onDelete('cascade'), foreignKey({ columns: [t.workspaceId, t.consentId], foreignColumns: [aiConsents.workspaceId, aiConsents.id], name: 'ai_runs_workspace_consent_fk' }).onDelete('restrict'), index('ai_runs_queue_idx').on(t.status, t.priority, t.reservedAt), index('ai_runs_account_idx').on(t.accountLockKey, t.status), check('ai_runs_operation_check', sql`${t.operation} in ('SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'DOCUMENT_REWORD', 'RESUME_IMPORT', 'INTERVIEW_PREP')`)]);
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.searchId], foreignColumns: [savedJobSearches.workspaceId, savedJobSearches.id], name: 'ai_runs_workspace_search_fk' }), foreignKey({ columns: [t.workspaceId, t.automationPolicyId], foreignColumns: [aiAutomationPolicies.workspaceId, aiAutomationPolicies.id], name: 'ai_runs_workspace_policy_fk' }), unique('ai_runs_workspace_id_uq').on(t.workspaceId, t.id), uniqueIndex('ai_runs_idempotency_uq').on(t.workspaceId, t.idempotencyKey), foreignKey({ columns: [t.workspaceId, t.connectionId], foreignColumns: [aiConnections.workspaceId, aiConnections.id], name: 'ai_runs_workspace_connection_fk' }).onDelete('cascade'), foreignKey({ columns: [t.workspaceId, t.consentId], foreignColumns: [aiConsents.workspaceId, aiConsents.id], name: 'ai_runs_workspace_consent_fk' }).onDelete('restrict'), index('ai_runs_queue_idx').on(t.status, t.priority, t.reservedAt), index('ai_runs_account_idx').on(t.accountLockKey, t.status), check('ai_runs_operation_check', sql`${t.operation} in ('SEARCH_DRAFT', 'JOB_ANALYSIS', 'RESUME_DRAFT', 'ANSWER_DRAFT', 'DOCUMENT_REWORD', 'RESUME_IMPORT', 'INTERVIEW_PREP', 'INTERVIEW_MOCK_FEEDBACK')`)]);
 export const aiDocumentRewordProposals = pgTable('ai_document_reword_proposals', {
   workspaceId: uuid('workspace_id').notNull(), runId: uuid('run_id').notNull(), sentenceId: varchar('sentence_id', { length: 80 }).notNull(), proposalSha256: varchar('proposal_sha256', { length: 64 }).notNull(),
 }, (t) => [
   primaryKey({ columns: [t.workspaceId, t.runId, t.sentenceId], name: 'ai_document_reword_proposals_pk' }),
   foreignKey({ columns: [t.workspaceId, t.runId], foreignColumns: [aiRuns.workspaceId, aiRuns.id], name: 'ai_document_reword_proposals_workspace_run_fk' }).onDelete('cascade'),
+]);
+/** Stores only a digest until the person explicitly accepts generated feedback. */
+export const interviewPreparationFeedbackProposals = pgTable('interview_preparation_feedback_proposals', {
+  workspaceId: uuid('workspace_id').notNull(), runId: uuid('run_id').notNull(), turnId: uuid('turn_id').notNull(),
+  feedbackSha256: varchar('feedback_sha256', { length: 64 }).notNull(), createdAt: created(),
+}, (t) => [
+  primaryKey({ columns: [t.workspaceId, t.runId, t.turnId], name: 'interview_preparation_feedback_proposals_pk' }),
+  foreignKey({ columns: [t.workspaceId, t.runId], foreignColumns: [aiRuns.workspaceId, aiRuns.id], name: 'interview_preparation_feedback_proposals_workspace_run_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.turnId], foreignColumns: [interviewPreparationTurns.workspaceId, interviewPreparationTurns.id], name: 'interview_preparation_feedback_proposals_workspace_turn_fk' }).onDelete('cascade'),
+  check('interview_preparation_feedback_proposals_hash_check', sql`${t.feedbackSha256} ~ '^[0-9a-f]{64}$'`),
 ]);
 export const llmUsage = pgTable('llm_usage', { id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), aiRunId: uuid('ai_run_id'), availability: varchar('availability', { length: 16 }).notNull().default('UNAVAILABLE'), provider: varchar('provider', { length: 80 }).notNull(), model: varchar('model', { length: 160 }), operation: varchar('operation', { length: 100 }).notNull(), status: varchar('status', { length: 30 }).notNull(), inputTokens: integer('input_tokens'), outputTokens: integer('output_tokens'), costUsd: text('cost_usd'), createdAt: created() }, (t) => [uniqueIndex('llm_usage_ai_run_uq').on(t.workspaceId, t.aiRunId), foreignKey({ columns: [t.workspaceId, t.aiRunId], foreignColumns: [aiRuns.workspaceId, aiRuns.id], name: 'llm_usage_workspace_ai_run_fk' }), check('llm_usage_availability_check', sql`${t.availability} in ('KNOWN','STALE','UNAVAILABLE')`)]);
 export const aiAccountLeases = pgTable('ai_account_leases', {

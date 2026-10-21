@@ -52,6 +52,16 @@ export const interviewPreparationUiScenario: Scenario = {
     await panel.getByLabel('Tu respuesta').fill(`En el proyecto ${marker}, cuando el equipo necesitaba pruebas, diseñé y construí una suite con Playwright. Como resultado reduje errores en cada entrega.`);
     await panel.getByRole('button', { name: 'Enviar respuesta' }).click();
     await panel.getByText(/Observaciones automáticas/).waitFor();
+    await panel.getByRole('button', { name: 'Feedback opcional de Codex' }).click();
+    await panel.getByText(/Solo comenta esta respuesta de práctica/).waitFor();
+    const mockPanel = panel.locator('[class*="mockPanel"]');
+    const selectedFact = mockPanel.getByRole('checkbox', { name: 'Built a Playwright suite at' });
+    assert.equal(await selectedFact.isChecked(), false, 'approved facts are not selected by default for mock feedback');
+    await panel.getByRole('button', { name: 'Revisar datos que se enviarán' }).click();
+    await mockPanel.locator('dd').filter({ hasText: `En el proyecto ${marker}` }).waitFor();
+    await mockPanel.getByText(/Codex no está disponible ahora/).waitFor();
+    assert.equal(await mockPanel.getByRole('checkbox', { name: /Confirmo enviar esta respuesta/ }).count(), 0, 'unavailable Codex cannot receive this practice answer');
+    await mockPanel.getByRole('button', { name: 'Cancelar' }).click();
     await panel.getByRole('button', { name: 'Terminar práctica' }).click();
     await panel.getByRole('button', { name: 'Volver al plan' }).click();
     await panel.getByText('Historial de prácticas', { exact: false }).waitFor();

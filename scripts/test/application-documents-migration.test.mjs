@@ -340,7 +340,7 @@ test('0032 allows interview preparation assistant runs and stores hints on items
   }
 });
 
-test('0033 marks mock session turns as questions or follow-ups and keeps existing turns', { skip: !adminUrl }, async () => {
+test('0033 and 0034 preserve mock turns and add privacy-safe Codex feedback storage', { skip: !adminUrl }, async () => {
   const maintenance = new URL(adminUrl);
   assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
   assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
@@ -371,6 +371,24 @@ test('0033 marks mock session turns as questions or follow-ups and keeps existin
     const itemId = randomUUID();
     await client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,kind,item_id,question) VALUES($1,$2,1,'PROBE',$3,'A follow-up')", [workspaceId, sessionId, itemId]);
     await assert.rejects(client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,kind,question) VALUES($1,$2,2,'HINT','x')", [workspaceId, sessionId]), (error) => error.code === '23514' && error.constraint === 'interview_preparation_turns_kind_check', 'only questions and follow-ups exist');
+
+    const feedbackMigration = migrations.indexOf('0034_interview_preparation_mock_feedback.sql');
+    assert.notEqual(feedbackMigration, -1, '0034 mock feedback migration is present');
+    await applyMigration(client, migrations[feedbackMigration]);
+    const turnId = (await client.query('SELECT id FROM interview_preparation_turns WHERE session_id=$1 ORDER BY position LIMIT 1', [sessionId])).rows[0].id;
+    await client.query('UPDATE interview_preparation_turns SET assistant_feedback=$2::jsonb WHERE id=$1', [turnId, JSON.stringify({ generated: true, summary: 'Fictional accepted feedback' })]);
+    assert.deepEqual((await client.query('SELECT assistant_feedback FROM interview_preparation_turns WHERE id=$1', [turnId])).rows[0].assistant_feedback, { generated: true, summary: 'Fictional accepted feedback' });
+    const connectionId = randomUUID(); const consentId = randomUUID(); const account = 'a'.repeat(64); const consentRevision = 1;
+    await client.query("INSERT INTO ai_connections(id,workspace_id,provider,account_fingerprint,revision,state,active) VALUES($1,$2,'codex',$3,1,'CONNECTED',true)", [connectionId, workspaceId, account]);
+    await client.query("INSERT INTO ai_consents(id,workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,notice_version,remembered) VALUES($1,$2,$3,'codex',$4,1,$5,'INTERVIEW_MOCK_FEEDBACK','[\"INTERVIEW_QUESTION\",\"MOCK_ANSWER\"]','v',false)", [consentId, workspaceId, connectionId, account, consentRevision]);
+    const insertRun = (operation, id = randomUUID()) => client.query(`INSERT INTO ai_runs(id,workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,reserved_day) VALUES($1,$2,$3,$4,'codex',1,1,$5,$6,'MANUAL','SUCCEEDED',$7,$8,$5,'{}',$8,'{}',current_date)`, [id, workspaceId, connectionId, consentId, account, operation, randomUUID(), 'b'.repeat(64)]);
+    const feedbackRunId = randomUUID();
+    await insertRun('INTERVIEW_MOCK_FEEDBACK', feedbackRunId);
+    await assert.rejects(insertRun('LIVE_INTERVIEW_HELP'), (error) => error.code === '23514' && error.constraint === 'ai_runs_operation_check', 'live interview help remains outside the operation allowlist');
+    await client.query('INSERT INTO interview_preparation_feedback_proposals(workspace_id,run_id,turn_id,feedback_sha256) VALUES($1,$2,$3,$4)', [workspaceId, feedbackRunId, turnId, 'c'.repeat(64)]);
+    await assert.rejects(client.query('INSERT INTO interview_preparation_feedback_proposals(workspace_id,run_id,turn_id,feedback_sha256) VALUES($1,$2,$3,$4)', [workspaceId, feedbackRunId, turnId, 'not-a-hash']), (error) => error.code === '23505' || error.code === '23514', 'duplicate or invalid feedback hashes are rejected');
+    await client.query('DELETE FROM ai_runs WHERE id=$1', [feedbackRunId]);
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM interview_preparation_feedback_proposals')).rows[0].n, 0, 'deleting the run removes only its hash proposal');
   } finally {
     await client?.end().catch(() => {});
     await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
