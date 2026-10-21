@@ -245,6 +245,11 @@ export function registerAiInterviewPreparationRoutes(app: FastifyInstance, works
     const keys = body.data.suggestions.map((suggestion) => suggestion.key);
     if (new Set(keys).size !== keys.length) return reply.code(400).send({ error: 'INVALID_INPUT' });
     const result = await database.transaction(async (tx) => {
+      // Match profile mutations and Codex dispatch: approved facts cannot be revoked while
+      // evidence is validated and the accepted items are committed. Keep the profile lock
+      // before the per-plan lock everywhere in this flow to avoid lock-order inversions.
+      await lockKey(tx, profileLockKey(workspaceId));
+      await lockKey(tx, interviewPreparationPlanLockKey(workspaceId, planId));
       const plan = (await tx.select().from(interviewPreparationPlans).where(and(eq(interviewPreparationPlans.workspaceId, workspaceId), eq(interviewPreparationPlans.id, planId))).for('update').limit(1))[0];
       if (!plan) throw new AiInterviewPrepError('NOT_FOUND', 404);
       const run = (await tx.select().from(aiRuns).where(and(eq(aiRuns.workspaceId, workspaceId), eq(aiRuns.id, body.data.runId))).for('update').limit(1))[0];

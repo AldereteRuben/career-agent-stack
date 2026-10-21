@@ -101,6 +101,20 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     const accept = (payload: unknown, h = headers) => app.inject({ method: 'POST', url: url('/accept'), headers: h, payload: payload as object });
     const count = async (table: string, where = '') => Number((await client.query(`SELECT count(*)::int AS n FROM ${table} ${where}`)).rows[0].n);
     const planItems = () => count('interview_preparation_items', `WHERE plan_id='${plan.id}'`);
+    const waitForLockWaiters = async (minimum: number) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const waiting = await client.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+        if (waiting.rows[0].n >= minimum) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.fail(`expected at least ${minimum} database lock waiter(s)`);
+    };
+    const canTakeProfileLock = async () => {
+      const probe = await pool!.connect();
+      try { return (await probe.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired', [profileLockKey(owner)])).rows[0].acquired as boolean; }
+      finally { probe.release(); }
+    };
     const baseItems = await planItems();
 
     // The preview shows exactly what would be sent, and sends nothing.
@@ -213,6 +227,52 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     assert.equal((await run(ok)).json().error, 'PLAN_EVIDENCE_STALE');
     assert.equal((await accept({ runId: study.runId, suggestions: [study.suggestions[0]] })).json().error, 'PLAN_EVIDENCE_STALE', 'a run made before the change cannot be saved after it');
     await client.query("UPDATE profile_facts SET statement='Built TypeScript services for a fictional shop' WHERE id=$1", [fact]);
+
+    // Acceptance and revocation serialize on the profile lock. If acceptance gets it first,
+    // revocation waits until the item is committed; if revocation gets it first, acceptance
+    // observes stale evidence and stores nothing.
+    const acceptancePreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    const acceptanceRun = (await run({ request: 'PRACTICE_QUESTIONS', payloadSha256: acceptancePreview.payloadSha256, confirmed: true })).json();
+    const acceptanceSuggestion = acceptanceRun.suggestions[0];
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM ai_runs WHERE id=$1 FOR UPDATE', [acceptanceRun.runId]);
+    const accepting = accept({ runId: acceptanceRun.runId, suggestions: [acceptanceSuggestion] });
+    await waitForLockWaiters(1); // Acceptance now holds profile/plan locks while waiting on the run row.
+    assert.equal(await canTakeProfileLock(), false, 'acceptance holds the profile lock while waiting on the run row');
+    let revokeAttempted!: () => void;
+    const revokeStarted = new Promise<void>((resolve) => { revokeAttempted = resolve; });
+    const revokeAfterAcceptance = database.transaction(async (tx) => {
+      revokeAttempted();
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'REJECTED' }).where(eq(schema.profileFacts.id, fact));
+    });
+    await revokeStarted;
+    await waitForLockWaiters(2);
+    await client.query('COMMIT');
+    assert.equal((await accepting).statusCode, 201, 'acceptance commits while holding the profile lock');
+    await revokeAfterAcceptance;
+    assert.equal((await client.query('SELECT approval_status FROM profile_facts WHERE id=$1', [fact])).rows[0].approval_status, 'REJECTED');
+
+    await database.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'USER_APPROVED' }).where(eq(schema.profileFacts.id, fact));
+    });
+    const revokeFirstPreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    const revokeFirstRun = (await run({ request: 'PRACTICE_QUESTIONS', payloadSha256: revokeFirstPreview.payloadSha256, confirmed: true })).json();
+    const beforeRevocationFirstAccept = await planItems();
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [profileLockKey(owner)]);
+    await client.query("UPDATE profile_facts SET approval_status='REJECTED' WHERE id=$1", [fact]);
+    const staleAcceptance = accept({ runId: revokeFirstRun.runId, suggestions: [revokeFirstRun.suggestions[0]] });
+    await waitForLockWaiters(1);
+    await client.query('COMMIT');
+    assert.equal((await staleAcceptance).json().error, 'PLAN_EVIDENCE_STALE', 'revocation that commits first makes acceptance stale');
+    assert.equal(await planItems(), beforeRevocationFirstAccept, 'stale acceptance creates no plan items');
+
+    await database.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'USER_APPROVED' }).where(eq(schema.profileFacts.id, fact));
+    });
 
     // A revocation that wins the race after preview but before dispatch must be observed under the same profile lock.
     const revocationPreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
