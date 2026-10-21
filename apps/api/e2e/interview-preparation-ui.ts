@@ -104,7 +104,7 @@ export const interviewPreparationUiScenario: Scenario = {
     // Deleting the plan removes its preparation history and makes it disappear from subsequent exports.
     page.once('dialog', (dialog) => dialog.accept());
     await panel.getByRole('button', { name: 'Eliminar plan' }).click();
-    await panel.getByText('Plan eliminado.').waitFor();
+    await panel.locator('.notice-success .notice-message', { hasText: 'Plan eliminado.' }).waitFor();
     const remaining = await api.get<{ plans: Array<{ id: string }> }>(`/applications/${application.id}/interview-preparation`);
     assert.equal(remaining.plans.some((plan) => plan.id === planId), false, 'Deleting a plan removes it from its application');
     const afterDelete = await api.get<{ data: { interviewPreparationPlans: Array<{ id: string }>; interviewPreparationSessions: Array<{ planId: string }> } }>('/export');
