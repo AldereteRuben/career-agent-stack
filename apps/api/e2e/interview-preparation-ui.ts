@@ -95,12 +95,8 @@ export const interviewPreparationUiScenario: Scenario = {
     assert.ok(session, 'The export keeps the mock session');
     assert.ok(exported.data.interviewPreparationTurns.some((turn) => turn.sessionId === session.id && turn.answer.includes(`En el proyecto ${marker}`)), 'The export preserves the session-to-turn reference and answer');
 
-    // A profile correction invalidates the plan's cited fact; the UI must show that before the plan is deleted.
-    const profile = await api.get<{ revision: number }>('/profile');
-    await api.put(`/profile/facts/${fact.id}`, {
-      expectedRevision: profile.revision,
-      fact: { kind: 'achievement', statement: `Corrected Playwright achievement ${marker}`, tags: ['interview'] },
-    });
+    // Withdrawing the cited approved fact makes the plan evidence stale before the plan is deleted.
+    await api.post(`/profile/facts/${fact.id}/reject`);
     await setLocale(page, 'es');
     await page.reload();
     await panel.getByText('Alguna evidencia cambió o ya no está disponible. Revisa el plan antes de confiar en él o enviarlo a Codex.').waitFor();
