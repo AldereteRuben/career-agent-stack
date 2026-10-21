@@ -12,6 +12,7 @@ import { createAiAutomationService, createAiAutomationScanner } from './automati
 import { registerAiHistoryRoutes } from '../ai-history-routes.js';
 import { createAiHistoryService, createAiHistoryMaintenance } from './history.js';
 import { createAiDocumentRewordCancellation, registerAiApplicationDocumentRoutes } from '../ai-application-document-routes.js';
+import { registerAiInterviewPreparationRoutes } from '../ai-interview-preparation-routes.js';
 
 /** Account sign-in and individual data-sharing consent are separate from this installation capability. */
 export async function registerAiRuntime(app: FastifyInstance, workspace: (request: FastifyRequest) => string, options: { enabled: boolean; codexEnabled?: boolean; identitySalt: string; storageRoot: string; ollamaBaseUrl: string }) {
@@ -31,6 +32,7 @@ export async function registerAiRuntime(app: FastifyInstance, workspace: (reques
   registerAiAnswerRoutes(app, workspace, db);
   registerAiDocumentRoutes(app, workspace, { database: db, storageRoot: options.storageRoot });
   registerAiApplicationDocumentRoutes(app,workspace,{enabled:codexEnabled,database:db,storageRoot:options.storageRoot,identitySalt:options.identitySalt,queue,cancellation:documentReword});
+  registerAiInterviewPreparationRoutes(app, workspace, { enabled: codexEnabled, database: db, identitySalt: options.identitySalt, queue, cancellation: documentReword });
   const automation = createAiAutomationService({ pool, queue, enabled: codexEnabled, cancelRun });
   registerAiAutomationRoutes(app, workspace, automation);
   const scanner = createAiAutomationScanner(automation, { enabled: codexEnabled });
