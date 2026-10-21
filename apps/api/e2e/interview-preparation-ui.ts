@@ -94,5 +94,25 @@ export const interviewPreparationUiScenario: Scenario = {
     const session = exported.data.interviewPreparationSessions.find((item) => item.planId === planId);
     assert.ok(session, 'The export keeps the mock session');
     assert.ok(exported.data.interviewPreparationTurns.some((turn) => turn.sessionId === session.id && turn.answer.includes(`En el proyecto ${marker}`)), 'The export preserves the session-to-turn reference and answer');
+
+    // A profile correction invalidates the plan's cited fact; the UI must show that before the plan is deleted.
+    const profile = await api.get<{ revision: number }>('/profile');
+    await api.put(`/profile/facts/${fact.id}`, {
+      expectedRevision: profile.revision,
+      fact: { kind: 'achievement', statement: `Corrected Playwright achievement ${marker}`, tags: ['interview'] },
+    });
+    await setLocale(page, 'es');
+    await page.reload();
+    await panel.getByText('La evidencia cambió. Revisa el plan y vuelve a generarlo antes de usar Codex.').waitFor();
+
+    // Deleting the plan removes its preparation history and makes it disappear from subsequent exports.
+    page.once('dialog', (dialog) => dialog.accept());
+    await panel.getByRole('button', { name: 'Eliminar plan' }).click();
+    await panel.getByText('Plan eliminado.').waitFor();
+    const remaining = await api.get<{ plans: Array<{ id: string }> }>(`/applications/${application.id}/interview-preparation`);
+    assert.equal(remaining.plans.some((plan) => plan.id === planId), false, 'Deleting a plan removes it from its application');
+    const afterDelete = await api.get<{ data: { interviewPreparationPlans: Array<{ id: string }>; interviewPreparationSessions: Array<{ planId: string }> } }>('/export');
+    assert.equal(afterDelete.data.interviewPreparationPlans.some((plan) => plan.id === planId), false, 'Deleted plans are absent from later exports');
+    assert.equal(afterDelete.data.interviewPreparationSessions.some((item) => item.planId === planId), false, 'Deleting a plan also removes its practice history');
   },
 };
