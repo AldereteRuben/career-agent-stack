@@ -47,7 +47,8 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     const queue = createAiQueue(pool);
 
     const owner = randomUUID(); const other = randomUUID();
-    const [profileVersion, job, snapshot, resume, fact, unrelatedFact, application, connection, foreignApplication] = Array.from({ length: 9 }, () => randomUUID());
+    const [profileVersion, job, snapshot, resume, fact, unrelatedFact, application, connection, foreignApplication] =
+      Array.from({ length: 9 }, () => randomUUID()) as [string, string, string, string, string, string, string, string, string];
     const fingerprint = 'a'.repeat(64);
     await client.query('INSERT INTO workspaces(id) VALUES($1),($2)', [owner, other]);
     await client.query("INSERT INTO profile_versions(id,workspace_id,revision,profile) VALUES($1,$2,1,'{}')", [profileVersion, owner]);
