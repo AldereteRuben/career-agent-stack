@@ -144,6 +144,70 @@ export const applicationFollowUpDrafts = pgTable('application_follow_up_drafts',
   check('application_follow_up_drafts_language_check', sql`${t.language} in ('es', 'en')`),
 ]);
 
+// Interview preparation (ADR 024). Everything belongs to one application and workspace. Plans keep references and
+// hashes of their evidence, never copies of the profile or the resume; deleting a plan removes everything under it.
+export const interviewPreparationPlans = pgTable('interview_preparation_plans', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), applicationId: uuid('application_id').notNull(),
+  language: varchar('language', { length: 2 }).notNull(), stage: varchar('stage', { length: 30 }),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  unique('interview_preparation_plans_workspace_id_uq').on(t.workspaceId, t.id),
+  index('interview_preparation_plans_application_idx').on(t.workspaceId, t.applicationId, t.createdAt),
+  foreignKey({ columns: [t.workspaceId, t.applicationId], foreignColumns: [applications.workspaceId, applications.id], name: 'interview_preparation_plans_workspace_application_fk' }).onDelete('restrict'),
+  check('interview_preparation_plans_language_check', sql`${t.language} in ('es', 'en')`),
+]);
+
+export const interviewPreparationEvidence = pgTable('interview_preparation_evidence', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), planId: uuid('plan_id').notNull(),
+  kind: varchar('kind', { length: 20 }).notNull(), sourceId: uuid('source_id').notNull(), contentSha256: varchar('content_sha256', { length: 64 }).notNull(),
+  createdAt: created(),
+}, (t) => [
+  unique('interview_preparation_evidence_workspace_id_uq').on(t.workspaceId, t.id),
+  uniqueIndex('interview_preparation_evidence_plan_source_uq').on(t.workspaceId, t.planId, t.kind, t.sourceId),
+  foreignKey({ columns: [t.workspaceId, t.planId], foreignColumns: [interviewPreparationPlans.workspaceId, interviewPreparationPlans.id], name: 'interview_preparation_evidence_workspace_plan_fk' }).onDelete('cascade'),
+  check('interview_preparation_evidence_kind_check', sql`${t.kind} in ('JOB_SNAPSHOT', 'RESUME_VERSION', 'APPROVED_FACT')`),
+  check('interview_preparation_evidence_hash_check', sql`${t.contentSha256} ~ '^[0-9a-f]{64}$'`),
+]);
+
+export const interviewPreparationItems = pgTable('interview_preparation_items', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), planId: uuid('plan_id').notNull(),
+  kind: varchar('kind', { length: 20 }).notNull(), origin: varchar('origin', { length: 20 }).notNull(), position: integer('position').notNull(),
+  content: text('content').notNull(), evidenceId: uuid('evidence_id'),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  unique('interview_preparation_items_workspace_id_uq').on(t.workspaceId, t.id),
+  uniqueIndex('interview_preparation_items_plan_position_uq').on(t.workspaceId, t.planId, t.position),
+  foreignKey({ columns: [t.workspaceId, t.planId], foreignColumns: [interviewPreparationPlans.workspaceId, interviewPreparationPlans.id], name: 'interview_preparation_items_workspace_plan_fk' }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.evidenceId], foreignColumns: [interviewPreparationEvidence.workspaceId, interviewPreparationEvidence.id], name: 'interview_preparation_items_workspace_evidence_fk' }).onDelete('no action'),
+  check('interview_preparation_items_kind_check', sql`${t.kind} in ('REQUIREMENT', 'EXERCISE', 'STUDY', 'QUESTION', 'NOTE')`),
+  check('interview_preparation_items_origin_check', sql`${t.origin} in ('JOB_SNAPSHOT', 'APPROVED_FACT', 'USER_NOTE', 'USER_RESEARCH', 'FIXED_TEMPLATE', 'ASSISTANT')`),
+  check('interview_preparation_items_position_check', sql`${t.position} >= 0`),
+]);
+
+export const interviewPreparationSessions = pgTable('interview_preparation_sessions', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), planId: uuid('plan_id').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('IN_PROGRESS'), endedAt: timestamp('ended_at', { withTimezone: true }),
+  createdAt: created(),
+}, (t) => [
+  unique('interview_preparation_sessions_workspace_id_uq').on(t.workspaceId, t.id),
+  index('interview_preparation_sessions_plan_idx').on(t.workspaceId, t.planId, t.createdAt),
+  foreignKey({ columns: [t.workspaceId, t.planId], foreignColumns: [interviewPreparationPlans.workspaceId, interviewPreparationPlans.id], name: 'interview_preparation_sessions_workspace_plan_fk' }).onDelete('cascade'),
+  check('interview_preparation_sessions_status_check', sql`${t.status} in ('IN_PROGRESS', 'COMPLETED')`),
+  check('interview_preparation_sessions_ended_check', sql`(${t.status} = 'COMPLETED') = (${t.endedAt} is not null)`),
+]);
+
+// A turn holds only what the person accepted: the question asked, their answer, and reviewed feedback and learning items.
+export const interviewPreparationTurns = pgTable('interview_preparation_turns', {
+  id: uuid('id').defaultRandom().primaryKey(), workspaceId: uuid('workspace_id').notNull(), sessionId: uuid('session_id').notNull(),
+  position: integer('position').notNull(), question: text('question').notNull(), answer: text('answer'),
+  feedback: jsonb('feedback').$type<Record<string, unknown>>(), learningItems: jsonb('learning_items').$type<string[]>().notNull().default([]),
+  createdAt: created(), updatedAt: changed(),
+}, (t) => [
+  uniqueIndex('interview_preparation_turns_session_position_uq').on(t.workspaceId, t.sessionId, t.position),
+  foreignKey({ columns: [t.workspaceId, t.sessionId], foreignColumns: [interviewPreparationSessions.workspaceId, interviewPreparationSessions.id], name: 'interview_preparation_turns_workspace_session_fk' }).onDelete('cascade'),
+  check('interview_preparation_turns_position_check', sql`${t.position} >= 0`),
+]);
+
 // AI persistence is deliberately inert until G0 enables an adapter. These tables contain metadata and
 // explicitly consented snapshots only; they never contain provider credentials.
 export const aiConnections = pgTable('ai_connections', {
