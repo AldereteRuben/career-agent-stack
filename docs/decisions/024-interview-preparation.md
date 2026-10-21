@@ -1,6 +1,6 @@
 # 024 — Interview preparation / Preparación de entrevistas
 
-Status: **proposed; awaiting product review**. Date: 2026-10-18. Tracks [issue #42](https://github.com/AldereteRuben/career-agent-stack/issues/42).
+Status: **accepted** by the maintainer on 2026-10-20; implementation tracked in [#199](https://github.com/AldereteRuben/career-agent-stack/issues/199), [#200](https://github.com/AldereteRuben/career-agent-stack/issues/200), [#201](https://github.com/AldereteRuben/career-agent-stack/issues/201), [#202](https://github.com/AldereteRuben/career-agent-stack/issues/202), [#203](https://github.com/AldereteRuben/career-agent-stack/issues/203) and [#204](https://github.com/AldereteRuben/career-agent-stack/issues/204). Date: 2026-10-18. Tracks [issue #42](https://github.com/AldereteRuben/career-agent-stack/issues/42).
 
 ## Context
 
