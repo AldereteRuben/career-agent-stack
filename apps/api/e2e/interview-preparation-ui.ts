@@ -103,7 +103,7 @@ export const interviewPreparationUiScenario: Scenario = {
     });
     await setLocale(page, 'es');
     await page.reload();
-    await panel.getByText('La evidencia cambió. Revisa el plan y vuelve a generarlo antes de usar Codex.').waitFor();
+    await panel.getByText('Alguna evidencia cambió o ya no está disponible. Revisa el plan antes de confiar en él o enviarlo a Codex.').waitFor();
 
     // Deleting the plan removes its preparation history and makes it disappear from subsequent exports.
     page.once('dialog', (dialog) => dialog.accept());
