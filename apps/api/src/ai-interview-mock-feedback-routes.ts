@@ -3,8 +3,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
-  aiConnections, aiRuns, db, interviewPreparationEvidence, interviewPreparationFeedbackProposals,
+  aiConnections, aiRuns, db, documentVersions, interviewPreparationEvidence, interviewPreparationFeedbackProposals,
   interviewPreparationPlans, interviewPreparationSessions, interviewPreparationTurns, profileFacts, profileVersions,
+  jobSnapshots,
 } from '@career/db';
 import {
   AI_SCHEMA_VERSION, aiSnapshotDataCategories, aiSourceSnapshotSchema, interviewEvidenceStatus,
@@ -12,10 +13,11 @@ import {
 } from '@career/domain';
 import { AI_NOTICE_VERSION } from './ai-run-routes.js';
 import { buildAiPrompt, hashAiInputContent, hashAiPromptMessages, AI_PROMPT_VERSION } from './ai/prompts.js';
-import { CODEX_DEFAULT_MODEL, executeCodex, type CodexExecutionResult } from './ai/codex.js';
+import { CODEX_DEFAULT_MODEL, CodexExecutionError, executeCodex, type CodexDependencies, type CodexExecutionResult } from './ai/codex.js';
 import { AiQueueError, type AiQueue, type AiRunUsage } from './ai/queue.js';
 import type { AiDocumentRewordCancellation } from './ai-application-document-routes.js';
-import { currentEvidence, turnView } from './interview-preparation-routes.js';
+import { currentEvidence, interviewPreparationPlanLockKey, turnView } from './interview-preparation-routes.js';
+import { lockKey, profileLockKey } from './workspace-data.js';
 
 class MockFeedbackError extends Error {
   constructor(readonly code: string, readonly status = 409) { super(code); this.name = 'MockFeedbackError'; }
@@ -79,6 +81,35 @@ async function loadFeedbackInput(executor: Executor, workspaceId: string, sessio
   };
 }
 
+async function lockFeedbackSources(executor: Executor, workspaceId: string, planId: string, sessionId: string, turnId: string) {
+  await executor.select({ id: interviewPreparationPlans.id }).from(interviewPreparationPlans).where(and(
+    eq(interviewPreparationPlans.workspaceId, workspaceId), eq(interviewPreparationPlans.id, planId),
+  )).for('share');
+  await executor.select({ id: interviewPreparationSessions.id }).from(interviewPreparationSessions).where(and(
+    eq(interviewPreparationSessions.workspaceId, workspaceId), eq(interviewPreparationSessions.id, sessionId),
+  )).for('share');
+  await executor.select({ id: interviewPreparationTurns.id }).from(interviewPreparationTurns).where(and(
+    eq(interviewPreparationTurns.workspaceId, workspaceId), eq(interviewPreparationTurns.sessionId, sessionId), eq(interviewPreparationTurns.id, turnId),
+  )).for('share');
+  const evidence = await executor.select({ kind: interviewPreparationEvidence.kind, sourceId: interviewPreparationEvidence.sourceId })
+    .from(interviewPreparationEvidence).where(and(
+      eq(interviewPreparationEvidence.workspaceId, workspaceId), eq(interviewPreparationEvidence.planId, planId),
+    )).for('share');
+  const ids = (kind: InterviewEvidenceKind) => [...new Set(evidence.filter((row) => row.kind === kind).map((row) => row.sourceId))];
+  const snapshotIds = ids('JOB_SNAPSHOT');
+  const resumeIds = ids('RESUME_VERSION');
+  const factIds = ids('APPROVED_FACT');
+  if (snapshotIds.length) await executor.select({ id: jobSnapshots.id }).from(jobSnapshots).where(and(
+    eq(jobSnapshots.workspaceId, workspaceId), inArray(jobSnapshots.id, snapshotIds),
+  )).for('share');
+  if (resumeIds.length) await executor.select({ id: documentVersions.id }).from(documentVersions).where(and(
+    eq(documentVersions.workspaceId, workspaceId), inArray(documentVersions.id, resumeIds),
+  )).for('share');
+  if (factIds.length) await executor.select({ id: profileFacts.id }).from(profileFacts).where(and(
+    eq(profileFacts.workspaceId, workspaceId), inArray(profileFacts.id, factIds),
+  )).for('share');
+}
+
 export function registerAiInterviewMockFeedbackRoutes(app: FastifyInstance, workspace: (request: FastifyRequest) => string, options: Options) {
   const database = options.database; const now = options.now ?? (() => new Date());
   const activeConnection = async (workspaceId: string) => (await database.select().from(aiConnections)
@@ -130,11 +161,25 @@ export function registerAiInterviewMockFeedbackRoutes(app: FastifyInstance, work
     request.raw.once('aborted', abortIfDisconnected); reply.raw.once('close', abortIfDisconnected); abortIfDisconnected();
     const timer = setInterval(() => { void options.queue.heartbeatDocumentRun(run.id, run.leaseToken, 180_000, now()).then((ok) => { if (!ok) controller.abort(); }, () => controller.abort()); }, 25_000); timer.unref();
     let finished = false; let observed: CodexExecutionResult | undefined;
+    let fallbackErrorCode: CodexExecutionError['code'] = 'INTERNAL';
+    let fallbackDispatched: CodexExecutionError['dispatched'] | undefined;
     const usageOf = (result: CodexExecutionResult): AiRunUsage => ({ availability: 'KNOWN', model: result.model, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens });
     const task = (async () => {
       try {
         if (controller.signal.aborted) throw new Error('CANCELLED');
-        observed = await (options.execute ?? executeCodex)(input.snapshot, connection.accountFingerprint, options.identitySalt, controller.signal, CODEX_DEFAULT_MODEL);
+        const dispatchGuard: NonNullable<CodexDependencies['dispatchGuard']> = async (dispatch) => database.transaction(async (tx) => {
+          await lockKey(tx, profileLockKey(workspaceId));
+          await lockKey(tx, interviewPreparationPlanLockKey(workspaceId, input.plan.id));
+          if (controller.signal.aborted) throw new MockFeedbackError('REQUEST_ABORTED', 499);
+          const executor = tx as unknown as Executor;
+          await lockFeedbackSources(executor, workspaceId, input.plan.id, input.session.id, input.turn.id);
+          const current = await loadFeedbackInput(executor, workspaceId, input.session.id, input.turn.id, body.data.factIds);
+          if (current.payloadSha256 !== body.data.payloadSha256) throw new MockFeedbackError('PAYLOAD_CHANGED');
+          if (current.payloadSha256 !== input.payloadSha256) throw new MockFeedbackError('PLAN_EVIDENCE_STALE');
+          if (controller.signal.aborted) throw new MockFeedbackError('REQUEST_ABORTED', 499);
+          await dispatch();
+        });
+        observed = await (options.execute ?? executeCodex)(input.snapshot, connection.accountFingerprint, options.identitySalt, controller.signal, CODEX_DEFAULT_MODEL, { dispatchGuard });
         if (controller.signal.aborted) throw new Error('CANCELLED');
         const validated = validateAiOutput(observed.output, input.snapshot, { workspaceId, operation: 'INTERVIEW_MOCK_FEEDBACK', locale: input.locale });
         if (!validated.ok || validated.output.operation !== 'INTERVIEW_MOCK_FEEDBACK') throw new Error('INVALID_OUTPUT');
@@ -146,9 +191,22 @@ export function registerAiInterviewMockFeedbackRoutes(app: FastifyInstance, work
         if (status !== 'SUCCEEDED') return reply.code(409).send({ error: status === 'CANCELLED' ? 'AI_CANCELLED' : 'AI_PROPOSAL_EXPIRED' });
         return reply.send({ runId: run.id, payloadSha256: input.payloadSha256, label: 'GENERATED_PRACTICE_FEEDBACK', feedback: validated.output });
       } catch (error) {
+        if (error instanceof MockFeedbackError) {
+          fallbackErrorCode = 'CANCELLED';
+          fallbackDispatched = 'NO';
+          const status = await options.queue.finishDocumentRun(run.id, run.leaseToken, {
+            status: 'FAILED', error: { code: 'CANCELLED', dispatched: 'NO' }, now: now(),
+          });
+          finished = true;
+          if (status === null) return reply.code(409).send({ error: 'AI_PROPOSAL_EXPIRED' });
+          return reply.code(error.status).send({ error: error.code });
+        }
         const cancelled = controller.signal.aborted || (error instanceof Error && error.message === 'CANCELLED');
+        const codexError = error instanceof CodexExecutionError ? error : null;
+        fallbackErrorCode = codexError?.code ?? (cancelled ? 'CANCELLED' : 'INVALID_OUTPUT');
+        fallbackDispatched = codexError?.dispatched ?? (observed ? 'YES' : cancelled ? 'NO' : 'UNKNOWN');
         const status = await options.queue.finishDocumentRun(run.id, run.leaseToken, {
-          status: 'FAILED', error: { code: cancelled ? 'CANCELLED' : 'INVALID_OUTPUT', dispatched: observed ? 'YES' : 'UNKNOWN' }, ...(observed ? { usage: usageOf(observed) } : {}), now: now(),
+          status: 'FAILED', error: { code: fallbackErrorCode, dispatched: fallbackDispatched }, ...(observed ? { usage: usageOf(observed) } : {}), now: now(),
         });
         finished = true;
         if (status === 'CANCELLED') return reply.code(409).send({ error: 'AI_CANCELLED' });
@@ -156,7 +214,7 @@ export function registerAiInterviewMockFeedbackRoutes(app: FastifyInstance, work
         return reply.code(cancelled ? 499 : 503).send({ error: cancelled ? 'REQUEST_ABORTED' : 'AI_UNAVAILABLE' });
       } finally {
         clearInterval(timer); request.raw.off('aborted', abortIfDisconnected); reply.raw.off('close', abortIfDisconnected);
-        if (!finished) await options.queue.finishDocumentRun(run.id, run.leaseToken, { status: 'FAILED', error: { code: 'INTERNAL', dispatched: observed ? 'YES' : 'UNKNOWN' }, now: now() }).catch(() => undefined);
+        if (!finished) await options.queue.finishDocumentRun(run.id, run.leaseToken, { status: 'FAILED', error: { code: fallbackErrorCode, dispatched: fallbackDispatched ?? (observed ? 'YES' : 'UNKNOWN') }, now: now() }).catch(() => undefined);
         options.cancellation.detach(run.id);
       }
     })();
