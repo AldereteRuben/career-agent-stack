@@ -13,6 +13,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     const code = payload.error ?? 'UNKNOWN';
     throw new ApiError(localizedError(code, currentLocale()), response.status, code, payload.detail);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 

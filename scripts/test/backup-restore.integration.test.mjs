@@ -85,6 +85,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   let interviewSessionId;
   let interviewJobSnapshotId;
   let documentRewordRunId;
+  let interviewMockFeedbackRunId;
   let profileVersionId;
   let applicationDocumentCurrentness;
   let applicationDocumentHashes;
@@ -264,7 +265,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     await client.query(`insert into interview_preparation_items (workspace_id, plan_id, kind, origin, position, content) values ($1, $2, 'NOTE', 'USER_NOTE', 0, 'Synthetic preparation note')`, [ws, interviewPlanId]);
     interviewSessionId = randomUUID();
     await client.query(`insert into interview_preparation_sessions (id, workspace_id, plan_id) values ($1, $2, $3)`, [interviewSessionId, ws, interviewPlanId]);
-    await client.query(`insert into interview_preparation_turns (workspace_id, session_id, position, question, answer) values ($1, $2, 0, 'Fictional question', 'Fictional answer')`, [ws, interviewSessionId]);
+    await client.query(`insert into interview_preparation_turns (workspace_id, session_id, position, question, answer, assistant_feedback) values ($1, $2, 0, 'Fictional question', 'Fictional answer', $3::jsonb)`, [ws, interviewSessionId, JSON.stringify({ generated: true, provider: 'codex', summary: 'Fictional practice feedback' })]);
     await writeFile(join(filesDir, ws, 'orphan-render.pdf'), pdf('orphan, not referenced')); // must not be backed up
     await client.query(`insert into assisted_attempts(workspace_id, application_id, status, plan, digest, expires_at, consented_at) values ($1,$2,'HANDED_OFF','{}','test-digest',now()+interval '10 minutes',now())`,[ws,application]);
     // Synthetic AI records prove restored backups cannot restart provider work or retain live grants.
@@ -283,6 +284,10 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       values($1,$2,$3,$4,'codex',1,1,$5,'DOCUMENT_REWORD','MANUAL','SUCCEEDED',$6,$5,$5,'{"fictional":true}',$5,'{}',$7,'fixture',now())`,
     [documentRewordRunId, ws, aiConnection, aiConsent, account, randomUUID(), randomUUID()]);
     await client.query(`insert into ai_document_reword_proposals(workspace_id,run_id,sentence_id,proposal_sha256) values($1,$2,'fixture-claim',$3)`, [ws, documentRewordRunId, sha('fictional-proposal-hash')]);
+    interviewMockFeedbackRunId = randomUUID();
+    await client.query(`insert into ai_runs(id,workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,reserved_day)
+      values($1,$2,$3,$4,'codex',1,1,$5,'INTERVIEW_MOCK_FEEDBACK','MANUAL','SUCCEEDED',$6,$5,$5,'{"fictional":true}',$5,'{}',current_date)`, [interviewMockFeedbackRunId, ws, aiConnection, aiConsent, account, randomUUID()]);
+    await client.query(`insert into interview_preparation_feedback_proposals(workspace_id,run_id,turn_id,feedback_sha256) values($1,$2,(select id from interview_preparation_turns where session_id=$3),$4)`, [ws, interviewMockFeedbackRunId, interviewSessionId, sha('fictional-feedback-hash')]);
     await client.query(`insert into ai_run_tombstones(workspace_id,run_id,consent_id,idempotency_hash,job_id,canonical_identity) values($1,$2,$3,$4,$5,$6)`, [ws,randomUUID(),aiConsent,sha('fictional-deleted-request'),jobId,sha('fictional-job-identity')]);
     await client.query(`insert into ai_daily_budgets(workspace_id,control_day,automatic_reserved,manual_reserved,automatic_started) values($1,current_date,2,1,3)`, [ws]);
     await client.query(`insert into ai_usage_snapshots(workspace_id,connection_id,availability,windows,source,observed_at) values($1,$2,'KNOWN','[{"usedPercent":15}]','PROVIDER_REPORTED',now())`, [ws,aiConnection]);
@@ -484,14 +489,14 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(sourceDb, 'select count(*)::int as n from boards where enabled')).rows[0].n, sourceBefore);
     assert.equal(sourceBefore, 1);
     // Same data, safe defaults.
-    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'application_documents', 'application_document_revisions', 'application_follow_up_drafts', 'interview_preparation_plans', 'interview_preparation_evidence', 'interview_preparation_items', 'interview_preparation_sessions', 'interview_preparation_turns', 'ai_document_reword_proposals', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
+    for (const table of ['workspaces', 'profile_facts', 'boards', 'jobs', 'applications', 'application_events', 'document_versions', 'application_documents', 'application_document_revisions', 'application_follow_up_drafts', 'interview_preparation_plans', 'interview_preparation_evidence', 'interview_preparation_items', 'interview_preparation_sessions', 'interview_preparation_turns', 'ai_document_reword_proposals', 'interview_preparation_feedback_proposals', 'saved_job_searches', 'saved_job_search_matches', 'search_runs', 'search_run_sources', 'search_run_results', 'search_job_reviews', 'job_identity_members']) {
       assert.deepEqual((await query(database, `select count(*)::int as n from ${table}`)).rows, (await query(sourceDb, `select count(*)::int as n from ${table}`)).rows, table);
     }
     assert.deepEqual((await query(database, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
       (await query(sourceDb, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
       'follow-up draft text round-trips with its application');
     assert.deepEqual((await query(database, `select p.language, e.kind as "evidenceKind", e.source_id::text as "sourceId", e.content_sha256 as "contentSha256", i.content,
-      s.id::text as "sessionId", t.session_id::text as "turnSessionId", t.question, t.answer
+      s.id::text as "sessionId", t.session_id::text as "turnSessionId", t.question, t.answer, t.assistant_feedback as "assistantFeedback"
       from interview_preparation_plans p
       join interview_preparation_evidence e on e.workspace_id=p.workspace_id and e.plan_id=p.id
       join interview_preparation_items i on i.workspace_id=p.workspace_id and i.plan_id=p.id
@@ -499,11 +504,13 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       join interview_preparation_turns t on t.workspace_id=s.workspace_id and t.session_id=s.id
       where p.id=$1 order by e.kind`, [interviewPlanId])).rows,
       [
-        { language: 'en', evidenceKind: 'APPROVED_FACT', sourceId: applicationDocumentFactId, contentSha256: sha('Builds fictional test fixtures'), content: 'Synthetic preparation note', sessionId: interviewSessionId, turnSessionId: interviewSessionId, question: 'Fictional question', answer: 'Fictional answer' },
-        { language: 'en', evidenceKind: 'JOB_SNAPSHOT', sourceId: interviewJobSnapshotId, contentSha256: sha('Example Engineer'), content: 'Synthetic preparation note', sessionId: interviewSessionId, turnSessionId: interviewSessionId, question: 'Fictional question', answer: 'Fictional answer' },
+        { language: 'en', evidenceKind: 'APPROVED_FACT', sourceId: applicationDocumentFactId, contentSha256: sha('Builds fictional test fixtures'), content: 'Synthetic preparation note', sessionId: interviewSessionId, turnSessionId: interviewSessionId, question: 'Fictional question', answer: 'Fictional answer', assistantFeedback: { generated: true, provider: 'codex', summary: 'Fictional practice feedback' } },
+        { language: 'en', evidenceKind: 'JOB_SNAPSHOT', sourceId: interviewJobSnapshotId, contentSha256: sha('Example Engineer'), content: 'Synthetic preparation note', sessionId: interviewSessionId, turnSessionId: interviewSessionId, question: 'Fictional question', answer: 'Fictional answer', assistantFeedback: { generated: true, provider: 'codex', summary: 'Fictional practice feedback' } },
       ], 'evidence provenance, notes and linked mock turns round-trip through encrypted backup and isolated restore');
     const restoredProposal = (await query(database, `select p.proposal_sha256, r.status, r.operation from ai_document_reword_proposals p join ai_runs r on r.workspace_id=p.workspace_id and r.id=p.run_id where p.workspace_id=$1 and p.run_id=$2`, [workspaceId, documentRewordRunId])).rows[0];
     assert.deepEqual(restoredProposal, { proposal_sha256: sha('fictional-proposal-hash'), status: 'SUCCEEDED', operation: 'DOCUMENT_REWORD' }, 'proposal hashes restore with their parent run for future accept, while restored AI stays disabled');
+    const restoredMockFeedbackHash = (await query(database, `select p.feedback_sha256, r.operation from interview_preparation_feedback_proposals p join ai_runs r on r.workspace_id=p.workspace_id and r.id=p.run_id where p.workspace_id=$1 and p.run_id=$2`, [workspaceId, interviewMockFeedbackRunId])).rows[0];
+    assert.deepEqual(restoredMockFeedbackHash, { feedback_sha256: sha('fictional-feedback-hash'), operation: 'INTERVIEW_MOCK_FEEDBACK' }, 'unaccepted feedback restores as an integrity hash only');
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, `select count(*)::int as n from source_policy_reviews where permission_status <> 'UNKNOWN'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from workspaces where discovery_enabled')).rows[0].n, 0);
@@ -537,7 +544,8 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.equal((await query(database, `select count(*)::int as n from ai_connections where active or official_context_ref is not null or state<>'UNAVAILABLE'`)).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from ai_consents where revoked_at is null')).rows[0].n, 0);
     assert.equal((await query(database, 'select count(*)::int as n from ai_automation_policies where active or not paused')).rows[0].n, 0);
-    assert.deepEqual((await query(database, 'select status from ai_runs order by status')).rows.map(row => row.status), ['CANCELLED','INTERRUPTED','SUCCEEDED','SUCCEEDED']);
+    assert.deepEqual((await query(database, 'select status from ai_runs order by status')).rows.map(row => row.status), ['CANCELLED','INTERRUPTED','SUCCEEDED','SUCCEEDED','SUCCEEDED']);
+    assert.deepEqual((await query(database, 'select status,operation from ai_runs where id=$1', [interviewMockFeedbackRunId])).rows[0], { status: 'SUCCEEDED', operation: 'INTERVIEW_MOCK_FEEDBACK' }, 'restored feedback history remains inert with AI disabled');
     assert.equal((await query(database, 'select run_id from ai_account_leases')).rows[0].run_id, null);
     assert.deepEqual((await query(database, 'select automatic_reserved,manual_reserved,automatic_started from ai_daily_budgets')).rows[0], {automatic_reserved:0,manual_reserved:0,automatic_started:3});
     assert.equal((await query(database, 'select availability from ai_usage_snapshots')).rows[0].availability, 'UNAVAILABLE');

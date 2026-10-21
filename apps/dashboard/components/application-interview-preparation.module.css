@@ -41,6 +41,16 @@
 .feedback > p { color: var(--muted); font-size: .88rem; }
 .feedback > div { display: grid; gap: 3px; }
 .feedback small { color: var(--muted); }
+.mockFeedback { display: grid; gap: 9px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.mockFeedback > p { margin: 0; color: var(--muted); font-size: .88rem; }
+.mockPanel { display: grid; gap: 10px; min-width: 0; }
+.mockPanel h4 { margin: 0; }
+.mockPanel fieldset { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+.mockPanel fieldset legend { padding-inline: 4px; font-weight: 650; }
+.mockPanel fieldset label { display: flex; align-items: start; gap: 9px; overflow-wrap: anywhere; }
+.mockPanel input[type="checkbox"] { flex: 0 0 auto; margin-top: 4px; }
+.mockPanel details > summary { cursor: pointer; font-weight: 600; }
+.mockPanel .suggestions > p { margin: 0; }
 .history { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .history > summary, .history li > details > summary { cursor: pointer; font-weight: 600; }
 .history ol { display: grid; gap: 8px; margin: 0; padding-left: 20px; }

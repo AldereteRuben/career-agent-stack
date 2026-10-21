@@ -156,7 +156,7 @@ async function endRun(client: AiPgClient, run: Row, status: string, now: Date, e
   await writeUsage(client,run,status,usage);
 }
 /** Operations run by their own route, in the person's request, with a one-off consent and no queued reservation. */
-const synchronousOperations: readonly string[] = ['DOCUMENT_REWORD', 'INTERVIEW_PREP'];
+const synchronousOperations: readonly string[] = ['DOCUMENT_REWORD', 'INTERVIEW_PREP', 'INTERVIEW_MOCK_FEEDBACK'];
 const validLease = (run: Row | undefined, token: string, now: Date) => run && ['RUNNING','CANCEL_REQUESTED'].includes(run.status) && run.lease_token === token && run.lease_until instanceof Date && run.lease_until > now;
 
 /** Persistent queue with short serialized writes. Source checks and provider work are distinct: no inference in tx. */
@@ -167,7 +167,7 @@ export function createAiQueue(pool: AiPgPool) {
       model: string; idempotencyKey: string; contentIdentity: string; payloadSha256: string; baseRevisionId: string;
       citedFactIds: string[]; inputVersions: Record<string, unknown>; noticeVersion: string; now?: Date; leaseMs?: number;
       /** Defaults to the document path. Interview preparation names its own operation and the data categories the person confirmed. */
-      operation?: 'DOCUMENT_REWORD' | 'INTERVIEW_PREP'; dataCategories?: string[] }) {
+      operation?: 'DOCUMENT_REWORD' | 'INTERVIEW_PREP' | 'INTERVIEW_MOCK_FEEDBACK'; dataCategories?: string[] }) {
       const operation = input.operation ?? 'DOCUMENT_REWORD';
       const dataCategories = input.dataCategories ?? ['APPROVED_FACTS', 'JOB_POSTING'];
       if (!dataCategories.length || dataCategories.some(category => !(aiDataCategories as readonly string[]).includes(category))) throw new AiQueueError('INVALID_INPUT');
@@ -223,9 +223,11 @@ export function createAiQueue(pool: AiPgPool) {
     },
     /** Commits output hashes and terminal status atomically; lease-token fencing protects recovery/cancellation. */
     async finishDocumentRun(runId: string, leaseToken: string, result: { status: 'SUCCEEDED'|'FAILED'; proposalHashes?: Array<{ sentenceId: string; proposalSha256: string }>;
+      feedbackHash?: { turnId: string; feedbackSha256: string };
       error?: AiError; usage?: AiRunUsage; now?: Date }): Promise<'SUCCEEDED'|'FAILED'|'CANCELLED'|null> {
       const now = result.now ?? new Date();
       if (result.error && !aiErrorSchema.safeParse(result.error).success) throw new AiQueueError('INVALID_INPUT');
+      if (result.feedbackHash && (!uuid.safeParse(result.feedbackHash.turnId).success || !hash.safeParse(result.feedbackHash.feedbackSha256).success)) throw new AiQueueError('INVALID_INPUT');
       for (const row of result.proposalHashes ?? []) if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u.test(row.sentenceId) || !hash.safeParse(row.proposalSha256).success) throw new AiQueueError('INVALID_INPUT');
       return tx(pool, async client => {
         const run = (await client.query(`SELECT * FROM ai_runs WHERE id=$1 FOR UPDATE`, [runId])).rows[0];
@@ -233,6 +235,10 @@ export function createAiQueue(pool: AiPgPool) {
         const status = run.status === 'CANCEL_REQUESTED' ? 'CANCELLED' : result.status;
         if (status === 'SUCCEEDED') {
           for (const row of result.proposalHashes ?? []) await client.query(`INSERT INTO ai_document_reword_proposals(workspace_id,run_id,sentence_id,proposal_sha256) VALUES($1,$2,$3,$4)`, [run.workspace_id,run.id,row.sentenceId,row.proposalSha256]);
+          if (result.feedbackHash) {
+            if (run.operation !== 'INTERVIEW_MOCK_FEEDBACK') throw new AiQueueError('INVALID_INPUT');
+            await client.query(`INSERT INTO interview_preparation_feedback_proposals(workspace_id,run_id,turn_id,feedback_sha256) VALUES($1,$2,$3,$4)`, [run.workspace_id,run.id,result.feedbackHash.turnId,result.feedbackHash.feedbackSha256]);
+          }
         }
         const updated = await client.query(`UPDATE ai_runs SET status=$3,error=$4::jsonb,completed_at=$5,lease_token=NULL,lease_owner=NULL,lease_until=NULL
           WHERE id=$1 AND lease_token=$2 AND status IN ('RUNNING','CANCEL_REQUESTED')`, [runId,leaseToken,status,status === 'CANCELLED' ? JSON.stringify({code:'CANCELLED',dispatched:'UNKNOWN'}) : JSON.stringify(result.error ?? null),now]);

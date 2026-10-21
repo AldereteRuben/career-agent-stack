@@ -48,12 +48,14 @@ export function AiResultView({ artifact, onReview }: { artifact: AiArtifact; onR
     RESUME_DRAFT: c('Sugerencias para tu CV', 'Suggestions for your resume'), ANSWER_DRAFT: c('Ayuda con esta respuesta', 'Help with this answer'), RESUME_IMPORT: c('Propuestas extraídas del CV', 'Suggestions extracted from your resume'),
     DOCUMENT_REWORD: c('Propuesta de redacción del documento', 'Document wording proposal'),
     INTERVIEW_PREP: c('Material de práctica para la entrevista', 'Interview practice material'),
+    INTERVIEW_MOCK_FEEDBACK: c('Feedback de práctica generado', 'Generated practice feedback'),
   };
   const reviewLabels: Record<AiOperation, string> = {
     SEARCH_DRAFT: c('Revisar y editar la búsqueda', 'Review and edit the search'), JOB_ANALYSIS: c('Continuar con esta oferta', 'Continue with this job'),
     RESUME_DRAFT: c('Revisar las sugerencias para mi CV', 'Review my resume suggestions'), ANSWER_DRAFT: c('Revisar y editar mi respuesta', 'Review and edit my answer'), RESUME_IMPORT: c('Revisar propuestas para el perfil', 'Review profile suggestions'),
     DOCUMENT_REWORD: c('Revisar la propuesta de redacción', 'Review the wording proposal'),
     INTERVIEW_PREP: c('Revisar el material de práctica', 'Review the practice material'),
+    INTERVIEW_MOCK_FEEDBACK: c('Revisar el feedback de práctica', 'Review the practice feedback'),
   };
   const status = artifact.state === 'STALE' ? c('Datos cambiados', 'Source details changed') : artifact.state === 'DISMISSED' ? c('Descartado', 'Dismissed') : artifact.state === 'ACCEPTED' ? c('Revisado', 'Reviewed') : c('Por revisar', 'Needs review');
   if (artifact.operation !== output.operation) return <Notice tone="error">{c('No se pudo mostrar esta sugerencia. Vuelve a consultar el resultado.', 'This suggestion could not be displayed. Check the result again.')}</Notice>;
