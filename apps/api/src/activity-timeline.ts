@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, asc, eq, gte, inArray, isNotNull, lt, lte, ne, notInArray, sql } from 'drizzle-orm';
-import { applications, applicationEvents, db, jobs } from '@career/db';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, ne, notInArray, sql } from 'drizzle-orm';
+import { applications, applicationEvents, db, interviewPreparationPlans, interviewPreparationSessions, jobs } from '@career/db';
 import { applicationFollowUpStatus, terminalRecruitmentStages } from '@career/domain';
 import { compareTimelineItems, localToday, overdueFollowUpLimit, parseTimelineRange, parseTimelineTypes, resolveTimeZone, timelineBounds, timelineItemLimit, type Timeline, type TimelineItem, type TimelineType } from './activity-days.js';
 
@@ -50,13 +50,30 @@ export async function loadTimeline(workspaceId: string, options: { from: string;
       .where(and(eq(applications.workspaceId, workspaceId), openApplication(), isNotNull(applications.followUpDate), lt(applications.followUpDate, today))).orderBy(asc(applications.followUpDate), asc(applications.id)).limit(overdueFollowUpLimit) : none,
   ]);
 
+  // The timeline exposes only the latest plan/session state. It deliberately never selects plan items or session turns.
+  const interviewApplicationIds = interviews.map((row) => row.id);
+  const latestPlans = interviewApplicationIds.length ? await db.selectDistinctOn([interviewPreparationPlans.applicationId], { id: interviewPreparationPlans.id, applicationId: interviewPreparationPlans.applicationId })
+    .from(interviewPreparationPlans).where(and(eq(interviewPreparationPlans.workspaceId, workspaceId), inArray(interviewPreparationPlans.applicationId, interviewApplicationIds)))
+    .orderBy(asc(interviewPreparationPlans.applicationId), desc(interviewPreparationPlans.createdAt), desc(interviewPreparationPlans.id)) : [];
+  const latestPlanByApplication = new Map(latestPlans.map((plan) => [plan.applicationId, plan.id]));
+  const planIds = [...latestPlanByApplication.values()];
+  const latestSessions = planIds.length ? await db.selectDistinctOn([interviewPreparationSessions.planId], { planId: interviewPreparationSessions.planId, status: interviewPreparationSessions.status })
+    .from(interviewPreparationSessions).where(and(eq(interviewPreparationSessions.workspaceId, workspaceId), inArray(interviewPreparationSessions.planId, planIds)))
+    .orderBy(asc(interviewPreparationSessions.planId), desc(interviewPreparationSessions.createdAt), desc(interviewPreparationSessions.id)) : [];
+  const latestSessionByPlan = new Map(latestSessions.map((session) => [session.planId, session.status]));
+  const preparationStatusByApplication = new Map<string, NonNullable<TimelineItem['interviewPreparationStatus']>>([...latestPlanByApplication].map(([applicationId, planId]) => {
+    const sessionStatus = latestSessionByPlan.get(planId);
+    const status: NonNullable<TimelineItem['interviewPreparationStatus']> = sessionStatus === 'IN_PROGRESS' ? 'MOCK_IN_PROGRESS' : sessionStatus === 'COMPLETED' ? 'MOCK_COMPLETED' : 'PLAN_READY';
+    return [applicationId, status] as const;
+  }));
+
   const items: TimelineItem[] = [
     ...found.map((row) => ({ id: `JOB_FOUND:${row.id}`, type: 'JOB_FOUND' as const, day: row.day, at: iso(row.at), job: { id: row.id, title: row.title, company: row.company }, automatic: row.automatic })),
     ...saved.map((row) => ({ id: `JOB_SAVED:${row.id}`, type: 'JOB_SAVED' as const, day: row.day, at: iso(row.at!), job: { id: row.id, title: row.title, company: row.company } })),
     ...created.map((row) => ({ id: `APPLICATION_CREATED:${row.id}`, type: 'APPLICATION_CREATED' as const, day: row.day, at: iso(row.at), application: { id: row.id, role: row.role, company: row.company } })),
     ...statuses.map((row) => ({ id: `APPLICATION_STATUS_CHANGED:${row.eventId}`, type: 'APPLICATION_STATUS_CHANGED' as const, day: row.day, at: iso(row.at), application: { id: row.id, role: row.role, company: row.company }, priorState: row.priorState, newState: row.newState })),
     ...stages.map((row) => ({ id: `STAGE_CHANGED:${row.eventId}`, type: 'STAGE_CHANGED' as const, day: row.day, at: iso(row.at), application: { id: row.id, role: row.role, company: row.company }, priorState: row.priorState, newState: row.newState, correction: row.eventType === 'RECRUITMENT_STAGE_CORRECTED' })),
-    ...interviews.map((row) => ({ id: `INTERVIEW:${row.id}`, type: 'INTERVIEW' as const, day: row.day, at: iso(row.at!), application: { id: row.id, role: row.role, company: row.company }, interviewTimeZone: row.interviewTimeZone })),
+    ...interviews.map((row) => ({ id: `INTERVIEW:${row.id}`, type: 'INTERVIEW' as const, day: row.day, at: iso(row.at!), application: { id: row.id, role: row.role, company: row.company }, interviewTimeZone: row.interviewTimeZone, interviewPreparationStatus: preparationStatusByApplication.get(row.id) ?? 'NO_PLAN' })),
     ...followUps.map((row) => followUpItem(row, today)),
   ].sort(compareTimelineItems);
   return {

@@ -11,6 +11,7 @@ Interview preparation helps you get ready for one application. It works without 
 - **Follow-up.** A weak answer gets one follow-up question, and then the session moves on. You can skip any question.
 - **Review.** You can rate each criterion yourself, edit the learning items, or discard the feedback. Practice never changes your approved facts.
 - **Your data.** Plans, sessions and answers belong to one application. They are included in the export and in encrypted backups, and **Delete all workspace data** removes them. Deleting a plan or a session removes everything under it.
+- **Timeline status.** Interview records returned by `GET /api/v1/timeline` include `interviewPreparationStatus`: `NO_PLAN`, `PLAN_READY`, `MOCK_IN_PROGRESS` or `MOCK_COMPLETED`. It is derived from the latest plan and its latest session for that application. The timeline reads only identifiers and session status; it never returns plan content, questions, answers, notes or feedback, and the request does not create or change preparation data.
 
 La preparación de entrevistas te ayuda a prepararte para una candidatura. Funciona sin cuenta de IA. Es solo para prepararse: no ayuda durante una entrevista en vivo ni una evaluación del empleador.
 
@@ -23,3 +24,4 @@ La preparación de entrevistas te ayuda a prepararte para una candidatura. Funci
 - **Repregunta.** Una respuesta débil recibe una sola pregunta de seguimiento y luego la sesión continúa. Puedes omitir cualquier pregunta.
 - **Revisión.** Puedes valorar tú cada criterio, editar los elementos de aprendizaje o descartar los comentarios. Practicar nunca cambia tus hechos aprobados.
 - **Tus datos.** Los planes, sesiones y respuestas pertenecen a una candidatura. Se incluyen en la exportación y en las copias cifradas, y **Borrar todos los datos del espacio** los elimina. Borrar un plan o una sesión elimina todo lo que cuelga de ellos.
+- **Estado en la línea de tiempo.** Los eventos de entrevista de `GET /api/v1/timeline` incluyen `interviewPreparationStatus`: `NO_PLAN`, `PLAN_READY`, `MOCK_IN_PROGRESS` o `MOCK_COMPLETED`. Se calcula con el plan más reciente y su sesión más reciente para esa candidatura. La línea de tiempo solo lee identificadores y el estado de la sesión; nunca devuelve el contenido del plan, preguntas, respuestas, notas ni comentarios, y la petición no crea ni modifica datos de preparación.

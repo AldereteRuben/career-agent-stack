@@ -10,7 +10,8 @@ export type TimelineItem = {
   job?: { id: string; title: string; company: string }; automatic?: boolean;
   application?: { id: string; role: string; company: string };
   priorState?: string | null; newState?: string | null; correction?: boolean;
-  interviewTimeZone?: string | null; nextStep?: string | null; followUpStatus?: FollowUpStatus;
+  interviewTimeZone?: string | null; interviewPreparationStatus?: 'NO_PLAN' | 'PLAN_READY' | 'MOCK_IN_PROGRESS' | 'MOCK_COMPLETED';
+  nextStep?: string | null; followUpStatus?: FollowUpStatus;
 };
 export type Timeline = { from: string; to: string; timeZone: string; today: string; types: TimelineType[]; items: TimelineItem[]; truncated: boolean; overdue: { total: number; items: TimelineItem[] } };
 
