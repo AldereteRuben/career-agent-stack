@@ -51,6 +51,7 @@ import { ApplicationDocumentExportError, buildApplicationDocumentExport } from '
 import { registerApplicationContactRoutes } from './application-contact-routes.js';
 import { registerApplicationFollowUpRoutes } from './application-follow-up-routes.js';
 import { registerInterviewPreparationRoutes } from './interview-preparation-routes.js';
+import { scrubExport } from './export-scrub.js';
 import { registerInterviewMockSessionRoutes } from './interview-mock-session-routes.js';
 import { aiAnswerCurrent } from './ai-answer-routes.js';
 import { answerReviewExpired } from './ai/answer-current.js';
@@ -752,11 +753,6 @@ app.post('/api/v1/search-profiles', async (request, reply) => {
   const created = await db.insert(searchProfiles).values({ workspaceId: workspace(request), name: body.name, targetTitles: Array.isArray(body.targetTitles) ? body.targetTitles.filter((v): v is string => typeof v === 'string').slice(0, 30) : [], countries: Array.isArray(body.countries) ? body.countries.filter((v): v is string => typeof v === 'string').slice(0, 30) : [], workModes: Array.isArray(body.workModes) ? body.workModes.filter((v): v is string => typeof v === 'string').slice(0, 10) : [], enabled: false }).returning(); return reply.code(201).send(created[0]);
 });
 
-function scrubExport(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(scrubExport);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([key]) => !/secret|token|cookie|credential|session|key$/i.test(key)).map(([key, item]) => [key, scrubExport(item)]));
-  return value;
-}
 app.get('/api/v1/export', async (request, reply) => {
   const id = workspace(request);
   const [workspaceRow, profiles, facts, answers, boardRows, jobRows, occurrences, snapshots, applicationRows, events, contacts, applicationContactLinks, documents, applicationDocumentRows, applicationDocumentRevisionRows, applicationDocumentProposals, followUpDraftRows, preparationPlans, preparationEvidence, preparationItems, preparationSessions, preparationTurns, search, assistRows, savedSearches, savedMatches, publicSources, filterPreferences, filterOverrides, matchFeedback] = await Promise.all([

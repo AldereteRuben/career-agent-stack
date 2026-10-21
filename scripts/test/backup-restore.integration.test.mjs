@@ -82,6 +82,8 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
   let applicationDocumentId;
   let followUpDraftId;
   let interviewPlanId;
+  let interviewSessionId;
+  let interviewJobSnapshotId;
   let documentRewordRunId;
   let profileVersionId;
   let applicationDocumentCurrentness;
@@ -199,6 +201,7 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       values ($1, 'Fictional QA Engineer', true, true, 2, '["remotive","arbeitnow","himalayas"]', false, 'restore-fixture-search-001') returning id`, [ws])).rows[0].id;
     const job = jobId = (await client.query(`insert into jobs (workspace_id, company, title, shortlist_decision) values ($1, 'Fictional Co', 'Example Engineer', 'SHORTLISTED') returning id`, [ws])).rows[0].id;
     const snapshot = (await client.query(`insert into job_snapshots (workspace_id, job_id, title, snapshot_hash) values ($1, $2, 'Example Engineer', $3) returning id`, [ws, job, sha('Example Engineer')])).rows[0].id;
+    interviewJobSnapshotId = snapshot;
     const application = (await client.query(`insert into applications (workspace_id, job_id, company, role, state) values ($1, $2, 'Fictional Co', 'Example Engineer', 'IN_PROGRESS') returning id`, [ws, job])).rows[0].id;
     activeRunId = randomUUID(); identityKey = sha('verified-canonical-job-identity');
     reviewAt = '2026-09-15T10:20:30.000Z';
@@ -256,8 +259,10 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
       values ($1, $2, $3, 'en', 'Follow-up about Example Engineer', 'Hello. Synthetic follow-up draft for backup testing.')`, [followUpDraftId, ws, application]);
     interviewPlanId = randomUUID();
     await client.query(`insert into interview_preparation_plans (id, workspace_id, application_id, language) values ($1, $2, $3, 'en')`, [interviewPlanId, ws, application]);
+    await client.query(`insert into interview_preparation_evidence (workspace_id, plan_id, kind, source_id, content_sha256) values
+      ($1, $2, 'JOB_SNAPSHOT', $3, $4), ($1, $2, 'APPROVED_FACT', $5, $6)`, [ws, interviewPlanId, snapshot, sha('Example Engineer'), applicationDocumentFactId, sha('Builds fictional test fixtures')]);
     await client.query(`insert into interview_preparation_items (workspace_id, plan_id, kind, origin, position, content) values ($1, $2, 'NOTE', 'USER_NOTE', 0, 'Synthetic preparation note')`, [ws, interviewPlanId]);
-    const interviewSessionId = randomUUID();
+    interviewSessionId = randomUUID();
     await client.query(`insert into interview_preparation_sessions (id, workspace_id, plan_id) values ($1, $2, $3)`, [interviewSessionId, ws, interviewPlanId]);
     await client.query(`insert into interview_preparation_turns (workspace_id, session_id, position, question, answer) values ($1, $2, 0, 'Fictional question', 'Fictional answer')`, [ws, interviewSessionId]);
     await writeFile(join(filesDir, ws, 'orphan-render.pdf'), pdf('orphan, not referenced')); // must not be backed up
@@ -485,8 +490,18 @@ describe('backup and isolated restore (disposable databases)', { skip: !adminUrl
     assert.deepEqual((await query(database, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
       (await query(sourceDb, 'select id, workspace_id, application_id, language, subject, body from application_follow_up_drafts where id=$1', [followUpDraftId])).rows,
       'follow-up draft text round-trips with its application');
-    assert.deepEqual((await query(database, 'select p.language, i.content, t.answer from interview_preparation_plans p join interview_preparation_items i on i.plan_id=p.id join interview_preparation_sessions s on s.plan_id=p.id join interview_preparation_turns t on t.session_id=s.id where p.id=$1', [interviewPlanId])).rows,
-      [{ language: 'en', content: 'Synthetic preparation note', answer: 'Fictional answer' }], 'interview preparation round-trips with its plan');
+    assert.deepEqual((await query(database, `select p.language, e.kind as "evidenceKind", e.source_id::text as "sourceId", e.content_sha256 as "contentSha256", i.content,
+      s.id::text as "sessionId", t.session_id::text as "turnSessionId", t.question, t.answer
+      from interview_preparation_plans p
+      join interview_preparation_evidence e on e.workspace_id=p.workspace_id and e.plan_id=p.id
+      join interview_preparation_items i on i.workspace_id=p.workspace_id and i.plan_id=p.id
+      join interview_preparation_sessions s on s.workspace_id=p.workspace_id and s.plan_id=p.id
+      join interview_preparation_turns t on t.workspace_id=s.workspace_id and t.session_id=s.id
+      where p.id=$1 order by e.kind`, [interviewPlanId])).rows,
+      [
+        { language: 'en', evidenceKind: 'APPROVED_FACT', sourceId: applicationDocumentFactId, contentSha256: sha('Builds fictional test fixtures'), content: 'Synthetic preparation note', sessionId: interviewSessionId, turnSessionId: interviewSessionId, question: 'Fictional question', answer: 'Fictional answer' },
+        { language: 'en', evidenceKind: 'JOB_SNAPSHOT', sourceId: interviewJobSnapshotId, contentSha256: sha('Example Engineer'), content: 'Synthetic preparation note', sessionId: interviewSessionId, turnSessionId: interviewSessionId, question: 'Fictional question', answer: 'Fictional answer' },
+      ], 'evidence provenance, notes and linked mock turns round-trip through encrypted backup and isolated restore');
     const restoredProposal = (await query(database, `select p.proposal_sha256, r.status, r.operation from ai_document_reword_proposals p join ai_runs r on r.workspace_id=p.workspace_id and r.id=p.run_id where p.workspace_id=$1 and p.run_id=$2`, [workspaceId, documentRewordRunId])).rows[0];
     assert.deepEqual(restoredProposal, { proposal_sha256: sha('fictional-proposal-hash'), status: 'SUCCEEDED', operation: 'DOCUMENT_REWORD' }, 'proposal hashes restore with their parent run for future accept, while restored AI stays disabled');
     assert.equal((await query(database, `select count(*)::int as n from boards where enabled or permission_status <> 'UNKNOWN'`)).rows[0].n, 0);

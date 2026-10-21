@@ -57,7 +57,7 @@
     "test:fact-import": "pnpm --filter @career/api exec tsx --test test/fact-import.test.ts",
     "test:job-reports": "pnpm --filter @career/api exec tsx --test test/job-reports.test.ts",
     "test:company-research": "pnpm --filter @career/api exec tsx --test test/company-research.test.ts",
-    "test:interview-preparation": "pnpm --filter @career/api exec tsx --test test/interview-preparation-routes.test.ts test/interview-mock-session-routes.test.ts",
+    "test:interview-preparation": "pnpm --filter @career/api exec tsx --test test/interview-preparation-routes.test.ts test/interview-mock-session-routes.test.ts test/export-scrub.test.ts",
     "test:timeline": "pnpm --filter @career/api exec tsx --test test/activity-days.test.ts test/activity-timeline.integration.test.ts",
     "test:application-documents": "pnpm --filter @career/api exec tsx --test test/application-documents*.test.ts",
     "test:preparation": "pnpm --filter @career/api exec tsx --test test/preparation*.test.ts",
