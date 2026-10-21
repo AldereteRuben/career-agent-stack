@@ -139,7 +139,7 @@ export const interviewPreparationUiScenario: Scenario = {
     await acceptedMockPanel.getByRole('button', { name: 'Generar feedback' }).click();
     await acceptedMockPanel.getByText('La respuesta describe una acción concreta y cómo la aplicaste.').waitFor();
     await acceptedMockPanel.getByRole('button', { name: 'Guardar en el historial' }).click();
-    await panel.getByText('Feedback guardado en el historial de práctica.').waitFor();
+    await panel.locator('.notice-success .notice-message', { hasText: 'Feedback guardado en el historial de práctica.' }).waitFor();
     await panel.getByText('Generado por Codex · práctica').waitFor();
     assert.equal(acceptRequested, true, 'the result enters practice history only after an explicit save action');
 
