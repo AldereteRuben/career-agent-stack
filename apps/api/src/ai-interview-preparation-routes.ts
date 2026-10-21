@@ -13,11 +13,12 @@ import {
 } from '@career/domain';
 import { AI_NOTICE_VERSION } from './ai-run-routes.js';
 import { buildAiPrompt, hashAiInputContent, hashAiPromptMessages, AI_PROMPT_VERSION } from './ai/prompts.js';
-import { CODEX_DEFAULT_MODEL, executeCodex, type CodexExecutionResult } from './ai/codex.js';
+import { CODEX_DEFAULT_MODEL, CodexExecutionError, executeCodex, type CodexDependencies, type CodexExecutionResult } from './ai/codex.js';
 import { AiQueueError, type AiQueue, type AiRunUsage } from './ai/queue.js';
 import type { AiDocumentRewordCancellation } from './ai-application-document-routes.js';
-import { currentEvidence, itemView } from './interview-preparation-routes.js';
+import { currentEvidence, interviewPreparationPlanLockKey, itemView } from './interview-preparation-routes.js';
 import { plainDescription } from './job-search-sources.js';
+import { lockKey, profileLockKey } from './workspace-data.js';
 
 /**
  * Optional, per-request Codex suggestions for one interview preparation plan (ADR 024, #201). Same contract as the document
@@ -72,7 +73,9 @@ async function loadAssistantInput(executor: Executor, workspaceId: string, planI
   if (evidence.some((row) => interviewEvidenceStatus(row.contentSha256, current.get(`${row.kind}:${row.sourceId}`)) !== 'CURRENT')) throw new AiInterviewPrepError('PLAN_EVIDENCE_STALE');
   const offerEvidence = evidence.find((row) => row.kind === 'JOB_SNAPSHOT');
   if (!offerEvidence) throw new AiInterviewPrepError('PLAN_HAS_NO_OFFER');
-  const application = (await executor.select().from(applications).where(and(eq(applications.workspaceId, workspaceId), eq(applications.id, plan.applicationId))).limit(1))[0];
+  // During the guarded reread this share lock remains held until stdin handoff, so a concurrent application edit
+  // either commits before the payload is rebuilt or waits until the already-built payload has been handed off.
+  const application = (await executor.select().from(applications).where(and(eq(applications.workspaceId, workspaceId), eq(applications.id, plan.applicationId))).limit(1).for('share'))[0];
   const posting = (await executor.select().from(jobSnapshots).where(and(eq(jobSnapshots.workspaceId, workspaceId), eq(jobSnapshots.id, offerEvidence.sourceId))).limit(1))[0];
   if (!application || !posting) throw new AiInterviewPrepError('PLAN_HAS_NO_OFFER');
   const fromFeed = (await executor.select({ id: jobSearchSources.jobId }).from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, workspaceId), eq(jobSearchSources.jobId, posting.jobId))).limit(1)).length > 0;
@@ -174,11 +177,21 @@ export function registerAiInterviewPreparationRoutes(app: FastifyInstance, works
     abortIfDisconnected();
     const timer = setInterval(() => { void options.queue.heartbeatDocumentRun(run.id, run.leaseToken, 180_000, now()).then((ok) => { if (!ok) controller.abort(); }, () => controller.abort()); }, 25_000); timer.unref();
     let finished = false; let observed: CodexExecutionResult | undefined;
+    let fallbackErrorCode: CodexExecutionError['code'] = 'INTERNAL';
+    let fallbackDispatched: CodexExecutionError['dispatched'] | undefined;
     const usageOf = (result: CodexExecutionResult): AiRunUsage => ({ availability: 'KNOWN', model: result.model, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens });
     const task = (async () => {
       try {
         if (controller.signal.aborted) throw new Error('CANCELLED');
-        observed = await (options.execute ?? executeCodex)(snapshot, connection.accountFingerprint, options.identitySalt, controller.signal, CODEX_DEFAULT_MODEL);
+        const dispatchGuard: NonNullable<CodexDependencies['dispatchGuard']> = async (dispatch) => database.transaction(async (tx) => {
+          await lockKey(tx, profileLockKey(workspaceId));
+          await lockKey(tx, interviewPreparationPlanLockKey(workspaceId, plan.id));
+          const current = await loadAssistantInput(tx as unknown as Executor, workspaceId, plan.id, body.data);
+          if (current.payloadSha256 !== body.data.payloadSha256) throw new AiInterviewPrepError('PAYLOAD_CHANGED');
+          if (current.payloadSha256 !== input.payloadSha256) throw new AiInterviewPrepError('PLAN_EVIDENCE_STALE');
+          await dispatch();
+        });
+        observed = await (options.execute ?? executeCodex)(snapshot, connection.accountFingerprint, options.identitySalt, controller.signal, CODEX_DEFAULT_MODEL, { dispatchGuard });
         if (controller.signal.aborted) throw new Error('CANCELLED');
         const validated = validateAiOutput(observed.output, snapshot, { workspaceId, operation: 'INTERVIEW_PREP', locale: input.locale });
         if (!validated.ok || validated.output.operation !== 'INTERVIEW_PREP') throw new Error('INVALID_OUTPUT');
@@ -191,9 +204,23 @@ export function registerAiInterviewPreparationRoutes(app: FastifyInstance, works
         // Generated practice material: labelled as such and not part of the plan until the person accepts it.
         return reply.send({ runId: run.id, status, planId: plan.id, request: snapshot.interviewPrep!.request, label: 'GENERATED_PRACTICE_MATERIAL', suggestions, warnings: validated.output.warnings });
       } catch (error) {
+        if (error instanceof AiInterviewPrepError) {
+          fallbackErrorCode = 'CANCELLED';
+          fallbackDispatched = 'NO';
+          const status = await options.queue.finishDocumentRun(run.id, run.leaseToken, {
+            status: 'FAILED', error: { code: 'CANCELLED', dispatched: 'NO' }, now: now(),
+          });
+          finished = true;
+          if (status === null) return reply.code(409).send({ error: 'AI_PROPOSAL_EXPIRED' });
+          return reply.code(error.status).send({ error: error.code });
+        }
         const cancelled = controller.signal.aborted || (error instanceof Error && error.message === 'CANCELLED');
+        const codexError = error instanceof CodexExecutionError ? error : null;
+        fallbackErrorCode = codexError?.code ?? (cancelled ? 'CANCELLED' : 'INVALID_OUTPUT');
+        fallbackDispatched = codexError?.dispatched ?? (observed ? 'YES' : cancelled ? 'NO' : 'UNKNOWN');
         const status = await options.queue.finishDocumentRun(run.id, run.leaseToken, {
-          status: 'FAILED', error: { code: cancelled ? 'CANCELLED' : 'INVALID_OUTPUT', dispatched: observed ? 'YES' : 'UNKNOWN' }, ...(observed ? { usage: usageOf(observed) } : {}), now: now(),
+          status: 'FAILED', error: { code: fallbackErrorCode, dispatched: fallbackDispatched },
+          ...(observed ? { usage: usageOf(observed) } : {}), now: now(),
         });
         finished = true;
         if (status === 'CANCELLED') return reply.code(409).send({ error: 'AI_CANCELLED' });
@@ -201,7 +228,7 @@ export function registerAiInterviewPreparationRoutes(app: FastifyInstance, works
         return reply.code(cancelled ? 499 : 503).send({ error: cancelled ? 'REQUEST_ABORTED' : 'AI_UNAVAILABLE' });
       } finally {
         clearInterval(timer); request.raw.off('aborted', abortIfDisconnected); reply.raw.off('close', abortIfDisconnected);
-        if (!finished) await options.queue.finishDocumentRun(run.id, run.leaseToken, { status: 'FAILED', error: { code: 'INTERNAL', dispatched: observed ? 'YES' : 'UNKNOWN' }, now: now() }).catch(() => undefined);
+        if (!finished) await options.queue.finishDocumentRun(run.id, run.leaseToken, { status: 'FAILED', error: { code: fallbackErrorCode, dispatched: fallbackDispatched ?? (observed ? 'YES' : 'UNKNOWN') }, now: now() }).catch(() => undefined);
         options.cancellation.detach(run.id);
       }
     })();

@@ -42,6 +42,15 @@ test('private input travels over stdin and Unicode lines are reconstructed', asy
   assert.deepEqual(lines, ['España', '第二行']);
 });
 
+test('fixed-input dispatch callback fires when stdin has finished flushing', async () => {
+  let inputWritten = false;
+  const result = await run("process.stdin.on('data', b => process.stdout.write(b));", {
+    input: 'complete prompt', onInputWritten: () => { inputWritten = true; },
+  });
+  assert.equal(result.stdout, 'complete prompt');
+  assert.equal(inputWritten, true);
+});
+
 test('a multi-byte character split between provider writes is preserved', async () => {
   const lines: string[] = [];
   const result = await run("process.stdout.write(Buffer.from([0xf0,0x9f]));setTimeout(()=>process.stdout.write(Buffer.from([0x98,0x80,10])),10)", { onLine: line => lines.push(line) });
