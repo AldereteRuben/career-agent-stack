@@ -15,6 +15,7 @@ import { ApplicationEmailImport } from '@/components/application-email-import';
 import { ApplicationMaterialsPacket } from '@/components/application-materials-packet';
 import { ApplicationCoverLetter, ApplicationResumeDocument } from '@/components/application-cover-letter';
 import { ApplicationFollowUpDraft } from '@/components/application-follow-up-draft';
+import { ApplicationInterviewPreparation } from '@/components/application-interview-preparation';
 import { AssistedApplication } from '@/components/assisted-application';
 import { useLocale } from '@/lib/i18n';
 import Link from 'next/link';
@@ -356,6 +357,7 @@ function ApplicationsView() {
             <div className="detail-actions">{selected.jobId && <Link className="button button-quiet" href={withSearchOrigin(`/jobs/${selected.jobId}`, returnTo)}>{c('Ver oferta', 'View job')} <Icon name="arrow" size={13}/></Link>}{selected.canonicalUrl && !stepOffersOriginal && <a className="button button-quiet" href={selected.canonicalUrl} target="_blank" rel="noopener noreferrer">{c('Abrir oferta original', 'Open original post')} <Icon name="arrow" size={13}/></a>}{selected.jobAvailability && selected.jobAvailability !== 'OPEN' && <Tag tone={selected.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(selected.jobAvailability, locale)}</Tag>}</div>
           </div><Tag tone={stateTone(selected.state)}>{labelFor.applicationState(selected.state, locale)}</Tag></div>
           {!isApplicationClosedForPreparation(selected) && <ApplicationJourney jobId={selected.jobId} applicationId={selected.id} stage="application" returnTo={returnTo} hideJobLink/>}
+          {!isApplicationClosedForPreparation(selected) && <ApplicationInterviewPreparation key={`interview-preparation:${selected.id}`} applicationId={selected.id} language={locale}/>}
           {canAutoPrepare && selected.jobId && <ApplicationPreparationAction key={`prepare:${selected.id}`} jobId={selected.jobId} applicationId={selected.id} returnTo={returnTo} availability={selected.jobAvailability} disabled={busy !== null}/>}
           {!canAutoPrepare && <div className="application-resume"><h3>{c('CV para esta solicitud', 'Resume for this application')}</h3>
             {selected.documentId ? <><Tag tone={selected.documentApprovalStatus === 'USER_APPROVED' ? 'green' : 'amber'}>{selected.documentApprovalStatus ? labelFor.documentApproval(selected.documentApprovalStatus, locale) : c('Comprueba este CV antes de usarlo', 'Check this resume before using it')}</Tag><p>{selected.documentApprovalStatus === 'USER_APPROVED' ? c('Ya revisaste este CV. Puedes descargarlo para continuar en la página de la empresa.', 'You reviewed this resume. Download it to continue on the employer’s page.') : c('Este CV necesita tu revisión antes de usarlo en la solicitud.', 'This resume needs your review before you use it for the application.')}</p></> : <p>{c('Todavía no has elegido un CV para esta solicitud.', 'You have not selected a resume for this application yet.')}</p>}

@@ -28,6 +28,7 @@ import { trackingMetricsScenario } from './tracking-metrics.js';
 import { profileImprovementScenario } from './profile-improvement.js';
 import { applicationFollowUpDraftScenario } from './application-follow-up-draft.js';
 import { applicationDocumentsScenario } from './application-documents.js';
+import { interviewPreparationUiScenario } from './interview-preparation-ui.js';
 // Browser scenarios. Each one creates its own fictional records tagged with the run marker, asserts the
 // user-visible behaviour and checks the outcome against the isolated API as ground truth.
 import assert from 'node:assert/strict';
@@ -576,6 +577,7 @@ scenarios.push(...v040Scenarios);
 scenarios.push(...uxReviewScenarios);
 
 scenarios.push(...a11yScenarios);
+scenarios.push(interviewPreparationUiScenario);
 
 scenarios.push(...profileContractScenarios);
 
