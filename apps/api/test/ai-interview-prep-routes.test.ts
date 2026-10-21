@@ -5,14 +5,16 @@ import { createRequire } from 'node:module';
 import { readdir, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import Fastify from 'fastify';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from '@career/db';
 import type { AiSourceSnapshot } from '@career/domain';
 import { createAiDocumentRewordCancellation } from '../src/ai-application-document-routes.js';
 import { registerAiInterviewPreparationRoutes } from '../src/ai-interview-preparation-routes.js';
-import { registerInterviewPreparationRoutes } from '../src/interview-preparation-routes.js';
+import { interviewPreparationPlanLockKey, registerInterviewPreparationRoutes } from '../src/interview-preparation-routes.js';
 import { createAiQueue } from '../src/ai/queue.js';
-import type { CodexExecutionResult } from '../src/ai/codex.js';
+import { CodexExecutionError, type CodexDependencies, type CodexExecutionResult } from '../src/ai/codex.js';
+import { lockKey, profileLockKey } from '../src/workspace-data.js';
 
 const root = new URL('../../../', import.meta.url);
 const { Client, Pool } = createRequire(new URL('packages/db/package.json', root))('pg');
@@ -58,8 +60,18 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     const workspace = (request: { headers: Record<string, unknown> }) => request.headers['x-fixture-workspace'] === other ? other : owner;
     const providerCalls: AiSourceSnapshot[] = [];
     let providerMode: 'ok' | 'invalid' = 'ok';
-    const execute = (async (input: AiSourceSnapshot) => {
-      providerCalls.push(input);
+    let providerFailure: CodexExecutionError | null = null;
+    let beforeDispatch: (() => Promise<void>) | undefined;
+    let dispatchWait: Promise<void> | undefined;
+    let onDispatch: (() => void) | undefined;
+    const execute = (async (input: AiSourceSnapshot, _fingerprint: string, _salt: string, _signal?: AbortSignal, _model?: string,
+      dependencies?: Partial<CodexDependencies>) => {
+      await beforeDispatch?.();
+      beforeDispatch = undefined;
+      if (providerFailure) { const failure = providerFailure; providerFailure = null; throw failure; }
+      const dispatch = async () => { providerCalls.push(input); onDispatch?.(); await dispatchWait; };
+      if (dependencies?.dispatchGuard) await dependencies.dispatchGuard(dispatch);
+      else await dispatch();
       const source = input.interviewPrep!;
       const kind = { PRACTICE_QUESTIONS: 'PRACTICE_QUESTION', CODING_HINTS: 'CODING_HINT', RECRUITER_QUESTIONS: 'RECRUITER_QUESTION', STUDY_ITEMS: 'STUDY_ITEM' }[source.request];
       const suggestions = [1, 2, 3].map((index) => ({
@@ -144,6 +156,12 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     assert.equal(second.statusCode, 200);
     assert.equal(await count('ai_consents', "WHERE operation='INTERVIEW_PREP' AND remembered=false"), 2, 'a later request needs its own consent');
 
+    providerFailure = new CodexExecutionError('NOT_CONNECTED', 'NO');
+    assert.equal((await run(ok)).statusCode, 503);
+    const knownNotDispatched = (await client.query("SELECT error FROM ai_runs ORDER BY created_at DESC LIMIT 1")).rows[0].error;
+    assert.equal(knownNotDispatched.dispatched, 'NO', 'the audit preserves a provider failure known to happen before dispatch');
+    assert.equal(knownNotDispatched.code, 'NOT_CONNECTED');
+
     // A provider answer that breaks the contract is not saved or shown.
     providerMode = 'invalid';
     const bad = await run(ok);
@@ -195,6 +213,77 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     assert.equal((await accept({ runId: study.runId, suggestions: [study.suggestions[0]] })).json().error, 'PLAN_EVIDENCE_STALE', 'a run made before the change cannot be saved after it');
     await client.query("UPDATE profile_facts SET statement='Built TypeScript services for a fictional shop' WHERE id=$1", [fact]);
 
+    // A revocation that wins the race after preview but before dispatch must be observed under the same profile lock.
+    const revocationPreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    const callsBeforeRevocation = providerCalls.length;
+    beforeDispatch = () => database.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'REJECTED' }).where(eq(schema.profileFacts.id, fact));
+    });
+    const revoked = await run({ request: 'PRACTICE_QUESTIONS', payloadSha256: revocationPreview.payloadSha256, confirmed: true });
+    assert.equal(revoked.json().error, 'PLAN_EVIDENCE_STALE');
+    assert.equal(providerCalls.length, callsBeforeRevocation, 'revoked evidence never reaches the provider');
+    await database.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'USER_APPROVED' }).where(eq(schema.profileFacts.id, fact));
+    });
+
+    // An application edit that wins after preview must be reflected by the guarded payload hash.
+    const editPreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    const callsBeforeEdit = providerCalls.length;
+    beforeDispatch = () => database.transaction(async (tx) => {
+      await tx.update(schema.applications).set({ role: 'Updated synthetic role' }).where(eq(schema.applications.id, application));
+    });
+    const editedFirst = await run({ request: 'PRACTICE_QUESTIONS', payloadSha256: editPreview.payloadSha256, confirmed: true });
+    assert.equal(editedFirst.json().error, 'PAYLOAD_CHANGED');
+    assert.equal(providerCalls.length, callsBeforeEdit, 'changed application details never reach the provider under the old preview');
+    await database.transaction(async (tx) => {
+      await tx.update(schema.applications).set({ role: 'QA Engineer' }).where(eq(schema.applications.id, application));
+    });
+
+    // If dispatch wins, revocation cannot commit until the complete prompt has been flushed and the guard releases.
+    const dispatchPreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    let enteredDispatch!: () => void;
+    const dispatchEntered = new Promise<void>((resolve) => { enteredDispatch = resolve; });
+    let releaseDispatch!: () => void;
+    dispatchWait = new Promise<void>((resolve) => { releaseDispatch = resolve; });
+    onDispatch = enteredDispatch;
+    const inFlight = run({ request: 'PRACTICE_QUESTIONS', payloadSha256: dispatchPreview.payloadSha256, confirmed: true });
+    await dispatchEntered;
+    const mutationStarted = new Promise<void>((resolve) => { enteredDispatch = resolve; });
+    const revocation = database.transaction(async (tx) => {
+      enteredDispatch();
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'REJECTED' }).where(eq(schema.profileFacts.id, fact));
+    });
+    await mutationStarted;
+    const lockCheck = await client.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired', [profileLockKey(owner)]);
+    assert.equal(lockCheck.rows[0].acquired, false, 'the dispatch guard holds the profile lock while input is flushed');
+    releaseDispatch();
+    assert.equal((await inFlight).statusCode, 200);
+    await revocation;
+    dispatchWait = undefined;
+    onDispatch = undefined;
+    await database.transaction(async (tx) => {
+      await lockKey(tx, profileLockKey(owner));
+      await tx.update(schema.profileFacts).set({ approvalStatus: 'USER_APPROVED' }).where(eq(schema.profileFacts.id, fact));
+    });
+
+    // An application edit that starts after the guarded read cannot update its fields before the prompt handoff.
+    const appEditPreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    let enteredAppDispatch!: () => void;
+    const appDispatchEntered = new Promise<void>((resolve) => { enteredAppDispatch = resolve; });
+    let releaseAppDispatch!: () => void;
+    dispatchWait = new Promise<void>((resolve) => { releaseAppDispatch = resolve; });
+    onDispatch = enteredAppDispatch;
+    const appDispatch = run({ request: 'PRACTICE_QUESTIONS', payloadSha256: appEditPreview.payloadSha256, confirmed: true });
+    await appDispatchEntered;
+    await assert.rejects(client.query('SELECT id FROM applications WHERE id=$1 FOR UPDATE NOWAIT', [application]), { code: '55P03' });
+    releaseAppDispatch();
+    assert.equal((await appDispatch).statusCode, 200);
+    dispatchWait = undefined;
+    onDispatch = undefined;
+
     // A plan has a bounded size, and a plan without an offer has nothing to prepare from.
     const total = await planItems();
     await client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content) SELECT $1,$2,'NOTE','USER_NOTE',20000+g,'filler' FROM generate_series(1,$3::int) g", [owner, plan.id, 300 - total]);
@@ -203,8 +292,24 @@ test('interview preparation suggestions: exact preview, one-off confirmation, no
     assert.equal((await preview({ request: 'PRACTICE_QUESTIONS' }, foreignHeaders, bare.id)).json().error, 'PLAN_HAS_NO_OFFER');
     assert.equal((await preview({ request: 'PRACTICE_QUESTIONS', includeResume: true }, headers)).statusCode, 200);
 
+    // Plan deletion waits for an in-flight dispatch to finish sending the exact, still-current snapshot.
+    const deletePreview = (await preview({ request: 'PRACTICE_QUESTIONS' })).json();
+    let dispatchForDelete!: () => void;
+    const deleteDispatchEntered = new Promise<void>((resolve) => { dispatchForDelete = resolve; });
+    let releaseDeleteDispatch!: () => void;
+    dispatchWait = new Promise<void>((resolve) => { releaseDeleteDispatch = resolve; });
+    onDispatch = dispatchForDelete;
+    const dispatching = run({ request: 'PRACTICE_QUESTIONS', payloadSha256: deletePreview.payloadSha256, confirmed: true });
+    await deleteDispatchEntered;
+    const deleting = app.inject({ method: 'DELETE', url: `/api/v1/interview-preparation/${plan.id}`, headers });
+    const planLockCheck = await client.query('SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS acquired', [interviewPreparationPlanLockKey(owner, plan.id)]);
+    assert.equal(planLockCheck.rows[0].acquired, false, 'the dispatch guard holds the plan lock until input is flushed');
+    releaseDeleteDispatch();
+    assert.equal((await dispatching).statusCode, 200);
+    assert.equal((await deleting).statusCode, 200);
+    dispatchWait = undefined;
+    onDispatch = undefined;
     // Deleting the plan removes what the assistant added to it, and the stored hashes are not the content.
-    assert.equal((await app.inject({ method: 'DELETE', url: `/api/v1/interview-preparation/${plan.id}`, headers })).statusCode, 200);
     assert.equal(await planItems(), 0);
     const stored = JSON.stringify((await client.query('SELECT * FROM ai_document_reword_proposals')).rows);
     assert.ok(!stored.includes('Synthetic PRACTICE_QUESTIONS'), 'only hashes of suggestions are stored with the run');
