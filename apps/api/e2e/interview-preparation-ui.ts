@@ -103,7 +103,9 @@ export const interviewPreparationUiScenario: Scenario = {
       const turnId = new URL(route.request().url()).pathname.split('/').at(-3);
       assert.ok(turnId, 'accept is attached to the reviewed practice turn');
       await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ turn: {
-        id: turnId, assistantFeedback: { ...requestBody.feedback, generated: true, provider: 'codex', acceptedAt: new Date().toISOString() },
+        id: turnId, position: 0, kind: 'QUESTION', question: previewPayload?.sent.question ?? '', answer: previewPayload?.sent.answer ?? '',
+        feedback: { assessments: [], probe: null }, learningItems: [], verdict: null,
+        assistantFeedback: { ...requestBody.feedback, generated: true, provider: 'codex', acceptedAt: new Date().toISOString() },
       } }) });
     });
     await panel.getByRole('button', { name: 'Feedback opcional de Codex' }).click();
