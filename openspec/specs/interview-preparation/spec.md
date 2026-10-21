@@ -55,7 +55,15 @@ The person MAY request assistant feedback for one selected mock answer. Each req
 
 #### Scenario: Accept or discard generated feedback
 - **WHEN** the assistant returns feedback for a selected mock answer
-- **THEN** the person can accept it or discard it, and discarding leaves the turn unchanged
+- **THEN** the person can accept it or discard it, and discarding leaves the turn unchanged; before acceptance, only a hash of the pending output is retained
+
+#### Scenario: Feedback provider fails or the request is cancelled
+- **WHEN** the provider fails or the person cancels a feedback request
+- **THEN** no feedback or pending proposal is retained, and the mock turn remains unchanged
+
+#### Scenario: Accept and discard race on the same proposal
+- **WHEN** acceptance and discard are requested concurrently for one pending proposal
+- **THEN** the operations are serialized; if discard wins, acceptance is rejected, and if acceptance wins, discard cannot remove the accepted feedback
 
 #### Scenario: Feedback evidence is stale
 - **WHEN** relevant evidence changes after review or before the response is accepted
