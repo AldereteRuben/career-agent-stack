@@ -32,6 +32,8 @@ export type CodexDependencies = {
   resolveBinary: typeof findCodexExecutable;
   environment: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
+  /** Holds source locks until this callback confirms the prompt was flushed to stdin. */
+  dispatchGuard?: (dispatch: () => Promise<void>) => Promise<void>;
 };
 
 const disabledFeatures = [
@@ -172,7 +174,10 @@ export async function executeCodex(
   const parser = createCodexOutputParser();
   let result: CodexExecutionResult | null = null;
   let failure: CodexExecutionError | null = null;
+  let dispatchGuardError: unknown;
+  let inputWrittenToProcess = false;
   let observedUsage: CodexTokenUsage | null = null;
+  const dispatchState = () => !invoked || (dependencies.dispatchGuard && !inputWrittenToProcess) ? 'NO' as const : parser.hasStarted() ? 'YES' as const : 'UNKNOWN' as const;
   try {
     const instructions = path.join(directory, 'instructions.txt');
     const schema = path.join(directory, 'schema.json');
@@ -194,11 +199,33 @@ export async function executeCodex(
     for (const feature of disabledFeatures) args.push('--disable', feature);
     args.push('-');
     // These flags select ChatGPT authentication only. The subprocess receives no API key or endpoint override.
-    invoked = true;
-    await (dependencies.run ?? runAiProcess)({ executable, args, cwd: directory, input: prompt.messages[1].content,
+    const run = dependencies.run ?? runAiProcess;
+    const processOptions = { executable, args, cwd: directory, input: prompt.messages[1].content,
       environment, ...(signal ? { signal } : {}), onLine: parser.onLine,
       timeoutMs: AI_LIMITS.timeoutMs, killGraceMs: AI_LIMITS.killGraceMs, maxOutputBytes: AI_LIMITS.outputBytes,
-    });
+    };
+    if (dependencies.dispatchGuard) {
+      let processResult: ReturnType<typeof run> | undefined;
+      let resolveInputWritten!: () => void;
+      let rejectInputWritten!: (error: unknown) => void;
+      const inputWritten = new Promise<void>((resolve, reject) => { resolveInputWritten = resolve; rejectInputWritten = reject; });
+      try {
+        await dependencies.dispatchGuard(async () => {
+          invoked = true;
+          processResult = run({ ...processOptions, onInputWritten: () => { inputWrittenToProcess = true; resolveInputWritten(); } });
+          void processResult.catch(rejectInputWritten);
+          await inputWritten;
+        });
+      } catch (error) {
+        if (!invoked) dispatchGuardError = error;
+        throw error;
+      }
+      if (!processResult) throw new CodexExecutionError('INTERNAL', 'NO');
+      await processResult;
+    } else {
+      invoked = true;
+      await run(processOptions);
+    }
     const parsed = parser.finish();
     observedUsage = parsed.usage;
     if (signal?.aborted) throw new CodexExecutionError('CANCELLED', 'YES');
@@ -212,7 +239,7 @@ export async function executeCodex(
     if (signal?.aborted) throw new CodexExecutionError('CANCELLED', 'YES');
     result = { output: validated.output, inputContentHash: prompt.inputContentHash, model, cliVersion: after.version!, usage: parsed.usage, account: after };
   } catch (error) {
-    const dispatched = !invoked ? 'NO' : parser.hasStarted() ? 'YES' : 'UNKNOWN';
+    const dispatched = dispatchState();
     if (error instanceof CodexExecutionError) failure = error;
     else if (error instanceof AiProcessError) {
       const code: AiErrorCode = error.code === 'AI_CANCELLED' ? 'CANCELLED' : error.code === 'AI_TIMEOUT' ? 'TIMEOUT'
@@ -222,9 +249,10 @@ export async function executeCodex(
     } else failure = new CodexExecutionError('PROVIDER_ERROR', dispatched);
   } finally {
     try { await rm(directory, { recursive: true, force: true }); }
-    catch { failure ??= new CodexExecutionError('INTERNAL', invoked ? parser.hasStarted() ? 'YES' : 'UNKNOWN' : 'NO'); }
+    catch { failure ??= new CodexExecutionError('INTERNAL', dispatchState()); }
   }
+  if (dispatchGuardError !== undefined) throw dispatchGuardError;
   if (failure) throw new CodexExecutionError(failure.code, failure.dispatched, failure.invalidateConnection, observedUsage);
-  if (!result) throw new CodexExecutionError('INTERNAL', invoked ? 'UNKNOWN' : 'NO');
+  if (!result) throw new CodexExecutionError('INTERNAL', dispatchState());
   return result;
 }

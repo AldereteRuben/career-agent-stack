@@ -295,3 +295,47 @@ test('0031 stores whether approved facts back a requirement, only on requirement
     await admin.end().catch(() => {});
   }
 });
+
+test('0032 allows interview preparation assistant runs and stores hints on items without touching existing items', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
+  assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
+  const database = `career_interviewai_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let client;
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
+    maintenance.pathname = `/${database}`;
+    client = new Client({ connectionString: maintenance.toString() });
+    await client.connect();
+
+    const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
+    const targetMigration = migrations.indexOf('0032_interview_preparation_assistant.sql');
+    assert.notEqual(targetMigration, -1, '0032 interview preparation assistant migration is present');
+    for (const file of migrations.slice(0, targetMigration)) await applyMigration(client, file);
+
+    const workspaceId = randomUUID(); const applicationId = randomUUID(); const planId = randomUUID(); const connectionId = randomUUID();
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [workspaceId]);
+    await client.query('INSERT INTO applications(id,workspace_id,company,role) VALUES ($1,$2,$3,$4)', [applicationId, workspaceId, 'Fictional Co', 'Designer']);
+    await client.query("INSERT INTO interview_preparation_plans(id,workspace_id,application_id,language) VALUES($1,$2,$3,'en')", [planId, workspaceId, applicationId]);
+    await client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content) VALUES($1,$2,'NOTE','USER_NOTE',0,'Existing note')", [workspaceId, planId]);
+    await client.query("INSERT INTO ai_connections(id,workspace_id,provider,account_fingerprint,revision,state,active) VALUES($1,$2,'codex',$3,1,'CONNECTED',true)", [connectionId, workspaceId, 'a'.repeat(64)]);
+    const consent = (await client.query("INSERT INTO ai_consents(workspace_id,connection_id,provider,account_fingerprint,connection_revision,revision,operation,data_categories,notice_version,remembered) VALUES($1,$2,'codex',$3,1,1,'JOB_ANALYSIS','[\"JOB_POSTING\"]','v',false) RETURNING id", [workspaceId, connectionId, 'a'.repeat(64)])).rows[0].id;
+    const insertRun = (operation) => client.query(
+      `INSERT INTO ai_runs(workspace_id,connection_id,consent_id,provider,connection_revision,consent_revision,account_fingerprint,operation,origin,status,idempotency_key,content_identity,account_lock_key,snapshot,snapshot_hash,input_versions,reserved_day)
+       VALUES($1,$2,$3,'codex',1,1,$4,$5,'MANUAL','SUCCEEDED',$6,$7,$4,'{}',$7,'{}',current_date)`, [workspaceId, connectionId, consent, 'a'.repeat(64), operation, randomUUID(), 'b'.repeat(64)]);
+    await assert.rejects(insertRun('INTERVIEW_PREP'), (error) => error.code === '23514' && error.constraint === 'ai_runs_operation_check', 'the operation is new in 0032');
+
+    await applyMigration(client, migrations[targetMigration]);
+    await insertRun('INTERVIEW_PREP');
+    await assert.rejects(insertRun('LIVE_INTERVIEW_HELP'), (error) => error.code === '23514' && error.constraint === 'ai_runs_operation_check', 'other operations are still refused');
+    assert.deepEqual((await client.query('SELECT content, hints FROM interview_preparation_items')).rows, [{ content: 'Existing note', hints: [] }], 'existing items keep their data and gain empty hints');
+    await client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content,hints) VALUES($1,$2,'EXERCISE','ASSISTANT',1,'A coding problem','[\"A nudge\",\"A bigger hint\"]')", [workspaceId, planId]);
+    assert.deepEqual((await client.query("SELECT hints FROM interview_preparation_items WHERE origin='ASSISTANT'")).rows[0].hints, ['A nudge', 'A bigger hint']);
+  } finally {
+    await client?.end().catch(() => {});
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
+    await admin.end().catch(() => {});
+  }
+});

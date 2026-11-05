@@ -32,6 +32,8 @@ export type AiProcessOptions = {
   args: readonly string[];
   cwd: string;
   input?: string;
+  /** Internal callback once fixed input has been flushed to the child's stdin. */
+  onInputWritten?: () => void;
   /** Internal duplex protocol. Its completion closes stdin; private messages never enter argv. */
   interact?: (channel: AiProcessChannel) => Promise<void>;
   signal?: AbortSignal;
@@ -231,6 +233,7 @@ export function runAiProcess(options: AiProcessOptions): Promise<AiProcessResult
         () => { if (!child.stdin.destroyed) child.stdin.end(); },
         () => { stop('AI_INVALID_OUTPUT'); if (!child.stdin.destroyed) child.stdin.end(); },
       );
-    } else child.stdin.end(options.input ?? '');
+    } else if (options.onInputWritten) child.stdin.end(options.input ?? '', options.onInputWritten);
+    else child.stdin.end(options.input ?? '');
   });
 }
