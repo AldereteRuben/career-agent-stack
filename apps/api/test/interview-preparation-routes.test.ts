@@ -107,10 +107,10 @@ test('interview preparation plans keep references and hashes, flag stale evidenc
     assert.equal((await app.inject({ url: `/api/v1/interview-preparation/${plan.id}`, headers: foreignHeaders })).statusCode, 404, 'another workspace cannot read the plan');
 
     // Items and turns belong to a plan or session and go with it; sessions can be deleted on their own.
-    const first = await app.inject({ method: 'POST', url: `/api/v1/interview-preparation/${plan.id}/sessions`, headers });
-    const second = await app.inject({ method: 'POST', url: `/api/v1/interview-preparation/${plan.id}/sessions`, headers });
-    assert.equal(first.statusCode, 201); assert.equal(first.json().session.status, 'IN_PROGRESS');
-    assert.equal((await app.inject({ method: 'POST', url: `/api/v1/interview-preparation/${plan.id}/sessions`, headers: foreignHeaders })).statusCode, 404, 'another workspace cannot start a session');
+    // Starting and running a session belongs to the mock session routes, tested in interview-mock-session-routes.test.ts.
+    const firstSession = randomUUID();
+    await client.query("INSERT INTO interview_preparation_sessions(id,workspace_id,plan_id) VALUES($1,$3,$2),($4,$3,$2)", [firstSession, plan.id, owner, randomUUID()]);
+    const first = { json: () => ({ session: { id: firstSession } }) };
     const evidenceId = plan.evidence[0].id;
     await client.query("INSERT INTO interview_preparation_items(workspace_id,plan_id,kind,origin,position,content,evidence_id) VALUES($1,$2,'REQUIREMENT','JOB_SNAPSHOT',0,'Fictional requirement',$3),($1,$2,'NOTE','USER_NOTE',1,'My own note',NULL)", [owner, plan.id, evidenceId]);
     await client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,question,answer,learning_items) VALUES($1,$2,0,'Fictional question','Fictional answer','[\"Review caching\"]')", [owner, first.json().session.id]);
@@ -133,7 +133,6 @@ test('interview preparation plans keep references and hashes, flag stale evidenc
     assert.equal((await client.query('SELECT count(*)::int AS n FROM profile_facts WHERE workspace_id=$1', [owner])).rows[0].n, 3, 'deleting a plan never touches approved facts');
     assert.equal((await client.query('SELECT count(*)::int AS n FROM job_snapshots WHERE workspace_id=$1', [owner])).rows[0].n, 2, 'deleting a plan never touches the offer');
     assert.equal((await app.inject({ method: 'DELETE', url: `/api/v1/interview-preparation/${plan.id}`, headers })).statusCode, 404);
-    void second;
   } finally {
     await app.close();
     await closePool?.();

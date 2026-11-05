@@ -339,3 +339,41 @@ test('0032 allows interview preparation assistant runs and stores hints on items
     await admin.end().catch(() => {});
   }
 });
+
+test('0033 marks mock session turns as questions or follow-ups and keeps existing turns', { skip: !adminUrl }, async () => {
+  const maintenance = new URL(adminUrl);
+  assert.ok(['127.0.0.1', 'localhost', '::1'].includes(maintenance.hostname), 'migration fixture must use loopback');
+  assert.equal(maintenance.pathname, '/postgres', 'migration fixture URL must connect only through maintenance database');
+  const database = `career_mockturns_${randomBytes(5).toString('hex')}`;
+  const admin = new Client({ connectionString: maintenance.toString() });
+  let client;
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
+    maintenance.pathname = `/${database}`;
+    client = new Client({ connectionString: maintenance.toString() });
+    await client.connect();
+
+    const migrations = (await readdir(migrationDir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
+    const targetMigration = migrations.indexOf('0033_interview_preparation_mock_turns.sql');
+    assert.notEqual(targetMigration, -1, '0033 mock session turns migration is present');
+    for (const file of migrations.slice(0, targetMigration)) await applyMigration(client, file);
+
+    const workspaceId = randomUUID(); const applicationId = randomUUID(); const planId = randomUUID(); const sessionId = randomUUID();
+    await client.query('INSERT INTO workspaces(id) VALUES ($1)', [workspaceId]);
+    await client.query('INSERT INTO applications(id,workspace_id,company,role) VALUES ($1,$2,$3,$4)', [applicationId, workspaceId, 'Fictional Co', 'Designer']);
+    await client.query("INSERT INTO interview_preparation_plans(id,workspace_id,application_id,language) VALUES($1,$2,$3,'en')", [planId, workspaceId, applicationId]);
+    await client.query('INSERT INTO interview_preparation_sessions(id,workspace_id,plan_id) VALUES($1,$2,$3)', [sessionId, workspaceId, planId]);
+    await client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,question,answer) VALUES($1,$2,0,'Existing question','Existing answer')", [workspaceId, sessionId]);
+
+    await applyMigration(client, migrations[targetMigration]);
+    assert.deepEqual((await client.query('SELECT question, answer, kind, item_id FROM interview_preparation_turns')).rows, [{ question: 'Existing question', answer: 'Existing answer', kind: 'QUESTION', item_id: null }], 'existing turns keep their data and read as questions');
+    const itemId = randomUUID();
+    await client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,kind,item_id,question) VALUES($1,$2,1,'PROBE',$3,'A follow-up')", [workspaceId, sessionId, itemId]);
+    await assert.rejects(client.query("INSERT INTO interview_preparation_turns(workspace_id,session_id,position,kind,question) VALUES($1,$2,2,'HINT','x')", [workspaceId, sessionId]), (error) => error.code === '23514' && error.constraint === 'interview_preparation_turns_kind_check', 'only questions and follow-ups exist');
+  } finally {
+    await client?.end().catch(() => {});
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`).catch(() => {});
+    await admin.end().catch(() => {});
+  }
+});
