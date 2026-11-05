@@ -25,7 +25,7 @@ const createSchema = z.object({
 const batchLockKey = (workspaceId: string) => `job-report-batch:${workspaceId}`;
 
 /** Posting text as the job page shows it: public feed snapshots are converted from HTML to readable text. */
-async function readableDescriptions(executor: Executor, workspaceId: string, jobIds: string[]) {
+export async function readableDescriptions(executor: Executor, workspaceId: string, jobIds: string[]) {
   // Sequential: a transaction is one connection, which runs one query at a time.
   const descriptions = await latestDescriptions(executor, workspaceId, jobIds);
   const fromFeeds = jobIds.length ? await executor.selectDistinct({ jobId: jobSearchSources.jobId }).from(jobSearchSources).where(and(eq(jobSearchSources.workspaceId, workspaceId), inArray(jobSearchSources.jobId, jobIds))) : [];
