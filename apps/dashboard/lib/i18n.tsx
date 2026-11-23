@@ -296,7 +296,15 @@ export function LocaleProvider({ locale: initialLocale, children }: { locale: Lo
 export function useDocumentTitle(parts: readonly (string | null | undefined)[]) {
   const { refreshing } = useLocale();
   const title = [...parts.filter(Boolean), 'Career Stack'].join(' · ');
-  useEffect(() => { if (!refreshing) document.title = title; }, [title, refreshing]);
+  useEffect(() => {
+    if (refreshing) return;
+    document.title = title;
+    // After a client-side navigation Next.js writes the root layout's generic title once the route's metadata
+    // arrives, which can be after this effect ran. Put the page title back whenever something else replaces it.
+    const observer = new MutationObserver(() => { if (document.title !== title) document.title = title; });
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [title, refreshing]);
 }
 
 export function useLocale() {

@@ -122,18 +122,30 @@ function reachableItems(container: HTMLElement) {
   });
 }
 
+/**
+ * Whether this tab has already seen a valid session. Every page mounts its own gate, so without this each move
+ * between pages replaced the whole screen with the "opening your workspace" message while the session was checked
+ * again. A full page load starts as false, so the first check still decides what is shown.
+ */
+let sessionVerified = false;
+
 export function WorkspaceGate({ children }: { children: ReactNode }) {
   const { t, locale } = useLocale();
-  const router = useRouter(); const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const router = useRouter(); const [state, setState] = useState<'loading' | 'ready' | 'error'>(() => (sessionVerified ? 'ready' : 'loading'));
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
+    const signedOut = () => { sessionVerified = false; router.replace('/login'); };
+    // The session is still checked on every page; once verified, the page stays on screen while that happens.
     api<{ authenticated: boolean }>('/session', { signal: controller.signal }).then((session) => {
       if (controller.signal.aborted) return;
-      if (!session.authenticated) router.replace('/login'); else setState('ready');
+      if (!session.authenticated) signedOut(); else { sessionVerified = true; setState('ready'); }
     }).catch((err) => {
       if (controller.signal.aborted) return;
-      if (err instanceof ApiError && err.status === 401) router.replace('/login'); else setState('error');
+      if (err instanceof ApiError && err.status === 401) signedOut();
+      // An outage after the session was verified leaves the page in place: its own requests report the problem
+      // next to the action and keep what was typed.
+      else if (!sessionVerified) setState('error');
     });
     return () => controller.abort();
   }, [router, attempt]);
@@ -181,7 +193,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const signOut = async () => {
     if (signingOut || !window.confirm(locale === 'es' ? '¿Cerrar sesión? Los borradores sin guardar de esta pestaña se perderán. Tus datos guardados se conservan.' : 'Sign out? Unsaved drafts in this tab will be lost. Your saved data is kept.')) return;
     setSigningOut(true); setSessionError('');
-    try { await api('/session', { method: 'DELETE' }); clearSessionDrafts(); router.replace('/login'); }
+    try { await api('/session', { method: 'DELETE' }); sessionVerified = false; clearSessionDrafts(); router.replace('/login'); }
     catch (err) { setSessionError(errorMessage(err)); setSigningOut(false); }
   };
 

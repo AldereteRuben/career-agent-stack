@@ -22,7 +22,7 @@ import { searchOrigin, withSearchOrigin } from '@/lib/search-origin';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { AppShell, DetailTitle, PageHeader, WorkspaceGate } from '@/components/shell';
-import { Button, ButtonLink, Card, Empty, Field, Icon, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
+import { Button, ButtonLink, Card, Empty, Field, Icon, Notice, Skeleton, SelectField, Tag, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage, formatDate } from '@/lib/api';
 import { applicationsCsv, defaultCsvSeparator, type CsvSeparator } from '@/lib/applications-csv';
 import { copy, applicationStage, labelFor, recruitmentStageOrder, selectableApplicationStates } from '@/lib/labels';
@@ -105,6 +105,16 @@ function interviewDisclosureSummary(application: Application, locale: Locale) {
   return `${c('Entrevista programada', 'Interview scheduled')}: ${date} (${timeZone})`;
 }
 
+/** Placeholder with the shape of the list, so the page does not jump when the applications arrive. */
+function TrackerSkeleton({ label }: { label: string }) {
+  return <div className="tracker-layout" role="status">
+    <span className="sr-only">{label}</span>
+    <Card className="tracker-list" aria-hidden="true">{[0, 1, 2, 3].map((row) => <div className="tracker-row tracker-row-skeleton" key={row}>
+      <Skeleton width={38} height={38}/><span className="tracker-main"><Skeleton width={`${64 - row * 8}%`} height={16}/><Skeleton width="42%" height={12}/></span><Skeleton width={72} height={22}/>
+    </div>)}</Card>
+  </div>;
+}
+
 function ApplicationsView() {
   const { locale } = useLocale(); const c = copy(locale);
   const router = useRouter(); const pathname = usePathname(); const searchParams = useSearchParams(); const urlId = searchParams.get('id');
@@ -178,14 +188,16 @@ function ApplicationsView() {
     if (target) { focusSelection.current = false; target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'start' }); }
   }, [selectedId, selected?.id, loadState]);
 
+  // Once a list is on screen it stays there while another page, search or order loads; only the first load shows a placeholder.
+  const listShown = useRef(false); const [refreshing, setRefreshing] = useState(false);
   const loadRows = useCallback(async () => {
     const ticket = ++listRequest.current;
     try {
       const params = new URLSearchParams({ offset: String(offset), limit: '25', q: query, sort });
       const page = await api<{ items: Application[]; total: number; offset: number; limit: number }>(`/applications?${params}`);
       if (ticket !== listRequest.current) return null;
-      setRows(page.items); setPagination(page); setLoadState('ready'); return page.items;
-    } catch (err) { if (ticket === listRequest.current) { setError(errorMessage(err)); setLoadState('error'); } return null; }
+      listShown.current = true; setRows(page.items); setPagination(page); setLoadState('ready'); setRefreshing(false); return page.items;
+    } catch (err) { if (ticket === listRequest.current) { setRefreshing(false); setError(errorMessage(err)); setLoadState('error'); } return null; }
   }, [offset, query, sort]);
   /** Every application that matches the current search, not just the page on screen, as a spreadsheet file. */
   const downloadCsv = async () => {
@@ -221,7 +233,7 @@ function ApplicationsView() {
     catch (err) { if (ticket === eventsRequest.current) { setEventsState('error'); setError(errorMessage(err)); } }
   }, []);
 
-  useEffect(() => { setLoadState('loading'); void loadRows(); return () => { listRequest.current++; }; }, [loadRows]);
+  useEffect(() => { if (listShown.current) setRefreshing(true); else setLoadState('loading'); void loadRows(); return () => { listRequest.current++; }; }, [loadRows]);
   useEffect(() => { void loadSelected(selectedId); return () => { detailRequest.current++; }; }, [selectedId, loadSelected]);
   // Follow the URL (deep links from job pages, back/forward navigation).
   useEffect(() => { focusSelection.current = true; setSelectedId(urlId); }, [urlId]);
@@ -340,10 +352,10 @@ function ApplicationsView() {
       <SelectField label={c('Separador de columnas', 'Column separator')} hint={c('Elegido según el formato regional de tu navegador. Si Excel muestra todo en una columna, prueba el otro.', 'Chosen from your browser’s regional format. If Excel shows everything in one column, try the other.')} value={csvSeparator} onChange={(event) => setCsvSeparator(event.target.value as CsvSeparator)}><option value=";">{c('Punto y coma (;): Excel de España o Argentina', 'Semicolon (;): Excel in Spain or Argentina')}</option><option value=",">{c('Coma (,): Excel de México o EE. UU., Google Sheets', 'Comma (,): Excel in Mexico or the US, Google Sheets')}</option></SelectField>
       <label className="checkbox-line"><input type="checkbox" checked={csvNotes} onChange={(event) => setCsvNotes(event.target.checked)}/><span>{c('Incluir mis notas', 'Include my notes')}<small>{c('Pueden contener datos personales. Comparte el archivo con cuidado.', 'They may contain personal data. Share the file with care.')}</small></span></label>
     </div>
-    {loadState === 'loading' ? <Notice>{c('Cargando solicitudes…', 'Loading applications…')}</Notice>
+    {loadState === 'loading' ? <TrackerSkeleton label={c('Cargando solicitudes…', 'Loading applications…')}/>
       : loadState === 'error' && !rows.length ? <Card className="jobs-empty"><Empty headingLevel="h2" title={c('No pudimos cargar tus solicitudes', 'We could not load your applications')} detail={c('Comprueba que el servicio local esté en marcha.', 'Check that the local service is running.')} action={<Button variant="secondary" onClick={() => { setError(''); setLoadState('loading'); void loadRows(); }}>{c('Reintentar', 'Try again')}</Button>}/></Card>
       : (rows.length || selectedId || query) ? <div className={`tracker-layout ${selected ? 'tracker-has-selection' : ''}`}>
-        <Card className="tracker-list"><h2 className="sr-only focus-heading" ref={listHeading} tabIndex={-1}>{c('Lista de solicitudes', 'Application list')}</h2><div className="tracker-list-head"><span role="status">{pagination.total ? `${pagination.offset + 1}–${pagination.offset + rows.length}` : '0'} {c('de', 'of')} {pagination.total}</span><span>{sort === 'follow-up' ? c('PRÓXIMOS PASOS', 'UPCOMING FOLLOW-UPS') : c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
+        <Card className={`tracker-list ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}><h2 className="sr-only focus-heading" ref={listHeading} tabIndex={-1}>{c('Lista de solicitudes', 'Application list')}</h2><div className="tracker-list-head"><span role="status">{pagination.total ? `${pagination.offset + 1}–${pagination.offset + rows.length}` : '0'} {c('de', 'of')} {pagination.total}</span><span>{sort === 'follow-up' ? c('PRÓXIMOS PASOS', 'UPCOMING FOLLOW-UPS') : c('ACTUALIZADOS RECIENTEMENTE', 'RECENTLY UPDATED')}</span></div>
           {rows.map((row) => { const active = isActiveApplication(row); const due = row.followUpDate ? applicationFollowUpStatus(row.followUpDate, todayLocalDate(), !active) : 'none'; return <button className={`tracker-row ${selectedId === row.id ? 'tracker-selected' : ''}`} key={row.id} aria-current={selectedId === row.id ? 'true' : undefined} onClick={() => select(row.id)}><span className={`tracker-avatar state-${row.state.toLowerCase()}`}>{row.company.slice(0, 1)}</span><span className="tracker-main"><strong>{row.role}</strong><small>{row.company}{row.location ? ` · ${row.location}` : ''} · {applicationStage(row.recruitmentStage, row.state, locale)}</small>{due !== 'none' && <span className="tracker-availability-tag"><Tag tone={due === 'overdue' ? 'red' : 'amber'}>{due === 'overdue' ? c('Vencida', 'Overdue') : due === 'due-today' ? c('Vence hoy', 'Due today') : `${c('Próximo paso', 'Follow-up')}: ${formatCalendarDate(row.followUpDate!, locale)}`}</Tag></span>}{row.jobAvailability && row.jobAvailability !== 'OPEN' && <span className="tracker-availability-tag"><Tag tone={row.jobAvailability === 'CLOSED' ? 'red' : 'amber'}>{labelFor.availability(row.jobAvailability, locale)}</Tag></span>}</span><span className="tracker-date">{formatDate(row.updatedAt)}</span><Tag tone={stateTone(row.state)}>{labelFor.applicationState(row.state, locale)}</Tag></button>; })}
           {!rows.length && <p>{c('No hay solicitudes que coincidan con esta búsqueda.', 'No applications match this search.')}</p>}
           {pagination.total > pagination.limit && <nav className="tracker-pagination" aria-label={c('Páginas de solicitudes', 'Application pages')}>
