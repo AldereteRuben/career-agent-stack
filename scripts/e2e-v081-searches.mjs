@@ -53,8 +53,11 @@ export async function checkSearchUsability({ browser, uiUrl, cookies, artifacts 
     assert.equal(await page.getByLabel('Puesto o palabras clave', { exact: true }).inputValue(), 'QA Engineer');
     await page.getByRole('button', { name: 'Guardar cambios', exact: true }).waitFor();
     assert.equal(creates, 0, 'Adjusting one search does not create another');
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Cancelar edición', exact: true }).click();
+    // The in-app confirmation dialog (components/confirm-dialog.tsx); its last button goes ahead.
+    const confirmDialog = page.getByRole('alertdialog');
+    await confirmDialog.getByRole('button').last().click();
+    await confirmDialog.waitFor({ state: 'detached' });
     searches = [first, second]; await go();
     await page.getByRole('button', { name: 'Elegir búsqueda para ajustar', exact: true }).click();
     await page.locator('#manage-searches').waitFor();
