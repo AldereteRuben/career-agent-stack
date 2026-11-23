@@ -125,6 +125,19 @@ export function apiClient(context: BrowserContext, uiUrl: string, pace: (method?
 }
 export type ApiClient = ReturnType<typeof apiClient>;
 
+/**
+ * Answers the in-app confirmation dialog (components/confirm-dialog.tsx), which replaced window.confirm for actions.
+ * Optionally checks its message. The dialog must close afterwards.
+ */
+export async function answerConfirm(page: Page, accept: boolean, message?: RegExp) {
+  const dialog = page.getByRole('alertdialog');
+  await dialog.waitFor();
+  if (message) assert.match(await dialog.innerText(), message);
+  const buttons = dialog.getByRole('button');
+  await (accept ? buttons.last() : buttons.first()).click();
+  await dialog.waitFor({ state: 'detached' });
+}
+
 /** Explicitly choose replacement in legacy reuse flows; cancellation has its own edge-case regression. */
 export async function clickWithResumeReplacement(page: Page, button: Locator) {
   const accept = async (dialog: Dialog) => {

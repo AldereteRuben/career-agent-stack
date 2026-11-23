@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { Scenario } from './scenarios.js';
-import { hasHorizontalOverflow, setLocale } from './ui.js';
+import { hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 export const applicationFollowUpDraftScenario: Scenario = {
   name: 'application-follow-up-draft',
@@ -20,8 +20,8 @@ export const applicationFollowUpDraftScenario: Scenario = {
     assert.match(await body.inputValue(), /Hello,/);
 
     await editor.getByLabel('Email language').selectOption('es');
-    page.once('dialog', (dialog) => void dialog.accept());
     await editor.getByRole('button', { name: 'Start from a template' }).click();
+    await answerConfirm(page, true);
     assert.match(await subject.inputValue(), /Seguimiento de mi candidatura/);
     assert.match(await body.inputValue(), /Hola,/);
     const [created] = await Promise.all([

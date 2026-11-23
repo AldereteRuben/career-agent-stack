@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Route } from 'playwright';
 import type { Scenario } from './scenarios.js';
-import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 type Fact = { id: string; statement: string; approvalStatus: string };
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Fact[] };
@@ -81,8 +81,8 @@ export const patchScenarios: Scenario[] = [
       await page.reload();
       await page.getByRole('button', { name: 'Continuar borrador', exact: true }).click();
       assert.equal(await page.getByLabel('Empresa', { exact: true }).inputValue(), `Borrador ${marker}`);
-      page.once('dialog', (dialog) => void dialog.accept());
       await page.getByRole('button', { name: 'Descartar borrador', exact: true }).click();
+      await answerConfirm(page, true);
       assert.equal(await page.getByLabel('Empresa', { exact: true }).inputValue(), '');
       await api.post('/jobs/import', { company: `Fixture ${marker}`, title: 'Designer', jobUrl: `https://example.com/jobs/${marker}/draft-regression` });
       await page.getByRole('textbox', { name: 'Buscar ofertas', exact: true }).fill('zzzz-no-match');

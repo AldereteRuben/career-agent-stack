@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Locator, Page } from 'playwright';
 import type { Scenario } from './scenarios.js';
-import { eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
+import { eventually, goTo, hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Array<{ id: string; approvalStatus: string }> };
 type Resume = { id: string; name: string; sha256: string; approvalStatus: string; assistReady: boolean; reviewReady: boolean };
@@ -85,7 +85,7 @@ export const v053Scenarios: Scenario[] = [
       for (const path of ['/jobs', '/applications']) {
         await page.goto(new URL(path, page.url()).toString());
         const discard = page.getByRole('button', { name: 'Discard draft', exact: true });
-        if (await discard.count()) { page.once('dialog', (dialog) => void dialog.accept()); await discard.click(); await discard.waitFor({ state: 'detached' }); }
+        if (await discard.count()) { await discard.click(); await answerConfirm(page, true); await discard.waitFor({ state: 'detached' }); }
       }
       await setLocale(page, 'es');
     },

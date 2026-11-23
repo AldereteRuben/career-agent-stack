@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from './confirm-dialog';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -27,6 +28,7 @@ const month = (value: string) => value ? `${value.slice(5)}/${value.slice(0, 4)}
  * itself is discarded as soon as it is read. The review below works from the stored suggestions of one import.
  */
 export function ResumeImport() {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const params = useSearchParams(); const router = useRouter();
   const importId = params.get('importId');
@@ -127,7 +129,7 @@ export function ResumeImport() {
     finally { setReading(false); reader.current = null; }
   };
   const readPasted = (event: FormEvent) => { event.preventDefault(); if (pasted.trim()) setPendingText({ text: pasted, pagesTruncated: false }); };
-  const discardPreview = () => { if (window.confirm(c('¿Descartar estas propuestas? No se ha guardado nada.', 'Discard these proposals? Nothing has been saved.'))) { setPreview(null); setAiText(null); setAiContext(null); setPendingText(null); setMessage(c('Propuestas descartadas. No se guardó nada.', 'Proposals discarded. Nothing was saved.')); } };
+  const discardPreview = async () => { if (await askConfirm({ message: c('¿Descartar estas propuestas? No se ha guardado nada.', 'Discard these proposals? Nothing has been saved.'), confirmLabel: c('Descartar propuestas', 'Discard proposals'), tone: 'danger' })) { setPreview(null); setAiText(null); setAiContext(null); setPendingText(null); setMessage(c('Propuestas descartadas. No se guardó nada.', 'Proposals discarded. Nothing was saved.')); } };
 
   const savePreview = async () => {
     if (!preview || !data) return;

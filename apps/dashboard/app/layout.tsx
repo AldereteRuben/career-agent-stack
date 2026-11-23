@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { cookies, headers } from 'next/headers';
+import { ConfirmProvider } from '@/components/confirm-dialog';
 import { LocaleProvider } from '@/lib/i18n';
 import { initialLocale } from '@/lib/locale';
 import './globals.css';
@@ -13,5 +14,5 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const locale = initialLocale((await headers()).get('accept-language'), (await cookies()).get('locale')?.value);
-  return <html lang={locale} data-scroll-behavior="smooth"><body><LocaleProvider locale={locale}>{children}</LocaleProvider></body></html>;
+  return <html lang={locale} data-scroll-behavior="smooth"><body><LocaleProvider locale={locale}><ConfirmProvider>{children}</ConfirmProvider></LocaleProvider></body></html>;
 }

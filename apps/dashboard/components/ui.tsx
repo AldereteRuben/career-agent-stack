@@ -5,7 +5,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
 export function Card({ children, className = '', ...props }: React.HTMLAttributes<HTMLElement> & { children: ReactNode }) { return <section {...props} className={`card ${className}`}>{children}</section>; }
 
-export function Button({ children, variant = 'primary', className = '', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) { return <button className={`button button-${variant} ${className}`} {...props}>{children}</button>; }
+export function Button({ children, variant = 'primary', className = '', ...props }: ComponentProps<'button'> & { variant?: ButtonVariant }) { return <button className={`button button-${variant} ${className}`} {...props}>{children}</button>; }
 
 /** A navigation link styled as a button. Use instead of wrapping <Button> in <Link> (nested interactive elements). */
 export function ButtonLink({ variant = 'primary', className = '', ...props }: ComponentProps<typeof Link> & { variant?: ButtonVariant }) { return <Link className={`button button-${variant} ${className}`} {...props}/>; }

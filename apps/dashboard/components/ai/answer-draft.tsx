@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '../confirm-dialog';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Notice, TextareaField } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
@@ -19,6 +20,7 @@ export function AiAnswerDraft({ questionId, facts, visible, disabled, onSaved, o
   questionId: string; facts: Array<{ id: string; kind: string; statement: string }>; visible: boolean; disabled: boolean;
   onSaved: () => Promise<void>; onManual: () => void; onDirtyChange: (dirty: boolean) => void;
 }) {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale); const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]); const [review, setReview] = useState<AiArtifact | null>(null);
   const [text, setText] = useState(''); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
@@ -35,11 +37,11 @@ export function AiAnswerDraft({ questionId, facts, visible, disabled, onSaved, o
     }
   }, [factIds, selected]);
   useEffect(() => { dirtyCallback.current(review !== null); return () => dirtyCallback.current(false); }, [review]);
-  const choose = (artifact: AiArtifact) => {
+  const choose = async (artifact: AiArtifact) => {
     if (busy.current || disabled) return;
     if (artifact.output.operation !== 'ANSWER_DRAFT') return;
     if (review?.id === artifact.id) { reviewHeading.current?.focus(); return; }
-    if (review && !window.confirm(c('Tienes una respuesta en revisión. ¿Reemplazarla por esta sugerencia?', 'You have an answer under review. Replace it with this suggestion?'))) return;
+    if (review && !(await askConfirm({ message: c('Tienes una respuesta en revisión. ¿Reemplazarla por esta sugerencia?', 'You have an answer under review. Replace it with this suggestion?'), confirmLabel: c('Reemplazar respuesta', 'Replace answer') }))) return;
     if (artifact.output.result.status === 'NEEDS_USER_INPUT') { onManual(); return; }
     setReview(artifact); setText(artifact.output.result.text); setError('');
     window.setTimeout(() => reviewHeading.current?.focus(), 0);

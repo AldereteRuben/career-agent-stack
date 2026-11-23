@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { useErrorFocus } from '@/lib/disclosure-focus';
 import { AiAnswerDraft, canDraftExperienceAnswer } from '@/components/ai/answer-draft';
 import { useAiAvailable } from '@/components/ai/draft-action';
@@ -73,6 +74,7 @@ function CountryOptions({ current }: { current: string }) {
 }
 
 function ProfileView() {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const aiAvailable = useAiAvailable();
   const [answersOpen, setAnswersOpen] = useState(false);
@@ -287,12 +289,12 @@ function ProfileView() {
         {!editing && !savedEntry && <ProfileEntryForm busy={locked} onSave={addFact} onDirtyChange={setEntryDirty}/>}
         {editing && <div className="fact-edit"><h3 ref={editHeading} tabIndex={-1}>{c('Editar dato del CV', 'Edit resume detail')}</h3>
           {data?.revision !== editing.revision && <Notice tone="warning">{c('El perfil cambió mientras editabas. Conserva tu corrección y vuelve a abrir la entrada actual antes de guardar.', 'Your profile changed while editing. Keep your correction and reopen the current entry before saving.')}</Notice>}
-          <ProfileEntryForm key={editing.id} initial={editing} busy={locked} blocked={data?.revision !== editing.revision} onSave={saveFactEdit} onCancel={() => { if (window.confirm(c('¿Descartar esta corrección?', 'Discard this correction?'))) { setEditing(null); reviewList.current?.focus(); } }}/>
+          <ProfileEntryForm key={editing.id} initial={editing} busy={locked} blocked={data?.revision !== editing.revision} onSave={saveFactEdit} onCancel={async () => { if (await askConfirm({ message: c('¿Descartar esta corrección?', 'Discard this correction?'), confirmLabel: c('Descartar corrección', 'Discard correction'), cancelLabel: c('Seguir editando', 'Keep editing'), tone: 'danger' })) { setEditing(null); reviewList.current?.focus(); } }}/>
         </div>}
         <section className="fact-list" ref={reviewList} tabIndex={-1} aria-labelledby="saved-experience-heading"><h3 id="saved-experience-heading" tabIndex={-1}>{c('Lo que has guardado', 'What you have saved')}</h3><p className="muted-label">{c('Solo los textos confirmados estarán disponibles al preparar tu CV.', 'Only confirmed entries will be available when preparing your resume.')}</p>{data?.facts.length ? data.facts.map((item) => <div className="fact-row" key={item.id}>
           <div className="fact-marker" aria-hidden="true">{item.approvalStatus === 'USER_APPROVED' ? '✓' : '·'}</div>
           <div className="fact-content"><div className="fact-meta"><span>{labelFor.factKind(item.kind, locale)}</span><Tag tone={item.approvalStatus === 'USER_APPROVED' ? 'green' : item.approvalStatus === 'REJECTED' ? 'red' : 'amber'}>{item.approvalStatus === 'REJECTED' ? c('ARCHIVADO', 'ARCHIVED') : labelFor.factApproval(item.approvalStatus, locale).toUpperCase()}</Tag></div><p style={{ whiteSpace: 'pre-wrap' }}>{item.statement}</p>{item.tags.length > 0 && <div className="tag-row">{item.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</div>}</div>
-          <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked || editing !== null} onClick={() => { if (entryDirty && !window.confirm(c('Hay una entrada sin guardar. ¿Descartarla para editar esta?', 'There is an unsaved entry. Discard it to edit this one?'))) return; setEntryDirty(false); setSavedEntry(null); setEditing({ ...item, revision: data.revision }); setArchiving(null); }}>{c('Editar', 'Edit')}</Button>{item.approvalStatus === 'USER_APPROVED' && <Button variant="quiet" disabled={locked || editing !== null} onClick={() => setArchiving(item.id)}>{c('Archivar', 'Archive')}</Button>}
+          <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked || editing !== null} onClick={async () => { if (entryDirty && !(await askConfirm({ message: c('Hay una entrada sin guardar. ¿Descartarla para editar esta?', 'There is an unsaved entry. Discard it to edit this one?'), confirmLabel: c('Descartar entrada', 'Discard entry'), tone: 'danger' }))) return; setEntryDirty(false); setSavedEntry(null); setEditing({ ...item, revision: data.revision }); setArchiving(null); }}>{c('Editar', 'Edit')}</Button>{item.approvalStatus === 'USER_APPROVED' && <Button variant="quiet" disabled={locked || editing !== null} onClick={() => setArchiving(item.id)}>{c('Archivar', 'Archive')}</Button>}
           {item.approvalStatus === 'REJECTED' && <Button variant="secondary" disabled={locked || editing !== null} onClick={() => reviewFact(item.id, 'approve')}>{c('Restaurar y confirmar', 'Restore and confirm')}</Button>}</div>
           {archiving === item.id && <div className="fact-edit"><p>{c('¿Archivar este texto? Se conservará aquí y en los PDF anteriores, pero no estará disponible para nuevos CV.', 'Archive this entry? It will remain here and in earlier PDFs, but will not be available for new resumes.')}</p><Button variant="secondary" disabled={locked} onClick={() => void archiveFact(item.id)}>{c('Confirmar archivo', 'Confirm archive')}</Button> <Button variant="quiet" disabled={locked} onClick={() => setArchiving(null)}>{c('Cancelar', 'Cancel')}</Button></div>}
           {item.approvalStatus === 'SUGGESTED' && <div className="fact-actions" role="group" aria-label={`${labelFor.factKind(item.kind, locale)}: ${item.statement}`}><Button variant="quiet" disabled={locked} onClick={() => reviewFact(item.id, 'reject')}>{c('Descartar', 'Discard')}</Button><Button variant="secondary" disabled={locked} onClick={() => reviewFact(item.id, 'approve')}>{saving(`fact:${item.id}`) ? c('Guardando…', 'Saving…') : c('Confirmar', 'Confirm')}</Button></div>}

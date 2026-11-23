@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from './confirm-dialog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildApplicationFollowUpTemplate } from '@career/domain';
 import { Button, Card, Field, Notice, SelectField, Tag, TextareaField } from '@/components/ui';
@@ -13,6 +14,7 @@ type Draft = { id: string; applicationId: string; language: 'es' | 'en'; subject
 type DraftResponse = { draft: Draft | null };
 
 export function ApplicationFollowUpDraft({ applicationId, company, role }: { applicationId: string; company: string; role: string }) {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const [language, setLanguage] = useState<'es' | 'en'>(locale === 'en' ? 'en' : 'es');
   const [subject, setSubject] = useState(''); const [body, setBody] = useState('');
@@ -36,8 +38,8 @@ export function ApplicationFollowUpDraft({ applicationId, company, role }: { app
 
   useEffect(() => { void load(); return () => { requestId.current++; }; }, [load]);
 
-  const startTemplate = () => {
-    if ((subject.trim() || body.trim()) && !window.confirm(c('¿Reemplazar el texto actual con la plantilla?', 'Replace the current text with the template?'))) return;
+  const startTemplate = async () => {
+    if ((subject.trim() || body.trim()) && !(await askConfirm({ message: c('¿Reemplazar el texto actual con la plantilla?', 'Replace the current text with the template?'), confirmLabel: c('Usar la plantilla', 'Use the template') }))) return;
     const template = buildApplicationFollowUpTemplate({ language, company, role });
     setSubject(template.subject); setBody(template.body); setError(''); setMessage(c('Plantilla lista para revisar y editar.', 'Template ready for you to review and edit.'));
   };
@@ -56,7 +58,7 @@ export function ApplicationFollowUpDraft({ applicationId, company, role }: { app
   };
 
   const remove = async () => {
-    if (!saved || busy || !window.confirm(c('¿Eliminar este borrador de seguimiento?', 'Delete this follow-up draft?'))) return;
+    if (!saved || busy || !(await askConfirm({ message: c('¿Eliminar este borrador de seguimiento?', 'Delete this follow-up draft?'), confirmLabel: c('Eliminar borrador', 'Delete draft'), tone: 'danger' }))) return;
     setBusy(true); setError(''); setMessage('');
     try {
       await api(`/applications/${applicationId}/follow-up-draft`, { method: 'DELETE' });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+import { eventually, hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 export const uxReviewScenarios: Scenario[] = [{
   name: 'ux-review-focus-resume-drafts-and-return-filters',
@@ -18,8 +18,8 @@ export const uxReviewScenarios: Scenario[] = [{
     await page.locator('.fact-row').filter({ hasText: `UX example ${marker}` }).getByRole('button', { name: 'Editar', exact: true }).click();
     await eventually(() => page.evaluate(() => document.activeElement?.textContent), (text) => text === 'Editar dato del CV', 'Editing moves keyboard focus to its heading');
     await eventually(() => page.getByRole('heading', { name: 'Editar dato del CV' }).boundingBox(), (rect) => Boolean(rect && rect.y >= 0 && rect.y < 1000), 'Edit form is brought into view after scrolling');
-    page.once('dialog', (dialog) => void dialog.accept());
     await page.getByRole('button', { name: 'Cancelar edición', exact: true }).click();
+    await answerConfirm(page, true);
     await page.getByRole('navigation', { name: 'Pasos para esta solicitud' }).getByRole('link', { name: 'Preparar CV', exact: true }).click();
     await page.waitForURL('**/documents?**');
     const choice = () => page.locator('.fact-pick').filter({ hasText: `UX example ${marker}` }).locator('input');

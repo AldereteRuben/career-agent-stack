@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '../confirm-dialog';
 import { useState } from 'react';
 import { Button, Notice, TextareaField } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
@@ -15,6 +16,7 @@ export function AiResumeReview({ artifact, name, printedContactFields, paperSize
   artifact: AiArtifact; name: string; printedContactFields: string[]; paperSize: 'A4' | 'LETTER'; contextChanged?: boolean; onGenerated: (documentId: string) => void; onCancel: () => void;
   onOriginals: () => void; onBusyChange: (busy: boolean) => void;
 }) {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const proposals = artifact.output.operation === 'RESUME_DRAFT' ? artifact.output.proposals : [];
   const initial = { edits: JSON.stringify(Object.fromEntries(proposals.map(item => [item.proposalKey, item.text]))), included: JSON.stringify(proposals.map(item => item.proposalKey)) };
@@ -71,6 +73,6 @@ export function AiResumeReview({ artifact, name, printedContactFields, paperSize
     <p>{c('Generaremos una versión nueva. Podrás aprobarla después de leer el PDF completo.', 'We will generate a new version. You can approve it after reading the complete PDF.')}</p>
     {!selected.length && <p>{c('Conservaremos todos tus textos originales. Continúa al formulario para generar ese PDF.', 'We will keep all your original wording. Continue to the form to generate that PDF.')}</p>}
     <p className={styles.hint}>{c('Tus cambios se conservan en esta pestaña. Cerrar sesión los borra.', 'Your edits stay in this tab. Signing out clears them.')}</p>
-    <div className={styles.actions}>{selected.length ? <Button disabled={disabled || !name.trim() || selected.some(item => !edits[item.proposalKey]?.trim())} onClick={() => void create()}>{busy ? c('Preparando el PDF…', 'Preparing the PDF…') : c('Generar y revisar el PDF', 'Generate and review the PDF')}</Button> : <Button disabled={disabled} onClick={onOriginals}>{c('Continuar con mis textos originales', 'Continue with my original wording')}</Button>}<Button variant="quiet" disabled={busy} onClick={() => { if (!draft.storageFailed || window.confirm(c('No pudimos guardar estos cambios. ¿Volver y perderlos?', 'We could not save these edits. Go back and lose them?'))) onCancel(); }}>{c('Volver', 'Back')}</Button></div>
+    <div className={styles.actions}>{selected.length ? <Button disabled={disabled || !name.trim() || selected.some(item => !edits[item.proposalKey]?.trim())} onClick={() => void create()}>{busy ? c('Preparando el PDF…', 'Preparing the PDF…') : c('Generar y revisar el PDF', 'Generate and review the PDF')}</Button> : <Button disabled={disabled} onClick={onOriginals}>{c('Continuar con mis textos originales', 'Continue with my original wording')}</Button>}<Button variant="quiet" disabled={busy} onClick={async () => { if (!draft.storageFailed || await askConfirm({ message: c('No pudimos guardar estos cambios. ¿Volver y perderlos?', 'We could not save these edits. Go back and lose them?'), confirmLabel: c('Volver y perderlos', 'Go back and lose them'), tone: 'danger' })) onCancel(); }}>{c('Volver', 'Back')}</Button></div>
   </section>;
 }

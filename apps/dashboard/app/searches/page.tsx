@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AppShell, PageHeader, WorkspaceGate } from '@/components/shell';
 import { Button, Card, Empty, Notice, TextareaField } from '@/components/ui';
@@ -82,6 +83,7 @@ function revealAndFocus(id: string) {
 const fieldElementId = (field: string) => field === 'providers' ? 'search-provider-remotive' : `search-${field}`;
 
 export default function SearchesPage() {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const es = locale === 'es';
   const t = (spanish: string, english: string) => es ? spanish : english;
   const [searches, setSearches] = useState<Search[]>([]); const [results, setResults] = useState<SearchJob[]>([]); const [adzunaConfigured, setAdzunaConfigured] = useState(false);
@@ -240,27 +242,27 @@ export default function SearchesPage() {
     saveContext(id, nextView, nextSort, start, !push); await loadResults(id, nextView, nextSort, start); if (moveFocus) resultsTitle.current?.focus();
   };
   const dirtyDraft = (formOpen || searches.length === 0) && Boolean(draft.role || draft.company || draft.location || aiSearchRequest.trim());
-  const openNew = () => {
-    if (dirtyDraft && !window.confirm(t('¿Descartar este borrador y crear otra búsqueda?', 'Discard this draft and create another search?'))) return;
+  const openNew = async () => {
+    if (dirtyDraft && !(await askConfirm({ message: t('¿Descartar este borrador y crear otra búsqueda?', 'Discard this draft and create another search?'), confirmLabel: t('Descartar borrador', 'Discard draft'), tone: 'danger' }))) return;
     setAiSearchProposal(null); setAiOpen(false); focusForm.current = true; setFormState({ draft: emptyDraft(), editing: '', open: true, idempotencyKey: crypto.randomUUID() });
   };
-  const reviewAiSearch = (artifact: AiArtifact) => {
+  const reviewAiSearch = async (artifact: AiArtifact) => {
     if (artifact.output.operation !== 'SEARCH_DRAFT' || !formDraft.ready || busy !== '') return;
-    if (Boolean(draft.role || draft.company || draft.location) && !window.confirm(t('¿Sustituir los campos de este borrador por la propuesta? Todavía podrás editarlos antes de buscar.', 'Replace this draft’s fields with the suggestion? You can still edit them before searching.'))) return;
+    if (Boolean(draft.role || draft.company || draft.location) && !(await askConfirm({ message: t('¿Sustituir los campos de este borrador por la propuesta? Todavía podrás editarlos antes de buscar.', 'Replace this draft’s fields with the suggestion? You can still edit them before searching.'), confirmLabel: t('Usar la propuesta', 'Use the suggestion') }))) return;
     const criteria = artifact.output.criteria;
     setFormState({ draft: { ...emptyDraft(), role: criteria.role ?? '', company: criteria.company ?? '', location: criteria.location ?? '', workMode: criteria.workMode }, editing: '', open: true, idempotencyKey: crypto.randomUUID(), aiArtifactId: artifact.id });
     setAiSearchProposal(artifact); setAiProposalError(''); setAiOpen(false); setFormError(''); setCriteriaMissing(false); setInvalidField(null);
     requestAnimationFrame(() => titleRef.current?.focus());
   };
-  const beginEdit = (search: Search) => {
+  const beginEdit = async (search: Search) => {
     if (formOpen && editing === search.id) { titleRef.current?.focus(); return; }
-    if (dirtyDraft && !window.confirm(t('¿Descartar este borrador para editar otra búsqueda?', 'Discard this draft to edit another search?'))) return;
+    if (dirtyDraft && !(await askConfirm({ message: t('¿Descartar este borrador para editar otra búsqueda?', 'Discard this draft to edit another search?'), confirmLabel: t('Descartar borrador', 'Discard draft'), tone: 'danger' }))) return;
     setAiSearchProposal(null); setAiOpen(false); const legacy = search.matcherVersion === 1;
     focusForm.current = true;
     setFormState({ editing: search.id, open: true, idempotencyKey: '', draft: { role: search.role ?? '', company: search.company ?? '', location: search.location ?? '', workMode: search.workMode, frequencyHours: search.frequencyHours, enabled: search.enabled, autoPrepare: search.autoPrepare, providerIds: search.providerIds ?? defaultProviders, matcherVersion: search.matcherVersion ?? 1, includeRelated: search.includeRelated ?? false, improveMatching: !legacy } });
   };
-  const closeDraft = () => {
-    if (dirtyDraft && !window.confirm(editing ? t('¿Cancelar la edición sin guardar los cambios?', 'Cancel editing without saving changes?') : t('¿Descartar este borrador sin guardar?', 'Discard this unsaved draft?'))) return;
+  const closeDraft = async () => {
+    if (dirtyDraft && !(await askConfirm({ message: editing ? t('¿Cancelar la edición sin guardar los cambios?', 'Cancel editing without saving changes?') : t('¿Descartar este borrador sin guardar?', 'Discard this unsaved draft?'), confirmLabel: editing ? t('Descartar cambios', 'Discard changes') : t('Descartar borrador', 'Discard draft'), cancelLabel: t('Seguir editando', 'Keep editing'), tone: 'danger' }))) return;
     setAiSearchProposal(null); if (!editing) aiSearchDraft.update({ text: '', open: '' }); setFormError(''); setCriteriaMissing(false); formDraft.update({ payload: '' });
   };
   /** With several searches, "adjust" first asks which one; it never opens a create form (U05). */
@@ -382,7 +384,7 @@ export default function SearchesPage() {
         </div></section>}
         {(!aiOpen || !aiAvailable || Boolean(editing)) && <>
         {aiSearchProposal?.output.operation === 'SEARCH_DRAFT' && <Notice role={null}><div className="form-stack"><p>{t('Propuesta de IA en los campos de abajo. Revísalos y pulsa Buscar ofertas cuando quieras empezar.', 'The AI suggestion is in the fields below. Review them and choose Find jobs when you want to start.')}</p>{aiSearchProposal.output.unsupportedConstraints.length > 0 && <><strong>{t('Recuerda comprobar estas condiciones en cada oferta; no se usan como filtros:', 'Remember to check these conditions in each posting; they are not used as filters:')}</strong><ul>{aiSearchProposal.output.unsupportedConstraints.map((item, index) => <li key={index}>«{item.requestQuote}» — {item.explanation}</li>)}</ul></>}{aiSearchProposal.output.clarifications.length > 0 && <ul>{aiSearchProposal.output.clarifications.map((item, index) => <li key={index}>{item.question}</li>)}</ul>}</div></Notice>}
-        {formState.aiArtifactId && aiSearchProposal?.id !== formState.aiArtifactId && <Notice tone={aiProposalError ? 'warning' : 'info'} actions={aiProposalError ? <><Button type="button" variant="secondary" onClick={() => setAiProposalRetry(value => value + 1)}>{t('Recuperar la propuesta', 'Retrieve the suggestion')}</Button><Button type="button" variant="quiet" onClick={() => { if (window.confirm(t('¿Descartar esta propuesta y sus campos para empezar una búsqueda nueva?', 'Discard this suggestion and its fields to start a new search?'))) { setAiSearchProposal(null); setFormState({ ...initialForm(), open: true }); setFormError(''); } }}>{t('Descartar esta propuesta', 'Discard this suggestion')}</Button></> : undefined}>{aiProposalError ? t('No pudimos recuperar las notas de esta propuesta. Consérvalas antes de buscar para no perder las condiciones que requieren revisión manual.', 'We could not retrieve the notes for this suggestion. Recover them before searching so conditions requiring a manual check are not lost.') : t('Recuperando la propuesta y las condiciones que debes revisar…', 'Retrieving the suggestion and the conditions you need to check…')}</Notice>}
+        {formState.aiArtifactId && aiSearchProposal?.id !== formState.aiArtifactId && <Notice tone={aiProposalError ? 'warning' : 'info'} actions={aiProposalError ? <><Button type="button" variant="secondary" onClick={() => setAiProposalRetry(value => value + 1)}>{t('Recuperar la propuesta', 'Retrieve the suggestion')}</Button><Button type="button" variant="quiet" onClick={async () => { if (await askConfirm({ message: t('¿Descartar esta propuesta y sus campos para empezar una búsqueda nueva?', 'Discard this suggestion and its fields to start a new search?'), confirmLabel: t('Descartar esta propuesta', 'Discard this suggestion'), tone: 'danger' })) { setAiSearchProposal(null); setFormState({ ...initialForm(), open: true }); setFormError(''); } }}>{t('Descartar esta propuesta', 'Discard this suggestion')}</Button></> : undefined}>{aiProposalError ? t('No pudimos recuperar las notas de esta propuesta. Consérvalas antes de buscar para no perder las condiciones que requieren revisión manual.', 'We could not retrieve the notes for this suggestion. Recover them before searching so conditions requiring a manual check are not lost.') : t('Recuperando la propuesta y las condiciones que debes revisar…', 'Retrieving the suggestion and the conditions you need to check…')}</Notice>}
         {firstUse && !editing && <ProfileSearchSuggestions t={t} onSelect={(role, workMode) => setDraft({ ...draft, role, ...(workMode ? { workMode } : {}) })} />}
         <SearchForm key={`${editing || 'new'}-${aiSearchProposal?.id ?? 'manual'}`} defaultProviders={defaultProviders} adzunaConfigured={adzunaConfigured} draft={draft} editing={editing} existingSearch={editSearch} busy={busy === 'form'} ready={formDraft.ready} storageFailed={formDraft.storageFailed} formError={formError} criteriaMissing={criteriaMissing} invalidField={invalidField} titleRef={titleRef} onDraftChange={setDraft} onSubmit={(event) => void submit(event)} onDismissDraft={closeDraft} hasSearches={searches.length > 0} t={t}/></>}
       </div>}

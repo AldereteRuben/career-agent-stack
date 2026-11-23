@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from './confirm-dialog';
 import { Brand, BrandMark } from '@/components/brand';
 import { RELEASE_VERSION } from '@career/domain';
 
@@ -174,6 +175,7 @@ export function DetailTitle({ name }: { name: string | null | undefined }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const askConfirm = useConfirm();
   const pathname = usePathname(); const router = useRouter(); const { t, locale } = useLocale();
   const [detailTitle, setDetailTitle] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -191,7 +193,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [signingOut, setSigningOut] = useState(false);
   const [sessionError, setSessionError] = useState('');
   const signOut = async () => {
-    if (signingOut || !window.confirm(locale === 'es' ? '¿Cerrar sesión? Los borradores sin guardar de esta pestaña se perderán. Tus datos guardados se conservan.' : 'Sign out? Unsaved drafts in this tab will be lost. Your saved data is kept.')) return;
+    if (signingOut || !(await askConfirm({ message: locale === 'es' ? '¿Cerrar sesión? Los borradores sin guardar de esta pestaña se perderán. Tus datos guardados se conservan.' : 'Sign out? Unsaved drafts in this tab will be lost. Your saved data is kept.', confirmLabel: locale === 'es' ? 'Cerrar sesión' : 'Sign out' }))) return;
     setSigningOut(true); setSessionError('');
     try { await api('/session', { method: 'DELETE' }); sessionVerified = false; clearSessionDrafts(); router.replace('/login'); }
     catch (err) { setSessionError(errorMessage(err)); setSigningOut(false); }
