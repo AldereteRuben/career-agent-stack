@@ -66,7 +66,7 @@ export const applicationDocumentsScenario: Scenario = {
     const panel = page.locator('.application-resume').filter({ has: page.getByRole('heading', { name: /^(CV adaptado a esta oferta|Resume tailored to this job)$/u }) });
     const openDisclosure = async (selector: string) => {
       const disclosure = page.locator(selector);
-      if (!(await disclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await disclosure.locator('summary').click();
+      if (!(await disclosure.evaluate((element) => (element as HTMLDetailsElement).open))) await disclosure.locator(':scope > summary').click(); // not the nested disclosures inside it
     };
     await setLocale(page, 'es');
     await page.setViewportSize({ width: 1440, height: 1000 });
