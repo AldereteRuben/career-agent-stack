@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-dialog';
 import { ApplicationPreparationAction } from '@/components/application-preparation';
 import { AiDraftAction, useAiAvailable } from '@/components/ai/draft-action';
 import { AiAutomationPanel } from '@/components/ai/automation';
@@ -26,6 +27,7 @@ type AvailabilityEvent = { fromState: string; toState: string; reason: string; c
 type Detail = { compensation?: JobCompensationView | null; searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[]; closedByUser: boolean; availabilityHistory: AvailabilityEvent[]; stillListedBySource: boolean };
 
 export default function JobDetailPage() {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const formatAvailabilityDate = (value: string) => new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
   const { id } = useParams<{ id: string }>(); const router = useRouter();
@@ -137,7 +139,7 @@ export default function JobDetailPage() {
   const archive = async () => {
     if (!job) return;
     const restoring = job.shortlistDecision === 'ARCHIVED';
-    if (!restoring && !window.confirm(c('¿Archivar esta oferta? Podrás restaurarla desde Archivadas. Tus solicitudes y CV se conservan.', 'Archive this job? You can restore it from Archived. Your applications and resumes are preserved.'))) return;
+    if (!restoring && !(await askConfirm({ message: c('¿Archivar esta oferta? Podrás restaurarla desde Archivadas. Tus solicitudes y CV se conservan.', 'Archive this job? You can restore it from Archived. Your applications and resumes are preserved.'), confirmLabel: c('Archivar oferta', 'Archive job') }))) return;
     setBusy('archive'); setError('');
     try { await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: restoring ? 'UNREVIEWED' : 'ARCHIVED' }) }); await load(); setMessage(restoring ? c('Oferta restaurada.', 'Job restored.') : c('Oferta archivada. Puedes encontrarla con el filtro Archivadas.', 'Job archived. Find it with the Archived filter.')); }
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }

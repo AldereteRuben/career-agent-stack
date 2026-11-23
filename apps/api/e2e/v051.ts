@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { Scenario } from './scenarios.js';
-import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale } from './ui.js';
+import { clickWithResumeReplacement, eventually, goTo, hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 type Profile = { revision: number; profile: Record<string, unknown> };
 type Resume = { id: string; language: string | null; sha256: string; reviewReady: boolean };
@@ -16,13 +16,13 @@ export const v051First: Scenario = {
     await goTo(page, '/profile/setup');
     const name = page.getByLabel('Nombre', { exact: true }); await name.fill(`Unsaved ${marker}`);
     assert.equal(await page.locator('button.profile-chip').count(), 0);
-    page.once('dialog', (dialog) => dialog.dismiss());
     await page.getByRole('button', { name: 'Salir', exact: true }).click();
+    await answerConfirm(page, false);
     assert.equal(await name.inputValue(), `Unsaved ${marker}`);
     allowConsole(/500|Failed to load resource|Internal Server Error/i);
     await page.route('**/api/v1/session', (route) => route.request().method() === 'DELETE' ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"INTERNAL_ERROR"}' }) : route.continue());
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Salir', exact: true }).click();
+    await answerConfirm(page, true);
     await page.locator('.notice[role=alert]').first().waitFor();
     assert.equal((await api.get<{ authenticated: boolean }>('/session')).authenticated, true);
     await page.unroute('**/api/v1/session');
@@ -96,8 +96,8 @@ export const v051Last: Scenario = {
     latest = await api.get<Profile>('/profile');
     await api.put('/profile', { expectedRevision: latest.revision, profile: { ...latest.profile, identity: { ...(latest.profile.identity as object), email: `changed-${marker}@example.com` } } });
     assert.equal((await api.get<Resume[]>('/documents')).find((row) => row.id === doc.id)?.reviewReady, false, 'Stale PDF is not offered as ready to approve');
-    page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Salir', exact: true }).click();
+    await answerConfirm(page, true);
     await page.waitForURL('**/login');
     assert.equal(await page.evaluate(() => Object.keys(sessionStorage).some((key) => key.startsWith('career:draft:v1:'))), false);
   },

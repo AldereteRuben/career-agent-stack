@@ -683,12 +683,86 @@ main:focus {
   to { background-position: 0 50%; }
 }
 
+/* Confirmation dialog (components/confirm-dialog.tsx). */
+.confirm-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgba(23, 32, 51, 0.22);
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(23, 32, 51, 0.42);
+}
+
+.confirm-dialog[open] {
+  animation: confirm-dialog-in 0.14s ease-out;
+}
+
+@keyframes confirm-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.confirm-dialog-body {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.confirm-dialog h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-tight);
+}
+
+.confirm-dialog p {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: var(--leading);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.confirm-dialog-actions .button-danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+.confirm-dialog-actions .button-danger:hover:not(:disabled) {
+  background: #873328;
+  border-color: #873328;
+}
+
+@media (max-width: 480px) {
+  .confirm-dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .confirm-dialog-actions .button {
+    width: 100%;
+    white-space: normal;
+  }
+}
+
 /* Content already on screen stays readable while its replacement loads. */
 .is-refreshing {
   opacity: 0.6;
   transition: opacity 0.15s;
 }
 
+/* Not a .tracker-row: tests and scripts that look for the first row must not find a placeholder. */
 .tracker-row-skeleton {
   display: flex;
   align-items: center;
@@ -767,7 +841,6 @@ main:focus {
   align-items: center;
   justify-content: center;
   min-height: 24px;
-/* Not a .tracker-row: tests and scripts that look for the first row must not find a placeholder. */
   padding: 2px 8px;
   border-radius: 6px;
   background: #eef0f2;

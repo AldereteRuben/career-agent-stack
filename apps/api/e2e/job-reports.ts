@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { Page, Route } from 'playwright';
 import type { Scenario } from './scenarios.js';
-import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+import { eventually, hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 type Profile = { revision: number; profile: Record<string, unknown> };
 type Fact = { id: string };
@@ -149,8 +149,8 @@ export const jobReportsScenario: Scenario = {
       await panel.getByRole('button', { name: 'Evaluate 2 selected jobs' }).click();
       await panel.getByRole('button', { name: 'Yes, evaluate' }).click();
       allowConsole(/dialog/i);
-      page.once('dialog', (dialog) => void dialog.accept());
       await panel.getByRole('button', { name: 'Cancel evaluation' }).click();
+      await answerConfirm(page, true);
       await eventually(() => panel.innerText(), (text) => text.includes('Cancelled') && text.includes('Not evaluated: you cancelled the evaluation.'), 'The batch is cancelled');
       const cancelled = await api.get<{ batch: Batch }>('/job-report-batches/current');
       for (const title of [`QA ${marker} Engineer`, `QA ${marker} Analyst`]) await page.getByRole('checkbox', { name: `Evaluate: ${title}` }).check();

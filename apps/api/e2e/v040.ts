@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { StructuredEntry } from '@career/domain';
 import type { Scenario } from './scenarios.js';
-import { eventually, hasHorizontalOverflow, setLocale } from './ui.js';
+import { eventually, hasHorizontalOverflow, setLocale, answerConfirm } from './ui.js';
 
 type Fact = { id: string; kind: string; statement: string; approvalStatus: string; details: StructuredEntry | null };
 type Profile = { revision: number; profile: Record<string, unknown>; facts: Fact[] };
@@ -144,8 +144,8 @@ export const v040Scenarios: Scenario[] = [
       await page.reload(); await page.getByRole('link', { name: 'Favorite designer', exact: true }).waitFor();
       assert.equal(await page.getByLabel('Mostrar ofertas', { exact: true }).inputValue(), 'favorites');
       await page.locator('.job-card').filter({ hasText: 'Favorite designer' }).getByRole('link', { name: 'Ver detalles', exact: true }).click();
-      page.once('dialog', (dialog) => void dialog.accept());
       await page.getByRole('button', { name: 'Archivar oferta', exact: true }).click();
+      await answerConfirm(page, true, /Archivar esta oferta/);
       await page.getByRole('button', { name: 'Restaurar oferta', exact: true }).waitFor();
       await page.goto(new URL(`/jobs?scope=archived&q=${encodeURIComponent(company)}`, page.url()).toString());
       await page.getByRole('link', { name: 'Favorite designer', exact: true }).waitFor();

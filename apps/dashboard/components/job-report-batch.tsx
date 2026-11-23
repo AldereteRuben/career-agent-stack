@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from './confirm-dialog';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { JOB_REPORT_BATCH_LIMITS } from '@career/domain';
@@ -22,6 +23,7 @@ const PASS_DELAY_MS = 400;
  * every job afterwards with the most favourable conclusions first.
  */
 export function JobReportBatchPanel({ selectedIds, pageIds, onSelect, jobHref }: { selectedIds: string[]; pageIds: string[]; onSelect: (ids: string[]) => void; jobHref: (id: string) => string }) {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const [batch, setBatch] = useState<JobReportBatch | null>(null); const [loaded, setLoaded] = useState(false);
   const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
@@ -79,7 +81,7 @@ export function JobReportBatchPanel({ selectedIds, pageIds, onSelect, jobHref }:
   };
   const change = async (action: 'pause' | 'resume' | 'cancel') => {
     if (!batch) return;
-    if (action === 'cancel' && !window.confirm(c('¿Cancelar la evaluación? Las ofertas ya evaluadas se conservan.', 'Cancel the evaluation? Jobs already evaluated are kept.'))) return;
+    if (action === 'cancel' && !(await askConfirm({ message: c('¿Cancelar la evaluación? Las ofertas ya evaluadas se conservan.', 'Cancel the evaluation? Jobs already evaluated are kept.'), confirmLabel: c('Cancelar evaluación', 'Cancel evaluation'), cancelLabel: c('Seguir evaluando', 'Keep evaluating'), tone: 'danger' }))) return;
     actionVersion.current += 1; setBusy(true); setError('');
     try { commitBatch(await api<JobReportBatch>(`/job-report-batches/${batch.id}/${action}`, { method: 'POST', body: '{}' })); }
     catch (err) { setError(errorMessage(err)); if (err instanceof ApiError && err.status === 409) commitBatch(await api<JobReportBatch>(`/job-report-batches/${batch.id}`).catch(() => batch)); }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from './confirm-dialog';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLocale } from '@/lib/i18n';
 import { api, errorMessage } from '@/lib/api';
@@ -12,6 +13,7 @@ type ContactResponse = { links: ContactLink[]; contacts: Contact[] };
 type ContactDraft = { name: string; profileUrl: string; role: string; note: string };
 
 export function ApplicationContacts({ applicationId }: { applicationId: string }) {
+  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const [links, setLinks] = useState<ContactLink[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -68,7 +70,7 @@ export function ApplicationContacts({ applicationId }: { applicationId: string }
   };
 
   const removeEverywhere = async (link: ContactLink) => {
-    if (!window.confirm(c(`¿Eliminar a ${link.name} de todos tus contactos y solicitudes?`, `Delete ${link.name} from all contacts and applications?`))) return;
+    if (!(await askConfirm({ message: c(`¿Eliminar a ${link.name} de todos tus contactos y solicitudes?`, `Delete ${link.name} from all contacts and applications?`), confirmLabel: c('Eliminar contacto', 'Delete contact'), tone: 'danger' }))) return;
     setBusy(link.id); setError(''); setMessage('');
     try {
       await api(`/contacts/${link.contactId}`, { method: 'DELETE' });
@@ -78,7 +80,7 @@ export function ApplicationContacts({ applicationId }: { applicationId: string }
   };
 
   const deleteContact = async (contact: Contact) => {
-    if (!window.confirm(c(`¿Eliminar a ${contact.name} de todos tus contactos y solicitudes?`, `Delete ${contact.name} from all contacts and applications?`))) return;
+    if (!(await askConfirm({ message: c(`¿Eliminar a ${contact.name} de todos tus contactos y solicitudes?`, `Delete ${contact.name} from all contacts and applications?`), confirmLabel: c('Eliminar contacto', 'Delete contact'), tone: 'danger' }))) return;
     setBusy(contact.id); setError(''); setMessage('');
     try {
       await api(`/contacts/${contact.id}`, { method: 'DELETE' });
