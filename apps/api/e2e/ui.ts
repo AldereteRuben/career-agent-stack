@@ -84,11 +84,25 @@ export async function eventually<T>(read: () => Promise<T>, accept: (value: T) =
   return last;
 }
 
+/**
+ * Spaces requests so a run stays below the API's rate limits (apps/api/src/request-errors.ts): 1200 reads and 120
+ * writes per minute, counted apart. Reads every 75 ms (800/min) and writes every 600 ms (100/min) leave headroom.
+ */
+export function requestPacer() {
+  const next = { read: 0, write: 0 };
+  return async (method = 'GET') => {
+    const kind = ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()) ? 'read' : 'write';
+    const start = Math.max(Date.now(), next[kind]);
+    next[kind] = start + (kind === 'read' ? 75 : 600);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, start - Date.now())));
+  };
+}
+
 /** JSON client for the isolated API through the isolated dashboard origin, sharing the browser session cookie. */
-export function apiClient(context: BrowserContext, uiUrl: string, pace: () => Promise<void> = async () => {}) {
+export function apiClient(context: BrowserContext, uiUrl: string, pace: (method?: string) => Promise<void> = async () => {}) {
   const request: APIRequestContext = context.request;
   const call = async <T>(method: string, path: string, data?: unknown): Promise<T> => {
-    await pace();
+    await pace(method);
     // Fixture GETs may reuse a connection closed by the dev proxy. Playwright retries only ECONNRESET, not HTTP errors.
     // Writes are never retried: repeating a successful mutation after a lost response could duplicate side effects.
     const response = await request.fetch(`${uiUrl}/api/v1${path}`, { method, maxRetries: method === 'GET' ? 1 : 0, headers: { Origin: uiUrl, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(data === undefined ? {} : { data: JSON.stringify(data) }) });

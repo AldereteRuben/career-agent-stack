@@ -49,7 +49,7 @@ const scopeCopy = (scope: string, c: (es: string, en: string) => string) => scop
 function JobListSkeleton({ label }: { label: string }) {
   return <div className={styles.masterDetail} role="status">
     <span className="sr-only">{label}</span>
-    <Card className={styles.resultsPane} aria-hidden="true"><div className="jobs-grid">{[0, 1, 2, 3, 4].map((row) => <div className={`job-card ${styles.skeletonRow}`} key={row}>
+    <Card className={styles.resultsPane} aria-hidden="true"><div className="jobs-grid">{[0, 1, 2, 3, 4].map((row) => <div className={styles.skeletonRow} key={row}>
       <Skeleton width="38%" height={12}/><Skeleton width={`${72 - row * 7}%`} height={18}/><Skeleton width="46%" height={12}/>
     </div>)}</div></Card>
     <Card className={`${styles.previewPane} ${styles.skeletonPreview}`} aria-hidden="true"><Skeleton width="30%" height={12}/><Skeleton width="62%" height={24}/><Skeleton height={12}/><Skeleton height={12}/><Skeleton width="80%" height={12}/></Card>
@@ -99,7 +99,10 @@ function JobsView() {
         return;
       }
       baseline.current = pageFingerprint(result); hasList.current = true; setJobs(result.items); setTotal(result.total); setSearchedQuery(urlQuery); setLoadState('ready'); setRefreshing(false);
-    } catch (err) { if (ticket === searchRequest.current) { hasList.current = false; setRefreshing(false); setError(errorMessage(err)); setLoadState('error'); } }
+    } catch (err) {
+      // A failed background refresh keeps the rows already on screen and reports the problem above them.
+      if (ticket === searchRequest.current) { setRefreshing(false); setError(errorMessage(err)); if (!hasList.current) setLoadState('error'); }
+    }
   }, [listQuery, page, listStateString, router, urlQuery]);
   const reload = useRef(load);
   useEffect(() => { reload.current = load; setQuery(urlQuery); void load(); return () => { ++searchRequest.current; }; }, [load, urlQuery]);
@@ -112,7 +115,9 @@ function JobsView() {
       pending = true;
       try {
         const result = await api<JobPage>(`/jobs?${listQuery}`);
-        if (!disposed) { setHasUpdates(pageFingerprint(result) !== baseline.current); setUpdatesError(null); }
+      // A reload can start while this check is in flight; its result must not be compared with the new list.
+      const seen = baseline.current;
+        if (!disposed && baseline.current === seen) { setHasUpdates(pageFingerprint(result) !== baseline.current); setUpdatesError(null); }
       } catch (err) { if (!disposed) setUpdatesError(err); }
       finally { pending = false; }
     };
@@ -122,8 +127,9 @@ function JobsView() {
     return () => { disposed = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', visible); };
   }, [scope, loadState, listQuery, pollRevision]);
   useEffect(() => {
-    if (loadState === 'ready' && focusResults.current) { focusResults.current = false; resultsHeading.current?.focus({ preventScroll: true }); }
-  }, [loadState]);
+    // A reload keeps loadState at 'ready', so the end of a background refresh also counts as the list being ready.
+    if (loadState === 'ready' && !refreshing && focusResults.current) { focusResults.current = false; resultsHeading.current?.focus({ preventScroll: true }); }
+  }, [loadState, refreshing]);
   useEffect(() => {
     if (loadState !== 'ready') return;
     if (selectedId && !selectedJob) { navigate({ selected: '' }); return; }

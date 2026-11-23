@@ -2,10 +2,9 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { createIsolatedStack, projectRoot } from './isolation.js';
-import { signIn, setLocale, apiClient, hasHorizontalOverflow, revealField, eventually as waitFor } from './ui.js';
+import { signIn, setLocale, apiClient, hasHorizontalOverflow, revealField, eventually as waitFor, requestPacer } from './ui.js';
 
 type Application = { id: string; version: number; recruitmentStage: string };
 const stack = await createIsolatedStack();
@@ -16,9 +15,8 @@ const results: Array<{ name: string; passed: boolean; error?: string }> = [];
 try {
   await stack.db.query("INSERT INTO job_search_provider_cache(provider,payload,fetched_at,next_fetch_at) VALUES ('remotive','[]'::jsonb,now(),now()+interval '24 hours'),('arbeitnow','[]'::jsonb,now(),now()+interval '24 hours') ON CONFLICT(provider) DO UPDATE SET payload=excluded.payload,next_fetch_at=excluded.next_fetch_at");
   const context = await browser.newContext({ baseURL: stack.uiUrl, viewport: { width: 1096, height: 800 }, locale: 'es-ES' });
-  let next = 0;
-  const pace = async () => { const at = Math.max(Date.now(), next); next = at + 600; await delay(Math.max(0, at - Date.now())); };
-  await context.route('**/api/v1/**', async (route) => { await pace(); await route.continue(); });
+  const pace = requestPacer();
+  await context.route('**/api/v1/**', async (route) => { await pace(route.request().method()); await route.continue(); });
   const page = await context.newPage(); page.setDefaultTimeout(20000);
   // Match the full harness budget for routes compiled on demand by the disposable dev server.
   page.setDefaultNavigationTimeout(45000);
@@ -140,6 +138,8 @@ try {
     const created = page.waitForResponse((r) => r.request().method() === 'POST' && r.url().endsWith('/job-searches'));
     await page.getByRole('button', { name: 'Buscar ofertas', exact: true }).click();
     const response = await created; assert.equal(response.status(), 201); assert.equal((await response.json()).search.role.length, 200);
+    // The page clears the draft once the new search's jobs arrive. Leaving earlier would keep it for the next case.
+    await role.waitFor({ state: 'detached' });
   });
 
   await run('old-application-and-pagination', async () => {
@@ -267,7 +267,8 @@ try {
 
     await setLocale(page, 'es'); await page.goto(`/applications?id=${closedApplication.id}`);
     const closedRow = page.locator('.tracker-row').filter({ hasText: manuallyClosed.title });
-    await closedRow.getByText('Cerrada', { exact: true }).waitFor();
+    // At 390 px the open application replaces the list on screen, so the row's badge is present but not visible.
+    await closedRow.getByText('Cerrada', { exact: true }).waitFor({ state: 'attached' });
     await page.locator('.preparation-action').getByText('La oferta figura como «Cerrada». Comprueba el anuncio original antes de continuar; preparar no envía nada.', { exact: true }).waitFor();
     const prepareClosed = page.locator('.preparation-action').getByRole('button', { name: 'Preparar mi solicitud', exact: true });
     assert.equal(await prepareClosed.isEnabled(), true, 'A closed job can still be prepared manually');

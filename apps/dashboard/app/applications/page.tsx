@@ -109,7 +109,7 @@ function interviewDisclosureSummary(application: Application, locale: Locale) {
 function TrackerSkeleton({ label }: { label: string }) {
   return <div className="tracker-layout" role="status">
     <span className="sr-only">{label}</span>
-    <Card className="tracker-list" aria-hidden="true">{[0, 1, 2, 3].map((row) => <div className="tracker-row tracker-row-skeleton" key={row}>
+    <Card className="tracker-list" aria-hidden="true">{[0, 1, 2, 3].map((row) => <div className="tracker-row-skeleton" key={row}>
       <Skeleton width={38} height={38}/><span className="tracker-main"><Skeleton width={`${64 - row * 8}%`} height={16}/><Skeleton width="42%" height={12}/></span><Skeleton width={72} height={22}/>
     </div>)}</Card>
   </div>;
@@ -181,15 +181,16 @@ function ApplicationsView() {
   }, []);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
-  const focusSelection = useRef(Boolean(urlId));
-  useEffect(() => {
-    if (!focusSelection.current || loadState !== 'ready') return;
-    const target = selectedId ? detailHeading.current : listHeading.current;
-    if (target) { focusSelection.current = false; target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'start' }); }
-  }, [selectedId, selected?.id, loadState]);
-
   // Once a list is on screen it stays there while another page, search or order loads; only the first load shows a placeholder.
   const listShown = useRef(false); const [refreshing, setRefreshing] = useState(false);
+  const focusSelection = useRef(Boolean(urlId));
+  useEffect(() => {
+    // A reload keeps loadState at 'ready'; wait for the background refresh to finish as well.
+    if (!focusSelection.current || loadState !== 'ready' || refreshing) return;
+    const target = selectedId ? detailHeading.current : listHeading.current;
+    if (target) { focusSelection.current = false; target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'start' }); }
+  }, [selectedId, selected?.id, loadState, refreshing]);
+
   const loadRows = useCallback(async () => {
     const ticket = ++listRequest.current;
     try {
@@ -197,7 +198,7 @@ function ApplicationsView() {
       const page = await api<{ items: Application[]; total: number; offset: number; limit: number }>(`/applications?${params}`);
       if (ticket !== listRequest.current) return null;
       listShown.current = true; setRows(page.items); setPagination(page); setLoadState('ready'); setRefreshing(false); return page.items;
-    } catch (err) { if (ticket === listRequest.current) { setRefreshing(false); setError(errorMessage(err)); setLoadState('error'); } return null; }
+    } catch (err) { if (ticket === listRequest.current) { setRefreshing(false); setError(errorMessage(err)); if (!listShown.current) setLoadState('error'); } return null; }
   }, [offset, query, sort]);
   /** Every application that matches the current search, not just the page on screen, as a spreadsheet file. */
   const downloadCsv = async () => {

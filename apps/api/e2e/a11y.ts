@@ -22,7 +22,9 @@ async function auditWithAxe(page: import('playwright').Page, flow: string) {
 // approximates but does not replace a real screen reader.
 export const a11yScenarios: Scenario[] = [{
   name: 'a11y-decorative-symbols-and-saved-region',
-  async run({ page, context, api, marker, note }) {
+  async run({ page, context, api, marker, note, allowConsole }) {
+    // An application without a tailored resume or cover letter yet answers 404 for them; the panels show an empty state.
+    allowConsole(/Failed to load resource: the server responded with a status of 404 \(Not Found\)/);
     await page.setViewportSize({ width: 1440, height: 1000 });
     const company = `A11y ${marker}`;
     const title = `A11y role ${marker}`;

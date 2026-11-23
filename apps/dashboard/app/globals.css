@@ -690,7 +690,12 @@ main:focus {
 }
 
 .tracker-row-skeleton {
-  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
 }
 
 .tracker-row-skeleton .tracker-main {
@@ -762,6 +767,7 @@ main:focus {
   align-items: center;
   justify-content: center;
   min-height: 24px;
+/* Not a .tracker-row: tests and scripts that look for the first row must not find a placeholder. */
   padding: 2px 8px;
   border-radius: 6px;
   background: #eef0f2;
