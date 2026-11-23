@@ -10,12 +10,13 @@ type Profile = { revision: number; profile: Record<string, unknown> };
 type Fact = { id: string };
 type Batch = { id: string; status: string; counts: { done: number; failed: number; skipped: number; pending: number }; items: Array<{ jobId: string; status: string; verdict: string | null; errorCode: string | null }> };
 
-const delayFirst = (page: Page, pattern: string, ms: number) => {
+/** Delays the first matching request, or every one with `all` (React StrictMode repeats a page's first load in development). */
+const delayFirst = (page: Page, pattern: string, ms: number, { all = false } = {}) => {
   let delayed = false;
   let resolveDelayed!: () => void;
   const delayedResponse = new Promise<void>((resolve) => { resolveDelayed = resolve; });
   const handler = async (route: Route) => {
-    if (!delayed) { delayed = true; await new Promise((resolve) => setTimeout(resolve, ms)); }
+    if (!delayed || all) { delayed = true; await new Promise((resolve) => setTimeout(resolve, ms)); }
     await route.fallback();
     if (delayed) resolveDelayed();
   };
@@ -76,7 +77,7 @@ export const jobReportsScenario: Scenario = {
 
     // 2. The saved-job skill-gap summary is localized and its disclosure works with the keyboard.
     await setLocale(page, 'es');
-    const slowList = delayFirst(page, '**/api/v1/jobs?*', 1_500);
+    const slowList = delayFirst(page, '**/api/v1/jobs?*', 1_500, { all: true });
     await slowList.install();
     try {
       await page.goto(new URL(`/jobs?scope=favorites&q=${encodeURIComponent(marker)}`, uiUrl).toString(), { waitUntil: 'commit' });

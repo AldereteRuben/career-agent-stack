@@ -65,16 +65,45 @@
   border-left: 3px solid var(--blue);
 }
 
-.resultsPane :global(.job-card-top) {
-  min-height: 34px;
+/* In the compact list the save button sits beside the title instead of on a row of its own. */
+.resultsPane :global(.job-card) {
+  position: relative;
 }
 
-.resultsPane :global(.job-card-top) .company-monogram {
+.resultsPane :global(.job-card-company),
+.resultsPane :global(.job-card) h2 {
+  padding-right: 52px;
+}
+
+.resultsPane :global(.job-card-top) {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+/* The monogram is a global class: without :global() this rule never matched and every row kept a 48px badge. */
+.resultsPane :global(.job-card-top) :global(.company-monogram) {
   display: none;
 }
 
 .resultsPane :global(.job-card-company) {
-  margin-top: 6px;
+  margin-top: 0;
+}
+
+.skeletonRow {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.skeletonRow:last-child {
+  border-bottom: 0;
+}
+
+.skeletonPreview {
+  align-content: start;
+  min-height: 280px;
 }
 
 .resultsPane :global(.job-card-metrics) {

@@ -30,6 +30,7 @@ import { parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { logRequestFailure } from './request-error-logging.js';
+import { errorResponse, isConflictCode, rateLimitOptions } from './request-errors.js';
 import { prepareApplication, registerPreparationRoutes } from './application-preparation.js';
 import { registerApplicationCoverLetterRoutes } from './application-cover-letter.js';
 import { registerApplicationResumeRoutes } from './application-resume-routes.js';
@@ -58,7 +59,7 @@ import { attachGracefulShutdown, resolveLauncherStopFile } from './graceful-shut
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] }, bodyLimit: 1_000_000, trustProxy: false, disableRequestLogging: true });
 const aiEnabled = config.CAREER_AI_ENABLED;
-await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+await app.register(rateLimit, rateLimitOptions);
 
 const localData = config.DATA_LOCAL_PATH;
 // Emptying the documents folder when all data is deleted must never reach the run records or the sign-in token (ADR 020).
@@ -642,9 +643,13 @@ app.patch('/api/v1/applications/:id', async (request, reply) => {
     const nextInterviewAt = row.interviewAt?.toISOString() ?? null; const priorInterviewAt = current.interviewAt?.toISOString() ?? null;
     if (parsed.interview !== undefined && (nextInterviewAt !== priorInterviewAt || row.interviewTimezone !== current.interviewTimezone)) await tx.insert(applicationEvents).values({ workspaceId: id, applicationId, eventType: 'INTERVIEW_UPDATED', reason: 'User updated interview date and time', evidence: { prior: { at: priorInterviewAt, timeZone: current.interviewTimezone }, next: { at: nextInterviewAt, timeZone: row.interviewTimezone } }, aggregateVersion: row.version });
     return row;
-  }).catch((error: unknown) => { if (error instanceof Error) return error.message; throw error; });
-  if (updated === 'ASSIST_ACTIVE_ATTEMPT') return fail(reply, 409, updated);
-  if (updated === 'INVALID_STATE_TRANSITION' || updated === 'CONFIRMATION_EVIDENCE_REQUIRED' || updated === 'RECRUITMENT_STAGE_CANNOT_REGRESS' || updated === 'STALE_APPLICATION_VERSION') return fail(reply, 409, updated);
+  }).catch((error: unknown) => {
+    // Only the domain conflicts become an answer here. Anything else (a database failure, for instance) must reach the
+    // error handler: returning its message would report the failed save as a success.
+    if (error instanceof Error && isConflictCode(error.message)) return error.message;
+    throw error;
+  });
+  if (typeof updated === 'string') return fail(reply, 409, updated);
   if (!updated) return fail(reply, 404, 'NOT_FOUND');
   return updated;
 });
@@ -818,13 +823,12 @@ app.get('/api/v1/export', async (request, reply) => {
 app.get('/api/v1/capabilities', async () => ({ release: RELEASE_VERSION, available: ['manual-profile', 'fact-approval', 'answer-bank', 'manual-job-import', 'approved-board-discovery', 'scheduled-discovery', 'new-jobs-inbox', 'rule-based-matching', 'application-ledger', 'reviewed-pdf-drafts', 'json-export', 'local-backup-restore', 'browser-autofill', 'saved-job-searches', 'automatic-preparation', 'supported-submission', ...(aiEnabled ? ['ai-processing'] : [])], unavailable: [...(aiEnabled ? [] : ['ai-processing']), 'email-oauth', 'interview-coach', 'hosted-multi-tenancy'], externalWrites: true, automaticSubmission: true, submissionScope: 'experimental-explicit-one-application-lever', realEmployerSubmissionVerified: false }));
 
 app.setErrorHandler((error, request, reply) => {
-  if ((error as { statusCode?: number }).statusCode === 429) return fail(reply, 429, 'RATE_LIMIT_EXCEEDED');
-  logRequestFailure(app, error, request);
-  const errorMessage = error instanceof Error ? error.message : 'INTERNAL_ERROR';
-  if (['INVALID_STATE_TRANSITION', 'CONFIRMATION_EVIDENCE_REQUIRED', 'RECRUITMENT_STAGE_CANNOT_REGRESS', 'STALE_APPLICATION_VERSION'].includes(errorMessage)) return fail(reply, 409, errorMessage);
-  if ((error as { code?: string }).code === '23505') return fail(reply, 409, 'DUPLICATE_RECORD');
-  return fail(reply, 500, 'INTERNAL_ERROR');
+  const { status, code } = errorResponse(error);
+  // A request the person can correct is not a failure of the service; only 5xx and conflicts are logged.
+  if (status === 409 || status >= 500) logRequestFailure(app, error, request);
+  return fail(reply, status, code);
 });
+app.setNotFoundHandler((_request, reply) => fail(reply, 404, 'NOT_FOUND'));
 
 registerPreparationRoutes(app, workspace);
 registerApplicationCoverLetterRoutes(app, workspace, { storageRoot: config.FILES_LOCAL_PATH });

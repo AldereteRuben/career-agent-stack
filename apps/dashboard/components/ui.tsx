@@ -51,6 +51,12 @@ export function Notice({ children, tone = 'info', actions, role }: { children: R
 
 export function Empty({ title, detail, action, headingLevel = 'h3' }: { title: string; detail: string; action?: ReactNode; headingLevel?: 'h2' | 'h3' | 'h4' | 'h5' | 'h6' }) { const Heading = headingLevel; return <div className="empty"><div className="empty-orbit" aria-hidden="true"><Icon name="sparkle" size={18}/></div><Heading>{title}</Heading><p>{detail}</p>{action}</div>; }
 
+/**
+ * Placeholder for content that is still loading. Purely visual: put it inside a `role="status"` region that carries the
+ * spoken "loading" text, and hide the skeleton itself from assistive technology.
+ */
+export function Skeleton({ width = '100%', height = 14, className = '' }: { width?: number | string; height?: number | string; className?: string }) { return <span className={`skeleton ${className}`} style={{ width, height }}/>; }
+
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
     home: <><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></>,
@@ -69,6 +75,9 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     sparkle: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/></>,
     shield: <><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></>,
     download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></>,
+    bookmark: <path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z"/>,
+    'bookmark-filled': <path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4Z" fill="currentColor"/>,
+    pin: <><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.900 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></>,
     calendar: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{paths[name] ?? paths.sparkle}</svg>;

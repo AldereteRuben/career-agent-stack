@@ -38,11 +38,11 @@ export const emailImportScenario: Scenario = {
     await page.getByText(any('La etapa actual es Oferta', 'The current stage is Offer')).waitFor();
     assert.equal(await page.locator('.application-email-import input[type="checkbox"]').count(), 0, 'An offer-stage downgrade is not offered for confirmation');
     await page.getByRole('button', { name: any('Guardar sin cambiar etapa', 'Save without changing stage') }).click();
-    await eventually(applicationStage, (stage) => stage === 'OFFER', 'A later email cannot downgrade an offer');
-
-    const events = await api.get<ImportedEvent[]>(`/applications/${application.id}/events`);
-    const imports = events.filter((event) => event.eventType === 'EMAIL_IMPORTED');
+    // The stage was already Offer, so wait for the third import itself rather than for the stage.
+    const importedEvents = async () => (await api.get<ImportedEvent[]>(`/applications/${application.id}/events`)).filter((event) => event.eventType === 'EMAIL_IMPORTED');
+    const imports = await eventually(importedEvents, (rows) => rows.length >= 3, 'The third email is saved');
     assert.equal(imports.length, 3);
+    assert.equal(await applicationStage(), 'OFFER', 'A later email cannot downgrade an offer');
     assert.ok(imports.every((event) => typeof event.evidence.messageRef === 'string' && /^[a-f0-9]{64}$/.test(String(event.evidence.messageRef))));
     const stored = await db.query<{ evidence: Record<string, unknown> }>('select evidence from application_events where application_id=$1 and event_type=$2', [application.id, 'EMAIL_IMPORTED']);
     assert.ok(stored.rows.every((row) => !JSON.stringify(row.evidence).includes(marker) && !JSON.stringify(row.evidence).includes('invite you to an interview')));

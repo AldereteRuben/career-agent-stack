@@ -293,10 +293,22 @@ export function LocaleProvider({ locale: initialLocale, children }: { locale: Lo
  * Gives the page its own tab title, "Page · Career Stack" (WCAG 2.4.2). Refreshing server metadata after a language
  * change resets the title to the app default, so it is applied again once that refresh finishes.
  */
+let titleOwner = 0;
+
 export function useDocumentTitle(parts: readonly (string | null | undefined)[]) {
   const { refreshing } = useLocale();
   const title = [...parts.filter(Boolean), 'Career Stack'].join(' · ');
-  useEffect(() => { if (!refreshing) document.title = title; }, [title, refreshing]);
+  useEffect(() => {
+    if (refreshing) return;
+    document.title = title;
+    // After a client-side navigation Next.js writes the root layout's generic title once the route's metadata
+    // arrives, which can be after this effect ran. Put the page title back whenever something else replaces it.
+    // Only the most recently applied title is defended, so two mounted hooks can never rewrite each other in a loop.
+    const token = ++titleOwner;
+    const observer = new MutationObserver(() => { if (token === titleOwner && document.title !== title) document.title = title; });
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [title, refreshing]);
 }
 
 export function useLocale() {

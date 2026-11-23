@@ -14,7 +14,7 @@ import { chromium } from 'playwright';
 import { createIsolatedStack, IsolationError, liveRowCounts, projectRoot, type IsolatedStack } from './isolation.js';
 import { scenarios, type ScenarioContext } from './scenarios.js';
 import { parseShard, selectShard } from './shard.js';
-import { apiClient } from './ui.js';
+import { apiClient, requestPacer } from './ui.js';
 
 let activeStack: IsolatedStack | undefined;
 
@@ -31,15 +31,10 @@ async function runScenarios(stack: IsolatedStack, artifacts: string): Promise<Re
   const results: Result[] = [];
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'es-ES', baseURL: stack.uiUrl });
-    // Pace browser and fixture requests together below the unchanged production limit.
-    let nextRequest = 0;
-    const pace = async () => {
-      const start = Math.max(Date.now(), nextRequest);
-      nextRequest = start + 600;
-      await new Promise((resolve) => setTimeout(resolve, Math.max(0, start - Date.now())));
-    };
+    // Pace browser and fixture requests below the unchanged production limits, which count reads and writes apart.
+    const pace = requestPacer();
     // Fallback lets scenario-specific page routes fulfill intercepted API fixtures after global pacing.
-    await context.route('**/api/v1/**', async (route) => { await pace(); await route.fallback(); });
+    await context.route('**/api/v1/**', async (route) => { await pace(route.request().method()); await route.fallback(); });
     context.setDefaultTimeout(30_000);
     context.setDefaultNavigationTimeout(45_000);
     const page = await context.newPage();
