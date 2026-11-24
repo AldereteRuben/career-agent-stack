@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { any, eventually, goTo, setLocale } from './ui.js';
 
 async function auditWithAxe(page: import('playwright').Page, flow: string) {
+  // Colour transitions (buttons fade for 0.15 s) would let axe measure contrast between two states.
+  // Looping animations such as spinners never finish, so only finite ones are awaited.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter((animation) => Number.isFinite(Number(animation.effect?.getComputedTiming().endTime)))
+    .map((animation) => animation.finished.catch(() => undefined))));
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'])
     .analyze();
@@ -148,7 +153,31 @@ export const a11yScenarios: Scenario[] = [{
         await page.screenshot({ animations: 'disabled', path: join(artifacts, `${colorScheme}-${label}.png`), fullPage: true });
       }
     }
+    // Settings → Appearance: a chosen theme wins over the system, survives a reload, and "Match the system" follows it again.
+    const scheme = () => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme);
+    const themeChoice = (es: string, en: string) => page.getByRole('radio', { name: any(es, en), exact: true });
+    const reloadSettings = async () => { await page.reload(); await page.getByRole('heading', { name: any('Apariencia', 'Appearance'), exact: true }).waitFor(); };
     await page.emulateMedia({ colorScheme: 'light' });
+    await goTo(page, '/settings');
+    await page.getByRole('heading', { name: any('Apariencia', 'Appearance'), exact: true }).waitFor();
+    assert.equal(await themeChoice('Según el sistema', 'Match the system').isChecked(), true, 'A new workspace follows the system theme');
+    await themeChoice('Oscuro', 'Dark').check();
+    assert.equal(await scheme(), 'dark', 'Choosing dark applies at once on a light system');
+    await reloadSettings();
+    assert.equal(await scheme(), 'dark', 'The dark choice is server-rendered after a reload');
+    assert.equal(await themeChoice('Oscuro', 'Dark').isChecked(), true, 'The dark choice stays selected after a reload');
+    await auditWithAxe(page, 'settings (dark theme chosen in Settings)');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await themeChoice('Claro', 'Light').check();
+    assert.equal(await scheme(), 'light', 'Choosing light wins over a dark system');
+    await reloadSettings();
+    assert.equal(await scheme(), 'light', 'The light choice is server-rendered after a reload');
+    await themeChoice('Según el sistema', 'Match the system').check();
+    assert.equal(await scheme(), 'dark', 'Matching the system follows a dark system again');
+    await reloadSettings();
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme ?? null), null, 'Matching the system removes the stored choice');
+    await page.emulateMedia({ colorScheme: 'light' });
+    assert.equal(await scheme(), 'light', 'Matching the system follows the system when it changes');
     note('Accessibility tree checked with Playwright aria snapshots; not verified with real screen readers.');
   },
 }];
