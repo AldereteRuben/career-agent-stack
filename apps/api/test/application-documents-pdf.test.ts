@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { renderApplicationDocumentText, type ApplicationDocumentSentence } from '@career/domain';
-import { renderApplicationCoverLetter, renderApplicationResume, renderResume, type ResumePaperSize } from '../src/document-renderer.js';
+import { closePdfRenderer, renderApplicationCoverLetter, renderApplicationResume, renderResume, type ResumePaperSize } from '../src/document-renderer.js';
 
 const enabled = process.env.CAREER_V090_PDF_TEST === 'true';
 
@@ -23,7 +23,7 @@ function assertPageSize(path: string, paperSize: ResumePaperSize) {
 
 test('application resume and cover-letter PDFs preserve reviewed wording, accents and paper size', { skip: !enabled }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'career-application-documents-pdf-'));
-  t.after(async () => rm(directory, { recursive: true, force: true }));
+  t.after(async () => { await closePdfRenderer(); await rm(directory, { recursive: true, force: true }); });
 
   const cases: Array<{ locale: 'es' | 'en'; paperSize: ResumePaperSize }> = [
     { locale: 'es', paperSize: 'A4' },
@@ -97,4 +97,27 @@ test('application resume and cover-letter PDFs preserve reviewed wording, accent
     assert.ok(applicationResumeText.includes(expectedStoredClaims), `${locale} application resume preserves the exact stored claim order and wording`);
     assertPageSize(applicationResumePath, paperSize);
   }
+});
+
+test('renders share one browser without mixing documents and start a new one after it closes', { skip: !enabled }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'career-application-documents-shared-'));
+  t.after(async () => { await closePdfRenderer(); await rm(directory, { recursive: true, force: true }); });
+  const letter = (index: number): ApplicationDocumentSentence[] => [{ sentenceId: 'only', text: `Fictional cover letter number ${index}.`, kind: 'CANDIDATE_CLAIM', origin: 'USER_EDITED', sourceFactIds: ['fact-1'], language: 'en' }];
+  const render = (index: number) => renderApplicationCoverLetter({ path: join(directory, `letter-${index}.pdf`), locale: 'en', sentences: letter(index) });
+
+  const parallel = await Promise.all([1, 2, 3, 4].map(render));
+  assert.equal(new Set(parallel.map((result) => result.sha256)).size, 4, 'parallel renders produce four distinct documents');
+  for (const index of [1, 2, 3, 4]) assert.equal(normalizedPdfText(join(directory, `letter-${index}.pdf`)), `Fictional cover letter number ${index}.`, `letter ${index} holds only its own text`);
+
+  await closePdfRenderer();
+  const afterClose = await render(5);
+  assert.ok(afterClose.size > 1_000, 'a render after closing launches a new browser');
+  assert.equal(normalizedPdfText(join(directory, 'letter-5.pdf')), 'Fictional cover letter number 5.');
+
+  // Chromium dies between renders (killed, out of memory): two renders that start together both get a working browser.
+  execFileSync('pkill', ['-KILL', '-P', String(process.pid)]);
+  const afterCrash = await Promise.all([6, 7].map(render));
+  assert.equal(afterCrash.length, 2, 'both renders after a crash succeed');
+  for (const index of [6, 7]) assert.equal(normalizedPdfText(join(directory, `letter-${index}.pdf`)), `Fictional cover letter number ${index}.`);
+
 });

@@ -1,12 +1,80 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { renderApplicationDocumentText, resumeLabels, resumeSectionName, type ApplicationDocumentSentence } from '@career/domain';
 
 const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
 export type ResumePaperSize = 'A4' | 'LETTER';
+
+type PdfOptions = Omit<NonNullable<Parameters<Page['pdf']>[0]>, 'path'>;
+
+// One headless Chromium serves every render: launching it costs 130-600 ms, a fresh context in a running browser about
+// 45 ms. Preparing an application renders inside a transaction that holds workspace locks, so this is also how long
+// other writes to that workspace wait. Each render still gets its own context with JavaScript off and every request
+// aborted, so documents share nothing. The browser closes after a quiet minute and when the API shuts down.
+const IDLE_CLOSE_MS = 60_000;
+let sharedBrowser: Promise<Browser> | null = null;
+let activeRenders = 0;
+let idleTimer: NodeJS.Timeout | null = null;
+
+function rendererBrowser(): Promise<Browser> {
+  if (sharedBrowser) return sharedBrowser;
+  const launching: Promise<Browser> = chromium.launch({ headless: true }).then((browser) => {
+    browser.on('disconnected', () => { if (sharedBrowser === launching) sharedBrowser = null; });
+    return browser;
+  });
+  launching.catch(() => { if (sharedBrowser === launching) sharedBrowser = null; });
+  sharedBrowser = launching;
+  return launching;
+}
+
+/** Closes the shared PDF browser; the next render launches a new one. Called on API shutdown and by tests. */
+export async function closePdfRenderer() {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  const current = sharedBrowser; sharedBrowser = null;
+  const browser = await current?.catch(() => null);
+  await browser?.close().catch(() => {});
+}
+
+async function newRenderContext() {
+  const pending = rendererBrowser();
+  const browser = await pending;
+  try { return await browser.newContext({ acceptDownloads: false, javaScriptEnabled: false }); }
+  catch (error) {
+    // The browser died between renders before its `disconnected` event arrived: start a new one once. Forget only
+    // the browser that failed, so a parallel render that already replaced it keeps using the new one.
+    if (browser.isConnected()) throw error;
+    if (sharedBrowser === pending) { sharedBrowser = null; void browser.close().catch(() => {}); }
+    return (await rendererBrowser()).newContext({ acceptDownloads: false, javaScriptEnabled: false });
+  }
+}
+
+/** Prints offline HTML to `path` after checking that every expected text made it onto the page, then validates the file. */
+async function printPdf(input: { path: string; html: string; expectedTexts: string[]; textCheckError: string; pdf: PdfOptions }) {
+  const absolutePath = resolve(input.path);
+  await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });
+  activeRenders++;
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  try {
+    const context = await newRenderContext();
+    try {
+      const page = await context.newPage();
+      await page.route('**/*', (route) => route.abort());
+      await page.setContent(input.html, { waitUntil: 'load', timeout: 10_000 });
+      const extractedText = await page.locator('body').innerText();
+      for (const text of input.expectedTexts) if (!extractedText.includes(text)) throw new Error(input.textCheckError);
+      await page.pdf({ ...input.pdf, path: absolutePath });
+    } finally { await context.close().catch(() => {}); }
+  } finally {
+    activeRenders--;
+    if (!activeRenders && sharedBrowser) { idleTimer = setTimeout(() => { void closePdfRenderer(); }, IDLE_CLOSE_MS); idleTimer.unref(); }
+  }
+  const bytes = await readFile(absolutePath);
+  if (bytes.byteLength < 1_000 || bytes.byteLength > 20_000_000 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('PDF_OUTPUT_INVALID');
+  return { absolutePath, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.byteLength };
+}
 
 export function parseResumePaperSize(value: unknown): ResumePaperSize | null {
   if (value === undefined || value === 'A4') return 'A4';
@@ -48,21 +116,7 @@ export async function renderResume(input: { path: string; fullName: string; emai
     li::marker { color: #527489; font-size: 8pt; }
     </style></head><body><header><h1>${escapeHtml(input.fullName || labels.defaultName)}</h1><p class="role">${escapeHtml(input.role || labels.defaultRole)}</p>${contactItems.length ? `<p class="contact">${contactItems.map((item) => 'text' in item ? escapeHtml(item.text) : `<a href="${escapeHtml(item.link.url)}">${escapeHtml(item.link.label)}</a>`).join(' · ')}</p>` : ''}</header><main>${sections}</main></body></html>`;
   const footer = `<div style="width:100%;margin:0 ${pageMargins.right};padding-top:7px;border-top:1px solid #dce3e8;font-family:Arial,Helvetica,sans-serif;font-size:7px;color:#526171;display:flex;justify-content:flex-end;gap:12px"><span style="white-space:nowrap"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
-  const absolutePath = resolve(input.path);
-  await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const context = await browser.newContext({ acceptDownloads: false, javaScriptEnabled: false });
-    const page = await context.newPage();
-    await page.route('**/*', (route) => route.abort());
-    await page.setContent(html, { waitUntil: 'load', timeout: 10_000 });
-    const extractedText = await page.locator('body').innerText();
-    for (const fact of input.facts) if (!extractedText.includes(fact.statement)) throw new Error('DOCUMENT_TEXT_CHECK_FAILED');
-    await page.pdf({ path: absolutePath, format: pageSize, printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: pageMargins });
-  } finally { await browser.close(); }
-  const bytes = await readFile(absolutePath);
-  if (bytes.byteLength < 1_000 || bytes.byteLength > 20_000_000 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('PDF_OUTPUT_INVALID');
-  return { absolutePath, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.byteLength };
+  return printPdf({ path: input.path, html, expectedTexts: input.facts.map((fact) => fact.statement), textCheckError: 'DOCUMENT_TEXT_CHECK_FAILED', pdf: { format: pageSize, printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: pageMargins } });
 }
 
 /** Renders a saved, offer-specific resume revision without deriving or adding claims. */
@@ -94,21 +148,7 @@ export async function renderApplicationResume(input: {
     p { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; orphans: 3; widows: 3; }
     </style></head><body><header><h1>${escapeHtml(input.fullName || labels.defaultName)}</h1><p class="role">${escapeHtml(input.role || labels.defaultRole)}</p>${contactItems.length ? `<p class="contact">${contactItems.map(escapeHtml).join(' · ')}</p>` : ''}</header><main><h2>${escapeHtml(labels.defaultName)}</h2>${claims}</main></body></html>`;
   const footer = `<div style="width:100%;margin:0 ${pageMargins.right};padding-top:7px;border-top:1px solid #dce3e8;font-family:Arial,Helvetica,sans-serif;font-size:7px;color:#526171;display:flex;justify-content:flex-end;gap:12px"><span style="white-space:nowrap"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
-  const absolutePath = resolve(input.path);
-  await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const context = await browser.newContext({ acceptDownloads: false, javaScriptEnabled: false });
-    const page = await context.newPage();
-    await page.route('**/*', (route) => route.abort());
-    await page.setContent(html, { waitUntil: 'load', timeout: 10_000 });
-    const extractedText = await page.locator('body').innerText();
-    for (const sentence of input.sentences) if (!extractedText.includes(sentence.text)) throw new Error('APPLICATION_DOCUMENT_TEXT_CHECK_FAILED');
-    await page.pdf({ path: absolutePath, format: pageSize, printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: pageMargins });
-  } finally { await browser.close(); }
-  const bytes = await readFile(absolutePath);
-  if (bytes.byteLength < 1_000 || bytes.byteLength > 20_000_000 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('PDF_OUTPUT_INVALID');
-  return { absolutePath, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.byteLength };
+  return printPdf({ path: input.path, html, expectedTexts: input.sentences.map((sentence) => sentence.text), textCheckError: 'APPLICATION_DOCUMENT_TEXT_CHECK_FAILED', pdf: { format: pageSize, printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer, tagged: true, margin: pageMargins } });
 }
 
 /** Renders an offer-specific cover letter offline; the checked PDF contains the same sentence text as its companion file. */
@@ -128,19 +168,5 @@ export async function renderApplicationCoverLetter(input: { path: string; locale
     main { white-space: normal; }
     p { margin: 0 0 1em; white-space: pre-wrap; overflow-wrap: anywhere; orphans: 3; widows: 3; }
     </style></head><body><main>${paragraphs}</main></body></html>`;
-  const absolutePath = resolve(input.path);
-  await mkdir(dirname(absolutePath), { recursive: true, mode: 0o700 });
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const context = await browser.newContext({ acceptDownloads: false, javaScriptEnabled: false });
-    const page = await context.newPage();
-    await page.route('**/*', (route) => route.abort());
-    await page.setContent(html, { waitUntil: 'load', timeout: 10_000 });
-    const extractedText = await page.locator('body').innerText();
-    for (const sentence of input.sentences) if (!extractedText.includes(sentence.text)) throw new Error('APPLICATION_DOCUMENT_TEXT_CHECK_FAILED');
-    await page.pdf({ path: absolutePath, format: pageSize, printBackground: true, preferCSSPageSize: true, tagged: true, margin: { top: '22mm', right: margin, bottom: '22mm', left: margin } });
-  } finally { await browser.close(); }
-  const bytes = await readFile(absolutePath);
-  if (bytes.byteLength < 1_000 || bytes.byteLength > 20_000_000 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('PDF_OUTPUT_INVALID');
-  return { absolutePath, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.byteLength };
+  return printPdf({ path: input.path, html, expectedTexts: input.sentences.map((sentence) => sentence.text), textCheckError: 'APPLICATION_DOCUMENT_TEXT_CHECK_FAILED', pdf: { format: pageSize, printBackground: true, preferCSSPageSize: true, tagged: true, margin: { top: '22mm', right: margin, bottom: '22mm', left: margin } } });
 }
