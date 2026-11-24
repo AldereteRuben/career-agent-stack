@@ -77,7 +77,7 @@
   padding: 2px;
   border: 1px solid transparent;
   border-radius: 9px;
-  background: #f4f6f9;
+  background: var(--paper);
   color: var(--ink-2);
   font-family: inherit;
   font-size: var(--text-base);
@@ -111,15 +111,15 @@
 .active { color: var(--ink-2); }
 
 .jobs {
-  background: #eef3ff;
+  background: var(--blue-pale);
 }
 
 .applications {
-  background: #eaf5ee;
+  background: var(--green-pale);
 }
 
 .both {
-  background: #f1effb;
+  background: var(--lavender);
 }
 
 .summary,
@@ -162,10 +162,10 @@
 }
 
 .jobsMark,
-.jobMarker { background: #315fce; }
+.jobMarker { background: var(--blue); }
 .applicationsMark,
-.applicationMarker { background: #27815d; }
-.bothMark { background: linear-gradient(90deg, #315fce 0 50%, #27815d 50%); }
+.applicationMarker { background: var(--green-mid); }
+.bothMark { background: linear-gradient(90deg, var(--blue) 0 50%, var(--green-mid) 50%); }
 
 .dayDetails {
   margin-top: 12px;

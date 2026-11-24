@@ -61,7 +61,7 @@
 }
 
 .resultsPane :global(.job-card).selectedJob {
-  background: #eef2fc;
+  background: var(--blue-pale);
   border-left: 3px solid var(--blue);
 }
 
