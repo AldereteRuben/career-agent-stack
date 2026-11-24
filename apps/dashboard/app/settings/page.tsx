@@ -7,6 +7,7 @@ import { AiConnectionPanel } from '@/components/ai/connection';
 import { OllamaConnectionPanel } from '@/components/ai/ollama-connection';
 import { AiAutomationPanel } from '@/components/ai/automation';
 import { AiHistoryPanel } from '@/components/ai/history';
+import { ThemePanel } from '@/components/theme-panel';
 import { RELEASE_VERSION } from '@career/domain';
 
 
@@ -140,6 +141,7 @@ export default function SettingsPage() {
     {error && <Notice tone="error">{error}</Notice>}
     {exportMessage && <Notice tone="success">{exportMessage}</Notice>}
     <div className="settings-grid"><div className="settings-main">
+      <ThemePanel/>
       <DesktopNotificationsPanel/>
       <section id="assistant" aria-label={c('Conexión y permisos de IA', 'AI connection and permissions')}><Card className="form-card">
         <AiConnectionPanel onConnectionChange={() => setAiConnectionRevision(value => value + 1)}/>

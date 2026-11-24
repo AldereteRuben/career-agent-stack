@@ -84,13 +84,15 @@
   --sidebar-width: 252px;
 }
 
-/* Dark theme: follows the operating system. Only colour tokens change; every
-   rule above reads them. Text keeps at least 4.5:1 on --white, --paper and the
-   pale tints, as in the light theme. The sign-in screen is dark in both. */
+/* Dark theme: follows the operating system unless Settings sets
+   data-theme="light" or "dark" on <html>. Only colour tokens change; every
+   rule above reads them. Keep both dark blocks identical. Text keeps at
+   least 4.5:1 on --white, --paper and the pale tints, as in the light theme.
+   The sign-in screen is dark in both. */
 :root { color-scheme: light; }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --ink: #e7eaf0;
     --ink-2: #c9cfd9;
@@ -129,6 +131,47 @@
     --topbar-bg: rgba(22, 27, 35, 0.94);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.3);
   }
+}
+
+/* The same values when the person picks the dark theme in Settings. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e7eaf0;
+  --ink-2: #c9cfd9;
+  --muted: #a3acbb;
+  --muted-2: #8e98a8;
+  --line: #2a313c;
+  --line-strong: #5b6678;
+  --paper: #0e1218;
+  --paper-2: #1d232d;
+  --white: #161b23;
+  --navy: #131820;
+  --navy-2: #1a2029;
+  --on-navy: #e7eaf0;
+  --on-navy-muted: #a3acbb;
+  --blue: #8aaaf6;
+  --blue-dark: #a9c1fa;
+  --blue-pale: #1b2640;
+  --blue-line: #33456e;
+  --green: #7ccfa1;
+  --green-pale: #12291e;
+  --green-line: #2c5040;
+  --green-mid: #4f9470;
+  --amber: #e5c07a;
+  --amber-pale: #2a2213;
+  --amber-line: #574722;
+  --amber-mid: #a08c55;
+  --red: #f39a8f;
+  --red-pale: #2f1a18;
+  --red-line: #64352f;
+  --mint: #173327;
+  --lavender: #23233f;
+  --peach: #33251b;
+  --gold: #2f2915;
+  --focus: #93b2ff;
+  --on-accent: #0d1526;
+  --topbar-bg: rgba(22, 27, 35, 0.94);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.3);
 }
 
 /* 2. Base + accessibility -------------------------------------------------- */
