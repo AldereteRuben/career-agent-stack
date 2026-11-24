@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { AxeBuilder } from '@axe-core/playwright';
 import type { Scenario } from './scenarios.js';
+import { join } from 'node:path';
 import { any, eventually, goTo, setLocale } from './ui.js';
 
 async function auditWithAxe(page: import('playwright').Page, flow: string) {
@@ -22,7 +23,9 @@ async function auditWithAxe(page: import('playwright').Page, flow: string) {
 // approximates but does not replace a real screen reader.
 export const a11yScenarios: Scenario[] = [{
   name: 'a11y-decorative-symbols-and-saved-region',
-  async run({ page, context, api, marker, note }) {
+  async run({ page, context, api, marker, note, artifacts, allowConsole }) {
+    // An application without a tailored resume or cover letter yet answers 404 for them; the panels show an empty state.
+    allowConsole(/Failed to load resource: the server responded with a status of 404 \(Not Found\)/);
     await page.setViewportSize({ width: 1440, height: 1000 });
     const company = `A11y ${marker}`;
     const title = `A11y role ${marker}`;
@@ -126,6 +129,26 @@ export const a11yScenarios: Scenario[] = [{
     await page.getByRole('complementary', { name: 'Solo en este equipo', exact: true }).waitFor();
     await goTo(page, `/jobs/${job.id}`);
     await page.getByRole('complementary', { name: 'Más acciones', exact: true }).waitFor();
+
+    // Both themes: the main pages must pass axe (colour contrast included) in light and, when the system asks for
+    // it, dark colours. Screenshots are kept with the run's artifacts for a visual check.
+    const themedPages: Array<[string, string]> = [
+      ['/overview', 'overview'], ['/profile', 'profile'], ['/searches', 'searches'], [`/jobs?q=${encodeURIComponent(company)}&scope=active`, 'jobs'],
+      [`/jobs/${job.id}`, 'job-detail'], [`/applications?id=${application.id}`, 'application-detail'], ['/boards', 'boards'], ['/settings', 'settings'],
+    ];
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      for (const [href, label] of themedPages) {
+        await page.goto(new URL(href, page.url()).toString());
+        await page.getByRole('heading', { level: 1 }).first().waitFor();
+        // Audit the loaded page, not its loading notices.
+        await page.waitForFunction(() => !/Cargando|Loading/u.test(document.querySelector('main')?.textContent ?? ''), undefined, { timeout: 20_000 });
+        assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme), colorScheme, `${label} uses the ${colorScheme} colour scheme`);
+        await auditWithAxe(page, `${label} (${colorScheme} theme)`);
+        await page.screenshot({ animations: 'disabled', path: join(artifacts, `${colorScheme}-${label}.png`), fullPage: true });
+      }
+    }
+    await page.emulateMedia({ colorScheme: 'light' });
     note('Accessibility tree checked with Playwright aria snapshots; not verified with real screen readers.');
   },
 }];

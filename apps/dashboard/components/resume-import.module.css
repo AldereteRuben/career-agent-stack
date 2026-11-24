@@ -19,7 +19,7 @@
 }
 
 .fileField small {
-  color: #616b73;
+  color: var(--muted);
   font-size: var(--text-sm);
 }
 
@@ -60,14 +60,14 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid #eff0ed;
+  border-top: 1px solid var(--line);
 }
 
 .item {
   display: grid;
   gap: 8px;
   padding: 14px 0;
-  border-bottom: 1px solid #eff0ed;
+  border-bottom: 1px solid var(--line);
 }
 
 .itemLabel {
@@ -89,12 +89,12 @@
 }
 
 .dates {
-  color: #626c76;
+  color: var(--muted);
   font-size: var(--text-sm);
 }
 
 .description {
-  color: #465466;
+  color: var(--muted);
   font-size: var(--text-sm);
   line-height: 1.6;
   white-space: pre-wrap;
@@ -111,7 +111,7 @@
   padding: 10px;
   overflow: auto;
   border-radius: 8px;
-  background: #f6f7f5;
+  background: var(--paper);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font: inherit;
