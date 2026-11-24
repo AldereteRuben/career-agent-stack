@@ -26,7 +26,7 @@ import { enforceLocalRequest, expiredSessionCookie, issueSession, sessionCookie,
 import { normalizeJobUrl, readPosting, type PostingFeedCache, type ProviderJob } from './sources.js';
 import { createPostingLookupHandleStore, parsePostingUrl, postingPrefill } from './posting-link.js';
 import { registerAssistedRoutes } from './assisted-routes.js';
-import { parseResumePaperSize, renderResume } from './document-renderer.js';
+import { closePdfRenderer, parseResumePaperSize, renderResume } from './document-renderer.js';
 import { approveDerivedDocument, documentReadiness } from './document-reuse.js';
 import { registerResumeJourney } from './resume-journey.js';
 import { logRequestFailure } from './request-error-logging.js';
@@ -845,6 +845,8 @@ registerDiscoveryRoutes(app, workspace);
 const startDiscovery = () => startDiscoveryWorker((error) => app.log.error({ err: error }, 'Automatic discovery failed'));
 let stopDiscovery = startDiscovery();
 app.addHook('onClose', () => stopDiscovery());
+// After the workers above, which can still be preparing an application with a PDF.
+app.addHook('onClose', () => closePdfRenderer());
 
 const assistedRuntime = await registerAssistedRoutes(app, workspace);
 stopAssistedBrowsers = assistedRuntime.stopAll;

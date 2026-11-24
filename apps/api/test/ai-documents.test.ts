@@ -15,7 +15,7 @@ import { aiResumeSelectionSchema, buildAiResumeClaims, registerAiDocumentRoutes 
 import { approveDerivedDocument, documentReadiness } from '../src/document-reuse.js';
 import { buildAiSourceSnapshot, type AiSourceRecords } from '../src/ai/source-snapshot.js';
 import { latestReusableAnswers } from '../src/ai/answer-current.js';
-import { parseResumePaperSize, renderResume } from '../src/document-renderer.js';
+import { closePdfRenderer, parseResumePaperSize, renderResume } from '../src/document-renderer.js';
 
 const root=new URL('../../../',import.meta.url),hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const {Client,Pool}=createRequire(new URL('packages/db/package.json',root))('pg');
@@ -188,5 +188,5 @@ test('AI PDF persistence, readiness, review CAS and render race use an isolated 
       assert.deepEqual((await latestReusableAnswers(database,f.workspaceId)).map(answer=>answer.id),[manualId]);
       assert.equal((await client.query('SELECT approval_status FROM answer_versions WHERE id=$1',[answerId])).rows[0].approval_status,'USER_APPROVED','audit history remains unchanged');
     });
-  }finally{await app.close();await closePool?.();await client?.end();await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);await admin.end();await rm(directory,{recursive:true,force:true});}
+  }finally{await app.close();await closePdfRenderer();await closePool?.();await client?.end();await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);await admin.end();await rm(directory,{recursive:true,force:true});}
 });

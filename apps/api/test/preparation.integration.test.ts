@@ -36,6 +36,7 @@ describe('evidence-based application preparation with a disposable database', { 
     module = await import('../src/application-preparation.js'); pool = (await import('@career/db')).pool; closePool = trackPgPoolCleanup(pool);
   });
   after(async () => {
+    await (await import('../src/document-renderer.js')).closePdfRenderer();
     await closePool?.(); await client?.end();
     if (admin) { await admin.query(`drop database if exists "${dbName}" with (force)`); await admin.end(); }
     if (filesPath) await rm(filesPath, { recursive: true, force: true });
