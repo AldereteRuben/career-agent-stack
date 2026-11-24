@@ -2,6 +2,22 @@
   display: grid;
   gap: 18px;
   min-width: 0;
+  padding: var(--space-5);
+}
+
+.heading a {
+  color: var(--blue);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.heading a:hover {
+  text-decoration: underline;
+}
+
+.panel > section + section {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .heading {
@@ -17,6 +33,12 @@
 .evidence,
 .note {
   margin: 0;
+}
+
+.heading h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
 }
 
 .eyebrow {

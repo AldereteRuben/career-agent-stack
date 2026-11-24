@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useLocale } from '@/lib/i18n';
 import { api, errorMessage } from '@/lib/api';
-import { Button, Notice } from '@/components/ui';
+import { Button, Card, Notice } from '@/components/ui';
 import { copy } from '@/lib/labels';
+import styles from './job-match-feedback.module.css';
 
 type Rating = 'INTERESTED' | 'NOT_FOR_ME';
 type Reason = 'LOCATION' | 'SENIORITY' | 'WORK_MODE' | 'ROLE_TYPE' | 'REQUIREMENT' | 'OTHER';
@@ -68,26 +69,26 @@ export function JobMatchFeedback({ jobId }: { jobId: string }) {
   const reasonLabel = (value: Reason) => ({ LOCATION: c('Ubicación', 'Location'), SENIORITY: c('Nivel de experiencia', 'Seniority'), WORK_MODE: c('Modalidad', 'Work mode'), ROLE_TYPE: c('Tipo de puesto', 'Role type'), REQUIREMENT: c('Requisito', 'Requirement'), OTHER: c('Otro motivo', 'Other reason') })[value];
   const date = (value: string) => new Intl.DateTimeFormat(english ? 'en-GB' : 'es-ES', { dateStyle: 'medium' }).format(new Date(value));
 
-  return <section className="job-match-feedback" aria-labelledby={`job-feedback-${jobId}`} aria-busy={!isCurrentJobLoaded}>
+  return <Card className={`job-match-feedback ${styles.panel}`} aria-labelledby={`job-feedback-${jobId}`} aria-busy={!isCurrentJobLoaded}>
     <h2 id={`job-feedback-${jobId}`}>{c('¿Te interesa esta oferta?', 'Is this job relevant to you?')}</h2>
-    <p>{c('Tu opinión queda separada del encaje calculado y del estado de tu solicitud. No cambia la puntuación ni tus filtros.', 'Your feedback stays separate from calculated fit and application status. It does not change the score or your filters.')}</p>
+    <p className={styles.intro}>{c('Tu opinión queda separada del encaje calculado y del estado de tu solicitud. No cambia la puntuación ni tus filtros.', 'Your feedback stays separate from calculated fit and application status. It does not change the score or your filters.')}</p>
     {error && <Notice tone="warning">{error}</Notice>}{message && <Notice tone="info" role="status">{message}</Notice>}
-    <fieldset disabled={busy || !isCurrentJobLoaded}>
+    <fieldset className={styles.choices} disabled={busy || !isCurrentJobLoaded}>
       <legend>{c('Elige una opción', 'Choose one')}</legend>
-      <label><input type="radio" name={`feedback-${jobId}`} value="INTERESTED" checked={currentRating === 'INTERESTED'} onChange={() => setRating('INTERESTED')}/> {c('Me interesa', 'Interested')}</label>
-      <label><input type="radio" name={`feedback-${jobId}`} value="NOT_FOR_ME" checked={currentRating === 'NOT_FOR_ME'} onChange={() => setRating('NOT_FOR_ME')}/> {c('No es para mí', 'Not for me')}</label>
+      <label className={styles.choice}><input type="radio" name={`feedback-${jobId}`} value="INTERESTED" checked={currentRating === 'INTERESTED'} onChange={() => setRating('INTERESTED')}/> {c('Me interesa', 'Interested')}</label>
+      <label className={styles.choice}><input type="radio" name={`feedback-${jobId}`} value="NOT_FOR_ME" checked={currentRating === 'NOT_FOR_ME'} onChange={() => setRating('NOT_FOR_ME')}/> {c('No es para mí', 'Not for me')}</label>
     </fieldset>
-    <label htmlFor={`feedback-reason-${jobId}`}>{c('Motivo opcional', 'Optional reason')}</label>
+    <div className={`field ${styles.reason}`}><label htmlFor={`feedback-reason-${jobId}`}>{c('Motivo opcional', 'Optional reason')}</label>
     <select id={`feedback-reason-${jobId}`} value={currentReason} disabled={busy || !isCurrentJobLoaded} onChange={(event) => setReason(event.target.value as Reason | '')}>
       <option value="">{c('Sin motivo', 'No reason')}</option>{reasons.map((item) => <option value={item} key={item}>{reasonLabel(item)}</option>)}
-    </select>
-    <div className="actions"><Button variant="secondary" disabled={busy || !currentRating || !isCurrentJobLoaded} onClick={() => void save()}>{currentFeedback ? c('Actualizar opinión', 'Update feedback') : c('Guardar opinión', 'Save feedback')}</Button>{currentFeedback && <Button variant="quiet" disabled={busy} onClick={() => void remove()}>{c('Eliminar opinión', 'Delete feedback')}</Button>}</div>
-    {isCurrentJobLoaded && summary && <div aria-live="polite">
+    </select></div>
+    <div className={styles.actions}><Button variant="secondary" disabled={busy || !currentRating || !isCurrentJobLoaded} onClick={() => void save()}>{currentFeedback ? c('Actualizar opinión', 'Update feedback') : c('Guardar opinión', 'Save feedback')}</Button>{currentFeedback && <Button variant="quiet" disabled={busy} onClick={() => void remove()}>{c('Eliminar opinión', 'Delete feedback')}</Button>}</div>
+    {isCurrentJobLoaded && summary && <div className={styles.summary} aria-live="polite">
       <h3>{c('Lo que has marcado en los últimos 90 días', 'Your feedback from the last 90 days')}</h3>
       <p>{c(`Respuestas: ${summary.total} · Me interesa: ${summary.interested} · No es para mí: ${summary.notForMe}`, `Responses: ${summary.total} · Interested: ${summary.interested} · Not for me: ${summary.notForMe}`)}</p>
       <p><small>{c(`Periodo: ${date(summary.periodStart)}–${date(summary.periodEnd)}. Las respuestas no cambian el ranking.`, `Period: ${date(summary.periodStart)}–${date(summary.periodEnd)}. Feedback does not change ranking.`)}</small></p>
       {summary.notForMe < summary.minimumSample ? <p>{c(`Aún no mostramos patrones: hacen falta ${summary.minimumSample} respuestas explícitas de “No es para mí”.`, `We do not show patterns yet: ${summary.minimumSample} explicit “Not for me” responses are required.`)}</p> : summary.patterns.length ? <ul>{summary.patterns.map((item) => <li key={item.reason}>{reasonLabel(item.reason)}: {item.count}</li>)}</ul> : <p>{c('No hay un motivo repetido que alcance el mínimo de respuestas.', 'No repeated reason has reached the minimum response count.')}</p>}
       <Link href="/searches">{c('Revisar preferencias de búsqueda', 'Review search preferences')}</Link>
     </div>}
-  </section>;
+  </Card>;
 }
