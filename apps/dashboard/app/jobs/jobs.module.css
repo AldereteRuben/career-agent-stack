@@ -718,6 +718,7 @@
   display: grid;
   gap: 14px;
   min-width: 0;
+  padding: var(--space-5);
 }
 
 .companyResearch > p { margin: 0; color: var(--muted); }
@@ -731,7 +732,14 @@
   min-width: 0;
 }
 
-.researchLinks a { overflow-wrap: anywhere; }
+.researchLinks a {
+  color: var(--blue);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.researchLinks a:hover { text-decoration: underline; }
 
 /* Adzuna requires its attribution link to be at least 116 × 23 CSS pixels. */
 .adzunaAttribution {
