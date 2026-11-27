@@ -70,6 +70,7 @@
 .resultsHead { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 12px; padding-top: 4px; }
 .resultsTitleGroup { display: grid; gap: 3px; }
 .resultsTitleGroup .resultCount { font-size: var(--text-sm); }
+.resultsTitleGroup .undo { justify-self: start; min-height: 36px; padding-inline: 10px; margin-inline-start: -10px; }
 .sortControl { display: flex; align-items: center; gap: 8px; }
 .filterTabs { display: flex; overflow-x: auto; gap: 4px; padding: 4px 0 8px; border-bottom: 1px solid var(--line); }
 .filterTabs button { min-height: 44px; padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; border-radius: 7px 7px 0 0; background: transparent; color: var(--muted); font: inherit; white-space: nowrap; cursor: pointer; }

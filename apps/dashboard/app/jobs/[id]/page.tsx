@@ -1,6 +1,5 @@
 'use client';
 
-import { useConfirm } from '@/components/confirm-dialog';
 import { ApplicationPreparationAction } from '@/components/application-preparation';
 import { AiDraftAction, useAiAvailable } from '@/components/ai/draft-action';
 import { AiAutomationPanel } from '@/components/ai/automation';
@@ -27,14 +26,16 @@ type AvailabilityEvent = { fromState: string; toState: string; reason: string; c
 type Detail = { compensation?: JobCompensationView | null; searchSources?: Array<{ provider: string; url: string; postedAt: string | null; lastSeenAt: string }>; job: Job; snapshots: Snapshot[]; sources: Array<{ provider: string; region: string; tenant: string; sourcePostedAt: string | null; lastSeenAt: string; jobUrl: string; applyUrl: string | null }>; applications: JobApplication[]; closedByUser: boolean; availabilityHistory: AvailabilityEvent[]; stillListedBySource: boolean };
 
 export default function JobDetailPage() {
-  const askConfirm = useConfirm();
   const { locale } = useLocale(); const c = copy(locale);
   const formatAvailabilityDate = (value: string) => new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
   const { id } = useParams<{ id: string }>(); const router = useRouter();
   const searchParams = useSearchParams(); const returnTo = searchOrigin(searchParams.get('returnTo'));
   const backHref = returnTo === '/jobs' || returnTo.startsWith('/jobs?') || returnTo === '/searches' || returnTo.startsWith('/searches?') ? returnTo : '/jobs';
   const [data, setData] = useState<Detail | null>(null); const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState(''); const [message, setMessage] = useState('');
+  // Archiving is reversible, so it asks for no confirmation and offers to undo it while its message is shown.
+  const archiveButton = useRef<HTMLButtonElement>(null); const focusArchive = useRef(false);
+  const [undoArchive, setUndoArchive] = useState<{ decision: string; message: string } | null>(null); const [busy, setBusy] = useState<string | null>(null);
   const aiAvailable = useAiAvailable();
   const [helpRequested, setHelpRequested] = useState(false);
   const reviewContinuation = useRef<HTMLAnchorElement>(null); const focusAfterReview = useRef(false);
@@ -139,15 +140,32 @@ export default function JobDetailPage() {
   const archive = async () => {
     if (!job) return;
     const restoring = job.shortlistDecision === 'ARCHIVED';
-    if (!restoring && !(await askConfirm({ message: c('¿Archivar esta oferta? Podrás restaurarla desde Archivadas. Tus solicitudes y CV se conservan.', 'Archive this job? You can restore it from Archived. Your applications and resumes are preserved.'), confirmLabel: c('Archivar oferta', 'Archive job') }))) return;
+    const previous = job.shortlistDecision;
+    setBusy('archive'); setError(''); setUndoArchive(null);
+    try {
+      await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: restoring ? 'UNREVIEWED' : 'ARCHIVED' }) }); await load();
+      const done = restoring ? c('Oferta restaurada.', 'Job restored.') : c('Oferta archivada. Puedes encontrarla con el filtro Archivadas.', 'Job archived. Find it with the Archived filter.');
+      setMessage(done);
+      if (!restoring) setUndoArchive({ decision: previous, message: done });
+    }
+    catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
+  };
+  // The button is disabled while the request runs, so focus returns to it once it is enabled again.
+  useEffect(() => { if (busy === null && focusArchive.current) { focusArchive.current = false; archiveButton.current?.focus(); } }, [busy]);
+  const undo = async () => {
+    if (!job || !undoArchive) return;
     setBusy('archive'); setError('');
-    try { await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: restoring ? 'UNREVIEWED' : 'ARCHIVED' }) }); await load(); setMessage(restoring ? c('Oferta restaurada.', 'Job restored.') : c('Oferta archivada. Puedes encontrarla con el filtro Archivadas.', 'Job archived. Find it with the Archived filter.')); }
+    try {
+      await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision: undoArchive.decision }) }); await load();
+      setUndoArchive(null); setMessage(c('Archivado deshecho. La oferta vuelve a estar como antes.', 'Archive undone. The job is back as it was.'));
+      focusArchive.current = true;
+    }
     catch (err) { setError(errorMessage(err)); } finally { setBusy(null); }
   };
 
   return <WorkspaceGate><AppShell><DetailTitle name={job?.title}/>
     <Link href={backHref} className="back-link">← {backHref.startsWith('/searches') ? c('Volver a mi búsqueda', 'Back to my search') : c('Volver a ofertas', 'Back to jobs')}</Link>
-    {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success">{message}</Notice>}
+    {error && <Notice tone="error">{error}</Notice>}{message && <Notice tone="success" actions={undoArchive?.message === message ? <Button variant="secondary" disabled={busy !== null} onClick={() => void undo()}>{c('Deshacer', 'Undo')}</Button> : undefined}>{message}</Notice>}
     {loadState === 'loading' && <Notice>{c('Cargando oferta…', 'Loading job…')}</Notice>}
     {loadState === 'error' && !job && <Notice tone="warning" actions={<Button variant="quiet" onClick={() => { setError(''); setLoadState('loading'); void load(); }}>{c('Reintentar', 'Try again')}</Button>}>{c('No pudimos cargar esta oferta.', 'We could not load this job.')}</Notice>}
     {job && <><Card className={styles.jobOverview}><div className="job-detail-header"><PageHeader eyebrow={job.company} title={job.title} description={`${c('Añadida el', 'Added on')} ${formatDate(job.createdAt)}`} action={<Button variant="secondary" disabled={busy !== null || job.shortlistDecision === 'ARCHIVED'} aria-pressed={job.shortlistDecision === 'SHORTLISTED'} onClick={() => void updateShortlist()}>{busy === 'shortlist' ? c('Guardando…', 'Saving…') : job.shortlistDecision === 'SHORTLISTED' ? c('Quitar de guardadas', 'Unsave job') : c('Guardar oferta', 'Save job')}</Button>}/></div>
@@ -220,7 +238,7 @@ export default function JobDetailPage() {
         </div></details>
       </div><aside className="detail-aside" aria-labelledby="job-more-actions-heading"><Card className={styles.later}><h2 id="job-more-actions-heading">{c('Más acciones', 'More actions')}</h2><p>{job.shortlistDecision === 'ARCHIVED' ? c('Esta oferta está archivada. Restáurala para volver a verla en tus listas.', 'This job is archived. Restore it to see it in your lists again.') : c('Puedes archivar la oferta o llevar el seguimiento sin preparar un CV.', 'You can archive the job or track it without preparing a resume.')}</p><div className={styles.laterActions}>
         {!existing && <Button variant="quiet" onClick={() => void makeApplication()} disabled={busy !== null}>{busy === 'application' ? c('Creando…', 'Creating…') : c('Solo anotar seguimiento', 'Only track this job')}</Button>}
-        <Button variant="quiet" disabled={busy !== null} onClick={() => void archive()}>{job.shortlistDecision === 'ARCHIVED' ? c('Restaurar oferta', 'Restore job') : c('Archivar oferta', 'Archive job')}</Button>
+        <Button ref={archiveButton} variant="quiet" disabled={busy !== null} onClick={() => void archive()}>{job.shortlistDecision === 'ARCHIVED' ? c('Restaurar oferta', 'Restore job') : c('Archivar oferta', 'Archive job')}</Button>
       </div></Card><details className={`card ${styles.fit}`}><summary>{c('Más datos de la oferta', 'More job details')}</summary><div className={`detail-facts ${styles.fitBody}`}><dl>
         <div><dt>{c('Información disponible para comparar', 'Information available to compare')}</dt><dd>{c('Porción evaluable del encaje: ', 'Assessable share of the fit: ')}{job.evidenceCoverage ?? 0}%</dd></div>
         {source && <><div><dt>{c('Fuente', 'Source')}</dt><dd>{source.provider} · {labelFor.region(source.region, locale)}</dd></div><div><dt>{c('Vista por última vez', 'Last seen')}</dt><dd>{formatDate(source.lastSeenAt)}</dd></div><div><dt>{c('Publicada por la fuente', 'Posted by the source')}</dt><dd>{formatDate(source.sourcePostedAt)}</dd></div></>}

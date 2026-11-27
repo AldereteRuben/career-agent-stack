@@ -1,5 +1,6 @@
 import { v082Scenario } from './v082.js';
 import { v071Scenarios } from './v071.js';
+import { undoScenario } from './undo.js';
 import { v070Scenario } from './v070.js';
 import { v061Scenario } from './v061.js';
 import { v060Scenario } from './v060.js';
@@ -602,6 +603,7 @@ scenarios.push(v060Scenario);
 scenarios.push(v061Scenario);
 scenarios.push(v070Scenario);
 scenarios.push(...v071Scenarios);
+scenarios.push(undoScenario);
 scenarios.push(v051Last);
 // Workspace deletion must run last because it removes the isolated fixture shared by this shard.
 scenarios.push(applicationDocumentsScenario);
