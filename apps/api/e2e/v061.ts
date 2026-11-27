@@ -31,6 +31,10 @@ export const v061Scenario: Scenario = {
         assert.doesNotMatch(await activity.innerText(), /Reintentaremos en el próximo|retry at the next/i);
 
         let failGet = true; let failPut = false;
+        // Once reads succeed again, the panel's own background refresh may recover before the click lands; either way it must recover.
+        const retryUnlessRecovered = async (retry: import('playwright').Locator) => {
+          await retry.click({ timeout: 5_000 }).catch(async (error: unknown) => { if (await retry.count()) throw error; });
+        };
         await page.route('**/api/v1/discovery', async (route) => {
           if ((route.request().method() === 'GET' && failGet) || (route.request().method() === 'PUT' && failPut)) await route.fulfill({ status: 500, json: { error: 'INTERNAL_ERROR' } });
           else await route.continue();
@@ -39,7 +43,7 @@ export const v061Scenario: Scenario = {
           await page.reload(); const panel = page.locator('.discovery-panel');
           await panel.getByRole('alert').waitFor();
           assert.equal(await panel.getByText(c('Cargando búsqueda…', 'Loading search…'), { exact: true }).count(), 0);
-          failGet = false; await panel.getByRole('button', { name: c('Reintentar', 'Try again'), exact: true }).click();
+          failGet = false; await retryUnlessRecovered(panel.getByRole('button', { name: c('Reintentar', 'Try again'), exact: true }));
           await panel.locator('.tag').filter({ hasText: c('PAUSADA', 'PAUSED') }).waitFor();
           failGet = true; await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
           await panel.locator('.tag').filter({ hasText: c('SIN ACTUALIZAR', 'OUT OF DATE') }).waitFor();
@@ -51,7 +55,7 @@ export const v061Scenario: Scenario = {
             await card.waitFor(); assert.equal(await hasHorizontalOverflow(page), false);
           }
           await page.screenshot({ path: join(artifacts, `v061-stale-${locale}.png`), fullPage: true });
-          failGet = false; await panel.getByRole('button', { name: c('Reintentar', 'Try again'), exact: true }).click();
+          failGet = false; await retryUnlessRecovered(panel.getByRole('button', { name: c('Reintentar', 'Try again'), exact: true }));
           await eventually(() => activate.isEnabled(), Boolean, 'Fresh status restores action');
           failPut = true; await activate.click(); await panel.getByRole('alert').waitFor();
           await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));

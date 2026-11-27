@@ -31,6 +31,7 @@ const actionMessages = {
   unsaved: ['Oferta quitada de guardadas.', 'Job removed from saved.'],
   archived: ['Oferta archivada. Puedes recuperarla en Archivadas.', 'Job archived. You can restore it from Archived.'],
   restored: ['Oferta recuperada.', 'Job restored.'],
+  undone: ['Cambio deshecho.', 'Change undone.'],
   reviewed: ['Marcada como revisada.', 'Marked as reviewed.'],
 } as const;
 
@@ -97,6 +98,8 @@ export default function SearchesPage() {
   const [loading, setLoading] = useState(true); const [listFailed, setListFailed] = useState(false); const [resultLoading, setResultLoading] = useState(false); const [resultsError, setResultsError] = useState(false);
   const [total, setTotal] = useState(0); const [offset, setOffset] = useState(0); const [busy, setBusy] = useState(''); const [error, setError] = useState(''); const [message, setMessage] = useState<keyof typeof successMessages | ''>(''); const [loadError, setLoadError] = useState('');
   const [actionMessage, setActionMessage] = useState<keyof typeof actionMessages | ''>('');
+  // Archiving or unsaving a job can be undone until the next action: the job returns to its previous decision.
+  const [undoReview, setUndoReview] = useState<{ job: SearchJob; decision: SearchJob['shortlistDecision'] } | null>(null);
   const [pendingArrivals, setPendingArrivals] = useState(false);
   /** Deduplicated unread total across all searches (never a sum of per-search counts). */
   const [unreadTotal, setUnreadTotal] = useState<number | null>(null);
@@ -238,7 +241,7 @@ export default function SearchesPage() {
   useLocalRefresh(() => load(true), { paused: loading || Boolean(busy) || resultLoading, interval: anyRunning ? 3000 : 30000 });
 
   const choose = async (id: string, nextView = view, nextSort = sort, start = 0, push = true, moveFocus = true) => {
-    selectedRef.current = id; setSelectedId(id); viewRef.current = nextView; setView(nextView); sortRef.current = nextSort; setSort(nextSort); offsetRef.current = start; setOffset(start); setActionMessage('');
+    selectedRef.current = id; setSelectedId(id); viewRef.current = nextView; setView(nextView); sortRef.current = nextSort; setSort(nextSort); offsetRef.current = start; setOffset(start); setActionMessage(''); setUndoReview(null);
     saveContext(id, nextView, nextSort, start, !push); await loadResults(id, nextView, nextSort, start); if (moveFocus) resultsTitle.current?.focus();
   };
   const dirtyDraft = (formOpen || searches.length === 0) && Boolean(draft.role || draft.company || draft.location || aiSearchRequest.trim());
@@ -320,15 +323,18 @@ export default function SearchesPage() {
     setActionMessage(done);
     await Promise.all([loadResults(selectedId, view, sort, offset, 'quiet'), refreshCounts()]);
   };
-  const updateReview = async (job: SearchJob, decision: 'SHORTLISTED' | 'ARCHIVED' | 'UNREVIEWED') => {
-    setBusy(job.id); setError(''); setMessage(''); setActionMessage('');
+  const updateReview = async (job: SearchJob, decision: SearchJob['shortlistDecision'], undoing = false) => {
+    const previous = job.shortlistDecision;
+    setBusy(job.id); setError(''); setMessage(''); setActionMessage(''); setUndoReview(null);
     try {
       await api(`/jobs/${job.id}/shortlist`, { method: 'POST', body: JSON.stringify({ decision }) });
-      await afterCardAction(job, decision === 'SHORTLISTED' ? 'saved' : decision === 'ARCHIVED' ? 'archived' : job.shortlistDecision === 'SHORTLISTED' ? 'unsaved' : 'restored');
+      const reversible = !undoing && previous !== decision && (decision === 'ARCHIVED' || (decision === 'UNREVIEWED' && previous === 'SHORTLISTED'));
+      if (reversible) setUndoReview({ job: { ...job, shortlistDecision: decision }, decision: previous });
+      await afterCardAction(job, undoing ? 'undone' : decision === 'SHORTLISTED' ? 'saved' : decision === 'ARCHIVED' ? 'archived' : previous === 'SHORTLISTED' ? 'unsaved' : 'restored');
     } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
   };
   const markReviewed = async (job: SearchJob) => {
-    setBusy(job.id); setError(''); setActionMessage('');
+    setBusy(job.id); setError(''); setActionMessage(''); setUndoReview(null);
     try {
       // Seen once means seen everywhere: the same job may have been found by several searches.
       await api(`/job-searches/all/results/${job.id}/review`, { method: 'POST', body: '{}' });
@@ -336,7 +342,7 @@ export default function SearchesPage() {
     } catch (cause) { setError(problem(cause)); } finally { setBusy(''); }
   };
   const restoreFilteredJob = async (job: SearchJob) => {
-    setBusy(job.id); setError(''); setActionMessage('');
+    setBusy(job.id); setError(''); setActionMessage(''); setUndoReview(null);
     try {
       await api(`/job-filters/${job.id}/restore`, { method: 'POST', body: '{}' });
       await afterCardAction(job, 'restored');
@@ -410,7 +416,8 @@ export default function SearchesPage() {
         </div>}
         <JobFilterEditor onSaved={() => void loadResults(selectedId, view, sort, 0)} />
         <div className={styles.resultsHead}>
-          <div className={styles.resultsTitleGroup}><h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{current ? searchName(current, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2><span className={styles.resultCount} role="status">{resultLoading ? t('Cargando ofertas…', 'Loading jobs…') : count(total, ['oferta', 'job'], ['ofertas', 'jobs'])}{!resultLoading && actionMessage ? ` · ${t(actionMessages[actionMessage][0], actionMessages[actionMessage][1])}` : ''}</span></div>
+          <div className={styles.resultsTitleGroup}><h2 id="search-results-title" ref={resultsTitle} tabIndex={-1}>{current ? searchName(current, anyRole) : t('Ofertas para ti', 'Jobs for you')}</h2><span className={styles.resultCount} role="status">{resultLoading ? t('Cargando ofertas…', 'Loading jobs…') : count(total, ['oferta', 'job'], ['ofertas', 'jobs'])}{!resultLoading && actionMessage ? ` · ${t(actionMessages[actionMessage][0], actionMessages[actionMessage][1])}` : ''}</span>
+            {!resultLoading && undoReview && (actionMessage === 'archived' || actionMessage === 'unsaved') && <Button type="button" variant="quiet" className={styles.undo} disabled={busy !== ''} onClick={() => void updateReview(undoReview.job, undoReview.decision, true)}>{t('Deshacer', 'Undo')}<span className="sr-only">{` · ${undoReview.job.title}`}</span></Button>}</div>
           <div className={styles.sortControl}><label htmlFor="search-sort">{t('Ordenar', 'Sort')}</label><select id="search-sort" value={sort} onChange={(event) => changeSort(event.target.value as SearchSort)}><option value="relevance">{t('Mejor coincidencia', 'Best match')}</option><option value="recent">{t('Más recientes', 'Most recent')}</option></select></div>
         </div>
         {sole && <div className={styles.soleActions} data-search-actions="single">
